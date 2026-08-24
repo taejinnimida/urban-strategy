@@ -1,6 +1,12 @@
 from __future__ import annotations
 
 import math
+import os
+import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import lru_cache
+
+import requests
 from dataclasses import dataclass, asdict
 from typing import Any, Dict, List, Optional
 
@@ -388,12 +394,277 @@ def measure_geojson(geometry: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-INDEX_HTML = '<!doctype html>\n<html lang="ko">\n<head>\n  <meta charset="utf-8" />\n  <meta name="viewport" content="width=device-width, initial-scale=1" />\n  <title>도시검토 플랫폼 | 서울 재개발 웹 MVP</title>\n  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />\n  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />\n  <style>\n    :root{--bg:#f3f5f7;--card:#fff;--line:#dfe3e8;--text:#16181d;--muted:#667085;--dark:#111827;--green:#067647;--red:#b42318;--amber:#b54708;--blue:#175cd3}\n    *{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,"Noto Sans KR",sans-serif;background:var(--bg);color:var(--text)}\n    header{padding:18px 24px;background:#fff;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:20px;align-items:center}\n    header h1{font-size:22px;margin:0 0 4px}header .sub{font-size:12px;color:var(--muted)}\n    .shell{display:grid;grid-template-columns:minmax(520px,1.35fr) minmax(420px,.95fr);gap:16px;padding:16px;min-height:calc(100vh - 78px)}\n    .panel{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}.panel-head{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:10px}.panel-head h2{font-size:16px;margin:0}\n    #map{height:520px;width:100%;background:#e8eaed}.map-foot{padding:12px 16px;border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.metric{padding:10px;border:1px solid var(--line);border-radius:10px}.metric .k{font-size:11px;color:var(--muted)}.metric .v{font-weight:800;font-size:17px;margin-top:2px}\n    .form-wrap{padding:14px 16px}.section-title{font-size:13px;font-weight:800;margin:4px 0 10px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.field label{display:block;font-size:11px;color:#475467;font-weight:700;margin-bottom:4px}.field input{width:100%;padding:9px 10px;border:1px solid #cfd5dc;border-radius:8px;font-size:14px;background:#fff}.field input:focus{outline:2px solid #c7d7fe;border-color:#84adff}.field small{color:var(--muted);font-size:10px}\n    .checkline{display:flex;gap:8px;align-items:center;font-size:12px;margin-top:9px}.checkline input{width:auto}.actions{display:flex;gap:8px;margin-top:14px}.btn{padding:11px 13px;border-radius:9px;border:1px solid var(--line);font-weight:800;cursor:pointer;background:white}.btn.primary{background:var(--dark);color:white;border-color:var(--dark);flex:1}.btn:disabled{opacity:.45;cursor:not-allowed}\n    .hint{margin-top:10px;padding:9px 10px;border-radius:8px;background:#f8fafc;border:1px dashed #d0d5dd;font-size:11px;color:#475467;line-height:1.5}\n    .result{padding:14px 16px}.statusbox{padding:14px;border-radius:12px;border:1px solid var(--line);background:#fbfcfd}.status{font-size:24px;font-weight:900}.PASS{color:var(--green)}.FAIL{color:var(--red)}.REVIEW,.UNKNOWN{color:var(--amber)}.INFO{color:#475467}.statusmsg{font-size:13px;line-height:1.5;margin-top:6px}.tiny{font-size:10px;color:var(--muted)}\n    table{border-collapse:collapse;width:100%;font-size:11px;margin-top:12px}th,td{padding:8px 6px;border-bottom:1px solid #edf0f2;text-align:left;vertical-align:top}th{font-size:10px;color:#475467;background:#fafafa;position:sticky;top:0}.pill{font-size:10px;font-weight:900;padding:2px 6px;border-radius:999px;background:#f2f4f7;white-space:nowrap}.source-link{color:var(--blue);text-decoration:none}.source-link:hover{text-decoration:underline}\n    details{margin-top:12px;border:1px solid var(--line);border-radius:10px;background:#fff}summary{cursor:pointer;font-size:12px;font-weight:800;padding:10px 12px}.details-body{padding:0 12px 12px}.note-list{font-size:11px;color:#475467;line-height:1.55;padding-left:18px}.empty{color:var(--muted);font-size:13px;padding:24px 0;text-align:center}.badge{font-size:10px;padding:3px 7px;border-radius:999px;background:#eef4ff;color:#3538cd;font-weight:800}\n    .connection{display:flex;gap:6px;flex-wrap:wrap}.conn{font-size:10px;border:1px solid var(--line);border-radius:999px;padding:4px 7px;background:#fff}.auto{color:var(--green);border-color:#abefc6;background:#ecfdf3}.manual{color:#475467}.planned{color:#b54708;background:#fffaeb;border-color:#fedf89}\n    @media(max-width:1050px){.shell{grid-template-columns:1fr}.panel{overflow:visible}#map{height:470px}}\n    @media(max-width:640px){header{align-items:flex-start;flex-direction:column}.shell{padding:8px}.grid{grid-template-columns:1fr}.map-foot{grid-template-columns:1fr 1fr}#map{height:420px}}\n  </style>\n</head>\n<body>\n<header>\n  <div><h1>도시검토 플랫폼</h1><div class="sub">서울 주택정비형 재개발 · 웹 지도 + Rule Engine v0.3 · 기준일 2026-08-24</div></div>\n  <div class="connection"><span class="conn auto">구역면적 AUTO</span><span class="conn manual">노후도 MANUAL</span><span class="conn manual">과소필지 MANUAL</span><span class="conn planned">공공데이터 연결 NEXT</span></div>\n</header>\n<div class="shell">\n  <section class="panel">\n    <div class="panel-head"><h2>1. 지도에서 사업구역 그리기</h2><span class="badge">서울 중심</span></div>\n    <div id="map"></div>\n    <div class="map-foot">\n      <div class="metric"><div class="k">구역면적</div><div class="v" id="mArea">-</div></div>\n      <div class="metric"><div class="k">면적(ha)</div><div class="v" id="mHa">-</div></div>\n      <div class="metric"><div class="k">둘레</div><div class="v" id="mPerimeter">-</div></div>\n    </div>\n    <div class="form-wrap">\n      <div class="section-title">2. 현재 자동취득되지 않는 정비지표 입력</div>\n      <div class="grid">\n        <div class="field"><label>구역면적(㎡) <span class="PASS">AUTO</span></label><input id="area_m2" type="number" placeholder="지도를 그리면 자동입력" readonly></div>\n        <div class="field"><label>전체 건축물 수</label><input id="total_building_count" type="number" placeholder="예: 100"></div>\n        <div class="field"><label>노후·불량건축물 수</label><input id="old_building_count" type="number" placeholder="예: 75"><small>현행 간주기준 75%</small></div>\n        <div class="field"><label>전체 필지 수</label><input id="total_parcel_count" type="number" placeholder="예: 80"></div>\n        <div class="field"><label>90㎡ 미만 필지 수</label><input id="small_parcel_count" type="number" placeholder="예: 35"></div>\n        <div class="field"><label>접도율 산정 건축물 수</label><input id="road_basis_building_count" type="number" placeholder="예: 100"></div>\n        <div class="field"><label>6m 이상 도로 접도 건축물 수</label><input id="road_access_building_count_6m" type="number" placeholder="예: 32"><small>재개발 주택접도율 6m 기준</small></div>\n        <div class="field"><label>호수밀도(호/ha)</label><input id="house_density_per_ha" type="number" step="0.01" placeholder="예: 62"></div>\n        <div class="field"><label>전체 건축물 연면적(㎡)</label><input id="total_floor_area_m2" type="number" placeholder="선택 입력"></div>\n        <div class="field"><label>노후·불량건축물 연면적(㎡)</label><input id="old_floor_area_m2" type="number" placeholder="선택 입력"></div>\n        <div class="field"><label>입안요청 토지등소유자 동의율(%)</label><input id="request_owner_consent_ratio" type="number" min="0" max="100" placeholder="선택 입력"></div>\n        <div class="field"><label>입안제안 토지등소유자 동의율(%)</label><input id="proposal_owner_consent_ratio" type="number" min="0" max="100" placeholder="선택 입력"></div>\n        <div class="field"><label>입안제안 토지면적 동의율(%)</label><input id="proposal_land_area_consent_ratio" type="number" min="0" max="100" placeholder="선택 입력"></div>\n      </div>\n      <label class="checkline"><input id="promotion_district" type="checkbox"> 재정비촉진지구</label>\n      <label class="checkline"><input id="area_5000_exception_approved" type="checkbox"> 5,000~10,000㎡ 관련 위원회 심의 인정 확인</label>\n      <div class="actions"><button class="btn" onclick="loadSample()">샘플값</button><button class="btn" onclick="clearInputs()">초기화</button><button id="runBtn" class="btn primary" onclick="runEvaluation()" disabled>재개발 검토 실행</button></div>\n      <div class="hint">지금 버전은 <b>구역면적만 지도에서 자동계산</b>한다. 노후도·필지·접도·호수밀도는 엔진 정확성 검증을 위해 직접 입력한다. 다음 버전에서 연속지적·건축물·도로 데이터를 연결해 이 입력칸을 차례로 없앤다.</div>\n    </div>\n  </section>\n\n  <section class="panel">\n    <div class="panel-head"><h2>3. 재개발 검토 결과</h2><span class="badge">정량요건 1차 스크리닝</span></div>\n    <div class="result" id="result"><div class="empty">왼쪽 지도에서 대상구역을 먼저 그리세요.</div></div>\n  </section>\n</div>\n<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>\n<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>\n<script>\nconst map=L.map(\'map\',{zoomControl:true}).setView([37.5665,126.9780],13);\nL.tileLayer(\'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png\',{maxZoom:20,attribution:\'© OpenStreetMap contributors\'}).addTo(map);\nconst drawnItems=new L.FeatureGroup().addTo(map);\nlet activeGeometry=null;\nconst drawControl=new L.Control.Draw({position:\'topright\',draw:{polygon:{allowIntersection:false,showArea:false,shapeOptions:{weight:3}},rectangle:{shapeOptions:{weight:3}},polyline:false,circle:false,circlemarker:false,marker:false},edit:{featureGroup:drawnItems,remove:true}});\nmap.addControl(drawControl);\n\nmap.on(L.Draw.Event.CREATED, async e=>{drawnItems.clearLayers(); drawnItems.addLayer(e.layer); activeGeometry=e.layer.toGeoJSON().geometry; await measureAndSync();});\nmap.on(L.Draw.Event.EDITED, async e=>{e.layers.eachLayer(layer=>activeGeometry=layer.toGeoJSON().geometry); await measureAndSync();});\nmap.on(L.Draw.Event.DELETED, ()=>{activeGeometry=null; resetMeasure(); document.getElementById(\'result\').innerHTML=\'<div class="empty">왼쪽 지도에서 대상구역을 먼저 그리세요.</div>\';});\n\nfunction num(id){const v=document.getElementById(id).value.trim(); return v===\'\'?null:Number(v)}\nfunction ratio(id){const v=num(id); return v===null?null:v/100}\nfunction fmt(n,d=0){return n==null?\'-\':Number(n).toLocaleString(\'ko-KR\',{maximumFractionDigits:d})}\n\nasync function measureAndSync(){\n  if(!activeGeometry)return;\n  const r=await fetch(\'/api/spatial/measure\',{method:\'POST\',headers:{\'Content-Type\':\'application/json\'},body:JSON.stringify({geometry:activeGeometry})});\n  const d=await r.json();\n  if(!r.ok){alert(d.detail||\'면적 계산 실패\');return;}\n  document.getElementById(\'area_m2\').value=d.area_m2.toFixed(2);\n  document.getElementById(\'mArea\').textContent=fmt(d.area_m2,0)+\' ㎡\';\n  document.getElementById(\'mHa\').textContent=fmt(d.area_ha,3)+\' ha\';\n  document.getElementById(\'mPerimeter\').textContent=fmt(d.perimeter_m,0)+\' m\';\n  document.getElementById(\'runBtn\').disabled=false;\n  document.getElementById(\'result\').innerHTML=\'<div class="empty">구역면적을 계산했습니다. 정비지표를 입력하고 검토를 실행하세요.</div>\';\n}\nfunction resetMeasure(){document.getElementById(\'area_m2\').value=\'\';document.getElementById(\'mArea\').textContent=\'-\';document.getElementById(\'mHa\').textContent=\'-\';document.getElementById(\'mPerimeter\').textContent=\'-\';document.getElementById(\'runBtn\').disabled=true;}\n\nfunction loadSample(){\n  const vals={total_building_count:100,old_building_count:75,total_parcel_count:100,small_parcel_count:32,road_basis_building_count:100,road_access_building_count_6m:55,house_density_per_ha:42,total_floor_area_m2:30000,old_floor_area_m2:14000,request_owner_consent_ratio:32};\n  Object.entries(vals).forEach(([k,v])=>document.getElementById(k).value=v);\n}\nfunction clearInputs(){\n  [\'total_building_count\',\'old_building_count\',\'total_parcel_count\',\'small_parcel_count\',\'road_basis_building_count\',\'road_access_building_count_6m\',\'house_density_per_ha\',\'total_floor_area_m2\',\'old_floor_area_m2\',\'request_owner_consent_ratio\',\'proposal_owner_consent_ratio\',\'proposal_land_area_consent_ratio\'].forEach(id=>document.getElementById(id).value=\'\');\n  document.getElementById(\'promotion_district\').checked=false; document.getElementById(\'area_5000_exception_approved\').checked=false;\n}\n\nasync function runEvaluation(){\n  const body={\n    area_m2:num(\'area_m2\'), total_building_count:num(\'total_building_count\'), old_building_count:num(\'old_building_count\'),\n    total_parcel_count:num(\'total_parcel_count\'), small_parcel_count:num(\'small_parcel_count\'),\n    road_basis_building_count:num(\'road_basis_building_count\'), road_access_building_count_6m:num(\'road_access_building_count_6m\'),\n    house_density_per_ha:num(\'house_density_per_ha\'), total_floor_area_m2:num(\'total_floor_area_m2\'), old_floor_area_m2:num(\'old_floor_area_m2\'),\n    promotion_district:document.getElementById(\'promotion_district\').checked,\n    area_5000_exception_approved:document.getElementById(\'area_5000_exception_approved\').checked,\n    request_owner_consent_ratio:ratio(\'request_owner_consent_ratio\'), proposal_owner_consent_ratio:ratio(\'proposal_owner_consent_ratio\'),\n    proposal_land_area_consent_ratio:ratio(\'proposal_land_area_consent_ratio\')\n  };\n  const r=await fetch(\'/api/redevelopment/evaluate\',{method:\'POST\',headers:{\'Content-Type\':\'application/json\'},body:JSON.stringify(body)});\n  const d=await r.json();\n  if(!r.ok){document.getElementById(\'result\').innerHTML=\'<div class="statusbox"><div class="FAIL">오류</div><div class="statusmsg">\'+(d.detail||\'판정 실패\')+\'</div></div>\';return;}\n  renderResult(d);\n}\nfunction renderResult(d){\n  const s=d.physical_eligibility;\n  const rows=d.checks.map(c=>{\n    const src=(c.source_ids||[]).map(id=>{const x=d.sources[id];return x?`<a class="source-link" href="${x.url}" target="_blank">${id}</a>`:id}).join(\'<br>\');\n    return `<tr><td>${groupKo(c.group)}</td><td><b>${c.label}</b><div class="tiny">${c.note||\'\'}</div></td><td>${c.requirement}</td><td>${c.actual??\'-\'}</td><td><span class="pill ${c.status}">${c.status}</span></td><td>${src}</td></tr>`;\n  }).join(\'\');\n  const policy=(d.policy_watch||[]).map(x=>`<li><b>${x.status}</b> · ${x.current}<br>${x.engine_behavior}</li>`).join(\'\');\n  document.getElementById(\'result\').innerHTML=`\n    <div class="statusbox"><div class="status ${s.status}">${s.status}</div><div class="statusmsg">${s.message}</div><div class="tiny" style="margin-top:8px">${s.meaning} · 룰셋 ${d.engine.id}</div></div>\n    <table><thead><tr><th>구분</th><th>항목</th><th>기준</th><th>대상지</th><th>판정</th><th>근거</th></tr></thead><tbody>${rows}</tbody></table>\n    <details open><summary>판정 해석 및 한계</summary><div class="details-body"><ul class="note-list">${d.special_notes.map(x=>`<li>${x}</li>`).join(\'\')}</ul></div></details>\n    <details><summary>정책 변경 추적</summary><div class="details-body"><ul class="note-list">${policy||\'<li>없음</li>\'}</ul></div></details>`;\n}\nfunction groupKo(g){return {mandatory:\'필수\',selection:\'선택/간주\',consent:\'주민절차\'}[g]||g}\n</script>\n</body>\n</html>\n'
+
+VWORLD_DATA_URL = "https://api.vworld.kr/req/data"
+VWORLD_LAND_URL = "https://api.vworld.kr/ned/data/getLandCharacteristics"
+VWORLD_LAYER_PARCEL = "LP_PA_CBND_BUBUN"
+SMALL_PARCEL_THRESHOLD_M2 = 90.0
+
+
+def _vworld_key() -> str:
+    return (os.getenv("VWORLD_API_KEY") or "").strip()
+
+
+def _vworld_domain() -> str:
+    return (
+        (os.getenv("VWORLD_DOMAIN") or "").strip()
+        or (os.getenv("RENDER_EXTERNAL_HOSTNAME") or "").strip()
+        or "localhost"
+    )
+
+
+def vworld_ready() -> bool:
+    return bool(_vworld_key())
+
+
+def _response_error_message(payload: Dict[str, Any]) -> str:
+    response = payload.get("response") or {}
+    error = response.get("error") or {}
+    return str(
+        error.get("text")
+        or error.get("message")
+        or response.get("status")
+        or "VWorld 응답 오류"
+    )
+
+
+def _fetch_vworld_parcel_candidates(target_geom) -> List[Dict[str, Any]]:
+    """Fetch cadastral features in the target bbox, then exact-filter locally.
+
+    VWorld Data API 2.0 uses LP_PA_CBND_BUBUN with geomFilter=BOX(...).
+    Boundary-only touches are excluded by requiring positive geodesic
+    intersection area, so parcels merely touching the drawn line are not counted.
+    """
+    key = _vworld_key()
+    if not key:
+        raise RuntimeError("VWorld API 키가 설정되지 않았습니다.")
+
+    minx, miny, maxx, maxy = target_geom.bounds
+    bbox_poly = shape({
+        "type": "Polygon",
+        "coordinates": [[
+            [minx, miny], [maxx, miny], [maxx, maxy], [minx, maxy], [minx, miny]
+        ]]
+    })
+    bbox_area, _ = GEOD.geometry_area_perimeter(bbox_poly)
+    if abs(float(bbox_area)) > 10_000_000:
+        raise RuntimeError("VWorld 필지조회 범위가 10㎢를 넘습니다. 대상구역을 더 작게 나눠 주세요.")
+
+    all_features: List[Dict[str, Any]] = []
+    seen_api_ids = set()
+    size = 1000
+
+    for page in range(1, 11):
+        params = {
+            "key": key,
+            "domain": _vworld_domain(),
+            "service": "data",
+            "version": "2.0",
+            "request": "GetFeature",
+            "format": "json",
+            "size": size,
+            "page": page,
+            "geometry": "true",
+            "attribute": "true",
+            "crs": "EPSG:4326",
+            "data": VWORLD_LAYER_PARCEL,
+            "geomFilter": f"BOX({minx},{miny},{maxx},{maxy})",
+        }
+        resp = requests.get(VWORLD_DATA_URL, params=params, timeout=20)
+        resp.raise_for_status()
+        payload = resp.json()
+        status = str((payload.get("response") or {}).get("status") or "").upper()
+        if status not in {"OK", "NOT_FOUND"}:
+            raise RuntimeError(_response_error_message(payload))
+        if status == "NOT_FOUND":
+            break
+
+        fc = (((payload.get("response") or {}).get("result") or {}).get("featureCollection") or {})
+        feats = fc.get("features") or []
+        for f in feats:
+            fid = f.get("id") or ((f.get("properties") or {}).get("pnu"))
+            if fid and fid in seen_api_ids:
+                continue
+            if fid:
+                seen_api_ids.add(fid)
+            all_features.append(f)
+        if len(feats) < size:
+            break
+    else:
+        raise RuntimeError("필지 후보가 10,000건을 넘어 조회를 중단했습니다.")
+
+    exact: List[Dict[str, Any]] = []
+    seen_pnu = set()
+    for f in all_features:
+        gj = f.get("geometry")
+        if not gj:
+            continue
+        try:
+            pg = shape(gj)
+            inter = target_geom.intersection(pg)
+            if inter.is_empty:
+                continue
+            ia, _ = GEOD.geometry_area_perimeter(inter)
+            if abs(float(ia)) < 0.01:
+                continue
+        except Exception:
+            continue
+        props = dict(f.get("properties") or {})
+        pnu = str(props.get("pnu") or "").strip()
+        if not pnu or pnu in seen_pnu:
+            continue
+        seen_pnu.add(pnu)
+        exact.append({"type": "Feature", "id": f.get("id"), "geometry": gj, "properties": props})
+    return exact
+
+
+@lru_cache(maxsize=20000)
+def _vworld_official_land_area(pnu: str) -> Optional[float]:
+    """Read official parcel area (lndpclAr) from VWorld land-characteristics API.
+
+    Multiple historical <field> rows can be returned. The newest year with a
+    positive lndpclAr is selected. Geometry area is deliberately NOT substituted
+    when the official field is missing.
+    """
+    key = _vworld_key()
+    if not key:
+        return None
+    params = {
+        "pnu": pnu,
+        "format": "xml",
+        "key": key,
+        "domain": _vworld_domain(),
+        "numOfRows": 50,
+    }
+    try:
+        resp = requests.get(VWORLD_LAND_URL, params=params, timeout=15)
+        resp.raise_for_status()
+        root = ET.fromstring(resp.text)
+    except Exception:
+        return None
+
+    candidates = []
+    for field in root.findall(".//field"):
+        area_node = field.find("lndpclAr")
+        if area_node is None or not (area_node.text or "").strip():
+            continue
+        try:
+            area = float(area_node.text.strip())
+        except ValueError:
+            continue
+        if area <= 0:
+            continue
+        year_node = field.find("stdrYear")
+        try:
+            year = int((year_node.text or "0").strip()) if year_node is not None else 0
+        except ValueError:
+            year = 0
+        candidates.append((year, area))
+    if candidates:
+        candidates.sort(reverse=True)
+        return candidates[0][1]
+
+    # Fallback for response shapes without <field>.
+    node = root.find(".//lndpclAr")
+    if node is not None and (node.text or "").strip():
+        try:
+            area = float(node.text.strip())
+            return area if area > 0 else None
+        except ValueError:
+            pass
+    return None
+
+
+def analyze_parcels_for_geometry(geometry: Dict[str, Any]) -> Dict[str, Any]:
+    target = shape(geometry)
+    if target.geom_type not in {"Polygon", "MultiPolygon"}:
+        raise ValueError("Polygon 또는 MultiPolygon만 지원합니다.")
+    if target.is_empty or not target.is_valid:
+        raise ValueError("유효한 대상구역 도형이 필요합니다.")
+
+    features = _fetch_vworld_parcel_candidates(target)
+    if not features:
+        return {
+            "total_parcel_count": 0,
+            "official_area_count": 0,
+            "missing_official_area_count": 0,
+            "known_small_parcel_count": 0,
+            "small_parcel_count": 0,
+            "complete_official_area": True,
+            "feature_collection": {"type": "FeatureCollection", "features": []},
+            "source": {
+                "parcel_boundary": "VWorld LP_PA_CBND_BUBUN",
+                "official_area": "VWorld getLandCharacteristics.lndpclAr",
+            },
+        }
+
+    pnus = [str((f.get("properties") or {}).get("pnu") or "") for f in features]
+    area_map: Dict[str, Optional[float]] = {}
+    # Modest concurrency: I/O-bound calls, conservative for a free Render instance/API.
+    with ThreadPoolExecutor(max_workers=min(6, max(1, len(pnus)))) as ex:
+        futs = {ex.submit(_vworld_official_land_area, pnu): pnu for pnu in pnus}
+        for fut in as_completed(futs):
+            pnu = futs[fut]
+            try:
+                area_map[pnu] = fut.result()
+            except Exception:
+                area_map[pnu] = None
+
+    official_count = 0
+    known_small = 0
+    out_features = []
+    for f in features:
+        props = dict(f.get("properties") or {})
+        pnu = str(props.get("pnu") or "")
+        area = area_map.get(pnu)
+        if area is not None:
+            official_count += 1
+            if area < SMALL_PARCEL_THRESHOLD_M2:
+                known_small += 1
+        props["official_area_m2"] = area
+        props["is_small"] = (area < SMALL_PARCEL_THRESHOLD_M2) if area is not None else None
+
+        # Geometry area is shown only as diagnostic metadata, never as the legal area.
+        try:
+            ga, _ = GEOD.geometry_area_perimeter(shape(f["geometry"]))
+            props["geometry_area_m2"] = abs(float(ga))
+        except Exception:
+            props["geometry_area_m2"] = None
+
+        out_features.append({
+            "type": "Feature",
+            "id": f.get("id"),
+            "geometry": f.get("geometry"),
+            "properties": props,
+        })
+
+    total = len(out_features)
+    complete = official_count == total
+    return {
+        "total_parcel_count": total,
+        "official_area_count": official_count,
+        "missing_official_area_count": total - official_count,
+        "known_small_parcel_count": known_small,
+        # Strict behavior: only feed the legal small-parcel count when every parcel
+        # has official lndpclAr. Otherwise the engine must remain REVIEW/manual.
+        "small_parcel_count": known_small if complete else None,
+        "complete_official_area": complete,
+        "feature_collection": {"type": "FeatureCollection", "features": out_features},
+        "source": {
+            "parcel_boundary": "VWorld LP_PA_CBND_BUBUN",
+            "official_area": "VWorld getLandCharacteristics.lndpclAr",
+            "small_parcel_rule": "< 90㎡",
+        },
+        "note": "경계만 접하는 필지는 제외하고, 대상구역과 양(+)의 면적으로 겹치는 필지만 집계합니다. 법정 과소필지 판정에는 지적도 도형면적이 아니라 토지특성 lndpclAr을 사용합니다.",
+    }
+
+INDEX_HTML = '<!doctype html>\n<html lang="ko">\n<head>\n  <meta charset="utf-8" />\n  <meta name="viewport" content="width=device-width, initial-scale=1" />\n  <title>도시검토 플랫폼 | 서울 재개발 웹 MVP</title>\n  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />\n  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />\n  <style>\n    :root{--bg:#f3f5f7;--card:#fff;--line:#dfe3e8;--text:#16181d;--muted:#667085;--dark:#111827;--green:#067647;--red:#b42318;--amber:#b54708;--blue:#175cd3}\n    *{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,"Noto Sans KR",sans-serif;background:var(--bg);color:var(--text)}\n    header{padding:18px 24px;background:#fff;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:20px;align-items:center}\n    header h1{font-size:22px;margin:0 0 4px}header .sub{font-size:12px;color:var(--muted)}\n    .shell{display:grid;grid-template-columns:minmax(520px,1.35fr) minmax(420px,.95fr);gap:16px;padding:16px;min-height:calc(100vh - 78px)}\n    .panel{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}.panel-head{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:10px}.panel-head h2{font-size:16px;margin:0}\n    #map{height:520px;width:100%;background:#e8eaed}.map-foot{padding:12px 16px;border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.metric{padding:10px;border:1px solid var(--line);border-radius:10px}.metric .k{font-size:11px;color:var(--muted)}.metric .v{font-weight:800;font-size:17px;margin-top:2px}\n    .form-wrap{padding:14px 16px}.section-title{font-size:13px;font-weight:800;margin:4px 0 10px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.field label{display:block;font-size:11px;color:#475467;font-weight:700;margin-bottom:4px}.field input{width:100%;padding:9px 10px;border:1px solid #cfd5dc;border-radius:8px;font-size:14px;background:#fff}.field input:focus{outline:2px solid #c7d7fe;border-color:#84adff}.field small{color:var(--muted);font-size:10px}\n    .checkline{display:flex;gap:8px;align-items:center;font-size:12px;margin-top:9px}.checkline input{width:auto}.actions{display:flex;gap:8px;margin-top:14px}.btn{padding:11px 13px;border-radius:9px;border:1px solid var(--line);font-weight:800;cursor:pointer;background:white}.btn.primary{background:var(--dark);color:white;border-color:var(--dark);flex:1}.btn:disabled{opacity:.45;cursor:not-allowed}\n    .hint{margin-top:10px;padding:9px 10px;border-radius:8px;background:#f8fafc;border:1px dashed #d0d5dd;font-size:11px;color:#475467;line-height:1.5}\n    .result{padding:14px 16px}.statusbox{padding:14px;border-radius:12px;border:1px solid var(--line);background:#fbfcfd}.status{font-size:24px;font-weight:900}.PASS{color:var(--green)}.FAIL{color:var(--red)}.REVIEW,.UNKNOWN{color:var(--amber)}.INFO{color:#475467}.statusmsg{font-size:13px;line-height:1.5;margin-top:6px}.tiny{font-size:10px;color:var(--muted)}\n    table{border-collapse:collapse;width:100%;font-size:11px;margin-top:12px}th,td{padding:8px 6px;border-bottom:1px solid #edf0f2;text-align:left;vertical-align:top}th{font-size:10px;color:#475467;background:#fafafa;position:sticky;top:0}.pill{font-size:10px;font-weight:900;padding:2px 6px;border-radius:999px;background:#f2f4f7;white-space:nowrap}.source-link{color:var(--blue);text-decoration:none}.source-link:hover{text-decoration:underline}\n    details{margin-top:12px;border:1px solid var(--line);border-radius:10px;background:#fff}summary{cursor:pointer;font-size:12px;font-weight:800;padding:10px 12px}.details-body{padding:0 12px 12px}.note-list{font-size:11px;color:#475467;line-height:1.55;padding-left:18px}.empty{color:var(--muted);font-size:13px;padding:24px 0;text-align:center}.badge{font-size:10px;padding:3px 7px;border-radius:999px;background:#eef4ff;color:#3538cd;font-weight:800}\n    .connection{display:flex;gap:6px;flex-wrap:wrap}.conn{font-size:10px;border:1px solid var(--line);border-radius:999px;padding:4px 7px;background:#fff}.auto{color:var(--green);border-color:#abefc6;background:#ecfdf3}.manual{color:#475467}.planned{color:#b54708;background:#fffaeb;border-color:#fedf89}\n    @media(max-width:1050px){.shell{grid-template-columns:1fr}.panel{overflow:visible}#map{height:470px}}\n    @media(max-width:640px){header{align-items:flex-start;flex-direction:column}.shell{padding:8px}.grid{grid-template-columns:1fr}.map-foot{grid-template-columns:1fr 1fr}#map{height:420px}}\n  </style>\n</head>\n<body>\n<header>\n  <div><h1>도시검토 플랫폼</h1><div class="sub">서울 주택정비형 재개발 · 웹 지도 + Rule Engine v0.4 · 기준일 2026-08-24</div></div>\n  <div class="connection"><span class="conn auto">구역면적 AUTO</span><span class="conn manual">노후도 MANUAL</span><span id="parcelConn" class="conn planned">과소필지 AUTO 준비</span><span class="conn planned">건축물 연결 NEXT</span></div>\n</header>\n<div class="shell">\n  <section class="panel">\n    <div class="panel-head"><h2>1. 지도에서 사업구역 그리기</h2><span class="badge">서울 중심</span></div>\n    <div id="map"></div>\n    <div class="map-foot">\n      <div class="metric"><div class="k">구역면적</div><div class="v" id="mArea">-</div></div>\n      <div class="metric"><div class="k">면적(ha)</div><div class="v" id="mHa">-</div></div>\n      <div class="metric"><div class="k">둘레</div><div class="v" id="mPerimeter">-</div></div>\n    </div>\n    <div class="form-wrap">\n      <div class="section-title">2. 자동·수기 정비지표</div>\n      <div class="grid">\n        <div class="field"><label>구역면적(㎡) <span class="PASS">AUTO</span></label><input id="area_m2" type="number" placeholder="지도를 그리면 자동입력" readonly></div>\n        <div class="field"><label>전체 건축물 수</label><input id="total_building_count" type="number" placeholder="예: 100"></div>\n        <div class="field"><label>노후·불량건축물 수</label><input id="old_building_count" type="number" placeholder="예: 75"><small>현행 간주기준 75%</small></div>\n        <div class="field"><label>전체 필지 수 <span class="PASS">AUTO</span></label><input id="total_parcel_count" type="number" placeholder="VWorld 자동 / 수기 보완 가능"><small>연속지적 LP_PA_CBND_BUBUN</small></div>\n        <div class="field"><label>90㎡ 미만 필지 수 <span class="PASS">AUTO</span></label><input id="small_parcel_count" type="number" placeholder="VWorld 자동 / 수기 보완 가능"><small>토지특성 공식면적(lndpclAr) 기준</small></div>\n        <div class="field"><label>접도율 산정 건축물 수</label><input id="road_basis_building_count" type="number" placeholder="예: 100"></div>\n        <div class="field"><label>6m 이상 도로 접도 건축물 수</label><input id="road_access_building_count_6m" type="number" placeholder="예: 32"><small>재개발 주택접도율 6m 기준</small></div>\n        <div class="field"><label>호수밀도(호/ha)</label><input id="house_density_per_ha" type="number" step="0.01" placeholder="예: 62"></div>\n        <div class="field"><label>전체 건축물 연면적(㎡)</label><input id="total_floor_area_m2" type="number" placeholder="선택 입력"></div>\n        <div class="field"><label>노후·불량건축물 연면적(㎡)</label><input id="old_floor_area_m2" type="number" placeholder="선택 입력"></div>\n        <div class="field"><label>입안요청 토지등소유자 동의율(%)</label><input id="request_owner_consent_ratio" type="number" min="0" max="100" placeholder="선택 입력"></div>\n        <div class="field"><label>입안제안 토지등소유자 동의율(%)</label><input id="proposal_owner_consent_ratio" type="number" min="0" max="100" placeholder="선택 입력"></div>\n        <div class="field"><label>입안제안 토지면적 동의율(%)</label><input id="proposal_land_area_consent_ratio" type="number" min="0" max="100" placeholder="선택 입력"></div>\n      </div>\n      <label class="checkline"><input id="promotion_district" type="checkbox"> 재정비촉진지구</label>\n      <label class="checkline"><input id="area_5000_exception_approved" type="checkbox"> 5,000~10,000㎡ 관련 위원회 심의 인정 확인</label>\n      <div class="actions"><button class="btn" onclick="loadSample()">샘플값</button><button class="btn" onclick="clearInputs()">초기화</button><button class="btn" onclick="analyzeParcels()">필지 AUTO 재조회</button><button id="runBtn" class="btn primary" onclick="runEvaluation()" disabled>재개발 검토 실행</button></div>\n      <div id="parcelStatus" class="hint"><b>과소필지 AUTO:</b> 구역을 그리면 VWorld 연속지적에서 교차필지를 찾고, 각 PNU의 토지특성 공식 면적(lndpclAr)을 조회해 90㎡ 미만 필지를 자동집계한다. VWorld API 키가 없거나 일부 필지의 공식면적을 확인하지 못하면 자동 판정을 강행하지 않고 수기 보완 상태로 남긴다.</div>\n    </div>\n  </section>\n\n  <section class="panel">\n    <div class="panel-head"><h2>3. 재개발 검토 결과</h2><span class="badge">정량요건 1차 스크리닝</span></div>\n    <div class="result" id="result"><div class="empty">왼쪽 지도에서 대상구역을 먼저 그리세요.</div></div>\n  </section>\n</div>\n<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>\n<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>\n<script>\nconst map=L.map(\'map\',{zoomControl:true}).setView([37.5665,126.9780],13);\nL.tileLayer(\'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png\',{maxZoom:20,attribution:\'© OpenStreetMap contributors\'}).addTo(map);\nconst drawnItems=new L.FeatureGroup().addTo(map);\nconst parcelLayer=L.geoJSON(null,{\n  style:f=>({weight:1.5,color:(f.properties&&f.properties.is_small===true)?\'#b42318\':\'#175cd3\',fillColor:(f.properties&&f.properties.is_small===true)?\'#fecdca\':\'#d1e9ff\',fillOpacity:.20}),\n  onEachFeature:(f,l)=>{\n    const p=f.properties||{};\n    const a=p.official_area_m2==null?\'공식면적 미확인\':Number(p.official_area_m2).toLocaleString(\'ko-KR\',{maximumFractionDigits:2})+\'㎡\';\n    l.bindTooltip(`${p.jibun||p.pnu||\'필지\'} · ${a}`);\n  }\n}).addTo(map);\nlet activeGeometry=null;\nconst drawControl=new L.Control.Draw({position:\'topright\',draw:{polygon:{allowIntersection:false,showArea:false,shapeOptions:{weight:3}},rectangle:{shapeOptions:{weight:3}},polyline:false,circle:false,circlemarker:false,marker:false},edit:{featureGroup:drawnItems,remove:true}});\nmap.addControl(drawControl);\n\nmap.on(L.Draw.Event.CREATED, async e=>{drawnItems.clearLayers(); drawnItems.addLayer(e.layer); activeGeometry=e.layer.toGeoJSON().geometry; await measureAndSync();});\nmap.on(L.Draw.Event.EDITED, async e=>{e.layers.eachLayer(layer=>activeGeometry=layer.toGeoJSON().geometry); await measureAndSync();});\nmap.on(L.Draw.Event.DELETED, ()=>{activeGeometry=null; parcelLayer.clearLayers(); resetMeasure(); document.getElementById(\'result\').innerHTML=\'<div class="empty">왼쪽 지도에서 대상구역을 먼저 그리세요.</div>\';});\n\nfunction num(id){const v=document.getElementById(id).value.trim(); return v===\'\'?null:Number(v)}\nfunction ratio(id){const v=num(id); return v===null?null:v/100}\nfunction fmt(n,d=0){return n==null?\'-\':Number(n).toLocaleString(\'ko-KR\',{maximumFractionDigits:d})}\n\nasync function measureAndSync(){\n  if(!activeGeometry)return;\n  const r=await fetch(\'/api/spatial/measure\',{method:\'POST\',headers:{\'Content-Type\':\'application/json\'},body:JSON.stringify({geometry:activeGeometry})});\n  const d=await r.json();\n  if(!r.ok){alert(d.detail||\'면적 계산 실패\');return;}\n  document.getElementById(\'area_m2\').value=d.area_m2.toFixed(2);\n  document.getElementById(\'mArea\').textContent=fmt(d.area_m2,0)+\' ㎡\';\n  document.getElementById(\'mHa\').textContent=fmt(d.area_ha,3)+\' ha\';\n  document.getElementById(\'mPerimeter\').textContent=fmt(d.perimeter_m,0)+\' m\';\n  document.getElementById(\'runBtn\').disabled=false;\n  document.getElementById(\'result\').innerHTML=\'<div class="empty">구역면적을 계산했습니다. 필지 AUTO 조회 중입니다.</div>\';\n  await analyzeParcels();\n}\nfunction resetMeasure(){\n  document.getElementById(\'area_m2\').value=\'\';\n  document.getElementById(\'mArea\').textContent=\'-\';\n  document.getElementById(\'mHa\').textContent=\'-\';\n  document.getElementById(\'mPerimeter\').textContent=\'-\';\n  document.getElementById(\'total_parcel_count\').value=\'\';\n  document.getElementById(\'small_parcel_count\').value=\'\';\n  document.getElementById(\'parcelStatus\').innerHTML=\'<b>과소필지 AUTO:</b> 구역을 그리면 자동 조회합니다.\';\n  document.getElementById(\'runBtn\').disabled=true;\n}\n\nasync function analyzeParcels(){\n  if(!activeGeometry)return;\n  const status=document.getElementById(\'parcelStatus\');\n  const conn=document.getElementById(\'parcelConn\');\n  status.innerHTML=\'<b>과소필지 AUTO:</b> VWorld에서 필지경계와 공식면적을 조회 중입니다...\';\n  conn.textContent=\'과소필지 조회 중\';\n  conn.className=\'conn planned\';\n  try{\n    const r=await fetch(\'/api/parcels/analyze\',{method:\'POST\',headers:{\'Content-Type\':\'application/json\'},body:JSON.stringify({geometry:activeGeometry})});\n    const d=await r.json();\n    if(!r.ok){\n      const msg=d.detail||\'필지 자동조회 실패\';\n      status.innerHTML=\'<b>과소필지 AUTO:</b> \'+msg+\' 수기 입력은 계속 사용할 수 있습니다.\';\n      conn.textContent=\'과소필지 MANUAL\';\n      conn.className=\'conn manual\';\n      parcelLayer.clearLayers();\n      return;\n    }\n    parcelLayer.clearLayers();\n    if(d.feature_collection) parcelLayer.addData(d.feature_collection);\n    document.getElementById(\'total_parcel_count\').value=d.total_parcel_count;\n    if(d.complete_official_area){\n      document.getElementById(\'small_parcel_count\').value=d.small_parcel_count;\n      const ratio=d.total_parcel_count?d.small_parcel_count/d.total_parcel_count*100:0;\n      status.innerHTML=`<b>과소필지 AUTO 완료:</b> 교차필지 ${fmt(d.total_parcel_count)}필지 · 90㎡ 미만 ${fmt(d.small_parcel_count)}필지 (${ratio.toFixed(1)}%) · 공식면적 확인 ${fmt(d.official_area_count)}/${fmt(d.total_parcel_count)}필지`;\n      conn.textContent=\'과소필지 AUTO\';\n      conn.className=\'conn auto\';\n    }else{\n      document.getElementById(\'small_parcel_count\').value=\'\';\n      status.innerHTML=`<b>과소필지 부분조회:</b> 교차필지 ${fmt(d.total_parcel_count)}필지 중 공식면적 ${fmt(d.official_area_count)}필지만 확인했습니다. 미확인 ${fmt(d.missing_official_area_count)}필지가 있어 90㎡ 미만 필지 수는 자동 판정하지 않습니다.`;\n      conn.textContent=\'과소필지 REVIEW\';\n      conn.className=\'conn planned\';\n    }\n  }catch(e){\n    status.innerHTML=\'<b>과소필지 AUTO:</b> 네트워크 오류로 자동조회하지 못했습니다. 수기 입력은 계속 사용할 수 있습니다.\';\n    conn.textContent=\'과소필지 MANUAL\';\n    conn.className=\'conn manual\';\n  }\n}\n\nfunction loadSample(){\n  const vals={total_building_count:100,old_building_count:75,total_parcel_count:100,small_parcel_count:32,road_basis_building_count:100,road_access_building_count_6m:55,house_density_per_ha:42,total_floor_area_m2:30000,old_floor_area_m2:14000,request_owner_consent_ratio:32};\n  Object.entries(vals).forEach(([k,v])=>document.getElementById(k).value=v);\n}\nfunction clearInputs(){\n  [\'total_building_count\',\'old_building_count\',\'total_parcel_count\',\'small_parcel_count\',\'road_basis_building_count\',\'road_access_building_count_6m\',\'house_density_per_ha\',\'total_floor_area_m2\',\'old_floor_area_m2\',\'request_owner_consent_ratio\',\'proposal_owner_consent_ratio\',\'proposal_land_area_consent_ratio\'].forEach(id=>document.getElementById(id).value=\'\');\n  document.getElementById(\'promotion_district\').checked=false; document.getElementById(\'area_5000_exception_approved\').checked=false;\n  if(activeGeometry) analyzeParcels();\n}\n\nasync function runEvaluation(){\n  const body={\n    area_m2:num(\'area_m2\'), total_building_count:num(\'total_building_count\'), old_building_count:num(\'old_building_count\'),\n    total_parcel_count:num(\'total_parcel_count\'), small_parcel_count:num(\'small_parcel_count\'),\n    road_basis_building_count:num(\'road_basis_building_count\'), road_access_building_count_6m:num(\'road_access_building_count_6m\'),\n    house_density_per_ha:num(\'house_density_per_ha\'), total_floor_area_m2:num(\'total_floor_area_m2\'), old_floor_area_m2:num(\'old_floor_area_m2\'),\n    promotion_district:document.getElementById(\'promotion_district\').checked,\n    area_5000_exception_approved:document.getElementById(\'area_5000_exception_approved\').checked,\n    request_owner_consent_ratio:ratio(\'request_owner_consent_ratio\'), proposal_owner_consent_ratio:ratio(\'proposal_owner_consent_ratio\'),\n    proposal_land_area_consent_ratio:ratio(\'proposal_land_area_consent_ratio\')\n  };\n  const r=await fetch(\'/api/redevelopment/evaluate\',{method:\'POST\',headers:{\'Content-Type\':\'application/json\'},body:JSON.stringify(body)});\n  const d=await r.json();\n  if(!r.ok){document.getElementById(\'result\').innerHTML=\'<div class="statusbox"><div class="FAIL">오류</div><div class="statusmsg">\'+(d.detail||\'판정 실패\')+\'</div></div>\';return;}\n  renderResult(d);\n}\nfunction renderResult(d){\n  const s=d.physical_eligibility;\n  const rows=d.checks.map(c=>{\n    const src=(c.source_ids||[]).map(id=>{const x=d.sources[id];return x?`<a class="source-link" href="${x.url}" target="_blank">${id}</a>`:id}).join(\'<br>\');\n    return `<tr><td>${groupKo(c.group)}</td><td><b>${c.label}</b><div class="tiny">${c.note||\'\'}</div></td><td>${c.requirement}</td><td>${c.actual??\'-\'}</td><td><span class="pill ${c.status}">${c.status}</span></td><td>${src}</td></tr>`;\n  }).join(\'\');\n  const policy=(d.policy_watch||[]).map(x=>`<li><b>${x.status}</b> · ${x.current}<br>${x.engine_behavior}</li>`).join(\'\');\n  document.getElementById(\'result\').innerHTML=`\n    <div class="statusbox"><div class="status ${s.status}">${s.status}</div><div class="statusmsg">${s.message}</div><div class="tiny" style="margin-top:8px">${s.meaning} · 룰셋 ${d.engine.id}</div></div>\n    <table><thead><tr><th>구분</th><th>항목</th><th>기준</th><th>대상지</th><th>판정</th><th>근거</th></tr></thead><tbody>${rows}</tbody></table>\n    <details open><summary>판정 해석 및 한계</summary><div class="details-body"><ul class="note-list">${d.special_notes.map(x=>`<li>${x}</li>`).join(\'\')}</ul></div></details>\n    <details><summary>정책 변경 추적</summary><div class="details-body"><ul class="note-list">${policy||\'<li>없음</li>\'}</ul></div></details>`;\n}\nfunction groupKo(g){return {mandatory:\'필수\',selection:\'선택/간주\',consent:\'주민절차\'}[g]||g}\n</script>\n</body>\n</html>\n'
+
 
 app = FastAPI(
     title="도시검토 플랫폼 - 서울 재개발 웹 MVP",
-    version="0.3.2",
-    description="웹 지도에서 사업구역을 그리고 서울 주택정비형 재개발 1차 요건을 판정하는 MVP",
+    version="0.4.0",
+    description="웹 지도 + 서울 주택정비형 재개발 Rule Engine + VWorld 과소필지 자동분석",
 )
 
 
@@ -429,9 +700,12 @@ def home():
 def health():
     return {
         "ok": True,
-        "app": "urban_strategy_web_v0.3.2",
+        "app": "urban_strategy_web_v0.4.0",
         "engine": RULES["rule_set_id"],
         "map": "leaflet-draw",
+        "vworld_configured": vworld_ready(),
+        "vworld_domain": _vworld_domain() if vworld_ready() else None,
+        "parcel_auto": "ready" if vworld_ready() else "needs_VWORLD_API_KEY",
     }
 
 
@@ -441,6 +715,25 @@ def spatial_measure(inp: GeometryInput):
         return measure_geojson(inp.geometry)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/api/parcels/analyze")
+def parcel_analyze(inp: GeometryInput):
+    if not vworld_ready():
+        raise HTTPException(
+            status_code=503,
+            detail="VWorld API 키가 아직 설정되지 않았습니다. Render Environment에 VWORLD_API_KEY를 등록하면 과소필지 AUTO가 활성화됩니다.",
+        )
+    try:
+        return analyze_parcels_for_geometry(inp.geometry)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=502, detail=f"VWorld 통신 오류: {exc}") from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"필지 자동분석 오류: {exc}") from exc
 
 
 @app.post("/api/redevelopment/evaluate")
