@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: urban-strategy
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
