@@ -1025,7 +1025,7 @@ def _center_reference_data():
 
 app = FastAPI(
     title="도시검토 플랫폼 - 서울 재개발 웹 MVP",
-    version="2.3.0",
+    version="2.2.5",
     description="구역계 자동분석 + 서울 정비·개발 14개 사업방식 Rule Engine",
 )
 
@@ -1084,7 +1084,7 @@ def reference_centers():
 def health():
     return {
         "ok": True,
-        "app": "seoul_urban_renewal_platform_v2.3.0",
+        "app": "seoul_urban_renewal_platform_v2.2.5",
         "engine": RULES["rule_set_id"],
         "map": "leaflet-draw",
         "vworld_configured": vworld_ready(),
