@@ -5,3 +5,8 @@ services:
     dockerfilePath: ./Dockerfile
     healthCheckPath: /health
     autoDeploy: true
+    envVars:
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: DATABASE_URL
+        sync: false
