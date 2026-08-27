@@ -1,0 +1,40 @@
+v2.2.9 — 파일 구조 분리 (판정 로직 무변경)
+
+1. 배경
+- app.py 9.2MB 중 4개 줄이 8.7MB를 차지해 git diff·부분수정·코드리뷰가 불가능했음.
+- RENEWAL_LEGAL_ZIP_B64(5.0MB), RENEWAL_PROJECT_ZIP_B64(3.0MB),
+  INDEX_HTML(0.5MB), STATION_REFERENCE_B64, CENTER_REFERENCE_B64.
+
+2. 분리 결과
+- app.py            9.2MB → 74KB
+- static/app.html   프론트엔드 HTML 분리
+- data/stations.json  base64+zlib → 평문 JSON
+- data/centers.json   base64+zlib → 평문 JSON
+- data/uq181_legal.zip    base64 → 실제 zip 바이너리
+- data/uq120_project.zip  base64 → 실제 zip 바이너리
+
+3. 코드 변경 (5곳)
+- BASE_DIR / DATA_DIR / STATIC_DIR 경로 상수와 _data_path() 추가.
+- _index_html(): static/app.html을 lru_cache로 1회 로드.
+- _read_embedded_shapefile(zip_b64, stem) → (zip_path, stem).
+  base64.b64decode + io.BytesIO 대신 zipfile.ZipFile(경로) 직접 사용.
+- _station_reference_data() / _center_reference_data():
+  zlib.decompress(base64.b64decode(...)) → json.load(파일).
+- home(): INDEX_HTML.replace(...) → _index_html().replace(...).
+
+4. 무변경 항목
+- 판정 로직, RULES 임계값, API 응답 스키마, 엔드포인트 경로.
+- Dockerfile(COPY . .), render.yaml, requirements.txt.
+- 환경변수(VWORLD_API_KEY / VWORLD_DOMAIN / BUILDING_HUB_API_KEY /
+  ADMIN_PASSWORD / DATABASE_URL).
+
+5. 검증
+- 원본 app.py와 분리본의 출력 동일성 확인 (sha256 일치):
+  INDEX_HTML / stations(349) / centers(76) / renewal-zones(3,246).
+- uvicorn 기동 후 /health, /, /api/reference/{stations,centers,renewal-zones}
+  전부 200 응답 확인.
+- / 응답에 VWORLD_CLIENT_KEY 주입 정상 동작 확인.
+
+6. 남은 과제 (이번 범위 아님)
+- VWorld 키가 HTML에 평문으로 주입되어 모든 방문자에게 노출됨.
+  서버 프록시 엔드포인트로 전환 필요.

@@ -39,27 +39,14 @@ from shapely.validation import explain_validity
 # ============================================================
 # 도시검토 플랫폼 v2.4.0
 # - 서버·정적화면·공간자료를 분리한 Docker 배포판
-# - 서울 주택정비형 재개발 1차 Rule Engine
+# - 서울 14개 정비·개발사업 Rule Engine + 공간근거·관리자 운영
 # - 웹 지도 Polygon 면적 자동계산
 # 기준일: 2026-08-26
 # ============================================================
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-
-def _resolve_asset_dir(folder: str, marker: str) -> str:
-    """Support both normal folders and GitHub web-uploaded flat files."""
-    nested = os.path.join(BASE_DIR, folder)
-    if os.path.isfile(os.path.join(nested, marker)):
-        return nested
-    if os.path.isfile(os.path.join(BASE_DIR, marker)):
-        return BASE_DIR
-    return nested
-
-
-DATA_DIR = _resolve_asset_dir("data", "stations.json")
-STATIC_DIR = _resolve_asset_dir("static", "app.html")
-ASSET_LAYOUT = "folder" if DATA_DIR != BASE_DIR and STATIC_DIR != BASE_DIR else "flat-compatible"
+DATA_DIR = os.path.join(BASE_DIR, "data")
+STATIC_DIR = os.path.join(BASE_DIR, "static")
 
 
 def _data_path(name: str) -> str:
@@ -68,17 +55,12 @@ def _data_path(name: str) -> str:
 
 @lru_cache(maxsize=1)
 def _index_html() -> str:
-    index_path = os.path.join(STATIC_DIR, "app.html")
-    if not os.path.isfile(index_path):
-        raise HTTPException(
-            status_code=503,
-            detail="배포파일 app.html을 찾을 수 없습니다. ZIP의 전체 파일을 업로드해 주세요.",
-        )
-    with open(index_path, encoding="utf-8") as fp:
+    with open(os.path.join(STATIC_DIR, "app.html"), encoding="utf-8") as fp:
         return fp.read()
 
 RULES = {'rule_set_id': 'seoul_housing_redevelopment_2026_08_v03', 'title': '서울 주택정비형 재개발 1차 입안대상 판정', 'scope': '서울특별시 주택정비형 재개발사업 정비계획 입안대상지역 1차 스크리닝', 'as_of': '2026-08-26', 'thresholds': {'area_normal_m2': 10000, 'area_exception_m2': 5000, 'old_building_count_ratio': 0.6, 'old_building_count_ratio_promotion_district': 0.5, 'old_building_count_deemed_selection_ratio': 0.75, 'small_parcel_ratio': 0.4, 'housing_road_access_ratio': 0.4, 'house_density_per_ha': 60, 'old_floor_area_ratio': 0.6, 'old_floor_area_ratio_promotion_district': 0.5, 'request_owner_consent_ratio': 0.3, 'proposal_owner_consent_ratio': 0.6, 'proposal_land_area_consent_ratio': 0.5}, 'policy_watch': [{'id': 'OLD_COUNT_DEEMED_70_WATCH', 'status': 'UNVERIFIED_NOT_ACTIVE', 'current': '노후·불량건축물 수 75% 이상이면 조례상 추가요건을 갖춘 것으로 보는 간주규정', 'possible_future': '70% 완화 가능성 언급이 있어 향후 시행령 개정 여부 추적 필요', 'engine_behavior': '현행 75%만 적용. 법령 공포·시행 전에는 70%를 판정에 사용하지 않음'}], 'sources': [{'id': 'ENFORCEMENT_DECREE_APPENDIX1', 'title': '도시 및 주거환경정비법 시행령 제7조제1항 별표 1', 'url': 'https://www.law.go.kr/lsInfoP.do?lsId=009521', 'note': '재개발 정비계획 입안대상지역 기본요건 및 노후·불량건축물 75% 간주규정'}, {'id': 'SEOUL_ORDINANCE_ART2_5', 'title': '서울특별시 도시 및 주거환경정비 조례 제2조제5호', 'url': 'https://law.go.kr/LSW/ordinInfoP.do?ordinSeq=2130189', 'note': '호수밀도 정의 및 유형별 산정기준'}, {'id': 'SEOUL_ORDINANCE_ART6', 'title': '서울특별시 도시 및 주거환경정비 조례 제6조', 'url': 'https://law.go.kr/LSW/ordinInfoP.do?ordinSeq=2130189', 'note': '주택정비형 재개발 면적·노후도·과소필지·주택접도율·호수밀도 요건'}, {'id': 'SEOUL_ORDINANCE_ART9_2', 'title': '서울특별시 도시 및 주거환경정비 조례 제9조의2', 'url': 'https://law.go.kr/LSW/ordinInfoP.do?ordinSeq=2130189', 'note': '정비계획 입안요청 동의비율'}, {'id': 'SEOUL_ORDINANCE_ART10', 'title': '서울특별시 도시 및 주거환경정비 조례 제10조', 'url': 'https://law.go.kr/LSW/ordinInfoP.do?ordinSeq=2130189', 'note': '정비계획 입안제안 동의요건'}]}
 RULES['sources'].append({'id':'SEOUL_ORDINANCE_ART2_10','title':'서울특별시 도시 및 주거환경정비 조례 제2조제10호','url':'https://law.go.kr/LSW/ordinInfoP.do?ordinSeq=2130189','note':'주택접도율 정의: 도로 접도길이 4m 이상. 제6조에서 주택정비형 재개발은 도로폭 6m 이상 적용'})
+RULES['rule_set_id'] = 'seoul_urban_strategy_14schemes_2026_08_v04'
 
 
 @dataclass
@@ -1479,9 +1461,9 @@ def _ensure_analytics_table() -> None:
                 CREATE TABLE IF NOT EXISTS analytics_events (
                     id BIGSERIAL PRIMARY KEY,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    analysis_id VARCHAR(80),
                     visitor_id VARCHAR(80) NOT NULL,
                     session_id VARCHAR(80),
-                    analysis_id VARCHAR(36),
                     event_type VARCHAR(40) NOT NULL,
                     address_text TEXT,
                     pnu_list JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -1494,18 +1476,16 @@ def _ensure_analytics_table() -> None:
                     user_agent_group VARCHAR(40)
                 )
             """)
-            conn.execute("ALTER TABLE analytics_events ADD COLUMN IF NOT EXISTS analysis_id VARCHAR(36)")
             conn.execute("CREATE INDEX IF NOT EXISTS analytics_events_created_idx ON analytics_events(created_at DESC)")
             conn.execute("CREATE INDEX IF NOT EXISTS analytics_events_visitor_idx ON analytics_events(visitor_id)")
-            conn.execute("CREATE INDEX IF NOT EXISTS analytics_events_analysis_idx ON analytics_events(analysis_id)")
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS feedback_reports (
                     id VARCHAR(36) PRIMARY KEY,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    analysis_id VARCHAR(80),
                     visitor_id VARCHAR(80) NOT NULL,
                     session_id VARCHAR(80),
-                    analysis_id VARCHAR(36),
                     category VARCHAR(30) NOT NULL,
                     message TEXT NOT NULL,
                     contact TEXT,
@@ -1518,7 +1498,8 @@ def _ensure_analytics_table() -> None:
                     user_agent_group VARCHAR(40)
                 )
             """)
-            conn.execute("ALTER TABLE feedback_reports ADD COLUMN IF NOT EXISTS analysis_id VARCHAR(36)")
+            conn.execute("ALTER TABLE analytics_events ADD COLUMN IF NOT EXISTS analysis_id VARCHAR(80)")
+            conn.execute("ALTER TABLE feedback_reports ADD COLUMN IF NOT EXISTS analysis_id VARCHAR(80)")
             conn.execute("CREATE INDEX IF NOT EXISTS feedback_reports_created_idx ON feedback_reports(created_at DESC)")
             conn.execute("CREATE INDEX IF NOT EXISTS feedback_reports_status_idx ON feedback_reports(status)")
             conn.commit()
@@ -1531,12 +1512,12 @@ def _store_analytics_event(data: Dict[str, Any]) -> None:
         with psycopg.connect(_database_url()) as conn:
             conn.execute("""
                 INSERT INTO analytics_events
-                (visitor_id, session_id, analysis_id, event_type, address_text, pnu_list,
+                (analysis_id, visitor_id, session_id, event_type, address_text, pnu_list,
                  area_m2, parcel_count, centroid_lat, centroid_lng,
                  recommendations, result_summary, user_agent_group)
                 VALUES (%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s::jsonb,%s::jsonb,%s)
             """, (
-                data["visitor_id"], data.get("session_id"), data.get("analysis_id"), data["event_type"],
+                data.get("analysis_id"), data["visitor_id"], data.get("session_id"), data["event_type"],
                 data.get("address_text"), json.dumps(data.get("pnu_list") or [], ensure_ascii=False),
                 data.get("area_m2"), data.get("parcel_count"), data.get("centroid_lat"), data.get("centroid_lng"),
                 json.dumps(data.get("recommendations") or [], ensure_ascii=False),
@@ -1555,12 +1536,12 @@ def _analytics_rows(limit: int = 500) -> List[Dict[str, Any]]:
         _ensure_analytics_table()
         with psycopg.connect(_database_url()) as conn:
             rows = conn.execute("""
-                SELECT created_at, visitor_id, session_id, analysis_id, event_type, address_text,
+                SELECT created_at, analysis_id, visitor_id, session_id, event_type, address_text,
                        pnu_list, area_m2, parcel_count, centroid_lat, centroid_lng,
                        recommendations, result_summary, user_agent_group
                 FROM analytics_events ORDER BY created_at DESC LIMIT %s
             """, (limit,)).fetchall()
-        keys = ["created_at","visitor_id","session_id","analysis_id","event_type","address_text","pnu_list","area_m2","parcel_count","centroid_lat","centroid_lng","recommendations","result_summary","user_agent_group"]
+        keys = ["created_at","analysis_id","visitor_id","session_id","event_type","address_text","pnu_list","area_m2","parcel_count","centroid_lat","centroid_lng","recommendations","result_summary","user_agent_group"]
         return [dict(zip(keys, row)) for row in rows]
     with ANALYTICS_LOCK:
         return list(ANALYTICS_MEMORY)[:limit]
@@ -1580,11 +1561,11 @@ def _store_feedback(data: Dict[str, Any]) -> str:
         with psycopg.connect(_database_url()) as conn:
             conn.execute("""
                 INSERT INTO feedback_reports
-                (id, visitor_id, session_id, analysis_id, category, message, contact, page_context,
+                (id, analysis_id, visitor_id, session_id, category, message, contact, page_context,
                  address_text, pnu_list, area_m2, recommendations, status, user_agent_group)
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s::jsonb,'open',%s)
             """, (
-                feedback_id, data["visitor_id"], data.get("session_id"), data.get("analysis_id"), data["category"],
+                feedback_id, data.get("analysis_id"), data["visitor_id"], data.get("session_id"), data["category"],
                 data["message"], data.get("contact"), data.get("page_context"), data.get("address_text"),
                 json.dumps(data.get("pnu_list") or [], ensure_ascii=False), data.get("area_m2"),
                 json.dumps(data.get("recommendations") or [], ensure_ascii=False), data.get("user_agent_group"),
@@ -1601,12 +1582,12 @@ def _feedback_rows(limit: int = 1000) -> List[Dict[str, Any]]:
         _ensure_analytics_table()
         with psycopg.connect(_database_url()) as conn:
             rows = conn.execute("""
-                SELECT id, created_at, updated_at, visitor_id, session_id, analysis_id, category, message,
+                SELECT id, created_at, updated_at, analysis_id, visitor_id, session_id, category, message,
                        contact, page_context, address_text, pnu_list, area_m2,
                        recommendations, status, user_agent_group
                 FROM feedback_reports ORDER BY created_at DESC LIMIT %s
             """, (limit,)).fetchall()
-        keys = ["id","created_at","updated_at","visitor_id","session_id","analysis_id","category","message","contact","page_context","address_text","pnu_list","area_m2","recommendations","status","user_agent_group"]
+        keys = ["id","created_at","updated_at","analysis_id","visitor_id","session_id","category","message","contact","page_context","address_text","pnu_list","area_m2","recommendations","status","user_agent_group"]
         return [dict(zip(keys, row)) for row in rows]
     with ANALYTICS_LOCK:
         return list(FEEDBACK_MEMORY)[:limit]
@@ -1681,9 +1662,9 @@ class LandLedgerOneInput(BaseModel):
 
 
 class AnalyticsEventInput(BaseModel):
+    analysis_id: Optional[str] = Field(None, min_length=8, max_length=80)
     visitor_id: str = Field(..., min_length=8, max_length=80)
     session_id: Optional[str] = Field(None, max_length=80)
-    analysis_id: Optional[str] = Field(None, min_length=8, max_length=36)
     event_type: str = Field(..., pattern="^(page_view|analysis_complete|detail_open|simulation_open|report_open)$")
     address_text: Optional[str] = Field(None, max_length=1000)
     pnu_list: List[str] = Field(default_factory=list, max_length=200)
@@ -1700,9 +1681,9 @@ class AdminVisitorInput(BaseModel):
 
 
 class FeedbackInput(BaseModel):
+    analysis_id: Optional[str] = Field(None, min_length=8, max_length=80)
     visitor_id: str = Field(..., min_length=8, max_length=80)
     session_id: Optional[str] = Field(None, max_length=80)
-    analysis_id: Optional[str] = Field(None, min_length=8, max_length=36)
     category: str = Field(..., pattern="^(data|decision|screen|suggestion|other)$")
     message: str = Field(..., min_length=2, max_length=4000)
     contact: Optional[str] = Field(None, max_length=200)
@@ -1799,6 +1780,7 @@ def admin_dashboard(request: Request, _: bool = Depends(_admin_auth)):
         except Exception: return None
     today_analyses = sum(1 for r in analyses if row_date(r) == today)
     open_feedback = sum(1 for r in feedback if r.get("status") != "done")
+    road_installed = bool(_road_zip_path())
     excluded = request.cookies.get("urban_admin_exclude") == "1"
     table_rows = []
     for r in analyses[:300]:
@@ -1842,9 +1824,9 @@ def admin_dashboard(request: Request, _: bool = Depends(_admin_auth)):
     storage_note = "PostgreSQL 영구저장" if _analytics_storage_mode() == "postgres" else "⚠ 메모리 임시저장 · 재시작/배포 시 삭제 · DATABASE_URL 필요"
     return f"""<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
     <title>도시검토 관리자</title><style>
-    body{{font-family:system-ui,'Noto Sans KR',sans-serif;margin:0;background:#f3f5f7;color:#101828}}header{{padding:18px 24px;background:#101828;color:white;display:flex;justify-content:space-between;align-items:center}}main{{padding:18px;max-width:1500px;margin:auto}}.cards{{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}}.card{{background:white;border:1px solid #e4e7ec;border-radius:12px;padding:16px}}.card span{{font-size:12px;color:#667085}}.card b{{display:block;font-size:26px;margin-top:5px}}.tools{{margin:14px 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap}}button,select{{padding:9px 12px;border:1px solid #d0d5dd;border-radius:8px;background:white;font-weight:700;cursor:pointer}}.warn{{color:#b54708}}.table{{overflow:auto;background:white;border:1px solid #e4e7ec;border-radius:12px;margin-bottom:24px}}table{{border-collapse:collapse;width:100%;font-size:12px}}th,td{{padding:9px;border-bottom:1px solid #eaecf0;text-align:left;vertical-align:top;white-space:nowrap}}th{{background:#f9fafb;position:sticky;top:0}}td.wrap{{white-space:normal;min-width:260px;line-height:1.5}}code{{font-size:11px}}@media(max-width:800px){{.cards{{grid-template-columns:1fr 1fr}}}}
+    body{{font-family:system-ui,'Noto Sans KR',sans-serif;margin:0;background:#f3f5f7;color:#101828}}header{{padding:18px 24px;background:#101828;color:white;display:flex;justify-content:space-between;align-items:center}}main{{padding:18px;max-width:1500px;margin:auto}}.cards{{display:grid;grid-template-columns:repeat(6,1fr);gap:12px}}.card{{background:white;border:1px solid #e4e7ec;border-radius:12px;padding:16px}}.card span{{font-size:12px;color:#667085}}.card b{{display:block;font-size:26px;margin-top:5px}}.tools{{margin:14px 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap}}button,select{{padding:9px 12px;border:1px solid #d0d5dd;border-radius:8px;background:white;font-weight:700;cursor:pointer}}.warn{{color:#b54708}}.table{{overflow:auto;background:white;border:1px solid #e4e7ec;border-radius:12px;margin-bottom:24px}}table{{border-collapse:collapse;width:100%;font-size:12px}}th,td{{padding:9px;border-bottom:1px solid #eaecf0;text-align:left;vertical-align:top;white-space:nowrap}}th{{background:#f9fafb;position:sticky;top:0}}td.wrap{{white-space:normal;min-width:260px;line-height:1.5}}code{{font-size:11px}}@media(max-width:900px){{.cards{{grid-template-columns:1fr 1fr}}}}
     </style><script>function setFeedbackStatus(id,status){{fetch('/admin/feedback/'+encodeURIComponent(id)+'/status',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{status}})}}).then(r=>{{if(!r.ok)throw new Error();}}).catch(()=>alert('처리상태 저장 실패'));}}</script></head><body><header><div><b>도시검토 관리자</b><div style="font-size:11px;opacity:.75">{storage_note}</div></div><a href="/" style="color:white">서비스로</a></header><main>
-    <div class="cards"><div class="card"><span>전체 익명 방문자</span><b>{len(visitors):,}</b></div><div class="card"><span>분석 실행 방문자</span><b>{len(analysis_visitors):,}</b></div><div class="card"><span>총 분석 실행</span><b>{len(analyses):,}</b></div><div class="card"><span>오늘 분석</span><b>{today_analyses:,}</b></div><div class="card"><span>미처리 오류·의견</span><b>{open_feedback:,}</b></div></div>
+    <div class="cards"><div class="card"><span>전체 익명 방문자</span><b>{len(visitors):,}</b></div><div class="card"><span>분석 실행 방문자</span><b>{len(analysis_visitors):,}</b></div><div class="card"><span>총 분석 실행</span><b>{len(analyses):,}</b></div><div class="card"><span>오늘 분석</span><b>{today_analyses:,}</b></div><div class="card"><span>미처리 오류·의견</span><b>{open_feedback:,}</b></div><div class="card"><span>공식 도로 GIS</span><b>{'설치됨' if road_installed else '미설치'}</b></div></div>
     <div class="tools"><button onclick="fetch('/admin/exclude-me',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{visitor_id:localStorage.getItem('urban_visitor_id_v1')}})}}).then(()=>location.reload())">이 브라우저·기존기록 통계 제외</button><button onclick="fetch('/admin/include-me',{{method:'POST'}}).then(()=>location.reload())">앞으로 통계 다시 포함</button><span class="{'warn' if excluded else ''}">{'현재 관리자 브라우저는 통계에서 제외됩니다.' if excluded else '현재 브라우저도 통계에 포함됩니다.'}</span></div>
     <h2>최근 대상지 분석</h2><div class="table"><table><thead><tr><th>시각</th><th>분석번호</th><th>익명사용자</th><th>입력주소</th><th>면적</th><th>필지</th><th>추천결과</th><th>위치</th><th>PNU</th></tr></thead><tbody>{''.join(table_rows) or '<tr><td colspan="9">아직 분석 기록이 없습니다.</td></tr>'}</tbody></table></div>
     <h2>오류·개선의견</h2><div class="table"><table><thead><tr><th>접수시각</th><th>분석번호</th><th>유형</th><th>내용</th><th>대상지</th><th>면적</th><th>연락처</th><th>처리상태</th></tr></thead><tbody>{''.join(feedback_rows) or '<tr><td colspan="8">접수된 오류·의견이 없습니다.</td></tr>'}</tbody></table></div>
@@ -1881,14 +1863,6 @@ def health():
     return {
         "ok": True,
         "app": "seoul_urban_renewal_platform_v2.4.0",
-        "asset_layout": ASSET_LAYOUT,
-        "asset_files_ready": all(os.path.isfile(path) for path in (
-            os.path.join(STATIC_DIR, "app.html"),
-            _data_path("stations.json"),
-            _data_path("centers.json"),
-            _data_path("uq120_project.zip"),
-            _data_path("uq181_legal.zip"),
-        )),
         "engine": RULES["rule_set_id"],
         "map": "leaflet-draw",
         "vworld_configured": vworld_ready(),
@@ -1902,12 +1876,12 @@ def health():
         "road_access": "official real-width preferred; centerline+width provisional REVIEW fallback",
         "analysis_object_model": "parcel/building common ledger retained for station-area/zoning/mixed-use expansion",
         "redevelopment_strategy": "age_ratio_primary_plus_small_parcel_secondary_screening",
-        "scheme_sheets": ["housing_redevelopment","reconstruction","station_activation","safe_housing","station_complex_district","longterm_lease","public_housing_complex","urban_complex_innovation"],
+        "scheme_sheets": ["housing_redevelopment","reconstruction","urban_redevelopment","residential_environment","smallscale_housing","general_housing","station_activation","growth_potential","safe_housing","shared_housing","station_complex_district","longterm_lease","public_housing_complex","urban_complex_innovation"],
         "scheme_age_stats": "BuildingHUB exact 20y/30y elapsed ratios, unknown dates kept in denominator",
-        "density_public_contribution": "8-scheme zoning/FAR/public-contribution simultaneous review",
-        "scheme_ui": "8-scheme simultaneous matrix plus eight visible detail sheets",
+        "density_public_contribution": "14-scheme zoning/FAR/public-contribution simultaneous review",
+        "scheme_ui": "14-scheme simultaneous matrix plus fourteen visible detail sheets",
         "station_boundary_gis": "embedded MOIS 2026-08 TL_SPSB_STATN + entrc station-name matching + Seoul center hierarchy + VWorld line fallback",
-        "first_screen": "purpose/land-control/actor filter + 8 candidate schemes + location map + compact land/building rail",
+        "first_screen": "boundary-first automatic analysis + 14 candidate schemes + location map + compact land/building rail",
         "location_map": "boundary-only main map; parcel/building diagrams rendered in compact side mini maps",
         "reconstruction_gate": "requires apartment-complex evidence or explicit reconstruction target confirmation",
         "site_status_card": "neutral land/building status card with current zoning and district placeholders",

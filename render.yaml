@@ -6,6 +6,12 @@ services:
     healthCheckPath: /health
     autoDeploy: true
     envVars:
+      - key: BUILDING_HUB_API_KEY
+        sync: false
+      - key: VWORLD_API_KEY
+        sync: false
+      - key: VWORLD_DOMAIN
+        sync: false
       - key: ADMIN_PASSWORD
         sync: false
       - key: DATABASE_URL
