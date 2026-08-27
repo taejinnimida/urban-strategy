@@ -82,6 +82,39 @@ def check_area_gate() -> None:
     assert approved_area["status"] == "PASS"
 
 
+def check_redevelopment_boolean_gate() -> None:
+    """면적 AND 노후도 AND 추가요건 1개가 실제 최종판정을 지배해야 한다."""
+    base = {
+        "area_m2": 22716,
+        "total_building_count": 53,
+        "old_building_count": 33,
+        "total_parcel_count": 79,
+        "small_parcel_count": 18,
+        "house_density_per_ha": 34.3,
+        "total_floor_area_m2": 1000,
+        "old_floor_area_m2": 515,
+    }
+    # 화면 사례: 확인된 추가요건은 모두 미달, 접도율만 미확인 -> PASS가 아니라 REVIEW.
+    pending = app.evaluate_redevelopment(base)
+    assert pending["physical_eligibility"]["status"] == "REVIEW"
+
+    # 접도율도 미달로 확인되면 선택요건 전부 FAIL -> 주택재개발 신규입안 FAIL.
+    failed = app.evaluate_redevelopment({
+        **base,
+        "road_basis_building_count": 53,
+        "road_access_building_count_6m": 30,
+    })
+    assert failed["physical_eligibility"]["status"] == "FAIL"
+
+    # 접도율 40% 이하가 공식 GIS AUTO로 확인되면 +1 충족 -> PASS.
+    passed = app.evaluate_redevelopment({
+        **base,
+        "road_basis_building_count": 53,
+        "road_access_building_count_6m": 20,
+    })
+    assert passed["physical_eligibility"]["status"] == "PASS"
+
+
 def check_centerline_width_buffer() -> None:
     assert app._road_width_m({"road_bt": "8.0m"}) == 8.0
     line = LineString([(126.977, 37.565), (126.978, 37.565)])
@@ -89,6 +122,26 @@ def check_centerline_width_buffer() -> None:
     assert polygon is not None
     assert polygon.geom_type in {"Polygon", "MultiPolygon"}
     assert polygon.area > 0
+
+
+def check_bundled_road_dataset() -> None:
+    """배포본의 서울 실폭도로 원본·좌표계·공간검색이 실제로 작동해야 한다."""
+    road_zip = app._road_zip_path()
+    assert road_zip and Path(road_zip).name == "road_seoul.zip"
+    assert Path(road_zip).stat().st_size > 20_000_000
+    app._road_spatial_layers.cache_clear()
+    layers = app._road_spatial_layers()
+    assert layers["available"] is True
+    assert layers["road_mode"] == "real_width_polygon"
+    assert layers["rw_count"] == 60534
+    assert layers["manage_count"] == 0
+    road = layers["rw"][0]["geometry"]
+    point = road.representative_point()
+    site = box(point.x - 0.00002, point.y - 0.00002, point.x + 0.00002, point.y + 0.00002)
+    result = app.analyze_road_intersections(site.__geo_interface__)
+    assert result["rw"]["features"]
+    assert result["metadata"]["road_mode"] == "real_width_polygon"
+    assert result["metadata"]["source"] == "서버 내장 공식 실폭도로 TL_SPRD_RW"
 
 
 def check_road_zip_pipeline() -> None:
@@ -159,11 +212,17 @@ def check_feedback_and_ui() -> None:
         "구역계만 그리면 14개 사업방식을 자동 검토",
         "siteRoadNetworkStats", "scheme_road20_perimeter_ratio",
         "최신 공식 시행본 미확보 · 계획용적률 자동입력 금지",
+        "function redevelopmentEntryGate(c)", "접도율 확인 전 보류",
+        "시행령 별표 1 제2호·제4호 / 조례 제6조제1항제2·3호",
+        "근거·조문·기준일", "VWorld 실폭도로·도로구간 API GIS AUTO",
+        "TL_SPRD_RW 공식 실폭도형 산정",
     ):
         assert text in html
     assert "/api/spatial/renewal-intersections" in html
     assert "/api/spatial/roads" in html
     assert "st.areaGate!=='PASS'||st.structural!=='PASS'" in html
+    assert "n==='redevelopment'&&st.legalEntry!=='PASS'" in html
+    assert "const disabled=st.state==='off'" in html
     assert "r.hardGate==='AREA'" in html
     assert "최신 공식 세부기준 원문 미확보로 자동 PASS 금지" in html
     assert "const safeMinArea=specialLowZone?5000:1000" in html
@@ -178,10 +237,16 @@ def check_feedback_and_ui() -> None:
 
 def check_release_files() -> None:
     root = Path(app.BASE_DIR)
-    assert app.app.version == "2.4.0"
+    assert app.app.version == "2.4.3"
+    assert Path(app.STATIC_HTML_PATH).is_file()
+    assert Path(app.DATA_DIR).is_dir()
+    assert (root / "CHANGELOG_v2.4.3.txt").exists()
+    assert (root / "CHANGELOG_v2.4.2.txt").exists()
+    assert (root / "CHANGELOG_v2.4.1.txt").exists()
     assert (root / "CHANGELOG_v2.4.0.txt").exists()
     readme = (root / "README.md").read_text(encoding="utf-8")
-    assert readme.startswith("# 서울 도시정비플랫폼 Web MVP v2.4.0")
+    assert readme.startswith("# 서울 도시정비플랫폼 Web MVP v2.4.3")
+    assert "GitHub 웹 업로드" in readme
     assert "14개 사업방식 근거 기준일" in readme
     assert "분석번호" in readme
     assert (root / "RULE_AUDIT_v2.4.0.md").exists()
@@ -191,11 +256,13 @@ def main() -> None:
     check_measurement()
     check_renewal_server_intersection()
     check_area_gate()
+    check_redevelopment_boolean_gate()
     check_centerline_width_buffer()
+    check_bundled_road_dataset()
     check_road_zip_pipeline()
     check_feedback_and_ui()
     check_release_files()
-    print("v2.4.0 regression checks: PASS")
+    print("v2.4.3 regression checks: PASS")
 
 
 if __name__ == "__main__":

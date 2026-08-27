@@ -36,8 +36,12 @@ from shapely.ops import transform as geometry_transform, unary_union
 from shapely.strtree import STRtree
 from shapely.validation import explain_validity
 
+# 도로명주소 원본에는 링 방향이 뒤집힌 유효 폴리곤이 일부 포함된다.
+# pyshp의 반복 경고만 억제하고, 아래 로더에서 buffer(0)으로 형상을 보정한다.
+shapefile.VERBOSE = False
+
 # ============================================================
-# 도시검토 플랫폼 v2.4.1
+# 도시검토 플랫폼 v2.4.3
 # - 서버·정적화면·공간자료를 분리한 Docker 배포판
 # - 서울 14개 정비·개발사업 Rule Engine + 공간근거·관리자 운영
 # - 웹 지도 Polygon 면적 자동계산
@@ -1300,9 +1304,8 @@ def _centerline_road_polygon(geometry: Any, width_m: float) -> Optional[Any]:
 def _road_spatial_layers() -> Dict[str, Any]:
     """VWorld/도로명주소 전자지도 ZIP의 실폭도로·도로구간을 공간색인한다.
 
-    배포본에는 이용승인·로그인이 필요한 원본을 재배포하지 않는다. 관리자가
-    공식 서울 ZIP을 data/road_seoul.zip으로 두면 이후에는 회원가입 없는
-    일반 사용자도 구역계만으로 자동 조회된다.
+    배포본에 포함된 서울 공식 실폭도로 원본(data/road_seoul.zip)을 사용한다.
+    일반 사용자는 파일 업로드나 회원가입 없이 구역계만으로 자동 조회한다.
     """
     zip_path = _road_zip_path()
     if not zip_path:
@@ -1387,7 +1390,7 @@ def _road_spatial_layers() -> Dict[str, Any]:
         layers[f"{kind}_tree"] = STRtree(geoms) if geoms else None
     layers.update({
         "available": bool(layers["rw"]),
-        "source": "관리자 설치 공식 실폭도로 ZIP" if road_mode == "real_width_polygon" else "공식 도로중심선+폭원 버퍼(예비)",
+        "source": "서버 내장 공식 실폭도로 TL_SPRD_RW" if road_mode == "real_width_polygon" else "공식 도로중심선+폭원 버퍼(예비)",
         "road_mode": road_mode,
         "file": os.path.basename(zip_path),
         "rw_count": len(layers["rw"]),
@@ -1635,7 +1638,7 @@ def _admin_auth(credentials: Optional[HTTPBasicCredentials] = Depends(ADMIN_SECU
 
 app = FastAPI(
     title="도시검토 플랫폼 - 서울 재개발 웹 MVP",
-    version="2.4.1",
+    version="2.4.3",
     description="구역계 자동분석 + 서울 정비·개발 14개 사업방식 Rule Engine",
 )
 
@@ -1872,7 +1875,7 @@ def reference_renewal_zones():
 def health():
     return {
         "ok": True,
-        "app": "seoul_urban_renewal_platform_v2.4.1",
+        "app": "seoul_urban_renewal_platform_v2.4.3",
         "engine": RULES["rule_set_id"],
         "map": "leaflet-draw",
         "vworld_configured": vworld_ready(),
