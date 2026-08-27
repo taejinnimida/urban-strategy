@@ -37,7 +37,7 @@ from shapely.strtree import STRtree
 from shapely.validation import explain_validity
 
 # ============================================================
-# 도시검토 플랫폼 v2.4.0
+# 도시검토 플랫폼 v2.4.1
 # - 서버·정적화면·공간자료를 분리한 Docker 배포판
 # - 서울 14개 정비·개발사업 Rule Engine + 공간근거·관리자 운영
 # - 웹 지도 Polygon 면적 자동계산
@@ -45,8 +45,18 @@ from shapely.validation import explain_validity
 # ============================================================
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "data")
-STATIC_DIR = os.path.join(BASE_DIR, "static")
+STRUCTURED_DATA_DIR = os.path.join(BASE_DIR, "data")
+STRUCTURED_STATIC_HTML = os.path.join(BASE_DIR, "static", "app.html")
+
+# GitHub 웹 업로드는 선택한 폴더 안의 파일을 저장소 루트로 평탄화할 수
+# 있다. 정식 폴더 구조를 우선하되, 기존 단일폴더 배포방식도 자동 지원한다.
+DATA_DIR = STRUCTURED_DATA_DIR if os.path.isdir(STRUCTURED_DATA_DIR) else BASE_DIR
+STATIC_HTML_PATH = (
+    STRUCTURED_STATIC_HTML
+    if os.path.isfile(STRUCTURED_STATIC_HTML)
+    else os.path.join(BASE_DIR, "app.html")
+)
+STATIC_DIR = os.path.dirname(STATIC_HTML_PATH)
 
 
 def _data_path(name: str) -> str:
@@ -55,7 +65,7 @@ def _data_path(name: str) -> str:
 
 @lru_cache(maxsize=1)
 def _index_html() -> str:
-    with open(os.path.join(STATIC_DIR, "app.html"), encoding="utf-8") as fp:
+    with open(STATIC_HTML_PATH, encoding="utf-8") as fp:
         return fp.read()
 
 RULES = {'rule_set_id': 'seoul_housing_redevelopment_2026_08_v03', 'title': '서울 주택정비형 재개발 1차 입안대상 판정', 'scope': '서울특별시 주택정비형 재개발사업 정비계획 입안대상지역 1차 스크리닝', 'as_of': '2026-08-26', 'thresholds': {'area_normal_m2': 10000, 'area_exception_m2': 5000, 'old_building_count_ratio': 0.6, 'old_building_count_ratio_promotion_district': 0.5, 'old_building_count_deemed_selection_ratio': 0.75, 'small_parcel_ratio': 0.4, 'housing_road_access_ratio': 0.4, 'house_density_per_ha': 60, 'old_floor_area_ratio': 0.6, 'old_floor_area_ratio_promotion_district': 0.5, 'request_owner_consent_ratio': 0.3, 'proposal_owner_consent_ratio': 0.6, 'proposal_land_area_consent_ratio': 0.5}, 'policy_watch': [{'id': 'OLD_COUNT_DEEMED_70_WATCH', 'status': 'UNVERIFIED_NOT_ACTIVE', 'current': '노후·불량건축물 수 75% 이상이면 조례상 추가요건을 갖춘 것으로 보는 간주규정', 'possible_future': '70% 완화 가능성 언급이 있어 향후 시행령 개정 여부 추적 필요', 'engine_behavior': '현행 75%만 적용. 법령 공포·시행 전에는 70%를 판정에 사용하지 않음'}], 'sources': [{'id': 'ENFORCEMENT_DECREE_APPENDIX1', 'title': '도시 및 주거환경정비법 시행령 제7조제1항 별표 1', 'url': 'https://www.law.go.kr/lsInfoP.do?lsId=009521', 'note': '재개발 정비계획 입안대상지역 기본요건 및 노후·불량건축물 75% 간주규정'}, {'id': 'SEOUL_ORDINANCE_ART2_5', 'title': '서울특별시 도시 및 주거환경정비 조례 제2조제5호', 'url': 'https://law.go.kr/LSW/ordinInfoP.do?ordinSeq=2130189', 'note': '호수밀도 정의 및 유형별 산정기준'}, {'id': 'SEOUL_ORDINANCE_ART6', 'title': '서울특별시 도시 및 주거환경정비 조례 제6조', 'url': 'https://law.go.kr/LSW/ordinInfoP.do?ordinSeq=2130189', 'note': '주택정비형 재개발 면적·노후도·과소필지·주택접도율·호수밀도 요건'}, {'id': 'SEOUL_ORDINANCE_ART9_2', 'title': '서울특별시 도시 및 주거환경정비 조례 제9조의2', 'url': 'https://law.go.kr/LSW/ordinInfoP.do?ordinSeq=2130189', 'note': '정비계획 입안요청 동의비율'}, {'id': 'SEOUL_ORDINANCE_ART10', 'title': '서울특별시 도시 및 주거환경정비 조례 제10조', 'url': 'https://law.go.kr/LSW/ordinInfoP.do?ordinSeq=2130189', 'note': '정비계획 입안제안 동의요건'}]}
@@ -1625,7 +1635,7 @@ def _admin_auth(credentials: Optional[HTTPBasicCredentials] = Depends(ADMIN_SECU
 
 app = FastAPI(
     title="도시검토 플랫폼 - 서울 재개발 웹 MVP",
-    version="2.4.0",
+    version="2.4.1",
     description="구역계 자동분석 + 서울 정비·개발 14개 사업방식 Rule Engine",
 )
 
@@ -1862,7 +1872,7 @@ def reference_renewal_zones():
 def health():
     return {
         "ok": True,
-        "app": "seoul_urban_renewal_platform_v2.4.0",
+        "app": "seoul_urban_renewal_platform_v2.4.1",
         "engine": RULES["rule_set_id"],
         "map": "leaflet-draw",
         "vworld_configured": vworld_ready(),
