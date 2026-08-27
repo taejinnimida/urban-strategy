@@ -797,7 +797,7 @@ def analyze_parcels_for_geometry(geometry: Dict[str, Any]) -> Dict[str, Any]:
 
 BUILDING_HUB_BASE_URL = "https://apis.data.go.kr/1613000/BldRgstHubService"
 BUILDING_HUB_TITLE_URL = BUILDING_HUB_BASE_URL + "/getBrTitleInfo"
-ENGINE_AS_OF_DATE = date(2026, 8, 24)
+ENGINE_AS_OF_DATE = date(2026, 8, 27)
 
 
 def _building_hub_key() -> str:
@@ -924,6 +924,7 @@ def _age_annotation(item: Dict[str, Any]) -> Dict[str, Any]:
             "age_status": "UNKNOWN",
             "age_threshold_years": None,
             "age_years": None,
+            "age_basis": "REFERENCE_ONLY",
         }
 
     threshold = 30 if _is_long_life_structure(
@@ -944,6 +945,7 @@ def _age_annotation(item: Dict[str, Any]) -> Dict[str, Any]:
         "age_status": "OLD" if ENGINE_AS_OF_DATE >= anniversary else "NOT_OLD",
         "age_threshold_years": threshold,
         "age_years": age_years,
+        "age_basis": "REFERENCE_ONLY",
     }
 
 
@@ -2227,16 +2229,16 @@ def health():
         "land_ledger": "ladfrlList + getLandCharacteristics + geometry provisional",
         "road_access": "official real-width preferred; centerline+width provisional REVIEW fallback",
         "analysis_object_model": "parcel/building common ledger retained for station-area/zoning/mixed-use expansion",
-        "redevelopment_strategy": "age_ratio_primary_plus_small_parcel_secondary_screening",
+        "redevelopment_strategy": "scheme-specific legal aging facts + area/aging/additional-entry AND-OR gates",
         "scheme_sheets": ["housing_redevelopment","reconstruction","urban_redevelopment","residential_environment","smallscale_housing","general_housing","station_activation","growth_potential","safe_housing","shared_housing","station_complex_district","longterm_lease","public_housing_complex","urban_complex_innovation"],
-        "scheme_age_stats": "BuildingHUB exact 20y/30y elapsed ratios, unknown dates kept in denominator",
+        "scheme_age_stats": "BuildingHUB raw facts -> urban-planning / urban-renewal / policy-specific derived aging facts; unknowns remain bounded REVIEW",
         "density_public_contribution": "14-scheme zoning/FAR/public-contribution simultaneous review",
         "scheme_ui": "14-scheme simultaneous matrix plus fourteen visible detail sheets",
         "station_boundary_gis": "embedded MOIS 2026-08 TL_SPSB_STATN + entrc station-name matching + Seoul center hierarchy + VWorld line fallback",
         "first_screen": "boundary-first automatic analysis + 14 candidate schemes + location map + compact land/building rail",
         "location_map": "boundary-only main map; parcel/building diagrams rendered in compact side mini maps",
         "reconstruction_gate": "requires apartment-complex evidence or explicit reconstruction target confirmation",
-        "site_status_card": "neutral land/building status card with current zoning and district placeholders",
+        "site_status_card": "neutral raw land/building facts + visible regime-specific aging facts + scheme-specific supplemental facts",
         "planning_gis": "VWorld zoning/district/facility/district-unit-plan polygon intersection engine",
         "renewal_gis": "server-side UQ181/UQ120 intersection; legal-priority; promotion separate; full matched boundaries returned for status map",
         "development_gis": "VWorld district-unit plan + bundled Seoul UQ181 urban-development/public-housing/other legal project intersections",
@@ -2245,11 +2247,15 @@ def health():
         "road_width_gis": "server bundled official ZIP" if _road_zip_path() else "official ZIP hook ready; data/road_seoul.zip not installed",
         "responsive_ui": "desktop/tablet/mobile responsive layout with mobile workflow and selected-scheme cards",
         "smallscale_group": "block renewal/autonomous renewal/small-scale reconstruction/Moa Town alternative group",
-        "workspace_ui": "three-column location/spatial evidence/integrated status layout",
+        "workspace_ui": "three-column location/spatial evidence/integrated status layout; all decision facts surface in spatial-status boxes",
         "boundary_input_ui": "draw polygon or input Seoul gu/dong/jibun parcel addresses",
         "mini_map_hierarchy": "strong in-site features with thin surrounding spatial context",
         "house_density": "excluded_from_primary_redevelopment_screening",
         "parcel_boundary_editor": "pnu_list_click_include_exclude_nearby_union",
+        "scheme_architecture": "site facts -> scheme-specific facts -> independent scheme evaluation -> review sheet -> priority comparison",
+        "scheme_module_api": "2026-08-27-v2-age-regimes",
+        "activation_module": "independent facts/evaluation/review-sheet module; other schemes migrate through legacy adapters one-by-one",
+        "scheme_specific_spatial_checks": "scheme module may request additional official spatial facts; missing facts remain REVIEW, never inferred PASS",
         "provenance_ui": True,
     }
 

@@ -811,7 +811,8 @@ button,select,input{max-width:100%}
 .spatial-module-head b{font-size:13px}.spatial-module-head span{font-size:8px;color:#667085;text-align:right}
 .spatial-metrics{display:grid;grid-template-columns:1fr 1fr}.spatial-metrics>div{padding:7px 8px;border-right:1px solid #f2f4f7;border-bottom:1px solid #f2f4f7;min-width:0}.spatial-metrics>div:nth-child(2n){border-right:0}
 .spatial-metrics span{display:block;font-size:8px;color:#667085;margin-bottom:2px}.spatial-metrics b{display:block;font-size:11px;line-height:1.3;color:#101828;overflow-wrap:anywhere}
-.spatial-tags{display:flex;flex-wrap:wrap;gap:3px;padding:5px 7px;min-height:30px;align-content:flex-start}.spatial-tags>span{padding:3px 4px;background:#f2f4f7;border:1px solid #eaecf0;font-size:8px;color:#475467}.spatial-tags>span b{font-size:8px;color:#101828;margin-left:2px}.spatial-tags>span.map-legend-chip{display:inline-flex;align-items:center;gap:4px}.map-legend-chip:before{content:'';display:inline-block;width:10px;height:7px;border:2px solid currentColor;background:var(--legend-fill,#f2f4f7);box-sizing:border-box}.map-legend-chip.dashed:before{border-style:dashed}.lg-renewal-housing{color:#067647!important;--legend-fill:#abefc6}.lg-renewal-urban{color:#175cd3!important;--legend-fill:#b2ddff}.lg-renewal-reconstruction{color:#b42318!important;--legend-fill:#fecdca}.lg-renewal-promotion{color:#b54708!important;--legend-fill:#fedf89}.lg-district-plan{color:#7a5af8!important;--legend-fill:#d9d6fe}.lg-urban-development{color:#175cd3!important;--legend-fill:#b2ddff}.lg-public-housing{color:#067647!important;--legend-fill:#abefc6}.lg-other-project{color:#b54708!important;--legend-fill:#fedf89}
+.spatial-tags{display:flex;flex-wrap:wrap;gap:3px;padding:5px 7px;min-height:30px;align-content:flex-start}.spatial-tags>span{padding:3px 4px;background:#f2f4f7;border:1px solid #eaecf0;font-size:8px;color:#475467}.spatial-tags>span b{font-size:8px;color:#101828;margin-left:2px}.spatial-tags>span.map-legend-chip{display:inline-flex;align-items:center;gap:4px}
+.spatial-age-list{display:flex;flex-direction:column}.spatial-age-row{display:grid;grid-template-columns:minmax(120px,.9fr) minmax(135px,1fr) auto;gap:6px;padding:7px 8px;border-bottom:1px solid #f2f4f7;align-items:start}.spatial-age-row:last-child{border-bottom:0}.spatial-age-name b{display:block;font-size:9px;color:#101828;line-height:1.35}.spatial-age-name span,.spatial-age-value small{display:block;margin-top:2px;font-size:7px;color:#667085;line-height:1.35}.spatial-age-value strong{display:block;font-size:9px;color:#344054;line-height:1.35}.spatial-age-status{font-size:7px;font-style:normal;font-weight:800;padding:2px 4px;border:1px solid #d0d5dd;background:#f9fafb;white-space:nowrap}.spatial-age-status.PASS{color:#067647;background:#ecfdf3;border-color:#abefc6}.spatial-age-status.FAIL{color:#b42318;background:#fef3f2;border-color:#fecdca}.spatial-age-status.REVIEW{color:#b54708;background:#fffaeb;border-color:#fedf89}.spatial-age-source{grid-column:1/-1;font-size:7px;color:#667085;line-height:1.35;padding-top:1px}.spatial-age-source b{color:#475467;font-size:7px}.spatial-age-caption{padding:6px 8px;font-size:7px;color:#667085;background:#fcfcfd;border-top:1px solid #f2f4f7}.map-legend-chip:before{content:'';display:inline-block;width:10px;height:7px;border:2px solid currentColor;background:var(--legend-fill,#f2f4f7);box-sizing:border-box}.map-legend-chip.dashed:before{border-style:dashed}.lg-renewal-housing{color:#067647!important;--legend-fill:#abefc6}.lg-renewal-urban{color:#175cd3!important;--legend-fill:#b2ddff}.lg-renewal-reconstruction{color:#b42318!important;--legend-fill:#fecdca}.lg-renewal-promotion{color:#b54708!important;--legend-fill:#fedf89}.lg-district-plan{color:#7a5af8!important;--legend-fill:#d9d6fe}.lg-urban-development{color:#175cd3!important;--legend-fill:#b2ddff}.lg-public-housing{color:#067647!important;--legend-fill:#abefc6}.lg-other-project{color:#b54708!important;--legend-fill:#fedf89}
 .spatial-caption{padding:5px 7px 3px;border-top:1px solid #f2f4f7;font-size:8px;color:#667085;font-weight:800}
 .spatial-mini-map{height:155px;margin:0 6px 6px;border:1px solid #eaecf0;background:#f8fafc}.spatial-mini-map .leaflet-control-container{display:none}
 .renewal-site-summary .site-status-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.renewal-site-summary .site-status-grid>div{padding:8px}.renewal-site-summary .site-status-grid b{font-size:11px}
@@ -1314,6 +1315,18 @@ body.review-modal-open{overflow:hidden}
   padding:5px 8px;border-radius:7px;font-size:8px;font-weight:850;cursor:pointer
 }
 
+.service-priority-preview{order:4;margin-top:7px;border:1px solid #e4e7ec;border-radius:9px;background:#fff;overflow:hidden}
+.service-priority-preview-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 9px;background:#f9fafb;border-bottom:1px solid #eaecf0}
+.service-priority-preview-head b{font-size:12px;color:#101828}.service-priority-preview-head span{font-size:8px;color:#667085}
+.service-priority-preview-body{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(210px,.7fr);gap:7px;padding:7px}
+.priority-preview-table{width:100%;border-collapse:collapse;font-size:8.5px}.priority-preview-table th,.priority-preview-table td{border:1px solid #eaecf0;padding:5px 6px;text-align:left;vertical-align:top}.priority-preview-table th{width:31%;background:#f9fafb;color:#475467;font-weight:850}.priority-preview-table td{color:#101828;font-weight:750}
+.priority-preview-rank{display:flex;align-items:center;gap:7px;margin-bottom:6px}.priority-preview-rank strong{font-size:14px;color:#101828}.priority-preview-rank span{font-size:8px;font-weight:900;padding:3px 6px;border-radius:999px;background:#ecfdf3;color:#067647}
+.priority-mass-placeholder{min-height:145px;border:1px dashed #98a2b3;border-radius:8px;background:linear-gradient(180deg,#f8fafc,#eef2f6);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:10px;color:#667085}
+.priority-mass-placeholder b{font-size:11px;color:#344054;margin-bottom:4px}.priority-mass-placeholder span{font-size:8px;line-height:1.5}.priority-mass-placeholder em{font-style:normal;font-size:7px;margin-top:7px;color:#98a2b3}
+.activation-sheet{display:grid;gap:10px}.activation-sheet-title{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:12px;border:1px solid #e4e7ec;border-radius:9px;background:#fcfcfd}.activation-sheet-title h3{margin:0 0 4px;font-size:17px}.activation-sheet-title p{margin:0;font-size:9px;color:#667085}.activation-feasibility{min-width:150px;text-align:right}.activation-feasibility span{display:block;font-size:8px;color:#667085}.activation-feasibility b{display:inline-block;margin-top:3px;padding:5px 8px;border-radius:7px;font-size:11px}.activation-feasibility b.PASS{background:#ecfdf3;color:#067647}.activation-feasibility b.REVIEW{background:#fffaeb;color:#b54708}.activation-feasibility b.FAIL{background:#fef3f2;color:#b42318}
+.activation-section{border:1px solid #e4e7ec;border-radius:9px;overflow:hidden}.activation-section h4{margin:0;padding:8px 10px;background:#f9fafb;border-bottom:1px solid #eaecf0;font-size:11px;color:#101828}.activation-table{width:100%;border-collapse:collapse;font-size:8.5px}.activation-table th,.activation-table td{border-right:1px solid #eaecf0;border-bottom:1px solid #eaecf0;padding:6px 7px;vertical-align:top;text-align:left}.activation-table th:last-child,.activation-table td:last-child{border-right:0}.activation-table tr:last-child td{border-bottom:0}.activation-table th{background:#fcfcfd;color:#475467;font-weight:900}.activation-table td{color:#101828}.activation-table .group{background:#f9fafb;font-weight:900;color:#344054}.activation-next{font-size:8px;color:#667085;line-height:1.5;margin-top:3px}.activation-procedure{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:5px;padding:9px}.activation-step{position:relative;border:1px solid #d0d5dd;border-radius:7px;padding:7px;background:#fff;min-height:62px}.activation-step b{display:block;font-size:9px;margin-bottom:3px}.activation-step span{font-size:7.5px;color:#667085;line-height:1.45}.activation-step:not(:last-child):after{content:'›';position:absolute;right:-6px;top:22px;color:#98a2b3;font-weight:900;background:#fff;padding:0 1px;z-index:2}
+@media(max-width:1000px){.service-priority-preview-body{grid-template-columns:1fr}.activation-procedure{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
 /* 2페이지: 현황은 요약만 노출하고 세부원장은 팝업 */
 .service-overview-grid{
   display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:7px;
@@ -1597,13 +1610,18 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="spatial-module-head"><b>건축물</b><span id="ccBuildingState">구역 설정 전</span></div>
 <div class="spatial-metrics">
 <div><span>건축물</span><b id="ccBuildingTotal">-</b></div>
-<div><span>노후건축물</span><b id="ccBuildingOld">-</b></div>
-<div><span>노후도</span><b id="ccBuildingOldRatio">-</b></div>
+<div><span>사용승인일 확인</span><b id="ccBuildingOld">-</b></div>
+<div><span>20년 경과(참고)</span><b id="ccBuildingOldRatio">-</b></div>
 <div><span>총연면적</span><b id="ccBuildingFloorArea">-</b></div>
 </div>
 <div class="spatial-tags" id="ccBuildingLegend"><span>건축HUB 조회 전</span></div>
-<div class="spatial-caption">도면정보 · 구역 내 건축물 진하게 / 구역 밖 주변건축물 얇게 / 노후 강조</div>
+<div class="spatial-caption">도면정보 · 구역 내 건축물 진하게 / 구역 밖 주변건축물 얇게 · 법정 노후도 판정은 아래 제도별 현황을 사용</div>
 <div class="spatial-mini-map" id="ccBuildingMiniMap"></div>
+</section>
+<section class="spatial-module" id="siteDetail_age">
+<div class="spatial-module-head"><b>제도별 노후도 현황</b><span id="spAgeState">건축HUB 조회 전</span></div>
+<div class="spatial-age-list" id="spAgeFactList"><div class="spatial-age-row"><div class="spatial-age-name"><b>분석 전</b><span>사업별 노후도 기준</span></div><div class="spatial-age-value"><strong>-</strong><small>건축물 사용승인일·구조·용도를 먼저 조회합니다.</small></div><em class="spatial-age-status REVIEW">확인필요</em></div></div>
+<div class="spatial-age-caption">사업판정은 이 현황 Fact를 그대로 호출합니다. 동일 대상지라도 적용 법령·조례·운영기준에 따라 노후도 결과가 다를 수 있습니다.</div>
 </section>
 <section class="spatial-module">
 <div class="spatial-module-head"><b>역세권</b><span>행안부 역사경계</span></div>
@@ -1653,6 +1671,11 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="spatial-caption">도면정보 · 자료가 미응답이면 ‘중첩 없음’으로 확정하지 않고 공식자료 확인 필요로 표시</div>
 <div class="spatial-mini-map" id="ccDevelopmentStatusMiniMap"></div>
 </section>
+<section class="spatial-module" id="siteDetail_schemeSpecific">
+<div class="spatial-module-head"><b>사업별 추가 현황</b><span id="spSchemeFactState">독립모듈 연계</span></div>
+<div class="spatial-age-list" id="spSchemeFactList"><div class="spatial-age-row"><div class="spatial-age-name"><b>분석 전</b><span>사업방식별 추가 공간·현황조건</span></div><div class="spatial-age-value"><strong>-</strong><small>사업별 독립모듈이 필요한 현황을 이 영역에 등록합니다.</small></div><em class="spatial-age-status REVIEW">미확인</em></div></div>
+<div class="spatial-age-caption">공통 현황에 없는 사업별 판정자료도 반드시 이 공간현황에 먼저 등록한 뒤 Rule Module이 호출합니다. 팝업에서 새 현황을 임의 생성하지 않습니다.</div>
+</section>
 </div>
 </div>
 <aside class="renewal-status-column" id="mobileStatusSection">
@@ -1662,8 +1685,8 @@ body.service-layout-ready>.shell{display:none!important}
 <div><span>사업대상 필지면적</span><b id="siteStatusArea">-</b></div>
 <div><span>전체 필지</span><b id="siteStatusParcels">-</b></div>
 <div><span>건축물</span><b id="siteStatusBuildings">-</b></div>
-<div><span>노후건축물</span><b id="siteStatusOldBuildings">-</b></div>
-<div><span>노후도</span><b id="siteStatusOldRatio">-</b></div>
+<div><span>사용승인일 확인</span><b id="siteStatusOldBuildings">-</b></div>
+<div><span>20년 경과(참고)</span><b id="siteStatusOldRatio">-</b></div>
 <div><span>90㎡ 미만 필지</span><b id="siteStatusSmallParcels">-</b></div>
 <div><span>과소필지율</span><b id="siteStatusSmallRatio">-</b></div>
 <div><span>현황 용도지역</span><b id="siteStatusZoning">미입력</b></div>
@@ -1759,7 +1782,7 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="section-title">지도 분석레이어</div>
 <label><input checked="" id="lyAllParcels" onchange="refreshAnalysisLayers()" type="checkbox"/> 전체필지</label>
 <label><input checked="" id="lySmall" onchange="refreshAnalysisLayers()" type="checkbox"/> 90㎡ 미만 필지</label>
-<label><input checked="" id="lyOld" onchange="refreshAnalysisLayers()" type="checkbox"/> 노후건축물 소재필지</label>
+<label><input checked="" id="lyOld" onchange="refreshAnalysisLayers()" type="checkbox"/> 건축물 경과연수 참고필지</label>
 <div class="analysis-layer-summary" id="analysisLayerSummary">필지·건축물 원장은 향후 역세권·지구단위·복합개발 검토에 재사용합니다.</div>
 </div>
 <div class="boundary-box">
@@ -1907,8 +1930,8 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="scheme-auto-strip">
 <div><span>대상지 면적</span><b id="schemeAutoArea">-</b></div>
 <div><span>건축HUB</span><b id="schemeAutoBuildings">-</b></div>
-<div><span>20년 이상</span><b id="schemeAutoAge20">-</b></div>
-<div><span>30년 이상</span><b id="schemeAutoAge30">-</b></div>
+<div><span>도시계획계 노후도</span><b id="schemeAutoAge20">-</b></div>
+<div><span>도정법계 노후도</span><b id="schemeAutoAge30">-</b></div>
 <div><span>90㎡ 미만</span><b id="schemeAutoSmall">-</b></div>
 </div>
 <div class="station-gis-box">
@@ -1953,6 +1976,7 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="scheme-field"><label>역세권 범위 포함비율(%)</label><input id="scheme_station_coverage" max="100" min="0" oninput="runAllSchemeChecks()" placeholder="GIS 미연결 시 수기" type="number"/><small>GIS 연결 시 제도별 250·350·500m 포함률 자동 사용</small></div>
 <div class="scheme-field"><label>가로구역 포함비율(%)</label><input id="scheme_block_share" max="100" min="0" oninput="runAllSchemeChecks()" placeholder="예: 70" type="number"/></div>
 <div class="scheme-field"><label>도로 접면 수</label><input id="scheme_road_faces" min="0" oninput="runAllSchemeChecks()" placeholder="예: 2" type="number"/></div>
+<div class="scheme-field"><label>4m 이상 도로 접면 수</label><input id="scheme_road4_faces" min="0" oninput="runAllSchemeChecks()" placeholder="실폭도로 자동" type="number"/><small>역세권활성화 도로요건 자동판정</small></div>
 <div class="scheme-field"><label>최대 접면도로 폭(m)</label><input id="scheme_max_road_width" min="0" oninput="runAllSchemeChecks()" placeholder="예: 20" type="number"/></div>
 <div class="scheme-field"><label>8m 이상 도로 별도 접면</label><select id="scheme_has_8m_road" onchange="runAllSchemeChecks()"><option value="">미입력</option><option value="yes">예</option><option value="no">아니오</option></select></div>
 <div class="scheme-field"><label>20m 이상 간선도로 접면</label><select id="scheme_has_20m_arterial" onchange="runAllSchemeChecks()"><option value="">미입력</option><option value="yes">예</option><option value="no">아니오</option></select></div>
@@ -1999,6 +2023,9 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="scheme-field"><label>호수밀도</label><input id="scheme_house_density" min="0" oninput="runAllSchemeChecks()" placeholder="주거환경개선 일반정비형" type="number"/><small>서울시 조례 일반정비형 요건 검토용</small></div>
 <div class="scheme-field"><label>주택접도율(%)</label><input id="scheme_road_frontage_ratio" max="100" min="0" oninput="runAllSchemeChecks()" placeholder="예: 18" type="number"/></div>
 <div class="scheme-field"><label>역세권활성화 사업방식</label><select id="activation_route" onchange="runAllSchemeChecks()"><option value="auto">자동추천</option><option value="district">지구단위계획</option><option value="redevelopment">도시정비형 재개발</option></select><small>1만㎡ 초과~3만㎡ 이하이면 도시정비형 재개발 방식 우선 검토</small></div>
+<div class="scheme-field"><label>역세권활성화 입지유형</label><select id="activation_location_type" onchange="runAllSchemeChecks()"><option value="auto">자동판정</option><option value="station">역세권</option><option value="arterial">간선도로변</option></select><small>간선도로변은 노선형 상업지역 포함 가로구역 여부 별도 확인</small></div>
+<div class="scheme-field"><label>노선형 상업지역 포함</label><select id="activation_linear_commercial" onchange="runAllSchemeChecks()"><option value="">공간자료·결정도서 확인 전</option><option value="yes">포함 확인</option><option value="no">미포함 확인</option></select><small>역세권 외 간선도로변 유형의 핵심 요건</small></div>
+<div class="scheme-field"><label>복합용도 계획 충족</label><select id="activation_mixed_use" onchange="runAllSchemeChecks()"><option value="">계획안 미정</option><option value="yes">충족 계획</option><option value="no">미충족</option></select><small>업무시설(오피스텔 제외) 또는 관광숙박시설 등 운영기준 조건 검토</small></div>
 <div class="scheme-field"><label>안심주택 입지유형</label><select id="safe_location_type" onchange="runAllSchemeChecks()"><option value="auto">자동판정(3개 입지유형)</option><option value="station">대중교통 중심지역 · 역세권</option><option value="arterial">대중교통 중심지역 · 간선도로변</option><option value="medical">의료시설 중심지역</option></select><small>역세권·간선도로변·의료시설 중심지역은 서로 다른 공식 기준으로 각각 판정</small></div>
 <div class="scheme-field"><label>안심주택 공급유형</label><select id="safe_supply_type" onchange="runAllSchemeChecks()"><option value="standard">청년·신혼·어르신 안심주택</option><option value="shared">서울형 공유주택</option><option value="complex">복합주택</option><option value="elder100">어르신 임대주택 100% 공급</option></select><small>일반 사용자는 기본값으로 검토하고 결과에서 필요할 때만 보정</small></div>
 <div class="scheme-field"><label>상위 용도지역 인접</label><select id="safe_adjacent_high_zone" onchange="runAllSchemeChecks()"><option value="">GIS·공부 확인 전</option><option value="yes">준주거·상업지역 등에 인접</option><option value="no">인접하지 않음</option></select><small>안심주택 용도지역 변경 시 도로조건과 함께 검토</small></div>
@@ -3915,24 +3942,32 @@ function roadFeatureIdentity(f,index=0){
   return String(pickPropCI(p,['RDS_MAN_NO','rds_man_no','RW_SN','rw_sn','ROAD_NM','RN','ROAD_NAME'])||`road-${index}`);
 }
 function siteRoadNetworkStats(site,roads){
-  if(!site)return {faceCount:null,maxWidth:null,has8:null,road20Perimeter:null,road6Faces:null,estimateUsed:false};
+  if(!site)return {faceCount:null,road4Faces:null,maxWidth:null,has8:null,has20:null,road20Perimeter:null,road6Faces:null,roads:[],estimateUsed:false};
   const touched=[];
   (roads||[]).forEach((road,index)=>{
     const width=cleanNum((road.properties||{})._width_m);
     if(width==null)return;
     const contact=frontageStats(site,[road]);
-    if(contact.total_m>=0.5)touched.push({road,index,width,contact:contact.total_m,key:roadFeatureIdentity(road,index)});
+    if(contact.total_m>=0.5){
+      const props=road.properties||{};
+      const name=String(pickPropCI(props,['ROAD_NM','road_nm','RN','ROAD_NAME','rn'])||'도로명 미확인');
+      touched.push({road,index,width,contact:contact.total_m,key:roadFeatureIdentity(road,index),name});
+    }
   });
   const faceKeys=new Set(touched.map(x=>x.key));
+  const road4Keys=new Set(touched.filter(x=>x.width>=4).map(x=>x.key));
   const road6Keys=new Set(touched.filter(x=>x.width>=6).map(x=>x.key));
+  const road20Keys=new Set(touched.filter(x=>x.width>=20).map(x=>x.key));
   const maxWidth=touched.length?Math.max(...touched.map(x=>x.width)):null;
   const perimeter=boundaryLines(site).reduce((sum,line)=>sum+turf.length(line,{units:'kilometers'})*1000,0);
   const roads20=touched.filter(x=>x.width>=20).map(x=>x.road);
   const contact20=roads20.length?frontageStats(site,roads20).total_m:0;
+  const roadSummary=[...new Map(touched.map(x=>[x.key,{name:x.name,width:x.width,contact:x.contact}])).values()]
+    .sort((a,b)=>b.width-a.width||b.contact-a.contact);
   return {
-    faceCount:faceKeys.size,maxWidth,has8:maxWidth==null?null:maxWidth>=8,
+    faceCount:faceKeys.size,road4Faces:road4Keys.size,maxWidth,has8:maxWidth==null?null:maxWidth>=8,has20:road20Keys.size>0,
     road20Perimeter:perimeter>0?Math.min(100,contact20/perimeter*100):null,
-    road6Faces:road6Keys.size,
+    road6Faces:road6Keys.size,roads:roadSummary,
     estimateUsed:touched.some(x=>/추정|예비|중심선/.test(String((x.road.properties||{})._width_source||'')))
   };
 }
@@ -3941,7 +3976,7 @@ function setRoadNetworkAutoValue(id,value){
   el.value=value==null?'':String(value);el.dataset.autoRoadNetwork='1';
 }
 function clearRoadNetworkAutoValues(){
-  for(const id of ['scheme_road_faces','scheme_max_road_width','scheme_has_8m_road','scheme_road20_perimeter_ratio','scheme_growth_road6_faces','growth_arterial_status']){
+  for(const id of ['scheme_road_faces','scheme_road4_faces','scheme_max_road_width','scheme_has_8m_road','scheme_has_20m_arterial','scheme_road20_perimeter_ratio','scheme_growth_road6_faces','growth_arterial_status']){
     const el=document.getElementById(id);if(el?.dataset.autoRoadNetwork){el.value='';delete el.dataset.autoRoadNetwork;}
   }
 }
@@ -4041,14 +4076,16 @@ async function analyzeRoadAccess(){
     const siteStats=siteRoadNetworkStats(turf.feature(activeGeometry),currentRoadWidthFeatures);
     estimateUsed=estimateUsed||siteStats.estimateUsed;
     setRoadNetworkAutoValue('scheme_road_faces',siteStats.faceCount);
+    setRoadNetworkAutoValue('scheme_road4_faces',siteStats.road4Faces);
     setRoadNetworkAutoValue('scheme_max_road_width',siteStats.maxWidth==null?null:siteStats.maxWidth.toFixed(2));
     setRoadNetworkAutoValue('scheme_has_8m_road',siteStats.has8==null?null:siteStats.has8?'yes':'no');
+    setRoadNetworkAutoValue('scheme_has_20m_arterial',siteStats.has20==null?null:siteStats.has20?'yes':'no');
     setRoadNetworkAutoValue('scheme_road20_perimeter_ratio',siteStats.road20Perimeter==null?null:siteStats.road20Perimeter.toFixed(2));
     setRoadNetworkAutoValue('scheme_growth_road6_faces',siteStats.road6Faces);
     setRoadNetworkAutoValue('growth_arterial_status',siteStats.maxWidth!=null&&siteStats.maxWidth>=35?'candidate':null);
     document.getElementById('road_basis_building_count').value=basis;document.getElementById('road_access_building_count_6m').value=access;const ratio=basis?access/basis*100:0;const frontage=document.getElementById('scheme_road_frontage_ratio');if(frontage){frontage.value=basis?ratio.toFixed(2):'';frontage.dataset.autoRoad=estimateUsed?'ESTIMATE':'AUTO';}
     tbody.innerHTML=rows.map(r=>`<tr><td>${escHtml(r.jibun)}</td><td>${escHtml(r.pnu)}</td><td>${r.bc}</td><td>${r.total.toFixed(1)}m</td><td>${r.max.toFixed(1)}m</td><td>${r.ok?'<b class="PASS">접도</b>':'-'}</td><td>${escHtml(r.src)}</td></tr>`).join('');wrap.style.display='block';
-    const dates=currentRoadWidthFeatures.map(f=>String(pickPropCI(f.properties,['OPERT_DE','opert_de'])||'')).filter(Boolean).sort();const dr=dates.length?`${hubFmtDay(dates[0].slice(0,8))} ~ ${hubFmtDay(dates[dates.length-1].slice(0,8))}`:'미제공';summary.innerHTML=`${net.source} · 실폭도로 ${currentRoadWidthFeatures.length}건(6m+ ${qualified.length}건) · 대상지 접면 ${siteStats.faceCount??'-'}개 구간·최대폭 ${siteStats.maxWidth==null?'-':siteStats.maxWidth.toFixed(1)+'m'} · ${counts.source} 기준 ${basis}동 중 접도 ${access}동 = <b>${ratio.toFixed(1)}%</b> · OPERT_DE ${dr}${estimateUsed?' · <b>폭원 도형추정 포함(예비)</b>':''}`;conn.textContent=estimateUsed?'접도율 AUTO(예비)':'접도율 AUTO';conn.className=estimateUsed?'conn planned':'conn auto';analysisState.quality.road=estimateUsed?'ESTIMATE':'AUTO';refreshAnalysisLayers();refreshCompactMiniMaps();runAllSchemeChecks();
+    const dates=currentRoadWidthFeatures.map(f=>String(pickPropCI(f.properties,['OPERT_DE','opert_de'])||'')).filter(Boolean).sort();const dr=dates.length?`${hubFmtDay(dates[0].slice(0,8))} ~ ${hubFmtDay(dates[dates.length-1].slice(0,8))}`:'미제공';summary.innerHTML=`${net.source} · 실폭도로 ${currentRoadWidthFeatures.length}건(6m+ ${qualified.length}건) · 대상지 접면 ${siteStats.faceCount??'-'}개 구간·최대폭 ${siteStats.maxWidth==null?'-':siteStats.maxWidth.toFixed(1)+'m'} · ${counts.source} 기준 ${basis}동 중 접도 ${access}동 = <b>${ratio.toFixed(1)}%</b> · OPERT_DE ${dr}${estimateUsed?' · <b>폭원 도형추정 포함(예비)</b>':''}`;conn.textContent=estimateUsed?'접도율 AUTO(예비)':'접도율 AUTO';conn.className=estimateUsed?'conn planned':'conn auto';analysisState.quality.road=estimateUsed?'ESTIMATE':'AUTO';analysisState.road_network={...siteStats,source:net.source,quality:analysisState.quality.road};refreshAnalysisLayers();refreshCompactMiniMaps();runAllSchemeChecks();
   }catch(e){summary.textContent='접도율 계산 실패: '+String(e.message||e);conn.textContent='접도율 REVIEW';conn.className='conn planned';}
 }
 async function runAllAutoAnalyses(){
@@ -4452,7 +4489,7 @@ async function analyzeStationBoundary(){
 
 
 // ---------- Eleven-scheme initial review engine ----------
-const SCHEME_AS_OF = new Date('2026-08-26T00:00:00+09:00');
+const SCHEME_AS_OF = new Date('2026-08-27T00:00:00+09:00');
 let activeScheme='redevelopment';
 let schemeResults={};
 
@@ -4494,7 +4531,9 @@ const schemeBasis={
 const RULE_SOURCE_CATALOG={
   RENEWAL_PLAN:{type:'기본계획',title:'2030 서울특별시 도시·주거환경정비기본계획(주거환경정비사업 부문)',effective:'2025-06-26 변경고시 기준',locator:'사업유형별 정비계획 수립기준',url:'https://news.seoul.go.kr/citybuild/archives/525547',verified:true},
   RENEWAL_DECREE:{type:'시행령',title:'도시 및 주거환경정비법 시행령',effective:'2026-08-27 현행 확인',locator:'별표 1 제2호나목·제4호',url:'https://www.law.go.kr/lsInfoP.do?lsId=009521',verified:true},
-  RENEWAL_ORD:{type:'조례',title:'서울특별시 도시 및 주거환경정비 조례',effective:'2026-05-18',locator:'제2조제5호·제10호, 제6조제1항·제2항',url:'https://law.go.kr/LSW/ordinInfoP.do?ordinSeq=2130189',verified:true},
+  RENEWAL_ORD:{type:'조례',title:'서울특별시 도시 및 주거환경정비 조례',effective:'2026-05-18',locator:'제2조제5호·제10호, 제4조, 제6조제1항·제2항, 별표 1',url:'https://law.go.kr/LSW/ordinInfoP.do?ordinSeq=2130189',verified:true},
+  RENEWAL_AGE:{type:'시행령·조례',title:'도시 및 주거환경정비법 시행령 + 서울특별시 도시 및 주거환경정비 조례',effective:'2026-05-18 조례 / 2026-08-27 현행 법령 확인',locator:'도시정비법 시행령 제2조·별표 1 / 서울시 정비조례 제4조·별표 1',url:'https://law.go.kr/LSW/ordinInfoP.do?ordinSeq=2130189',verified:true},
+  URBAN_PLANNING_AGE:{type:'시행규칙',title:'서울특별시 도시계획 조례 시행규칙',effective:'2024-10-14 현행 시행본',locator:'제4조·별표 1 지구단위계획구역 지정대상이 되는 노후건축물 기준',url:'https://www.law.go.kr/LSW/ordinInfoP.do?ordinSeq=1976247',verified:true},
   RENEWAL_ENTRY:{type:'시행령·조례',title:'도시정비법 시행령 별표 1 및 서울특별시 도시 및 주거환경정비 조례',effective:'2026-08-27 현행 확인',locator:'시행령 별표 1 제2호·제4호 / 조례 제6조제1항제2·3호',url:'https://cleanup.seoul.go.kr/cleanup/view/redevelop.do',verified:true},
   RENEWAL_GIS:{type:'공간정보·고시',title:'서울시 정비구역·정비예정구역 공식 공간자료',effective:'공간DB 조회시점',locator:'SHP 공간중첩 후 결정고시·정비계획 재확인',url:'https://urban.seoul.go.kr/',verified:true},
   URBAN_RENEWAL_PLAN:{type:'기본계획',title:'2030 서울특별시 도시·주거환경정비기본계획(도시정비형 재개발사업 부문)',effective:'2026-02 변경 기준',locator:'정비가능구역·부문별 계획',url:'https://news.seoul.go.kr/citybuild/archives/525547',verified:true},
@@ -4680,6 +4719,252 @@ function schemeAgeStat(years){
   const ratio=rs.length?old.length/rs.length*100:null; // unknown approval dates remain in denominator (conservative)
   return {total:rs.length,known:known.length,count:old.length,ratio};
 }
+
+// ------------------------------------------------------------
+// v2.5 제도별 노후도 파생현황
+// 공통 건축물 현황에는 사실값만 저장한다. OLD/NOT_OLD는 사업판정에 직접 사용하지 않는다.
+// 각 사업은 아래 제도별 파생현황 중 자신의 공식 근거에 해당하는 결과만 참조한다.
+// ------------------------------------------------------------
+function buildingRawFacts(){
+  return selectedHubRecordsForSchemes().map(r=>({
+    id:String(r.mgmBldrgstPk||`${r.pnu||''}|${r.dongNm||''}|${r.bldNm||''}|${r.useAprDay||''}`),
+    pnu:String(r.pnu||''),approval_date:String(r.useAprDay||''),
+    structure:String(r.strctCdNm||''),main_use:String(r.mainPurpsCdNm||''),other_use:String(r.etcPurps||''),
+    total_floor_area_m2:Number.isFinite(Number(r.totArea))?Number(r.totArea):null,
+    ground_floors:Number.isFinite(Number(r.grndFlrCnt))?Number(r.grndFlrCnt):null,
+    household_count:Number.isFinite(Number(r.hhldCnt))?Number(r.hhldCnt):null,
+    family_count:Number.isFinite(Number(r.fmlyCnt))?Number(r.fmlyCnt):null,
+    source:'건축HUB 표제부'
+  }));
+}
+function rawFactDate(r){return parseHubDate(r.approval_date)}
+function rawFactOlderThan(r,years){return olderThanYears(rawFactDate(r),years)}
+function rawFactAgeState(r,years){
+  const dt=rawFactDate(r);if(!dt)return 'UNKNOWN';
+  return rawFactOlderThan(r,years)?'OLD':'NOT_OLD';
+}
+function boundedRatio(records,classifier,areaField=null){
+  let total=0,old=0,unknown=0;
+  for(const r of records){
+    const weight=areaField?(Number(r[areaField])||0):1;
+    if(areaField && !(weight>0))continue;
+    total+=weight;
+    const state=classifier(r);
+    if(state==='OLD')old+=weight;else if(state!=='NOT_OLD')unknown+=weight;
+  }
+  if(!(total>0))return {total:0,old:0,unknown:0,known:0,ratio:null,lower:null,upper:null};
+  const lower=old/total*100,upper=(old+unknown)/total*100;
+  return {total,old,unknown,known:total-unknown,ratio:unknown?null:lower,lower,upper};
+}
+function thresholdStatus(stat,threshold){
+  if(stat.lower==null||stat.upper==null)return 'REVIEW';
+  if(stat.lower>=threshold)return 'PASS';
+  if(stat.upper<threshold)return 'FAIL';
+  return 'REVIEW';
+}
+function ageResult({ruleId,family,sourceId,locator,label,threshold,stat,note='',sourceChain=[]}){
+  const src=RULE_SOURCE_CATALOG[sourceId]||{};
+  const status=threshold==null?'REVIEW':thresholdStatus(stat,threshold);
+  const value=stat.total?`${Number(stat.old).toLocaleString('ko-KR',{maximumFractionDigits:1})}/${Number(stat.total).toLocaleString('ko-KR',{maximumFractionDigits:1})}${stat.unknown?` · 미확인 ${Number(stat.unknown).toLocaleString('ko-KR',{maximumFractionDigits:1})}`:''} (${stat.lower.toFixed(1)}~${stat.upper.toFixed(1)}%)`:'자료 없음';
+  return {rule_id:ruleId,rule_family:family,source_id:sourceId,source_type:src.type||'',source_document:src.title||'',
+    source_effective:src.effective||'',source_locator:locator||src.locator||'',source_url:src.url||'',source_chain:sourceChain,
+    threshold_pct:threshold,status,label:`${label} ${status==='PASS'?'충족':status==='FAIL'?'미충족':'확인 필요'}`,
+    value,calculated_lower_pct:stat.lower,calculated_upper_pct:stat.upper,count:stat.old,total:stat.total,unknown:stat.unknown,note};
+}
+function chronologicalAgeAssessment(records,years,threshold,{ruleId,sourceId,locator,label,note='',family='policy'}={}){
+  const stat=boundedRatio(records,r=>rawFactAgeState(r,years));
+  return ageResult({ruleId:ruleId||`chronological_${years}_${threshold}`,family,sourceId,locator,label:label||`${years}년 경과 노후도`,threshold,stat,note});
+}
+function renewalLongLifeStructure(r){
+  const st=String(r.structure||'');
+  return ['철근콘크리트','철골콘크리트','철골철근콘크리트','강구조','철골구조','일반철골'].some(x=>st.includes(x));
+}
+function renewalApartmentHouse(r){
+  const p=`${r.main_use||''} ${r.other_use||''}`;
+  return /공동주택|아파트|연립주택|다세대주택|기숙사/.test(p);
+}
+function renewalDetachedHouse(r){
+  const p=`${r.main_use||''} ${r.other_use||''}`;
+  return /단독주택/.test(p)&&!/공동주택/.test(p);
+}
+function renewalApartmentThreshold(r){
+  const dt=rawFactDate(r);if(!dt)return null;
+  if(!renewalLongLifeStructure(r))return 20;
+  const y=dt.getFullYear(),floors=Number(r.ground_floors);
+  if(y<=1981)return 20;
+  if(y>=1991)return 30;
+  const high=Number.isFinite(floors)&&floors>=5;
+  const low=Number.isFinite(floors)&&floors<=4;
+  const highMap={1982:22,1983:24,1984:26,1985:28,1986:30,1987:30,1988:30,1989:30,1990:30};
+  const lowMap ={1982:21,1983:22,1984:23,1985:24,1986:25,1987:26,1988:27,1989:28,1990:29};
+  if(high)return highMap[y]??30;
+  if(low)return lowMap[y]??30;
+  return null; // 1982~1990 공동주택은 층수 미확인 시 임의 판정하지 않는다.
+}
+function renewalBuildingAgeState(r){
+  const dt=rawFactDate(r);if(!dt)return 'UNKNOWN';
+  if(renewalApartmentHouse(r)){
+    const threshold=renewalApartmentThreshold(r);
+    if(threshold==null){
+      if(rawFactOlderThan(r,30))return 'OLD';
+      if(!rawFactOlderThan(r,20))return 'NOT_OLD';
+      return 'UNKNOWN';
+    }
+    return rawFactOlderThan(r,threshold)?'OLD':'NOT_OLD';
+  }
+  const st=String(r.structure||'');
+  if(!st){
+    if(rawFactOlderThan(r,30))return 'OLD';
+    if(!rawFactOlderThan(r,20))return 'NOT_OLD';
+    return 'UNKNOWN';
+  }
+  const threshold=(renewalLongLifeStructure(r)&&!renewalDetachedHouse(r))?30:20;
+  return rawFactOlderThan(r,threshold)?'OLD':'NOT_OLD';
+}
+function renewalAgeAssessment(records,threshold=60,{ruleId='urban_renewal',sourceId='RENEWAL_AGE',locator='',label='도정법·서울시 도시정비조례 노후도'}={}){
+  const stat=boundedRatio(records,renewalBuildingAgeState);
+  const floor=boundedRatio(records,renewalBuildingAgeState,'total_floor_area_m2');
+  const result=ageResult({ruleId,family:'urban_renewal',sourceId,locator:locator||'도시정비법 시행령 제2조·별표 1 / 서울시 정비조례 제4조·별표 1',label,threshold,stat,
+    note:'공동주택은 서울시 정비조례 별표1의 준공연도·층수 기준, 그 밖의 건축물은 구조·용도별 20년/30년 기준을 적용'});
+  result.floor_area={lower_pct:floor.lower,upper_pct:floor.upper,old_m2:floor.old,total_m2:floor.total,unknown_m2:floor.unknown};
+  return result;
+}
+function multiDagagu15State(r){
+  const p=`${r.main_use||''} ${r.other_use||''}`;
+  if(!/다세대주택|다가구주택/.test(p))return 'NOT_OLD';
+  return rawFactAgeState(r,15);
+}
+function urbanPlanningAgeAssessment(records,c){
+  const age20=boundedRatio(records,r=>rawFactAgeState(r,20));
+  const floor20=boundedRatio(records,r=>rawFactAgeState(r,20),'total_floor_area_m2');
+  const multi15=boundedRatio(records,multiDagagu15State);
+  const src=RULE_SOURCE_CATALOG.URBAN_PLANNING_AGE||{};
+  const supplements=[];
+  if(c?.specialPlanning===true)supplements.push({name:'특별계획구역',status:'PASS',value:'지정 확인'});
+  else supplements.push({name:'특별계획구역',status:'REVIEW',value:'지정 여부 확인'});
+  if(floor20.lower!=null){
+    supplements.push({name:'20년 이상 건축물 연면적',status:floor20.lower>=50?'PASS':floor20.upper<50?'FAIL':'REVIEW',value:`${floor20.lower.toFixed(1)}~${floor20.upper.toFixed(1)}%`});
+  }else supplements.push({name:'20년 이상 건축물 연면적',status:'REVIEW',value:'연면적 자료 확인'});
+  if(c?.smallParcelRatio!=null)supplements.push({name:'과소필지',status:c.smallParcelRatio>=40?'PASS':'FAIL',value:`${Number(c.smallParcelRatio).toFixed(1)}%`});
+  else supplements.push({name:'과소필지',status:'REVIEW',value:'필지자료 확인'});
+  if(c?.roadFrontage!=null&&c?.roadQuality==='AUTO')supplements.push({name:'주택접도율',status:c.roadFrontage<=40?'PASS':'FAIL',value:`${Number(c.roadFrontage).toFixed(1)}%`});
+  else supplements.push({name:'주택접도율',status:'REVIEW',value:c?.roadQuality==='ESTIMATE'?'예비산정 · 공식 실폭도로 확인':'접도자료 확인'});
+  if(multi15.lower!=null)supplements.push({name:'15년 이상 다세대·다가구',status:multi15.lower>=30?'PASS':multi15.upper<30?'FAIL':'REVIEW',value:`${multi15.lower.toFixed(1)}~${multi15.upper.toFixed(1)}%`});
+  else supplements.push({name:'15년 이상 다세대·다가구',status:'REVIEW',value:'건축물 용도·사용승인일 확인'});
+
+  let status='REVIEW',reason='서울시 도시계획조례 시행규칙 별표1 보완조건 확인 필요';
+  if(!age20.total){status='REVIEW';reason='건축HUB 사용승인일 자료 없음';}
+  else if(age20.lower>=66.6667){status='PASS';reason='20년 이상 건축물이 전체 건축물의 2/3 이상';}
+  else if(age20.upper<50){status='FAIL';reason='미확인 건축물을 모두 포함해도 20년 이상 건축물이 1/2 미만';}
+  else if(age20.lower>=50 && supplements.some(x=>x.status==='PASS')){
+    status='PASS';reason=`20년 이상 건축물 1/2 이상 + ${supplements.filter(x=>x.status==='PASS').map(x=>x.name).join('·')} 조건 충족`;
+  }else{
+    status='REVIEW';reason=age20.lower>=50?'20년 이상 1/2 이상이나 별표1 보완조건 중 미확인 항목 존재':'사용승인일 미확인 건축물에 따라 20년 이상 1/2 충족 여부 변동';
+  }
+  const value=age20.total?`20년+ ${age20.old}/${age20.total}동 (${age20.lower.toFixed(1)}~${age20.upper.toFixed(1)}%)`:'자료 없음';
+  return {rule_id:'urban_planning_annex1',rule_family:'urban_planning',source_id:'URBAN_PLANNING_AGE',source_type:src.type||'',source_document:src.title||'',source_effective:src.effective||'',source_locator:src.locator||'',source_url:src.url||'',threshold_pct:null,status,
+    label:`서울시 도시계획조례 시행규칙 노후도 ${status==='PASS'?'충족':status==='FAIL'?'미충족':'확인 필요'}`,value,
+    calculated_lower_pct:age20.lower,calculated_upper_pct:age20.upper,count:age20.old,total:age20.total,unknown:age20.unknown,
+    components:{age20,floor20,multi_family_15:multi15,supplements},note:reason};
+}
+function buildAgeDerivedFacts(c,records=buildingRawFacts()){
+  const facts={
+    as_of:'2026-08-27',raw_count:records.length,
+    urban_planning:urbanPlanningAgeAssessment(records,c),
+    urban_renewal:renewalAgeAssessment(records,60),
+    renewal_promotion:renewalAgeAssessment(records,50,{ruleId:'urban_renewal_promotion',label:'도정법·서울시 도시정비조례 촉진지구 노후도'}),
+    safe_housing:(()=>{
+      if(c.allNonResidential){
+        const src=RULE_SOURCE_CATALOG.SAFE_ORD||{};
+        return {rule_id:'safe_housing',rule_family:'policy',source_id:'SAFE_ORD',source_type:src.type||'',source_document:src.title||'',source_effective:src.effective||'',source_locator:'조례 제5조제4항',source_url:src.url||'',threshold_pct:50,status:'PASS',label:'안심주택 조례 노후도 충족',value:'기존 건축물 전부 비주거 → 노후도 충족 간주',count:null,total:records.length,unknown:0,note:'안심주택 조례 특례'};
+      }
+      return chronologicalAgeAssessment(records,20,50,{ruleId:'safe_housing',sourceId:'SAFE_ORD',locator:'조례 제5조제4항',label:'안심주택 조례 노후도'});
+    })(),
+    longterm_district:chronologicalAgeAssessment(records,20,50,{ruleId:'longterm_district',sourceId:'LONGTERM_OP',locator:'운영기준 2-1-4 나목(1)',label:'역세권 장기전세 지구단위계획 노후도'}),
+    longterm_redevelopment:chronologicalAgeAssessment(records,30,60,{ruleId:'longterm_redevelopment',sourceId:'LONGTERM_OP',locator:'운영기준 2-1-4 나목(2)·2030 기본계획 정비구역 지정요건',label:'역세권 장기전세 정비계획 노후도'}),
+    urban_redevelopment_possible:chronologicalAgeAssessment(records,30,60,{ruleId:'urban_redevelopment_possible',sourceId:'URBAN_RENEWAL_PLAN',locator:'정비가능구역 지정요건',label:'도시정비형 정비가능구역 노후도'}),
+    innovation_housing:chronologicalAgeAssessment(records,20,60,{ruleId:'innovation_housing',sourceId:'INNOVATION',locator:'서울시 조례 제5조제1항제2호',label:'주거중심형 도심복합개발 노후도'}),
+    public_complex:chronologicalAgeAssessment(records,20,40,{ruleId:'public_complex',sourceId:'PUBLIC_COMPLEX',locator:'공공주택 특별법 시행령 별표4의2·업무처리지침 적용기준',label:'도심 공공주택 복합사업 노후도'}),
+    chronological20:chronologicalAgeAssessment(records,20,0,{ruleId:'reference_20',sourceId:'URBAN_PLANNING_AGE',locator:'단순 경과연수 참고값',label:'20년 경과 참고',family:'reference'}),
+    chronological30:chronologicalAgeAssessment(records,30,0,{ruleId:'reference_30',sourceId:'URBAN_RENEWAL_PLAN',locator:'단순 경과연수 참고값',label:'30년 경과 참고',family:'reference'})
+  };
+  // 소규모주택정비는 서울시 조례 제2조의2가 도시정비법·정비조례 제4조의 정의를 준용한다.
+  facts.smallscale=renewalAgeAssessment(records,60,{ruleId:'smallscale',sourceId:'SMALL_HOUSING',locator:'서울시 빈집·소규모주택 정비조례 제2조의2 / 시행령 제3조',label:'소규모주택정비 노후·불량건축물'});
+  facts.smallscale.source_chain=['도시정비법 노후·불량건축물 정의','서울시 도시정비조례 제4조·별표1','소규모주택정비법 시행령 제3조'];
+  return facts;
+}
+function schemeAgeFact(storeOrC,scheme,route=''){
+  const age=storeOrC?.derived?.age||storeOrC?.ageFacts||{};
+  if(scheme==='activation')return route==='redevelopment'?age.urban_renewal:age.urban_planning;
+  if(scheme==='growth_potential')return route==='redevelopment'?age.urban_renewal:age.urban_planning;
+  if(scheme==='redevelopment')return storeOrC?.promotionDistrict?age.renewal_promotion:age.urban_renewal;
+  if(scheme==='residential_environment')return storeOrC?.promotionDistrict?age.renewal_promotion:age.urban_renewal;
+  if(scheme==='smallscale')return age.smallscale;
+  if(scheme==='safe')return age.safe_housing;
+  if(scheme==='station_complex')return age.urban_planning;
+  if(scheme==='longterm')return route==='redevelopment'?age.longterm_redevelopment:age.longterm_district;
+  if(scheme==='urban_redevelopment')return age.urban_redevelopment_possible;
+  if(scheme==='innovation')return age.innovation_housing;
+  if(scheme==='public_complex')return age.public_complex;
+  return null;
+}
+const AGE_SPATIAL_FACT_META=[
+  ['urban_planning','도시계획계','역세권활성화(지구단위) · 성장잠재권(지구단위) · 역세권복합지단'],
+  ['urban_renewal','도정법계','주택정비형 재개발 · 주거환경개선 · 역세권활성화/성장잠재권 도시정비형'],
+  ['renewal_promotion','재정비촉진 적용','재정비촉진지구 내 정비사업'],
+  ['safe_housing','안심주택','안심주택'],
+  ['longterm_district','장기전세 지구단위','역세권 장기전세주택'],
+  ['longterm_redevelopment','장기전세 정비계획','역세권 장기전세주택'],
+  ['urban_redevelopment_possible','도시정비형 정비가능구역','도시정비형 재개발'],
+  ['smallscale','소규모주택정비','소규모주택정비'],
+  ['innovation_housing','도심복합개발 주거중심형','도심복합개발'],
+  ['public_complex','도심 공공주택 복합사업','도심 공공주택 복합사업']
+];
+function ageStatusLabel(status){return status==='PASS'?'충족':status==='FAIL'?'미충족':'확인필요'}
+function renderAgeSpatialStatus(ageFacts){
+  const box=document.getElementById('spAgeFactList'),state=document.getElementById('spAgeState');
+  if(!box)return;
+  const facts=ageFacts||latestSiteFactStore?.derived?.age||null;
+  if(!facts||!facts.raw_count){
+    box.innerHTML='<div class="spatial-age-row"><div class="spatial-age-name"><b>분석 전</b><span>사업별 노후도 기준</span></div><div class="spatial-age-value"><strong>-</strong><small>건축물 사용승인일·구조·용도를 먼저 조회합니다.</small></div><em class="spatial-age-status REVIEW">확인필요</em></div>';
+    if(state)state.textContent='건축HUB 조회 전';
+    return;
+  }
+  const rows=[];
+  for(const [key,title,usage] of AGE_SPATIAL_FACT_META){
+    const a=facts[key];if(!a)continue;
+    const source=[a.source_type,a.source_document,a.source_locator,a.source_effective].filter(Boolean).join(' · ');
+    const rule=[a.threshold_pct!=null?`판정기준 ${a.threshold_pct}%`:null,a.note].filter(Boolean).join(' · ');
+    rows.push(`<div class="spatial-age-row" data-age-rule="${escHtml(key)}">
+      <div class="spatial-age-name"><b>${escHtml(title)}</b><span>적용사업 · ${escHtml(usage)}</span></div>
+      <div class="spatial-age-value"><strong>${escHtml(a.value||'자료 없음')}</strong><small>${escHtml(rule||'공식기준 확인 필요')}</small></div>
+      <em class="spatial-age-status ${escHtml(a.status||'REVIEW')}">${ageStatusLabel(a.status)}</em>
+      <div class="spatial-age-source"><b>근거</b> ${escHtml(source||'공식자료 확인 필요')}</div>
+    </div>`);
+  }
+  box.innerHTML=rows.join('')||'<div class="spatial-age-row"><div class="spatial-age-name"><b>적용 기준 없음</b></div><div class="spatial-age-value"><strong>-</strong></div><em class="spatial-age-status REVIEW">확인필요</em></div>';
+  if(state)state.textContent=`${rows.length}개 기준 · 기준일 ${facts.as_of||'미확인'}`;
+}
+function renderSchemeSpecificSpatialStatus(store){
+  const box=document.getElementById('spSchemeFactList'),state=document.getElementById('spSchemeFactState');
+  if(!box)return;
+  const rows=[];
+  const labels={activation:'역세권활성화',safe:'안심주택',redevelopment:'주택정비형 재개발',urban_redevelopment:'도시정비형 재개발'};
+  for(const [scheme,facts] of Object.entries(store?.scheme_specific||{})){
+    for(const r of (facts?.spatial_status_rows||[])){
+      const confirmed=r.state==='CONFIRMED';
+      rows.push(`<div class="spatial-age-row" data-scheme-fact="${escHtml(scheme)}">
+        <div class="spatial-age-name"><b>${escHtml(labels[scheme]||scheme)} · ${escHtml(r.item||'추가현황')}</b><span>사업별 추가 현황 Fact</span></div>
+        <div class="spatial-age-value"><strong>${escHtml(r.value??'-')}</strong><small>${escHtml(r.note||'')}</small></div>
+        <em class="spatial-age-status ${confirmed?'PASS':'REVIEW'}">${confirmed?'현황확인':'미확인'}</em>
+      </div>`);
+    }
+  }
+  box.innerHTML=rows.join('')||'<div class="spatial-age-row"><div class="spatial-age-name"><b>추가 현황 없음</b><span>독립모듈 전환 전</span></div><div class="spatial-age-value"><strong>-</strong><small>사업별 검토서 확정 순서대로 추가 현황 Fact를 등록합니다.</small></div><em class="spatial-age-status REVIEW">미확인</em></div>';
+  if(state)state.textContent=rows.length?`${rows.length}개 추가현황 · Fact Store 연계`:'독립모듈 추가현황 대기';
+}
+function ageFactValue(a){return a?.value||'노후도 자료 없음'}
+function ageFactNote(a){return [a?.label,a?.note].filter(Boolean).join(' · ')}
 function fmtSchemePct(v){return v==null?'-':`${Number(v).toFixed(1)}%`}
 function fmtSchemeArea(v){return v==null?'-':`${Number(v).toLocaleString('ko-KR',{maximumFractionDigits:0})}㎡`}
 
@@ -4984,6 +5269,7 @@ function commonSchemeData(){
     coverage:schemeNum('scheme_station_coverage'),
     blockShare:schemeNum('scheme_block_share'),
     roadFaces:schemeNum('scheme_road_faces'),
+    road4Faces:schemeNum('scheme_road4_faces'),
     maxRoad:schemeNum('scheme_max_road_width'),
     has8:schemeYN('scheme_has_8m_road'),
     has20:schemeYN('scheme_has_20m_arterial'),
@@ -5003,7 +5289,7 @@ function commonSchemeData(){
     road20LandConsent:schemeNum('scheme_road20_land_consent'),
     houseDensity:schemeNum('scheme_house_density')??schemeNum('house_density_per_ha'),
     roadFrontage:schemeNum('scheme_road_frontage_ratio')??((()=>{const a=schemeNum('road_access_building_count_6m'),b=schemeNum('road_basis_building_count');return a==null||!b?null:a/b*100;})()),
-    oldFloorRatio:analysisState.metrics.old_floor_ratio==null?null:Number(analysisState.metrics.old_floor_ratio)*100,
+    smallParcelRatio:(()=>{const t=Number(document.getElementById('total_parcel_count')?.value)||selectedParcelPnus.size||0;const sm=Number(document.getElementById('small_parcel_count')?.value)||0;return t?sm/t*100:null;})(),
     promotionDistrict:schemeChecked('promotion_district')||['district','zone'].includes(schemeVal('renewal_promotion_status')),
     areaExceptionApproved:schemeChecked('area_5000_exception_approved'),
     roadQuality:analysisState.quality.road,
@@ -5023,6 +5309,10 @@ function commonSchemeData(){
     lowriseBad:schemeChecked('scheme_lowrise_bad_infra'),
     specialPlanning:schemeChecked('scheme_special_planning'),
     targetZoning:schemeVal('scheme_target_zoning'),
+    activationLocation:schemeVal('activation_location_type')||'auto',
+    activationLinearCommercial:schemeYN('activation_linear_commercial'),
+    activationMixedUse:schemeYN('activation_mixed_use'),
+    roadNetwork:analysisState.road_network||null,
     growthType:schemeVal('growth_potential_type'),
     growthArterialStatus:schemeVal('growth_arterial_status'),
     road35Perimeter:schemeNum('scheme_road35_perimeter_ratio'),
@@ -5037,11 +5327,176 @@ function commonSchemeData(){
     infraGood:schemeChecked('scheme_infra_good'),
     policyFacility:schemeChecked('scheme_policy_facility'),
     reconstructionApartment:schemeChecked('scheme_reconstruction_apartment'),
-    reconstructionDiagnosis:schemeChecked('scheme_reconstruction_diagnosis'),
-    age20:schemeAgeStat(20),
-    age30:schemeAgeStat(30)
+    reconstructionDiagnosis:schemeChecked('scheme_reconstruction_diagnosis')
   };
 }
+
+// ============================================================
+// v2.5 architecture: 현황데이터 → 사업별 독립 모듈 → 검토서 → 우선순위
+// 판정모듈은 DOM/GIS를 직접 추정하지 않고 아래 Fact Store에서 값을 읽는다.
+// 사업별 추가 공간조건도 먼저 facts로 수집한 뒤 판정에 사용한다.
+// ============================================================
+const SCHEME_MODULE_API_VERSION='2026-08-27-v2-age-regimes';
+let latestSiteFactStore=null;
+let latestSchemeModuleResults={};
+
+function factQualityLabel(q){
+  return q==='AUTO'?'자동확정':q==='ESTIMATE'?'조건부·자료보완 필요':'공부·현장·결정도서 확인 필요';
+}
+function compactRoadFacts(c){
+  const rows=(c.roadNetwork?.roads||[]).map(x=>({
+    name:x.name||'도로명 미확인',width_m:Number.isFinite(Number(x.width))?Number(x.width):null,
+    contact_m:Number.isFinite(Number(x.contact))?Number(x.contact):null
+  }));
+  return {
+    quality:c.roadQuality||'NO_DATA',source:c.roadNetwork?.source||'',
+    face_count:c.roadFaces,road4_faces:c.road4Faces,max_width_m:c.maxRoad,
+    has_8m:c.has8,has_20m:c.has20,roads:rows
+  };
+}
+function renewalSpatialFacts(){
+  const overlaps=(renewalAnalysis.overlaps||[]).map(f=>{
+    const p=f.properties||{};
+    return {name:p.name||p.zone_name||'-',type:p.renewal_type||'other',source:p.source||'unknown',
+      overlap_area_m2:Number(p._overlap_area||0),overlap_pct:Number(p._overlap_pct||0)};
+  });
+  return {loaded:renewalAnalysis.loaded,error:renewalAnalysis.error||'',overlaps,
+    renewal_area_type:schemeVal('renewal_area_type')||'auto'};
+}
+function developmentSpatialFacts(){
+  const overlaps=(developmentAnalysis.overlaps||[]).map(f=>{
+    const p=f.properties||{};
+    return {name:p.name||p.zone_name||'-',kind:p.development_kind||'other',source:p.source||'unknown',
+      overlap_area_m2:Number(p._overlap_area||0),overlap_pct:Number(p._overlap_pct||0)};
+  });
+  const districtPlans=(planningAnalysis.districtPlans||[]).filter(x=>Number(x.area||0)>0.5).map(x=>({
+    name:x.name||'-',area_m2:Number(x.area||0),layer:x.layer||''
+  }));
+  return {loaded:developmentAnalysis.loaded,error:developmentAnalysis.error||'',overlaps,
+    district_plan_loaded:planningAnalysis.loaded,
+    district_plan_error:(planningAnalysis.errors||[]).some(x=>x.id==='LT_C_UPISUQ161'),district_plans:districtPlans};
+}
+function buildSiteFactStore(){
+  const c=commonSchemeData();
+  const base=selectedParcelLandBase();
+  const store={
+    api_version:SCHEME_MODULE_API_VERSION,
+    generated_at:new Date().toISOString(),
+    common:c,
+    site:{
+      address:(typeof analyticsAddressText==='function'?analyticsAddressText():'')||'',
+      area_m2:c.area,parcel_count:base.parcelCount||0,
+      zoning:c.zoning||'',zoning_auto:!!c.zoningAuto,zoning_mixed:!!c.zoningMixed,
+      center:{value:c.center||'',type:c.centerType||'',label:c.centerLabel||'',auto:!!c.centerAuto},
+      station:{name:c.stationName||'',distance_m:c.dist,line_count:c.lines,auto:!!c.stationAuto,
+        coverage_250:c.coverage250,coverage_350:c.coverage350,coverage_500:c.coverage500},
+      road:compactRoadFacts(c),
+      building:{total:Number(analysisState.metrics.total_buildings||0),records:buildingRawFacts(),source:'건축HUB 표제부',
+        note:'공통 현황은 사용승인일·구조·용도·연면적 등 사실값만 저장하며 법적 노후도 판정은 derived.age에서 제도별로 수행'},
+      renewal:renewalSpatialFacts(),development:developmentSpatialFacts()
+    },
+    derived:{age:null},scheme_specific:{}
+  };
+  store.derived.age=buildAgeDerivedFacts(c,store.site.building.records);
+  latestSiteFactStore=store;
+  analysisState.fact_store=store;
+  return store;
+}
+
+function activationSpatialFacts(store){
+  const c=store.common,renewal=store.site.renewal,development=store.site.development;
+  const center350=['downtown','metro','regional'].includes(c.center);
+  const threshold=(center350||Number(c.lines)>=2)?350:(Number(c.lines)===1?250:null);
+  const stationWithin=(c.dist==null||threshold==null)?null:Number(c.dist)<=threshold;
+  const stationBlock=(c.blockShare==null)?null:Number(c.blockShare);
+  const stationBlockPass=stationBlock==null?null:stationBlock>=50;
+  const renewalType=renewal.renewal_area_type||'auto';
+  const renewalException=renewalType==='urban_planned';
+  const renewalExcluded=['housing_district','housing_planned','urban_district','reconstruction'].includes(renewalType);
+  const promotionHits=(renewal.overlaps||[]).filter(x=>x.type==='promotion');
+  const districtPlanHits=development.district_plans||[];
+  const route=effectiveActivationRoute(c);
+  const fact={
+    route,
+    location:{
+      station:{threshold_m:threshold,distance_m:c.dist,name:c.stationName||'',line_count:c.lines,
+        within:stationWithin,block_share_pct:stationBlock,block_half_or_more:stationBlockPass,
+        coverage_pct:threshold===350?c.coverage350:threshold===250?c.coverage250:null},
+      arterial:{linear_commercial:c.activationLinearCommercial,
+        note:c.activationLinearCommercial===true?'노선형 상업지역 포함 확인':c.activationLinearCommercial===false?'노선형 상업지역 미포함 확인':'노선형 상업지역 포함 여부 미확인'}
+    },
+    zoning:{current:c.zoning||'',allowed:['제2종일반주거(7층)','제2종일반주거','제3종일반주거','준주거','근린상업','일반상업'].includes(c.zoning||'')},
+    road:store.site.road,
+    area:{m2:c.area,base_ok:c.area==null?null:(c.area>=1500&&c.area<=10000),advisory_possible:c.area==null?null:(c.area<1500||(c.area>10000&&c.area<=30000&&route.route==='redevelopment'))},
+    exclusions:{renewal_type:renewalType,renewal_exception:renewalException,renewal_excluded:renewalExcluded,
+      renewal_loaded:renewal.loaded,renewal_error:renewal.error,promotion_hits:promotionHits,
+      district_plan_hits:districtPlanHits,prior_negotiation:c.priorNegotiation,
+      planning_facility_loaded:planningAnalysis.facilityLoaded,planning_facility_errors:[...(planningAnalysis.facilityErrors||[])],
+      planning_facilities:(planningAnalysis.facilities||[]).map(x=>({name:x.name||x.category||'-',category:x.category||'',area_m2:Number(x.area||0)})),
+      characteristic_management:null,smallscale_approved:null,manual_excluded:c.excluded},
+    aging:{route:route.route,assessment:schemeAgeFact(store,'activation',route.route)},
+    consent:{owner_pct:c.ownerConsent,land_pct:c.landConsent},
+    planning:{target_zoning:targetOrSuggested(c,'activation'),mixed_use:c.activationMixedUse,
+      center:c.center||'',center_type:c.centerType||'',center_label:c.centerLabel||''},
+    spatial_status_rows:[
+      {item:'역세권 기준거리',value:threshold==null?'기준 미확인':`${threshold}m / 최근접 ${c.dist==null?'-':Number(c.dist).toFixed(1)+'m'}`,state:stationWithin==null?'REVIEW':'CONFIRMED',note:'승강장 경계·중심지위계·환승여부 현황'},
+      {item:'가로구역 포함률',value:stationBlock==null?'-':`${Number(stationBlock).toFixed(1)}%`,state:stationBlock==null?'REVIEW':'CONFIRMED',note:'1/2 미만은 간선가로 접면·정형화 및 위원회 인정 검토'},
+      {item:'노선형 상업지역 포함',value:c.activationLinearCommercial==null?'-':c.activationLinearCommercial?'포함':'미포함',state:c.activationLinearCommercial==null?'REVIEW':'CONFIRMED',note:'간선도로변 유형 전용 현황'},
+      {item:'사전협상 대상요건',value:c.priorNegotiation==null?'-':c.priorNegotiation?'해당':'비해당',state:c.priorNegotiation==null?'REVIEW':'CONFIRMED',note:'5,000㎡ 이상 대상지는 협상대상지요건 별도 확인'},
+      {item:'정비구역 현황',value:renewalType==='auto'?(renewal.loaded?(renewal.overlaps.length?`${renewal.overlaps.length}건 중첩`:'중첩 없음'):'자료 미확인'):renewalType,state:renewal.loaded||renewalType!=='auto'?'CONFIRMED':'REVIEW',note:'정비구역·정비예정구역·재정비촉진 배제/예외 검토에 사용'}
+    ]
+  };
+  store.scheme_specific.activation=fact;
+  return fact;
+}
+
+function activationStrengthRiskSummary(facts,rows){
+  const strengths=[],risks=[],followups=[];
+  const row=(item)=>rows.find(r=>r.item===item);
+  for(const item of ['역세권','간선도로변','용도지역','도로','대상지 면적','배제지역 종합']){
+    const r=row(item); if(r?.status==='PASS')strengths.push(`${item} 요건 충족`);
+    else if(r?.status==='FAIL')risks.push(`${item} 요건 미충족`);
+    else if(r?.status==='REVIEW')followups.push(`${item} 확인 필요`);
+  }
+  if(facts.exclusions.prior_negotiation===true)risks.push('사전협상 대상요건 해당 → 역세권활성화 대상 제외');
+  else if(facts.exclusions.prior_negotiation==null && facts.area.m2>=5000)followups.push('5,000㎡ 이상 사전협상 대상요건 확인');
+  if(facts.route.route==='redevelopment')followups.push('도시정비형 재개발 입안대상·노후도 추가 검토');
+  return {strengths:[...new Set(strengths)],risks:[...new Set(risks)],followups:[...new Set(followups)]};
+}
+
+const SCHEME_MODULES={
+  activation:{
+    id:'activation',version:'2026-04-30',
+    collectFacts:activationSpatialFacts,
+    evaluate(store,facts){
+      const rows=checkActivationFromFacts(store,facts);
+      const overall=overallScheme(rows);
+      const density=activationDensity(store.common);
+      const sr=activationStrengthRiskSummary(facts,rows);
+      return {module:'activation',facts,rows,overall,density,...sr};
+    }
+  }
+};
+function evaluateSchemeModule(name,store){
+  const module=SCHEME_MODULES[name];
+  if(module){
+    activeRuleScheme=name;
+    try{
+      const facts=module.collectFacts(store);
+      const result=module.evaluate(store,facts);
+      latestSchemeModuleResults[name]=result;
+      return result;
+    }finally{activeRuleScheme='';}
+  }
+  // 아직 이전되지 않은 사업은 기존 엔진을 어댑터로 사용한다.
+  // 다음 사업 검토서를 만들 때 이 fallback을 하나씩 제거한다.
+  const c={...store.common,ageFacts:store.derived.age};
+  const rows=calculateScheme(name,c);
+  const result={module:'legacy-adapter',facts:{common:c},rows,overall:overallScheme(rows),density:densityForScheme(name,c),strengths:[],risks:[],followups:[]};
+  latestSchemeModuleResults[name]=result;
+  return result;
+}
+
 function zoneIn(z,arr){return z?arr.includes(z):null}
 function passYesNo(v){return v===null?'REVIEW':(v?'PASS':'FAIL')}
 function overallScheme(rows){
@@ -5393,15 +5848,13 @@ function longtermUrbanDeeming(c){
   }
   const areaOk=c.area==null?null:(c.area>=3000&&c.area<=30000);
   const zOk=c.zoning?['제2종일반주거(7층)','제2종일반주거','제3종일반주거','준주거','준공업'].includes(c.zoning):null;
-  const ageOk=c.age30.ratio==null?null:c.age30.ratio>=60;
+  const age=schemeAgeFact(c,'longterm','redevelopment');
+  const ageOk=age?.status==='PASS'?true:age?.status==='FAIL'?false:null;
   const checks=[locOk,areaOk,zOk,ageOk];
   const fail=checks.some(v=>v===false);
   const unknown=checks.some(v=>v===null);
-  return {
-    status:fail?'FAIL':unknown?'REVIEW':'PASS',
-    value:'역세권 장기전세 → 도시정비형 재개발',
-    note:'장기전세 공급요건을 만족하고 정비계획 방식으로 추진하는 경우 정비예정구역 의제 경로'
-  };
+  return {status:fail?'FAIL':unknown?'REVIEW':'PASS',value:'역세권 장기전세 → 도시정비형 재개발',
+    note:`장기전세 공급요건 + 정비계획 방식 · ${age?.label||'정비계획 노후도 확인 필요'}`};
 }
 function urbanRedevelopmentAccess(c){
   let manual=c.urbanPlanStatus||'auto';
@@ -5423,7 +5876,7 @@ function urbanRedevelopmentAccess(c){
   const possibleZoning=['준주거','준공업','근린상업','일반상업','중심상업'].includes(c.zoning||'');
   const possibleChecks=[
     c.area==null?null:c.area>=2000,
-    c.age30.ratio==null?null:c.age30.ratio>=60,
+    (()=>{const a=schemeAgeFact(c,'urban_redevelopment');return a?.status==='PASS'?true:a?.status==='FAIL'?false:null;})(),
     c.zoning?possibleZoning:null
   ];
   const possibleFail=possibleChecks.some(v=>v===false);
@@ -5486,6 +5939,7 @@ function urbanRedevelopmentAccess(c){
 
 function checkUrbanRedevelopment(c){
   const rows=[];
+  const age=schemeAgeFact(c,'urban_redevelopment');
   const access=urbanRedevelopmentAccess(c);
   rows.push(schemeRow('도정법 진입경로',
     '기정 정비(예정)구역 / 정비가능구역 / 다른 정책사업에 의한 정비예정구역 의제',
@@ -5509,9 +5963,9 @@ function checkUrbanRedevelopment(c){
   const possibleRelevant=(c.urbanPlanStatus==='possible'||(c.urbanPlanStatus==='auto'&&centerCandidate));
   rows.push(schemeRow('정비가능구역 노후도',
     '30년 이상 경과 건축물 60% 이상',
-    `${c.age30.count}/${c.age30.total}동 (${fmtSchemePct(c.age30.ratio)})`,
-    !possibleRelevant?'INFO':c.age30.ratio==null?'REVIEW':schemeStatus(c.age30.ratio>=60),
-    '2026.2 변경 기본계획 정비가능구역 기준',possibleRelevant));
+    ageFactValue(age),
+    !possibleRelevant?'INFO':(age?.status||'REVIEW'),
+    ageFactNote(age),possibleRelevant,{sourceId:age?.source_id||'URBAN_RENEWAL_PLAN',locator:age?.source_locator||'정비가능구역 지정요건'}));
 
   rows.push(schemeRow('정비가능구역 최소면적',
     '구역(지구)별 2,000㎡ 이상',
@@ -5558,15 +6012,13 @@ function checkUrbanRedevelopment(c){
 function effectiveResenvMethod(c){
   const selected=c.resenvMethod||'auto';
   if(selected!=='auto')return selected;
-  const total=Number(analysisState.metrics.total_buildings)||0;
-  const old=Number(analysisState.metrics.old_count)||0;
-  const oldRatio=total?old/total*100:null;
+  const age=schemeAgeFact(c,'residential_environment');
   const totalParcels=Number(document.getElementById('total_parcel_count')?.value)||selectedParcelPnus.size||0;
   const small=Number(document.getElementById('small_parcel_count')?.value)||0;
   const smallRatio=totalParcels?small/totalParcels*100:null;
   const exactRoad=c.roadQuality==='AUTO'?c.roadFrontage:null;
   const generalSignal=c.houseDensity!=null && c.houseDensity>=80 &&
-    ((oldRatio!=null&&oldRatio>=60)||(exactRoad!=null&&exactRoad<=20)||(smallRatio!=null&&smallRatio>=50));
+    ((age?.status==='PASS')||(exactRoad!=null&&exactRoad<=20)||(smallRatio!=null&&smallRatio>=50));
   if(generalSignal)return 'general';
   if(c.lowriseBad)return 'smallscale';
   return 'auto';
@@ -5611,9 +6063,8 @@ function checkResidentialEnvironment(c){
 
   const general=(method==='general'||['acquisition','landreadjustment','disposition'].includes(method));
   if(general){
-    const total=Number(analysisState.metrics.total_buildings)||0;
-    const old=Number(analysisState.metrics.old_count)||0;
-    const oldRatio=total?old/total*100:null;
+    const age=schemeAgeFact(c,'residential_environment');
+    const oldRatio=age?.calculated_lower_pct??null;
     const totalParcels=Number(document.getElementById('total_parcel_count')?.value)||selectedParcelPnus.size||0;
     const small=Number(document.getElementById('small_parcel_count')?.value)||0;
     const smallRatio=totalParcels?small/totalParcels*100:null;
@@ -5626,12 +6077,13 @@ function checkResidentialEnvironment(c){
 
     const exactRoad=c.roadQuality==='AUTO'?c.roadFrontage:null;
     const provisionalRoad=c.roadQuality==='ESTIMATE'?c.roadFrontage:null;
-    const altKnown=[oldRatio,exactRoad,smallRatio].some(v=>v!=null);
-    const altOk=(oldRatio!=null&&oldRatio>=60)||(exactRoad!=null&&exactRoad<=20)||(smallRatio!=null&&smallRatio>=50);
-    const altStatus=altOk?'PASS':(provisionalRoad!=null&&provisionalRoad<=20)?'REVIEW':!altKnown?'REVIEW':'FAIL';
+    const agePass=age?.status==='PASS',ageReview=!age||age.status==='REVIEW';
+    const altKnown=[age?.status,exactRoad,smallRatio].some(v=>v!=null);
+    const altOk=agePass||(exactRoad!=null&&exactRoad<=20)||(smallRatio!=null&&smallRatio>=50);
+    const altStatus=altOk?'PASS':(ageReview||(provisionalRoad!=null&&provisionalRoad<=20)||!altKnown)?'REVIEW':'FAIL';
     rows.push(schemeRow('입안대상지역 선택요건',
       '노후·불량건축물 60% 이상 OR 주택접도율 20% 이하 OR 과소필지 50% 이상',
-      `노후 ${oldRatio==null?'-':oldRatio.toFixed(1)+'%'} / 접도 ${c.roadFrontage==null?'-':c.roadFrontage+'%'+(c.roadQuality==='ESTIMATE'?'(예비)':'')} / 과소필지 ${smallRatio==null?'-':smallRatio.toFixed(1)+'%'}`,
+      `${age?.label||'도정법계 노후도 확인 필요'} · ${ageFactValue(age)} / 접도 ${c.roadFrontage==null?'-':c.roadFrontage+'%'+(c.roadQuality==='ESTIMATE'?'(예비)':'')} / 과소필지 ${smallRatio==null?'-':smallRatio.toFixed(1)+'%'}`, 
       altStatus,
       c.roadQuality==='ESTIMATE'?'중심선+폭원 버퍼는 예비산정이므로 실폭도로·현황측량 재확인':'호수밀도 80 이상과 함께 검토'));
 
@@ -5658,25 +6110,24 @@ function checkResidentialEnvironment(c){
 
 function checkSmallScale(c){
   const rows=[];
-  const rs=selectedHubRecordsForSchemes();
-  const old=rs.filter(r=>r.age_status==='OLD').length;
-  const oldRatio=rs.length?old/rs.length*100:null;
+  const age=schemeAgeFact(c,'smallscale');
   const apartment=reconstructionEvidence().confirmed;
   const smallRedevelopmentLocation=(c.dist!=null&&c.dist<=250)||c.zoning==='준공업';
   const subtype=apartment?'소규모재건축':smallRedevelopmentLocation?'소규모재개발':'가로주택·자율주택정비';
   rows.push(schemeRow('세부유형 자동분기','주택유형·역세권/준공업 입지·가로구역을 먼저 구분',subtype,'REVIEW','자동분기는 후보선별이며 사업유형 확정은 공식 공부·가로구역 확인 필요',true,{action:'선택된 세부유형의 법정요건을 우선 검증하고 다른 유형은 대안으로 비교',alternatives:'모아타운 관리지역·주택재개발'}));
   if(subtype==='소규모재건축'){
     rows.push(schemeRow('구역면적','소규모재건축 사업시행구역 10,000㎡ 미만',fmtSchemeArea(c.area),c.area==null?'REVIEW':schemeStatus(c.area<10000),'서울시 소규모재건축 안내 기준'));
-    rows.push(schemeRow('노후도','노후·불량건축물 60% 이상',oldRatio==null?'-':`${old}/${rs.length}동 (${oldRatio.toFixed(1)}%)`,oldRatio==null?'REVIEW':schemeStatus(oldRatio>=60),'건축HUB 사용승인일 기반 초기판정'));
+    rows.push(schemeRow('노후도','소규모주택정비법령이 준용하는 노후·불량건축물 기준 및 비율',ageFactValue(age),age?.status||'REVIEW',ageFactNote(age),true,{sourceId:age?.source_id||'SMALL_HOUSING',locator:age?.source_locator||'시행령 제3조·서울시 조례 제2조의2'}));
     rows.push(schemeRow('기존 세대수','기존 주택 200세대 미만','공부 미확인','REVIEW','집합건축물대장 총괄표제부·세대수 확인 필요'));
   }else if(subtype==='소규모재개발'){
     rows.push(schemeRow('구역면적','1,500~5,000㎡',fmtSchemeArea(c.area),c.area==null?'REVIEW':schemeStatus(c.area>=1500&&c.area<=5000),'서울시 소규모재개발 업무처리기준'));
     rows.push(schemeRow('입지','역세권 또는 준공업지역',c.zoning==='준공업'?'준공업지역':c.dist==null?'-':`역 경계 ${Number(c.dist).toFixed(1)}m`,c.zoning==='준공업'?'PASS':c.dist==null?'REVIEW':schemeStatus(c.dist<=250),'정확한 역세권 범위와 제외구역 확인'));
-    rows.push(schemeRow('노후도','노후·불량건축물 60% 이상',oldRatio==null?'-':`${old}/${rs.length}동 (${oldRatio.toFixed(1)}%)`,oldRatio==null?'REVIEW':schemeStatus(oldRatio>=60),'건축HUB 사용승인일 기반 초기판정'));
+    rows.push(schemeRow('노후도','소규모주택정비법령이 준용하는 노후·불량건축물 기준 및 비율',ageFactValue(age),age?.status||'REVIEW',ageFactNote(age),true,{sourceId:age?.source_id||'SMALL_HOUSING',locator:age?.source_locator||'시행령 제3조·서울시 조례 제2조의2'}));
     const smallRoadOk=c.maxRoad!=null&&c.roadFaces!=null&&c.maxRoad>=8&&c.roadFaces>=2;
     rows.push(schemeRow('도로','폭 8m 및 4m 도로 요건',c.maxRoad==null?'-':`최대 ${c.maxRoad}m · ${c.roadFaces??'-'}면`,c.maxRoad==null||c.roadFaces==null?'REVIEW':smallRoadOk?(c.roadQuality==='ESTIMATE'?'REVIEW':'PASS'):'FAIL','공식 도로폭원·접면관계 확인'));
   }else{
     rows.push(schemeRow('가로구역·주택수','가로주택정비·자율주택정비 유형별 면적·가로구역·주택수 기준','공부 미확인','REVIEW','현 자동데이터만으로 세부유형 확정 불가'));
+    rows.push(schemeRow('노후도','세부유형 확정 후 해당 소규모주택정비 노후·불량건축물 기준 연결',ageFactValue(age),'REVIEW',`${ageFactNote(age)} · 세부유형별 적용요건 재확인`,false,{sourceId:age?.source_id||'SMALL_HOUSING'}));
   }
   rows.push(schemeRow('정비구역 배타관계','기정 정비구역·정비예정구역 및 사업중 구역 제외 여부',c.renewalAreaType==='none'?'중첩 없음':c.renewalAreaType==='auto'?'확인 필요':c.renewalAreaType,c.renewalAreaType==='none'?'PASS':c.renewalAreaType==='auto'?'REVIEW':'FAIL','공식 SHP 중첩 후 결정고시 재확인'));
   rows.push(schemeRow('모아타운','복수 소규모 정비사업의 관리지역 연계','관리지역(모아타운) 대안 검토','INFO','개별 사업유형과 동일시하지 않음',false,{alternatives:'모아타운 관리계획'}));
@@ -5692,9 +6143,11 @@ function checkRedevelopment(c){
   }else{
     rows.push(schemeRow('정비구역 유형','정비구역·정비예정/사업구역 공간중첩 우선 확인',renewalAnalysis.error?'서버 GIS 조회 실패':'공식 SHP 중첩 없음','REVIEW',renewalAnalysis.error?renewalAnalysis.error:'기정 구역이 아니므로 아래 신규 입안요건으로 판정 · 결정고시·최근 해제고시 재확인',true,{sourceId:'RENEWAL_GIS',hardGate:'LEGAL_ENTRY'}));
   }
-  const total=Number(analysisState.metrics.total_buildings)||0;
-  const old=Number(analysisState.metrics.old_count)||0;
-  const oldRatio=total?old/total*100:null;
+  const age=schemeAgeFact(c,'redevelopment');
+  const oldRatio=age?.calculated_lower_pct??null;
+  const oldUpper=age?.calculated_upper_pct??null;
+  const total=age?.total??0;
+  const old=age?.count??0;
   const totalParcels=Number(document.getElementById('total_parcel_count')?.value)||selectedParcelPnus.size||0;
   const small=Number(document.getElementById('small_parcel_count')?.value)||0;
   const smallRatio=totalParcels?small/totalParcels*100:null;
@@ -5708,15 +6161,16 @@ function checkRedevelopment(c){
   }
   rows.push(schemeRow('구역면적','10,000㎡ 이상 / 관련 위원회 심의 인정 시 5,000㎡ 이상',fmtSchemeArea(c.area),areaStatus,areaNote,true,{sourceId:'RENEWAL_ENTRY',hardGate:'LEGAL_ENTRY',locator:'시행령 별표 1 제2호 / 조례 제6조제1항'}));
   const oldThreshold=c.promotionDistrict?50:60;
-  rows.push(schemeRow('노후도',`노후·불량건축물 수 비율 ${oldThreshold}% 이상`,oldRatio==null?'-':`${old}/${total}동 (${oldRatio.toFixed(1)}%)`,oldRatio==null?'REVIEW':schemeStatus(oldRatio>=oldThreshold),`건축HUB 연령판정 기반 · ${c.promotionDistrict?'재정비촉진지구':'일반지역'} 기준`,true,{sourceId:'RENEWAL_ENTRY',hardGate:'LEGAL_ENTRY',locator:'시행령 별표 1 제2호가목 / 조례 제6조제1항'}));
+  rows.push(schemeRow('노후도',`노후·불량건축물 수 비율 ${oldThreshold}% 이상`,ageFactValue(age),age?.status||'REVIEW',ageFactNote(age),true,{sourceId:age?.source_id||'RENEWAL_AGE',hardGate:'LEGAL_ENTRY',locator:age?.source_locator||'도시정비법 시행령 별표1 / 서울시 정비조례 제4조·제6조·별표1'}));
 
   const selection=[];
-  if(oldRatio!=null)selection.push({name:'노후건축물 수 75% 간주',ok:oldRatio>=75,value:`${oldRatio.toFixed(1)}%`});
+  if(oldRatio!=null)selection.push({name:'노후건축물 수 75% 간주',ok:oldRatio>=75,value:`${oldRatio.toFixed(1)}~${oldUpper==null?oldRatio.toFixed(1):oldUpper.toFixed(1)}%`});
   if(smallRatio!=null)selection.push({name:'과소필지 40% 이상',ok:smallRatio>=40,value:`${smallRatio.toFixed(1)}%`});
   if(c.roadFrontage!=null&&c.roadQuality==='AUTO')selection.push({name:'주택접도율 40% 이하',ok:c.roadFrontage<=40,value:`${c.roadFrontage.toFixed(1)}%`});
   if(c.houseDensity!=null)selection.push({name:'호수밀도 60호/ha 이상',ok:c.houseDensity>=60,value:`${c.houseDensity.toFixed(1)}호/ha`});
   const oldFloorThreshold=c.promotionDistrict?50:60;
-  if(c.oldFloorRatio!=null)selection.push({name:`노후연면적 ${oldFloorThreshold}% 이상`,ok:c.oldFloorRatio>=oldFloorThreshold,value:`${c.oldFloorRatio.toFixed(1)}%`});
+  const oldFloorLower=age?.floor_area?.lower_pct??null,oldFloorUpper=age?.floor_area?.upper_pct??null;
+  if(oldFloorLower!=null)selection.push({name:`노후연면적 ${oldFloorThreshold}% 이상`,ok:oldFloorLower>=oldFloorThreshold,value:`${oldFloorLower.toFixed(1)}~${oldFloorUpper==null?oldFloorLower.toFixed(1):oldFloorUpper.toFixed(1)}%`});
   const selectionStatus=selection.some(x=>x.ok)?'PASS':selection.length>=5?'FAIL':'REVIEW';
   rows.push(schemeRow('추가 입안요건','노후건축물 수 75% 간주 또는 과소필지·주택접도율·호수밀도·노후연면적 중 1개 이상',
     selection.length?selection.map(x=>`${x.name} ${x.value}${x.ok?' ✓':''}`).join(' / '):'자동자료 미확인',selectionStatus,
@@ -5724,7 +6178,8 @@ function checkRedevelopment(c){
   rows.push(schemeRow('과소필지','90㎡ 미만 필지 40% 이상',smallRatio==null?'-':`${small}/${totalParcels}필지 (${smallRatio.toFixed(1)}%)`,smallRatio==null?'REVIEW':schemeStatus(smallRatio>=40),'추가 입안요건 중 하나',false,{sourceId:'RENEWAL_ORD',locator:'조례 제6조제1항제2호가목'}));
   rows.push(schemeRow('주택접도율','폭 6m 이상 도로에 4m 이상 접한 주택 비율 40% 이하',c.roadFrontage==null?'-':`${c.roadFrontage.toFixed(1)}%`,c.roadFrontage==null||c.roadQuality==='ESTIMATE'?'REVIEW':schemeStatus(c.roadFrontage<=40),c.roadQuality==='AUTO'?'VWorld 실폭도로·도로구간 API GIS AUTO':'API 미응답 또는 공식 폭원 미확인 시 자동 PASS 금지',false,{sourceId:'RENEWAL_ORD',locator:'조례 제2조제10호·제6조제1항제2호나목'}));
   rows.push(schemeRow('호수밀도','60호/ha 이상',c.houseDensity==null?'-':`${c.houseDensity.toFixed(1)}호/ha`,c.houseDensity==null?'REVIEW':schemeStatus(c.houseDensity>=60),'건축HUB 기반 초기 산정·법정 동수 보정 필요',false,{sourceId:'RENEWAL_ORD',locator:'조례 제2조제5호·제6조제1항제2호다목'}));
-  rows.push(schemeRow('노후연면적',`노후·불량건축물 연면적 ${oldFloorThreshold}% 이상`,c.oldFloorRatio==null?'-':`${c.oldFloorRatio.toFixed(1)}%`,c.oldFloorRatio==null?'REVIEW':schemeStatus(c.oldFloorRatio>=oldFloorThreshold),'건축HUB 연면적 기반',false,{sourceId:'RENEWAL_DECREE',locator:'시행령 별표 1 제2호나목'}));
+  const oldFloorStatus=oldFloorLower==null?'REVIEW':oldFloorLower>=oldFloorThreshold?'PASS':oldFloorUpper!=null&&oldFloorUpper<oldFloorThreshold?'FAIL':'REVIEW';
+  rows.push(schemeRow('노후연면적',`노후·불량건축물 연면적 ${oldFloorThreshold}% 이상`,oldFloorLower==null?'-':`${oldFloorLower.toFixed(1)}~${oldFloorUpper==null?oldFloorLower.toFixed(1):oldFloorUpper.toFixed(1)}%`,oldFloorStatus,'도정법계 노후·불량건축물 분류와 동일한 건축물에 대해 연면적 집계',false,{sourceId:age?.source_id||'RENEWAL_AGE',locator:'도시정비법 시행령 별표 1 / 서울시 정비조례 제4조·별표1'}));
 
   const up=stationRenewalUpzone(c,'redevelopment');
   rows.push(schemeRow('역세권 용도지역 상향','승강장 250m 이내 원칙, 위원회 심의 최대 350m + 기반시설 양호 + 정책연계 전략시설',
@@ -5767,101 +6222,125 @@ function effectiveActivationRoute(c){
   return {route:'district',auto:true,reason:'10,000㎡ 이하 → 지구단위계획 방식 우선 자동추천'};
 }
 
-function checkActivation(c){
-  const rows=[];
-  const routeMeta=effectiveActivationRoute(c);
-  const route=routeMeta.route;
-  const center350=['downtown','metro','regional'].includes(c.center);
-  let threshold=null;
-  if(center350 || c.lines>=2)threshold=350;
-  else if(c.lines===1)threshold=250;
-  const stationRangeRule=threshold?`승강장 경계 ${threshold}m 이내`:'승강장 경계 250m/350m — 환승 여부 확인';
-  const stationRangeStatus=c.dist==null?'REVIEW':(threshold==null?'REVIEW':schemeStatus(c.dist<=threshold));
+function activationDistrictAgingAssessment(c){
+  const a=schemeAgeFact(c,'activation','district');
+  return a||{status:'REVIEW',value:'도시계획계 노후도 자료 없음',note:'서울시 도시계획조례 시행규칙 별표1 확인 필요'};
+}
+function activationRedevelopmentAgingAssessment(c){
+  const a=schemeAgeFact(c,'activation','redevelopment');
+  return a||{status:'REVIEW',value:'도정법계 노후도 자료 없음',note:'도시정비법 시행령 별표1 + 서울시 도시정비조례 제4조·제6조·별표1 확인 필요'};
+}
+function checkActivationFromFacts(store,f){
+  const c=store.common,rows=[];
+  const station=f.location.station,arterial=f.location.arterial;
 
-  rows.push(schemeRow('역세권 범위',stationRangeRule,c.dist==null?'-':`${Number(c.dist).toFixed(1)}m${c.stationAuto&&c.stationName?' · '+c.stationName:''}`,
-    stationRangeStatus,
-    threshold==null?'지구중심·비중심이면서 호선수가 미확인되어 250m/350m 확정 보류':
-      `${c.centerLabel?c.centerLabel.replace(/\([^)]*\)$/,'')+' · ':''}${c.centerType||''} · 도심·광역·지역중심 또는 2개 노선 이상 환승역 350m / 지구중심·비중심 단일역 250m`));
-
-  rows.push(schemeRow('사업방식',
-    '지구단위계획 또는 도시정비형 재개발 방식',
-    route==='redevelopment'?'도시정비형 재개발':'지구단위계획',
-    'INFO',
-    `${routeMeta.auto?'AUTO · ':''}${routeMeta.reason}${route==='redevelopment'?' · 10,000㎡ 초과 대상은 지원 자문단 인정 전제':''}`,
-    false));
-
-  let blockStatus='REVIEW',blockNote='가로구역의 1/2 이상이면 원칙 대상';
-  if(c.blockShare!=null){
-    if(c.blockShare>=50)blockStatus='PASS';
-    else {
-      blockStatus='REVIEW';
-      blockNote=(c.maxRoad!=null && c.maxRoad>=20)?'1/2 미만이나 20m 이상 간선가로 접면: 위원회 심의 가능':'1/2 미만: 구역 정형화 등 위원회 인정 여부 확인';
-    }
+  let stationStatus='REVIEW',stationNote='역세권 범위·가로구역 요건 확인 필요';
+  if(station.within===false){stationStatus='FAIL';stationNote=`승강장 경계 ${station.threshold_m||'250/350'}m 범위 밖`;}
+  else if(station.within===true){
+    if(station.block_half_or_more===true){stationStatus='PASS';stationNote='역세권 범위가 가로구역의 1/2 이상';}
+    else if(station.block_half_or_more===false){stationStatus='REVIEW';stationNote=c.maxRoad!=null&&c.maxRoad>=20?'가로구역 1/2 미만 + 20m 이상 간선가로 접면 · 위원회 심의':'가로구역 1/2 미만 · 구역 정형화 필요성 위원회 심의';}
+    else stationStatus='REVIEW';
   }
-  rows.push(schemeRow('가로구역',`역세권 범위가 가로구역 1/2 이상`,c.blockShare==null?'-':`${c.blockShare}%`,blockStatus,blockNote));
+  rows.push(schemeRow('역세권',station.threshold_m?`승강장 경계 ${station.threshold_m}m + 가로구역 기준`:'승강장 경계 250/350m + 가로구역 기준',
+    station.distance_m==null?'-':`${Number(station.distance_m).toFixed(1)}m${station.name?' · '+station.name:''}${station.block_share_pct==null?'':` · 가로구역 ${station.block_share_pct}%`}`,
+    stationStatus,stationNote,false,{sourceId:'ACTIVATION',locator:'1-3-1 가목 / 2-1-2 가목'}));
 
-  let areaStatus='REVIEW',areaNote='기본 1,500~10,000㎡';
-  if(c.area!=null){
-    if(c.area<1500){areaStatus='REVIEW';areaNote='원칙 면적 미달 · 지원 자문단의 기준 외 대상지 인정 전에는 우선순위·시뮬레이션에서 제외';}
-    else if(c.area<=10000)areaStatus='PASS';
-    else if(c.area<=30000 && route==='redevelopment'){
-      areaStatus='REVIEW';
-      areaNote='※ 10,000㎡ 초과·30,000㎡ 이하: 도시정비형 재개발 방식으로 지원 자문단 인정 시 대상 가능';
-    }else areaStatus='FAIL';
+  const arterialStatus=arterial.linear_commercial===true?'PASS':arterial.linear_commercial===false?'FAIL':'REVIEW';
+  rows.push(schemeRow('간선도로변','역세권 외 노선형 상업지역을 포함한 가로구역 전체 또는 일부',arterial.note,arterialStatus,
+    arterialStatus==='REVIEW'?'노선형 상업지역의 공간도형 또는 공식 결정도서 확인 필요':'운영기준 간선도로변 정의',false,{sourceId:'ACTIVATION',locator:'1-3-1 나목 / 2-1-2 나목'}));
+
+  const locationStatus=(stationStatus==='PASS'||arterialStatus==='PASS')?'PASS':
+    (stationStatus==='FAIL'&&arterialStatus==='FAIL')?'FAIL':'REVIEW';
+  rows.push(schemeRow('입지유형','역세권 또는 간선도로변 중 1개 이상 충족',
+    stationStatus==='PASS'?'역세권':arterialStatus==='PASS'?'간선도로변':stationStatus==='FAIL'&&arterialStatus==='FAIL'?'해당 없음':'확인 필요',
+    locationStatus,locationStatus==='PASS'?'사업대상 입지유형 확인':'미확인 유형은 공식 공간자료·위원회 조건 확인',true,{sourceId:'ACTIVATION',locator:'1-3-1 / 2-1-2'}));
+
+  rows.push(schemeRow('용도지역','제2종일반주거(7층 포함)·제3종일반주거·준주거·근린상업·일반상업',f.zoning.current||'-',
+    !f.zoning.current?'REVIEW':f.zoning.allowed?'PASS':'FAIL','대상지 현황 용도지역',true,{sourceId:'ACTIVATION',locator:'2-1-3 가·나목'}));
+
+  let renewalExStatus='REVIEW',renewalExValue='정비구역 GIS 확인 필요';
+  if(f.exclusions.renewal_error){renewalExStatus='REVIEW';renewalExValue='정비구역 GIS 조회 실패';}
+  else if(f.exclusions.renewal_excluded){renewalExStatus='FAIL';renewalExValue=`정비구역 유형 ${f.exclusions.renewal_type}`;}
+  else if(f.exclusions.renewal_exception){renewalExStatus='PASS';renewalExValue='도시정비형 재개발 정비예정구역 · 예외';}
+  else if(f.exclusions.renewal_loaded){renewalExStatus='PASS';renewalExValue='정비구역·예정구역 중첩 없음';}
+  rows.push(schemeRow('정비구역 배타관계','정비구역·정비예정구역 제외, 도시정비형 재개발 정비예정구역 예외',renewalExValue,renewalExStatus,
+    '정비사업 현황도와 동일한 공식 SHP 중첩결과 사용',true,{sourceId:'ACTIVATION',locator:'2-1-3 다목 2)'}));
+
+  const promotionStatus=!f.exclusions.renewal_loaded?'REVIEW':f.exclusions.promotion_hits.length?'REVIEW':'PASS';
+  rows.push(schemeRow('재정비촉진지구','원칙 제외 · 존치관리구역 및 정비구역 해제지역은 예외',
+    f.exclusions.promotion_hits.length?`${f.exclusions.promotion_hits.length}건 중첩 · 세부구역 확인`:(f.exclusions.renewal_loaded?'중첩 없음':'GIS 확인 필요'),promotionStatus,
+    f.exclusions.promotion_hits.length?'존치관리구역·해제지역 예외 여부 결정도서 확인':'공식 SHP 중첩',true,{sourceId:'ACTIVATION',locator:'2-1-3 다목 4)'}));
+
+  let facilityStatus='REVIEW',facilityValue='도시계획시설 GIS 확인 필요';
+  if(f.exclusions.planning_facility_loaded&&!f.exclusions.planning_facility_errors.length){
+    if(f.exclusions.planning_facilities.length){facilityStatus='REVIEW';facilityValue=`${f.exclusions.planning_facilities.length}건 중첩`;}
+    else {facilityStatus='PASS';facilityValue='도시계획시설 중첩 없음';}
   }
-  rows.push(schemeRow('대상지 면적',
-    route==='redevelopment'?'1,500~10,000㎡ 원칙 / 도시정비형 재개발은 30,000㎡ 이하 지원자문단 인정 가능':'1,500~10,000㎡',
-    fmtSchemeArea(c.area),areaStatus,areaNote));
+  rows.push(schemeRow('도시계획시설','원칙 제외 · 시설계획(관리)부서에서 복합·해제 등 조정 가능 검토 시 예외',facilityValue,facilityStatus,
+    f.exclusions.planning_facilities.length?'시설 조정 가능 여부 담당부서 확인':'도시계획시설 현황도와 동일 GIS 결과',true,{sourceId:'ACTIVATION',locator:'2-1-3 다목 3)'}));
 
-  const allowed=['제2종일반주거(7층)','제2종일반주거','제3종일반주거','준주거','근린상업','일반상업'];
-  rows.push(schemeRow('용도지역','2종(7층 포함)·3종·준주거·근린상업·일반상업',c.zoning||'-',
-    c.zoning?schemeStatus(allowed.includes(c.zoning)):'REVIEW','운영기준 대상 용도지역'));
+  const characteristicStatus=f.exclusions.manual_excluded===true?'FAIL':f.exclusions.manual_excluded===false?'PASS':'REVIEW';
+  rows.push(schemeRow('기타 배제지역','서울도심 특성관리지구 + 소규모주택정비 주민합의체·조합설립인가 지역 제외',
+    f.exclusions.manual_excluded===true?'배제지역 해당 확인':f.exclusions.manual_excluded===false?'배제지역 비해당 확인':'공식 공간·사업승인 자료 미연결',characteristicStatus,
+    characteristicStatus==='REVIEW'?'사업별 추가 현황데이터 확보 대상 · 임의 PASS 금지':'수기 또는 공식자료 확인',true,{sourceId:'ACTIVATION',locator:'2-1-3 다목 1)·5)'}));
 
-  const activationRenewalException=c.renewalAreaType==='urban_planned';
-  const activationRenewalExcluded=['housing_district','housing_planned','urban_district','reconstruction'].includes(c.renewalAreaType);
-  rows.push(schemeRow('정비구역 배타관계','정비구역·정비예정구역은 제외, 도시정비형 재개발 정비예정구역은 예외',
-    activationRenewalException?'도시정비형 정비예정구역 · 예외':activationRenewalExcluded?'정비구역·예정구역 중첩':c.renewalAreaType==='none'?'중첩 없음':'GIS·고시 확인 필요',
-    activationRenewalException?'PASS':activationRenewalExcluded?'FAIL':c.renewalAreaType==='none'?'PASS':'REVIEW','운영기준 2-1-3 다목 2)'));
+  const exclusionRows=rows.filter(r=>['정비구역 배타관계','재정비촉진지구','도시계획시설','기타 배제지역'].includes(r.item));
+  const exclusionStatus=exclusionRows.some(r=>r.status==='FAIL')?'FAIL':exclusionRows.some(r=>r.status==='REVIEW')?'REVIEW':'PASS';
+  rows.push(schemeRow('배제지역 종합','운영기준 2-1-3 다목의 배제조건 전체 확인',
+    exclusionStatus==='PASS'?'확인된 배제조건 없음':exclusionStatus==='FAIL'?'배제조건 해당':'일부 배제조건 자료보완 필요',exclusionStatus,
+    '개별 배제행의 상태를 종합',true,{sourceId:'ACTIVATION',locator:'2-1-3 다목'}));
 
   let roadStatus='REVIEW';
-  if(c.roadFaces!=null && c.has8!==null){
-    const ok=c.roadFaces>=2 && c.has8===true;
-    roadStatus=ok?(c.roadQuality==='ESTIMATE'?'REVIEW':'PASS'):'FAIL';
+  if(f.road.road4_faces!=null&&f.road.has_8m!=null){
+    const ok=Number(f.road.road4_faces)>=2&&f.road.has_8m===true;
+    roadStatus=ok?(f.road.quality==='AUTO'?'PASS':'REVIEW'):'FAIL';
   }
-  rows.push(schemeRow('도로','2면 이상 도로 접면 + 최소 1면 폭 8m 이상',
-    `${c.roadFaces==null?'-':c.roadFaces+'면'} / 8m ${c.has8===null?'-':c.has8?'접함':'미접함'}`,
-    roadStatus,'원활한 차량 진출입 가능한 도로'));
+  const roadText=(f.road.roads||[]).slice(0,4).map(x=>`${x.name} ${x.width_m==null?'-':x.width_m.toFixed(1)+'m'}`).join(' / ');
+  rows.push(schemeRow('도로','2면 이상이 폭 4m 이상 도로에 접하고 최소 1면은 폭 8m 이상',
+    `${f.road.road4_faces==null?'-':f.road.road4_faces+'면(4m+)'} / 8m ${f.road.has_8m==null?'-':f.road.has_8m?'접함':'미접함'}${roadText?' · '+roadText:''}`,
+    roadStatus,factQualityLabel(f.road.quality),true,{sourceId:'ACTIVATION',locator:'2-1-4 가목'}));
 
-  rows.push(schemeRow('사전협상 제외','5,000㎡ 이상 사전협상 대상지요건에 해당하면 제외',
-    c.priorNegotiation===null?'-':c.priorNegotiation?'해당':'비해당',
-    c.priorNegotiation===null?'REVIEW':schemeStatus(!c.priorNegotiation),'면적만으로 확정하지 않고 대상지요건 여부 입력'));
-  if(c.area!=null && c.area>=5000){
-    rows.push(schemeRow('사업범위 전략','사전협상 대상요건·가로구역·소유관계를 함께 검토','대상지 범위 조정 또는 단계별 추진 검토','INFO','단순 면적분할이 아니라 기능적 일체성과 담당부서 사전협의를 전제로 검토',false));
+  let areaStatus='REVIEW',areaNote='1,500~10,000㎡ 원칙';
+  if(f.area.m2!=null){
+    if(f.area.base_ok){areaStatus='PASS';areaNote='기본 면적요건 충족';}
+    else if(f.route.route==='redevelopment'&&f.area.m2>30000){areaStatus='FAIL';areaNote='도시정비형 재개발 방식의 자문단 인정범위 30,000㎡ 초과';}
+    else {areaStatus='REVIEW';areaNote='기본 면적요건 밖 · 지원 자문단 인정 시 대상 가능';}
   }
+  rows.push(schemeRow('대상지 면적','1,500~10,000㎡ 원칙 · 기준 외 대상지는 지원 자문단 인정, 도시정비형 재개발 방식은 30,000㎡ 이하',
+    fmtSchemeArea(f.area.m2),areaStatus,areaNote,true,{sourceId:'ACTIVATION',locator:'2-1-4 나목'}));
 
-  const ageInfo=route==='redevelopment'
-    ? `재개발 연령판정 ${analysisState.metrics.old_count??'-'}/${analysisState.metrics.total_buildings??'-'}동`
-    : `20년 이상 ${c.age20.count}/${c.age20.total}동 (${fmtSchemePct(c.age20.ratio)})`;
-  rows.push(schemeRow('노후도','사업유형별 노후건축물 기준 적용',ageInfo,'INFO','지구단위계획·도시정비형 재개발 각각의 노후도 기준 적용',false));
+  const prior=f.exclusions.prior_negotiation;
+  const priorStatus=prior===true?'FAIL':prior===false?'PASS':(f.area.m2!=null&&f.area.m2<5000?'PASS':'REVIEW');
+  rows.push(schemeRow('사전협상 대상여부','5,000㎡ 이상의 사전협상 협상대상지요건을 갖춘 지역은 역세권활성화 대상에서 제외',
+    prior===true?'사전협상 대상요건 해당':prior===false?'사전협상 대상요건 비해당':f.area.m2!=null&&f.area.m2<5000?'5,000㎡ 미만':'사전협상 대상요건 확인 필요',
+    priorStatus,priorStatus==='REVIEW'?'면적만으로 사전협상 해당을 확정하지 않고 협상대상지요건 별도 검토':'운영기준 2026.04.30 반영',true,{sourceId:'ACTIVATION',locator:'2-1-4 나목 단서'}));
 
-  if(route==='district'){
-    rows.push(schemeRow('대상지 선정 동의','대상 토지면적의 2/3 이상 토지소유자 동의',
-      c.landConsent==null?'-':`${c.landConsent}%`,
-      c.landConsent==null?'REVIEW':schemeStatus(c.landConsent>=66.6667),'지구단위계획 방식'));
+  const aging=f.aging.assessment;
+  rows.push(schemeRow('노후건축물',f.route.route==='redevelopment'?'도정법·서울시 도시정비조례 노후도 기준':'서울시 도시계획조례 시행규칙 별표1 노후도 기준',
+    ageFactValue(aging),aging?.status||'REVIEW',`${ageFactNote(aging)} · 역세권 활성화 운영기준 2-1-4 다목에서 사업유형별 기준 적용`,true,{sourceId:aging?.source_id||(f.route.route==='redevelopment'?'RENEWAL_AGE':'URBAN_PLANNING_AGE'),locator:aging?.source_locator||'역세권 활성화 운영기준 2-1-4 다목'}));
+
+  if(f.route.route==='district'){
+    rows.push(schemeRow('대상지 선정 동의','대상 토지면적의 2/3 이상 토지소유자 동의',c.landConsent==null?'-':`${c.landConsent}%`,
+      c.landConsent==null?'REVIEW':schemeStatus(c.landConsent>=66.6667),'대상지 선정 신청 단계에서 확보',false,{sourceId:'ACTIVATION',locator:'2-2-3 가목'}));
   }else{
-    const st=(c.ownerConsent==null||c.landConsent==null)?'REVIEW':schemeStatus(c.ownerConsent>=50 && c.landConsent>=40);
+    const st=(c.ownerConsent==null||c.landConsent==null)?'REVIEW':schemeStatus(c.ownerConsent>=50&&c.landConsent>=40);
     rows.push(schemeRow('대상지 선정 동의','토지등소유자 50% 이상 + 토지면적 40% 이상',
-      `소유자 ${c.ownerConsent==null?'-':c.ownerConsent+'%'} / 면적 ${c.landConsent==null?'-':c.landConsent+'%'}`,st,'도시정비형 재개발 방식'));
+      `소유자 ${c.ownerConsent==null?'-':c.ownerConsent+'%'} / 면적 ${c.landConsent==null?'-':c.landConsent+'%'}`,st,'대상지 선정 신청 단계에서 확보',false,{sourceId:'ACTIVATION',locator:'2-2-3 나목'}));
+    rows.push(schemeRow('도시정비형 추가요건','재개발 목적 정합성 + 시행령 별표1 입안대상 + 2030 기본계획 노후도 모두 만족','별도 정비모듈 검토','REVIEW',
+      '정비모듈 완성 전 자동확정하지 않음',false,{sourceId:'ACTIVATION',locator:'2-2-4 가~다목'}));
   }
+
   const den=activationDensity(c);
-  rows.push(schemeRow('제도적 용적률',den.zone,den.far,'INFO','용도지역 변경·공공기여 전제',false));
-  rows.push(schemeRow('공공기여 기준','종상향 증가용적률의 50% 환산',den.contribution,'INFO','운영기준 제4장 공공기여율 표 적용',false));
-  const deemed=activationUrbanDeeming(c);
-  rows.push(schemeRow('도정법 의제연결',
-    '요건 충족 후 도시정비형 재개발 방식 적용 시 도시정비형 재개발 정비예정구역 의제',
-    '→ 도시정비형 재개발사업',deemed.status,
-    '정책사업 판정에서 끝내지 않고 도시정비형 재개발 Rule Engine으로 연결',false));
+  rows.push(schemeRow('용도지역 변경 범위','중심지체계·역 인접부·간선가로 연접부·복합용도에 따라 최대변경범위 검토',den.zone,'INFO','위원회 심의에서 최종 결정',false,{sourceId:'ACTIVATION',locator:'3-1-1~3-1-3'}));
+  rows.push(schemeRow('용적률 계획기준','기준(허용)용적률 / 상한용적률 / 계획용적률을 구분',den.far,'INFO','상한용적률 이하에서 위원회가 계획용적률 결정',false,{sourceId:'ACTIVATION',locator:'1-3-5~1-3-7 / 제3장'}));
+  rows.push(schemeRow('공공기여 기준','증가용적률의 50%를 부지면적으로 환산한 용도지역 변경조합별 기준',den.contribution,'INFO','최종 용도지역 변경안에 따라 적용',false,{sourceId:'ACTIVATION',locator:'4-1-1'}));
   return rows;
+}
+function checkActivation(c){
+  // legacy 직접호출 호환용. 실제 runAllSchemeChecks에서는 Fact Store 기반 모듈이 사용된다.
+  const store=latestSiteFactStore||buildSiteFactStore();
+  const facts=activationSpatialFacts(store);
+  return checkActivationFromFacts(store,facts);
 }
 
 function safeDistrictPlanOverlapState(){
@@ -6010,10 +6489,9 @@ function checkSafe(c){
     `상위지역 인접 ${adjacent===null?'-':adjacent?'O':'X'} / 최대도로 ${c.maxRoad==null?'-':c.maxRoad+'m'}`,roadConditionStatus,
     adjacent===null&&roadWidthOk!==true?'인접 용도지역 GIS·공식 도로폭원 중 하나 이상 확인 필요':'운영기준 용도지역 변경 인접·도로기준',true,{sourceId:'SAFE_OP',locator:'운영기준 2-3-1 나목'}));
 
-  const agePass=c.allNonResidential ? true : (c.age20.ratio==null?null:c.age20.ratio>=50);
-  rows.push(schemeRow('노후도','20년 이상 건축물 50% 이상 / 기존 건축물이 전부 비주거면 충족 간주',
-    c.allNonResidential?'비주거 전체 → 간주충족':`${c.age20.count}/${c.age20.total}동 (${fmtSchemePct(c.age20.ratio)})`,
-    agePass===null?'REVIEW':schemeStatus(agePass),`사용승인일 확인 ${c.age20.known}/${c.age20.total}동`));
+  const safeAge=schemeAgeFact(c,'safe');
+  rows.push(schemeRow('노후도','안심주택 조례: 20년 이상 건축물 50% 이상 / 기존 건축물이 전부 비주거면 충족 간주',
+    ageFactValue(safeAge),safeAge?.status||'REVIEW',ageFactNote(safeAge),true,{sourceId:safeAge?.source_id||'SAFE_ORD',locator:safeAge?.source_locator||'조례 제5조제4항'}));
 
   rows.push(schemeRow('제외지역','정책상 보전·양호 저층주거·타 법령 추진지역 등 제외',
     c.excluded===null?'-':c.excluded?'해당':'비해당',
@@ -6042,8 +6520,9 @@ function checkStationComplex(c){
     else zst='FAIL';
   }
   rows.push(schemeRow('용도지역','준주거 / 2·3종 일반주거는 준주거 변경 검토',c.zoning||'-',zst,zn));
-  rows.push(schemeRow('노후도','노후도 요건 충족 필요',`${c.age20.count}/${c.age20.total}동 20년+ (${fmtSchemePct(c.age20.ratio)})`,
-    'INFO','2021 공개기준은 존재하나 2026 사업제안 전 최신 지구단위계획 기준 재확인',false));
+  const stationAge=schemeAgeFact(c,'station_complex');
+  rows.push(schemeRow('노후도','서울시 도시계획조례 시행규칙 노후도 참고',ageFactValue(stationAge),
+    'INFO',`${ageFactNote(stationAge)} · 역세권 복합개발 사업기준은 최신 원문 재확인`,false,{sourceId:'STATION_COMPLEX'}));
   const stationRenewalExcluded=!['none','auto'].includes(c.renewalAreaType);
   const stationExcluded=c.excluded===true||stationRenewalExcluded;
   rows.push(schemeRow('제외지역','역사도심 특성관리·구릉지·정비(예정)구역 등 제외',
@@ -6097,11 +6576,9 @@ function checkLongterm(c){
   rows.push(schemeRow('계획 세대수','100세대 이상',c.units==null?'-':`${c.units}세대`,
     c.units==null?'REVIEW':schemeStatus(c.units>=100),''));
 
-  const a=route==='district'?c.age20:c.age30;
-  const threshold=route==='district'?50:60;
-  rows.push(schemeRow('노후도',route==='district'?'20년 이상 50% 이상':'30년 이상 60% 이상',
-    `${a.count}/${a.total}동 (${fmtSchemePct(a.ratio)})`,
-    a.ratio==null?'REVIEW':schemeStatus(a.ratio>=threshold),`사용승인일 확인 ${a.known}/${a.total}동`));
+  const longtermAge=schemeAgeFact(c,'longterm',route);
+  rows.push(schemeRow('노후도',route==='district'?'역세권 장기전세 운영기준: 지구단위계획 20년 이상 50%':'역세권 장기전세 운영기준: 정비계획 30년 이상 60%',
+    ageFactValue(longtermAge),longtermAge?.status||'REVIEW',ageFactNote(longtermAge),true,{sourceId:longtermAge?.source_id||'LONGTERM_OP',locator:longtermAge?.source_locator||'운영기준 2-1-4 나목'}));
 
   if(route==='district'){
     rows.push(schemeRow('사전검토 동의','토지면적 50% 이상',c.landConsent==null?'-':`${c.landConsent}%`,
@@ -6167,8 +6644,8 @@ function checkPublicComplex(c){
     rows.push(schemeRow('면적','10,000㎡ 이상',fmtSchemeArea(c.area),c.area==null?'REVIEW':schemeStatus(c.area>=10000),''));
   }
 
-  rows.push(schemeRow('노후도','20년 이상 노후건축물 40% 이상(시행령 최소기준)',`${c.age20.count}/${c.age20.total}동 (${fmtSchemePct(c.age20.ratio)})`,
-    c.age20.ratio==null?'REVIEW':schemeStatus(c.age20.ratio>=40),`사용승인일 확인 ${c.age20.known}/${c.age20.total}동`));
+  const publicAge=schemeAgeFact(c,'public_complex');
+  rows.push(schemeRow('노후도','공공주택특별법 체계의 해당 유형 노후도 기준',ageFactValue(publicAge),publicAge?.status||'REVIEW',ageFactNote(publicAge),true,{sourceId:publicAge?.source_id||'PUBLIC_COMPLEX',locator:publicAge?.source_locator||'업무처리지침 적용기준'}));
   rows.push(schemeRow('기타 지정기준','용도지역·호수밀도 등 국토교통부 고시 세부요건', '후속확인','INFO','공공주택 업무처리지침·지정권자 검토사항',false));
   rows.push(schemeRow('사업 성격','공공주택사업자 중심 공공주도 복합사업','공공사업 후보검토','INFO','민간 단독 사업방식과 구분',false));
   const den=publicComplexDensity(c);
@@ -6248,8 +6725,9 @@ function checkInnovation(c){
     rows.push(schemeRow('입지','사업면적 과반 역세권 / 준공업은 전부 역세권+공장비율 10% 미만',
       `${c.dist==null?'-':Number(c.dist).toFixed(1)+'m'} / 포함 ${innovationCoverage==null?'-':Number(innovationCoverage).toFixed(1)+'%'}${c.zoning==='준공업'?` / 공장 ${c.factory==null?'-':c.factory+'%'}`:''}`,locSt,locNote+(c.stationAuto?' · 지하철역사 GIS AUTO':'')));
 
-    rows.push(schemeRow('노후도','20년 이상 60% 이상',`${c.age20.count}/${c.age20.total}동 (${fmtSchemePct(c.age20.ratio)})`,
-      c.age20.ratio==null?'REVIEW':schemeStatus(c.age20.ratio>=60),`사용승인일 확인 ${c.age20.known}/${c.age20.total}동`));
+    const innovationAge=schemeAgeFact(c,'innovation');
+    rows.push(schemeRow('노후도','서울시 도심복합개발 조례 주거중심형: 20년 이상 60% 이상',ageFactValue(innovationAge),
+      innovationAge?.status||'REVIEW',ageFactNote(innovationAge),true,{sourceId:innovationAge?.source_id||'INNOVATION',locator:innovationAge?.source_locator||'서울시 조례 제5조'}));
     rows.push(schemeRow('면적','20,000~60,000㎡',fmtSchemeArea(c.area),
       c.area==null?'REVIEW':schemeStatus(c.area>=20000 && c.area<=60000),'서울 조례'));
 
@@ -6346,10 +6824,11 @@ function checkGrowthPotential(c){
   rows.push(schemeRow('면적',areaRule,fmtSchemeArea(c.area),areaStatus,
     !areaOk&&c.growthAdvisory===true?'기준 외 면적 · 지원자문단 예외 인정 확인':'운영기준 2-1-5'));
 
-  const agingStatus=c.growthAging===null?'REVIEW':schemeStatus(c.growthAging);
-  rows.push(schemeRow('노후도',typ==='district'?'지구단위계획형: 도시계획조례 시행규칙 별표1 기준':'도시정비형: 도시정비법·서울시 정비조례 노후도 기준',
-    c.growthAging===null?'미확인':c.growthAging?'충족 확인':'미충족',agingStatus,
-    `현재 30년 이상 ${c.age30.count}/${c.age30.total}동 (${fmtSchemePct(c.age30.ratio)}) · 자동수치만으로 법정충족 강행하지 않음`));
+  const growthAge=schemeAgeFact(c,'growth_potential',typ);
+  let agingStatus=growthAge?.status||'REVIEW',agingValue=ageFactValue(growthAge),agingNote=ageFactNote(growthAge);
+  if(agingStatus==='REVIEW'&&c.growthAging!==null){agingStatus=schemeStatus(c.growthAging);agingValue+=c.growthAging?' · 공식확인값: 충족':' · 공식확인값: 미충족';agingNote+=' · 사용자 공식확인값으로 REVIEW 보정';}
+  rows.push(schemeRow('노후도',typ==='district'?'지구단위계획형: 서울시 도시계획조례 시행규칙 별표1 기준':'도시정비형: 도정법·서울시 도시정비조례 기준',
+    agingValue,agingStatus,agingNote,true,{sourceId:growthAge?.source_id||(typ==='district'?'URBAN_PLANNING_AGE':'RENEWAL_AGE'),locator:growthAge?.source_locator||'성장잠재권 운영기준 사업유형별 노후도'}));
 
   rows.push(schemeRow('사업유형','유형1 건축허가/주택법 승인(지구단위계획) 또는 유형2 도시정비형 재개발',
     typ==='district'?'유형1 · 지구단위계획':'유형2 · 도시정비형 재개발','INFO','',false));
@@ -6451,10 +6930,12 @@ function calculateScheme(name,c){
 function updateSchemeAutoStrip(c){
   const totalParcels=Number(document.getElementById('total_parcel_count')?.value)||selectedParcelPnus.size||0;
   const small=Number(document.getElementById('small_parcel_count')?.value)||0;
+  const age=latestSiteFactStore?.derived?.age||c.ageFacts||{};
+  const up=age.urban_planning,ur=age.urban_renewal;
   document.getElementById('schemeAutoArea').textContent=fmtSchemeArea(c.area);
-  document.getElementById('schemeAutoBuildings').textContent=c.age20.total?`${c.age20.total}동`:'-';
-  document.getElementById('schemeAutoAge20').textContent=c.age20.total?`${c.age20.count}/${c.age20.total} (${fmtSchemePct(c.age20.ratio)})`:'-';
-  document.getElementById('schemeAutoAge30').textContent=c.age30.total?`${c.age30.count}/${c.age30.total} (${fmtSchemePct(c.age30.ratio)})`:'-';
+  document.getElementById('schemeAutoBuildings').textContent=latestSiteFactStore?.site?.building?.total?`${latestSiteFactStore.site.building.total}동`:'-';
+  document.getElementById('schemeAutoAge20').textContent=up?`${up.status==='PASS'?'충족':up.status==='FAIL'?'미충족':'확인'} · ${up.calculated_lower_pct==null?'-':up.calculated_lower_pct.toFixed(1)+'~'+up.calculated_upper_pct.toFixed(1)+'%'}`:'-';
+  document.getElementById('schemeAutoAge30').textContent=ur?`${ur.status==='PASS'?'충족':ur.status==='FAIL'?'미충족':'확인'} · ${ur.calculated_lower_pct==null?'-':ur.calculated_lower_pct.toFixed(1)+'~'+ur.calculated_upper_pct.toFixed(1)+'%'}`:'-';
   document.getElementById('schemeAutoSmall').textContent=totalParcels?`${small}/${totalParcels}필지`:'-';
 }
 
@@ -6539,25 +7020,33 @@ function setActiveScheme(name){
 function runAllSchemeChecks(){
   const panel=document.querySelector('.scheme-panel');
   if(!panel)return;
-  const c=commonSchemeData();
-  updateSchemeAutoStrip(c);
 
-  // 1) 법정/정량 Rule Engine
+  // 1) 한 번의 현황 스냅샷을 모든 사업모듈이 공유한다.
+  //    사업모듈은 GIS/DOM을 다시 읽어 서로 다른 결과를 만들지 않는다.
+  const store=buildSiteFactStore();
+  const c=store.common;
+  updateSchemeAutoStrip(c);
+  latestSchemeModuleResults={};
+
+  // 2) 사업별 독립 검토모듈 실행.
+  //    역세권활성화는 새 구조, 나머지는 이전 완료 전까지 legacy-adapter.
   for(const name of Object.keys(schemeNames)){
-    const rows=calculateScheme(name,c);
-    const overall=overallScheme(rows);
-    const density=densityForScheme(name,c);
-    schemeResults[name]={rows,overall,density};
+    const result=evaluateSchemeModule(name,store);
+    schemeResults[name]=result;
   }
 
-  // 2) 목적사업·법정진입·시행구조를 결합한 Candidate Engine
+  // 3) 사업별 추가현황도 같은 Fact Store를 공간현황 박스에 노출한다.
+  renderSchemeSpecificSpatialStatus(store);
+
+  // 4) 사업모듈 결과를 Candidate/우선순위가 읽는다.
   updateCandidateSchemes();
 
-  // 3) 두 결과를 분리해서 렌더링
+  // 5) 검토서·비교표·현황 UI는 같은 schemeResults를 사용한다.
   renderSchemeComparison();
   renderAllSchemeSheets();
-  updateCompactInfoRail();
+  updateCompactInfoRail(store);
   updateSiteStatusCard();
+  renderPriorityPreview();
 
   if(mobileSelectedSchemeName)renderMobileSelectedScheme(mobileSelectedSchemeName);
 }
@@ -7251,9 +7740,9 @@ function ccContextFor(name){
   const purpose=document.getElementById('ccPurpose')?.value||'';
   const land=document.getElementById('ccLandControl')?.value||'';
   const actor=document.getElementById('ccActor')?.value||'';
-  const ready=commonSchemeData().area!=null;
+  const c=latestSiteFactStore?.common||commonSchemeData();
+  const ready=c.area!=null;
   const reasons=[];
-  const c=commonSchemeData();
   const pGate=purposeGate(name,purpose);
   const regulatory=schemeResults[name]?.overall||'REVIEW';
 
@@ -7479,6 +7968,10 @@ function candidateRegCounts(name){return schemeResultCounts(schemeResults[name]?
 function candidateSortTuple(name){
   const st=ccCandidateState[name]||ccContextFor(name);
   const cnt=candidateRegCounts(name);
+  const module=schemeResults[name]||{};
+  const strengths=(module.strengths||[]).length;
+  const risks=(module.risks||[]).length;
+  const followups=(module.followups||[]).length;
   return {
     purposeRank:st.purposeGate==='priority'?2:st.purposeGate==='secondary'?1:0,
     structuralRank:st.structural==='PASS'?2:st.structural==='REVIEW'?1:0,
@@ -7487,15 +7980,18 @@ function candidateSortTuple(name){
     execRank:(st.execution?.land==='FIT'?1:0)+(st.execution?.actor==='FIT'?1:0),
     finalRank:st.state==='on'?2:st.state==='mid'?1:0,
     densityTier:densityPotentialForScheme(name,st).tier,
+    strengths,risks,followups,
     review:cnt.review,pass:cnt.pass,fail:cnt.fail
   };
 }
 function compareCandidateNames(a,b){
   const A=candidateSortTuple(a),B=candidateSortTuple(b);
   // 가중점수 합산이 아니라 우선순위가 고정된 사전식 비교.
-  for(const k of ['finalRank','purposeRank','structuralRank','areaRank','regulatoryRank','execRank','densityTier']){
+  for(const k of ['finalRank','purposeRank','structuralRank','regulatoryRank','areaRank','execRank','densityTier','strengths']){
     if(A[k]!==B[k])return B[k]-A[k];
   }
+  if(A.risks!==B.risks)return A.risks-B.risks;
+  if(A.followups!==B.followups)return A.followups-B.followups;
   if(A.fail!==B.fail)return A.fail-B.fail;
   if(A.review!==B.review)return A.review-B.review;
   if(A.pass!==B.pass)return B.pass-A.pass;
@@ -7518,6 +8014,10 @@ function rankingReason(name){
   if(name==='redevelopment')bits.splice(2,0,st.legalEntry==='PASS'?'재개발 입안게이트 통과':st.legalEntry==='FAIL'?'재개발 입안게이트 미충족':'재개발 입안게이트 미확인');
   const fits=(st.execution?.land==='FIT'?1:0)+(st.execution?.actor==='FIT'?1:0);
   bits.push(fits===2?'시행구조 적합':fits===1?'시행구조 일부조정':'시행구조 조정');
+  const module=schemeResults[name]||{};
+  if((module.strengths||[]).length)bits.push(`강점 ${(module.strengths||[]).slice(0,2).join('·')}`);
+  if((module.risks||[]).length)bits.push(`약점 ${(module.risks||[]).slice(0,2).join('·')}`);
+  if((module.followups||[]).length)bits.push(`후속 ${(module.followups||[]).slice(0,2).join('·')}`);
   const dp=densityPotentialForScheme(name,st);
   if(st.state!=='off')bits.push(`${densityTierLabel(dp.tier)}${dp.station?'·역세권':''}`);
   return bits.join(' · ');
@@ -7525,9 +8025,9 @@ function rankingReason(name){
 function autoRecommendationTop3(){
   return rankedSchemeNames().filter(n=>{
     const st=ccCandidateState[n]||ccContextFor(n);
-    // 면적 예외·법정 진입경로가 확인되지 않은 사업은 카드에는 남기되
-    // 1~3순위와 계획규모 시뮬레이션에는 올리지 않는다.
-    if(st.areaGate!=='PASS'||st.structural!=='PASS')return false;
+    // 명백한 FAIL만 순위에서 제외한다. 자문단 인정·위원회 심의·자료보완 REVIEW는
+    // 사업 가능성을 닫지 않고 조건부 후보로 남긴다.
+    if(st.areaGate==='FAIL'||st.structural==='FAIL')return false;
     if(n==='redevelopment'&&st.legalEntry!=='PASS')return false;
     return st.state==='on'||st.state==='mid';
   }).slice(0,3);
@@ -8260,6 +8760,10 @@ function updateCandidateSchemes(){
       review_reasons:st.reviewReasons||[],
       failure_detail:st.failureDetail||'',
       review_detail:st.reviewDetail||'',
+      strengths:schemeResults[x.name]?.strengths||[],
+      risks:schemeResults[x.name]?.risks||[],
+      followups:schemeResults[x.name]?.followups||[],
+      module:schemeResults[x.name]?.module||'legacy-adapter',
       density_potential:x.density||densityPotentialForScheme(x.name,st),
       reasons:st.reasons||[]
     };
@@ -8270,7 +8774,7 @@ function updateCandidateSchemes(){
   const land=document.getElementById('ccLandControl')?.value;
   const actor=document.getElementById('ccActor')?.value;
   if(sum){
-    if(commonSchemeData().area==null){
+    if((latestSiteFactStore?.common||commonSchemeData()).area==null){
       sum.textContent='주소를 검색하거나 지도에 구역을 그리면 공간정보와 사업방식을 자동 검토합니다.';
     }else if(!(purpose&&land&&actor)){
       sum.textContent=on+mid
@@ -8307,7 +8811,7 @@ function scrollToSchemeDetail(name){
 function ccTopEntries(mp,limit=5){
   return [...mp.entries()].sort((a,b)=>b[1]-a[1]).slice(0,limit);
 }
-function updateCompactInfoRail(){
+function updateCompactInfoRail(siteStore=null){
   const base=selectedParcelLandBase();
   const parcels=[...selectedParcelPnus].map(p=>parcelFeatureMap.get(String(p))).filter(Boolean);
   const small=parcels.filter(f=>(f.properties||{}).is_small===true).length;
@@ -8338,7 +8842,9 @@ function updateCompactInfoRail(){
   }
 
   const records=selectedHubRecordsForSchemes();
-  const old=records.filter(r=>r.age_status==='OLD').length;
+  const rawBuildingFacts=buildingRawFacts();
+  const approvalKnown=rawBuildingFacts.filter(r=>rawFactDate(r)).length;
+  const elapsed20=rawBuildingFacts.filter(r=>rawFactOlderThan(r,20)).length;
   const floorArea=records.reduce((s,r)=>s+(Number(r.totArea)||0),0);
   const purposes=new Map();
   for(const r of records){
@@ -8346,8 +8852,8 @@ function updateCompactInfoRail(){
     purposes.set(p,(purposes.get(p)||0)+1);
   }
   set('ccBuildingTotal',records.length?`${records.length}동`:(currentBuildingFeatures.length?`${currentBuildingFeatures.length}동(1차)`:'-'));
-  set('ccBuildingOld',records.length?`${old}동`:'-');
-  set('ccBuildingOldRatio',records.length?`${(old/records.length*100).toFixed(1)}%`:'-');
+  set('ccBuildingOld',records.length?`${approvalKnown}/${records.length}동`:'-');
+  set('ccBuildingOldRatio',records.length?`${elapsed20}/${records.length}동 (${(elapsed20/records.length*100).toFixed(1)}%)`:'-');
   set('ccBuildingFloorArea',floorArea?`${fmt(floorArea,0)}㎡`:'-');
   set('ccBuildingState',records.length?'건축HUB 연결':(currentBuildingFeatures.length?'공간건물 1차':'구역 설정 전'));
   const bLegend=document.getElementById('ccBuildingLegend');
@@ -8355,6 +8861,7 @@ function updateCompactInfoRail(){
     const entries=ccTopEntries(purposes);
     bLegend.innerHTML=entries.length?entries.map(([k,v])=>`<span>${escHtml(k)} <b>${v}</b></span>`).join(''):'<span>건축HUB 조회 후 표시</span>';
   }
+  try{renderAgeSpatialStatus((siteStore||buildSiteFactStore()).derived.age);}catch(e){renderAgeSpatialStatus(null);}
   refreshCompactMiniMaps();
   enforceLocationMapBoundaryOnly();
 
@@ -8397,12 +8904,11 @@ function updateSiteStatusCard(){
   const small=Number(document.getElementById('small_parcel_count')?.value)||0;
 
   const records=selectedHubRecordsForSchemes();
+  const rawBuildingFacts=buildingRawFacts();
   const totalBuildings=records.length || Number(document.getElementById('total_building_count')?.value)||0;
-  const old=records.length
-    ? records.filter(r=>r.age_status==='OLD').length
-    : Number(document.getElementById('old_building_count')?.value)||0;
-
-  const oldRatio=totalBuildings>0 ? old/totalBuildings*100 : null;
+  const approvalKnown=records.length?rawBuildingFacts.filter(r=>rawFactDate(r)).length:0;
+  const elapsed20=records.length?rawBuildingFacts.filter(r=>rawFactOlderThan(r,20)).length:0;
+  const elapsed20Ratio=totalBuildings>0 ? elapsed20/totalBuildings*100 : null;
   const smallRatio=parcels>0 ? small/parcels*100 : null;
 
   const siteZone=document.getElementById('site_status_zoning');
@@ -8416,8 +8922,8 @@ function updateSiteStatusCard(){
   set('siteStatusNetSite',area?`${fmt(landBase.baseNetSite,0)}㎡`:'-');
   set('siteStatusParcels',parcels?`${parcels}필지`:'-');
   set('siteStatusBuildings',totalBuildings?`${totalBuildings}동`:'-');
-  set('siteStatusOldBuildings',totalBuildings?`${old}동`:'-');
-  set('siteStatusOldRatio',oldRatio==null?'-':`${oldRatio.toFixed(1)}%`);
+  set('siteStatusOldBuildings',totalBuildings?`${approvalKnown}/${totalBuildings}동`:'-');
+  set('siteStatusOldRatio',elapsed20Ratio==null?'-':`${elapsed20}/${totalBuildings}동 (${elapsed20Ratio.toFixed(1)}%)`);
   set('siteStatusSmallParcels',parcels?`${small}필지`:'-');
   set('siteStatusSmallRatio',smallRatio==null?'-':`${smallRatio.toFixed(1)}%`);
   const totalArea=area||1;
@@ -8443,7 +8949,7 @@ function updateSiteStatusCard(){
     parts.push(`면적 ${fmt(area,0)}㎡`);
     if(parcels)parts.push(`필지 ${parcels}필지`);
     if(totalBuildings)parts.push(`건축물 ${totalBuildings}동`);
-    if(oldRatio!=null)parts.push(`노후도 ${oldRatio.toFixed(1)}%`);
+    if(elapsed20Ratio!=null)parts.push(`20년 경과(참고) ${elapsed20Ratio.toFixed(1)}%`);
     if(smallRatio!=null)parts.push(`90㎡ 미만 ${smallRatio.toFixed(1)}%`);
     if(zoneComp)parts.push(`용도지역 ${zoneComp}`);
     else if(siteZone?.value||schemeZone?.value)parts.push(`용도지역 ${siteZone?.value||schemeZone?.value}`);
@@ -9081,6 +9587,13 @@ function buildServiceLayout(){
           </section>
           <div id="serviceSchemeMount"></div>
           <div id="serviceResultMount"></div>
+          <section class="service-priority-preview" id="servicePriorityPreview">
+            <div class="service-priority-preview-head"><b>선순위 사업 미리보기</b><span>사업별 검토결과를 비교해 자동 갱신</span></div>
+            <div class="service-priority-preview-body" id="servicePriorityPreviewBody">
+              <div><div class="priority-preview-rank"><strong>대상지 분석 전</strong></div><table class="priority-preview-table"><tbody><tr><th>사업정보</th><td>구역계를 설정하면 선순위 사업의 핵심 계획정보를 표시합니다.</td></tr></tbody></table></div>
+              <div class="priority-mass-placeholder"><b>위치기반 매스 이미지</b><span>대상지 형상·도로·계획규모를 반영하는 프로토타입 영역</span><em>현재 버전은 UI 자리만 제공</em></div>
+            </div>
+          </section>
         </div>
       </div>
     </section>
@@ -9096,7 +9609,7 @@ function buildServiceLayout(){
         </button>
         <button class="service-overview-card" onclick="openSiteOverviewModal('building')" type="button">
           <div class="service-overview-card-head"><b>건축물</b><span>상세보기 ›</span></div>
-          <div class="service-overview-metrics"><div><span>건축물</span><b id="ovBldTotal">-</b></div><div><span>노후건축물</span><b id="ovBldOld">-</b></div><div><span>노후도</span><b id="ovBldOldRatio">-</b></div><div><span>총연면적</span><b id="ovBldFloor">-</b></div></div>
+          <div class="service-overview-metrics"><div><span>건축물</span><b id="ovBldTotal">-</b></div><div><span>사용승인일 확인</span><b id="ovBldOld">-</b></div><div><span>20년 경과(참고)</span><b id="ovBldOldRatio">-</b></div><div><span>총연면적</span><b id="ovBldFloor">-</b></div></div>
           <div class="service-overview-foot">건축물대장·사용승인일·구조·용도</div>
         </button>
         <button class="service-overview-card" onclick="openSiteOverviewModal('station')" type="button">
@@ -9116,11 +9629,11 @@ function buildServiceLayout(){
         </button>
         <button class="service-overview-card" onclick="openSiteOverviewModal('summary')" type="button">
           <div class="service-overview-card-head"><b>종합현황</b><span>상세보기 ›</span></div>
-          <div class="service-overview-metrics"><div><span>용도지역</span><b id="ovSummaryZone">-</b></div><div><span>과소필지율</span><b id="ovSummarySmall">-</b></div><div><span>노후도</span><b id="ovSummaryOld">-</b></div><div><span>순수대지</span><b id="ovSummaryNet">-</b></div></div>
+          <div class="service-overview-metrics"><div><span>용도지역</span><b id="ovSummaryZone">-</b></div><div><span>과소필지율</span><b id="ovSummarySmall">-</b></div><div><span>20년 경과(참고)</span><b id="ovSummaryOld">-</b></div><div><span>순수대지</span><b id="ovSummaryNet">-</b></div></div>
           <div class="service-overview-foot" id="ovSummaryFoot">대상지 분석 전</div>
         </button>
       </div>
-      <div class="service-visual-maps" id="serviceVisualMaps"><div class="service-block-title"><b>공간현황 도면</b><span>필지·과소필지·노후도·역세권·중심지·도시계획 중첩을 지도에서 확인</span></div></div>
+      <div class="service-visual-maps" id="serviceVisualMaps"><div class="service-block-title"><b>공간현황 도면</b><span>필지·과소필지·건축물 연령·제도별 노후도·역세권·중심지·도시계획 중첩을 확인</span></div></div>
       <div class="service-overview-note"><span>화면에는 핵심값만 표시합니다. 원장·도면·수기보완·데이터 출처는 상세현황 팝업에서 확인합니다.</span><button type="button" onclick="openSiteOverviewModal('summary')">전체 상세현황</button></div>
     </section>`;
   main.insertAdjacentHTML('beforeend','<div class="service-privacy-note">서비스 개선과 이용통계를 위해 익명 식별자, 분석 실행기록, 검토 대상지의 주소·PNU·면적을 수집합니다. 이름·이메일·원문 IP·원본 구역계는 저장하지 않습니다.</div>');
@@ -9147,7 +9660,7 @@ function buildServiceLayout(){
   const visualMaps=document.getElementById('serviceVisualMaps');
   if(spatial){
     const mods=[...spatial.querySelectorAll('.spatial-module')];
-    const mapIds=['land','building','station','center'];
+    const mapIds=['land','building','age','station','center','renewal','development','schemeSpecific'];
     mods.forEach((el,i)=>{if(mapIds[i])el.id=`siteDetail_${mapIds[i]}`;});
     visualMaps.appendChild(spatial);
   }
@@ -9176,7 +9689,117 @@ function openSiteOverviewModal(target='summary'){
     else if(body)body.scrollTop=0;
   },100);
 }
+
+function activationPlanningRange(f){
+  const c=latestSiteFactStore?.common||commonSchemeData();
+  const center=f?.planning?.center||c.center||'';
+  const current=f?.zoning?.current||c.zoning||'';
+  const stationLikely=f?.location?.station?.within===true;
+  const arterialConfirmed=f?.location?.arterial?.linear_commercial===true;
+  let base='확인 필요',enhanced='확인 필요',condition='위원회 심의';
+  if(stationLikely){
+    if(['downtown','metro'].includes(center)){base='일반상업';enhanced='중심상업';condition='역 인접부 또는 간선가로 연접부 + 복합용도 + 위원회 심의';}
+    else if(center==='regional'){base='일반상업';enhanced='일반상업';condition='위원회 심의';}
+    else if(center==='district'){base='근린상업';enhanced='일반상업';condition='역 인접부 또는 간선가로 연접부 + 복합용도 + 위원회 심의';}
+    else if(current==='준주거'){base='근린상업';enhanced='일반상업';condition='비중심지 + 역 인접/간선가로 연접부 등 + 위원회 심의';}
+    else {base='준주거';enhanced='일반상업';condition='비중심지 2면도로(20m+6m)·복합용도 또는 역 인접/간선가로 연접부 + 위원회 심의';}
+  }else if(arterialConfirmed){
+    if(['downtown','metro','regional'].includes(center)){base='일반상업';enhanced='일반상업';condition='위원회 심의';}
+    else {base='준주거';enhanced='근린상업';condition='복합용도 + 위원회 심의';}
+  }
+  return {base_max:base,conditional_max:enhanced,condition};
+}
+function activationFarText(current,target){
+  if(!current||!target||target==='확인 필요')return '용도지역 변경범위 확정 후 산정';
+  const base=ordinanceFarForZone(current),cap=ordinanceFarForZone(target);
+  const pc=activationContribution(current,target);
+  const baseText=base==null?'기준(허용) 확인':`기준(허용) ${base}% 이하`;
+  const capText=cap==null?'상한 확인':`상한 ${cap}% 이하`;
+  const pcText=pc==null?'공공기여율 조합 확인':`공공기여 ${pc}% 이상`;
+  return `${baseText} · ${capText} · 계획용적률은 상한 이하 위원회 결정 · ${pcText}`;
+}
+function activationFeasibilityLabel(status){
+  if(status==='PASS')return '입안 가능성 높음';
+  if(status==='FAIL')return '입안요건 미충족';
+  return '조건부 검토';
+}
+function activationRowByItem(res,item){return (res?.rows||[]).find(r=>r.item===item)||null;}
+function activationStatusCell(r){
+  if(!r)return '<span class="scheme-tag REVIEW">확인</span>';
+  return `<span class="scheme-tag ${escHtml(r.status||'REVIEW')}">${r.status==='PASS'?'충족':r.status==='FAIL'?'미달':r.status==='INFO'?'계획':'확인'}</span>`;
+}
+function renderActivationDetailPopup(){
+  const title=document.getElementById('schemeDetailPopupTitle');
+  const body=document.getElementById('schemeDetailPopupBody');if(!body)return;
+  const res=schemeResults.activation||latestSchemeModuleResults.activation;
+  const store=latestSiteFactStore||buildSiteFactStore();
+  const f=res?.facts||activationSpatialFacts(store),c=store.common;
+  const range=activationPlanningRange(f);
+  const route=f.route?.route==='redevelopment'?'도시정비형 재개발':'지구단위계획';
+  const rows=res?.rows||[];
+  if(title)title.textContent='역세권활성화사업 기초검토서';
+  const roadText=(f.road.roads||[]).slice(0,4).map(x=>`${x.name} ${x.width_m==null?'-':x.width_m.toFixed(1)+'m'}`).join(' / ')||'도로자료 확인 필요';
+  const stationText=f.location.station.distance_m==null?'확인 필요':`${f.location.station.name||'최근접역'} · ${Number(f.location.station.distance_m).toFixed(1)}m · ${f.location.station.line_count||'-'}개 노선`;
+  const arterialText=f.location.arterial.linear_commercial===true?'노선형 상업지역 포함 확인':f.location.arterial.linear_commercial===false?'노선형 상업지역 미포함':'노선형 상업지역 포함 여부 확인 필요';
+  const current=f.zoning.current||'-';
+  const farBase=activationFarText(current,range.base_max);
+  const farMax=range.conditional_max!==range.base_max?activationFarText(current,range.conditional_max):farBase;
+  const pcBase=activationContribution(current,range.base_max);
+  const pcMax=activationContribution(current,range.conditional_max);
+  const status=res?.overall||'REVIEW';
+  const statusRows=['역세권','간선도로변','입지유형','용도지역','정비구역 배타관계','재정비촉진지구','도시계획시설','기타 배제지역','배제지역 종합','도로','대상지 면적','사전협상 대상여부','노후건축물'];
+  const resultRows=statusRows.map(item=>{
+    const r=activationRowByItem(res,item);if(!r)return '';
+    const group=['역세권','간선도로변','입지유형'].includes(item)?'역세권등':['노후건축물'].includes(item)?'노후건축물':['정비구역 배타관계','재정비촉진지구','도시계획시설','기타 배제지역','배제지역 종합'].includes(item)?'배제조건':'대상지 현황';
+    return `<tr><td class="group">${escHtml(group)}</td><td><b>${escHtml(item)}</b></td><td>${escHtml(r.rule||'-')}</td><td>${escHtml(r.value||'-')}</td><td>${activationStatusCell(r)}<div class="activation-next">${escHtml(r.action||r.note||'-')}</div></td></tr>`;
+  }).join('');
+  const planRows=[
+    ['용도지역 변경 범위',`기본 최대 ${range.base_max} / 조건부 최대 ${range.conditional_max}`,range.condition,'3-1-1~3-1-3'],
+    ['용적률 계획기준',`기본 시나리오: ${farBase}`,range.conditional_max!==range.base_max?`조건부 최대 시나리오: ${farMax}`:'상한 이하에서 계획용적률 결정','1-3-5~1-3-7 / 3-2-1'],
+    ['공공기여 기준',pcBase==null?'변경조합 확정 후 산정':`기본 변경조합 ${pcBase}% 이상`,pcMax!=null&&pcMax!==pcBase?`조건부 최대 변경조합 ${pcMax}% 이상 · 증가용적률의 50% 환산`:'증가용적률의 50% 환산','4-1-1']
+  ].map(x=>`<tr><td><b>${escHtml(x[0])}</b></td><td>${escHtml(x[1])}</td><td>${escHtml(x[2])}</td><td>[운영기준] ${escHtml(x[3])}</td></tr>`).join('');
+  const steps=f.route?.route==='redevelopment'?
+    [['사업계획(안) 제출','사업시행자·자치구 → 서울시'],['대상지 선정','지원 자문단'],['정비계획(안) 자문','지원 자문단'],['정비계획 주민제안·입안','주민·구의회 의견청취'],['서울시 도시계획위원회','용도지역 변경·정비계획 심의'],['결정고시·인허가','통합심의·사업시행계획인가']]:
+    [['사업계획(안) 제출','사업시행자·자치구 → 서울시'],['대상지 선정','지원 자문단'],['지구단위계획(안) 자문','지원 자문단'],['지구단위계획 주민제안','주민의견청취·구 자문'],['서울시 도시건축공동위원회','지구단위계획 심의'],['결정고시·인허가','건축심의·허가 또는 사업계획승인']];
+  const stepHtml=steps.map((x,i)=>`<div class="activation-step"><b>${i+1}. ${escHtml(x[0])}</b><span>${escHtml(x[1])}</span></div>`).join('');
+  const strengths=(res?.strengths||[]).join(' · ')||'자동확정 강점 없음';
+  const risks=(res?.risks||[]).join(' · ')||'확정된 하드게이트 미달 없음';
+  const follow=(res?.followups||[]).join(' · ')||'추가확인사항 없음';
+  body.innerHTML=`<div class="activation-sheet">
+    <div class="activation-sheet-title"><div><h3>역세권활성화사업</h3><p>서울특별시 역세권 활성화사업 운영기준 · 2026.04.30. 개정본 기준</p></div><div class="activation-feasibility"><span>입안 가능성</span><b class="${status}">${escHtml(activationFeasibilityLabel(status))}</b></div></div>
+    <section class="activation-section"><h4>1. 현황</h4><table class="activation-table"><tbody>
+      <tr><th>위치</th><td>${escHtml(store.site.address||'주소 확인 필요')}</td><th>면적</th><td>${escHtml(fmtSchemeArea(store.site.area_m2))}</td></tr>
+      <tr><th>용도지역</th><td>${escHtml(current)}</td><th>역세권</th><td>${escHtml(stationText)}</td></tr>
+      <tr><th>간선도로</th><td colspan="3">${escHtml(roadText)} · ${escHtml(arterialText)}</td></tr>
+      <tr><th>추진방식</th><td>${escHtml(route)}</td><th>중심지</th><td>${escHtml(c.centerLabel||c.centerType||'비중심지/확인 필요')}</td></tr>
+    </tbody></table></section>
+    <section class="activation-section"><h4>2. 검토결과</h4><table class="activation-table"><thead><tr><th>구분</th><th>검토항목</th><th>기준</th><th>대상지 현황</th><th>판정·후속</th></tr></thead><tbody>${resultRows}</tbody></table>
+      <div style="padding:8px 10px;font-size:8px;line-height:1.6;color:#475467"><b>강점</b> ${escHtml(strengths)}<br><b>약점</b> ${escHtml(risks)}<br><b>추가확인</b> ${escHtml(follow)}</div></section>
+    <section class="activation-section"><h4>3. 계획기준</h4><table class="activation-table"><thead><tr><th>검토항목</th><th>적용가능 범위</th><th>적용조건·해석</th><th>근거</th></tr></thead><tbody>${planRows}</tbody></table></section>
+    <section class="activation-section"><h4>4. 추진일정</h4><div class="activation-procedure">${stepHtml}</div><div style="padding:0 9px 9px;font-size:8px;color:#667085">사업대상지 선정 후 12개월 이내 주민제안서 제출이 원칙이며, 자문·협의·위원회 일정과 사업방식에 따라 실제 기간은 달라질 수 있습니다.</div></section>
+    <div class="scheme-modal-note"><b>판정구조</b> 현황 Fact Store → 역세권활성화 전용 공간체크 → 전용 Rule Module → 본 검토서 → 사업우선순위 순으로 같은 데이터를 사용합니다. 위원회 심의·지원자문단 인정·동의율 등은 사업 자체를 임의로 부정하지 않고 조건부 또는 후속 결정으로 분리합니다.</div>
+  </div>`;
+}
+function renderPriorityPreview(){
+  const root=document.getElementById('servicePriorityPreviewBody');if(!root)return;
+  const top=autoRecommendationTop3();
+  if(!top.length){root.innerHTML='<div><div class="priority-preview-rank"><strong>선순위 사업 산정 전</strong></div><table class="priority-preview-table"><tbody><tr><th>사업정보</th><td>현황분석과 사업별 하드게이트 확인 후 표시합니다.</td></tr></tbody></table></div><div class="priority-mass-placeholder"><b>위치기반 매스 이미지</b><span>대상지 형상·도로·계획규모 기반 프로토타입 영역</span><em>현재 버전은 UI 자리만 제공</em></div>';return;}
+  const name=top[0],st=ccCandidateState[name]||ccContextFor(name),res=schemeResults[name]||{};
+  const store=latestSiteFactStore||buildSiteFactStore(),c=store.common;
+  let target=(res.density||{}).zone||'-',far=(res.density||{}).far||'-';
+  if(name==='activation'&&res.facts){const pr=activationPlanningRange(res.facts);target=`기본 ${pr.base_max} / 조건부 최대 ${pr.conditional_max}`;far=activationFarText(c.zoning,pr.conditional_max);}
+  root.innerHTML=`<div><div class="priority-preview-rank"><span>1순위</span><strong>${escHtml(schemeNames[name]||name)}</strong></div><table class="priority-preview-table"><tbody>
+    <tr><th>판정</th><td>${escHtml(st.label||activationFeasibilityLabel(res.overall||'REVIEW'))}</td></tr>
+    <tr><th>대상면적</th><td>${escHtml(fmtSchemeArea(store.site.area_m2))}</td></tr>
+    <tr><th>현황 용도지역</th><td>${escHtml(c.zoning||'-')}</td></tr>
+    <tr><th>검토 용도지역</th><td>${escHtml(target)}</td></tr>
+    <tr><th>용적률 검토</th><td>${escHtml(far)}</td></tr>
+    <tr><th>핵심근거</th><td>${escHtml(rankingReason(name)||'-')}</td></tr>
+  </tbody></table></div><div class="priority-mass-placeholder"><b>위치기반 매스 이미지</b><span>대상지 형상·도로·계획규모를 반영하는 프로토타입 영역</span><em>초기 사업검토용 · 건축설계 결과 아님</em></div>`;
+}
+
 function renderSchemeDetailPopup(name){
+  if(name==='activation'){renderActivationDetailPopup();return;}
   const title=document.getElementById('schemeDetailPopupTitle');
   const body=document.getElementById('schemeDetailPopupBody');
   if(!body)return;

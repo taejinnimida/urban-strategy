@@ -1,6 +1,8 @@
 """배포 전 핵심 회귀검사. 실행: python regression_checks.py"""
 
 import os
+import gc
+import time
 import hashlib
 import tempfile
 import zipfile
@@ -208,6 +210,21 @@ def check_road_zip_pipeline() -> None:
                 os.environ["ROAD_DATA_CRS"] = previous_crs
 
 
+
+def check_age_annotation_reference_only() -> None:
+    """서버 age_status는 지도 참고값일 뿐 법적 사업판정 근거가 아님을 고정한다."""
+    assert app.ENGINE_AS_OF_DATE.isoformat() == "2026-08-27"
+    known = app._age_annotation({
+        "useAprDay": "19960826",
+        "strctCdNm": "철근콘크리트구조",
+        "mainPurpsCdNm": "업무시설",
+    })
+    assert known["age_basis"] == "REFERENCE_ONLY"
+    assert known["age_threshold_years"] == 30
+    unknown = app._age_annotation({"useAprDay": ""})
+    assert unknown["age_status"] == "UNKNOWN"
+    assert unknown["age_basis"] == "REFERENCE_ONLY"
+
 def check_feedback_and_ui() -> None:
     analysis_id = "analysis-regression-0001"
     app._store_analytics_event({
@@ -255,7 +272,7 @@ def check_feedback_and_ui() -> None:
     assert "/api/spatial/renewal-intersections" in html
     assert "/api/spatial/development-intersections" in html
     assert "/api/spatial/roads" in html
-    assert "st.areaGate!=='PASS'||st.structural!=='PASS'" in html
+    assert "st.areaGate==='FAIL'||st.structural==='FAIL'" in html
     assert "n==='redevelopment'&&st.legalEntry!=='PASS'" in html
     assert "const disabled=st.state==='off'" in html
     assert "r.hardGate==='AREA'" in html
@@ -266,6 +283,50 @@ def check_feedback_and_ui() -> None:
     assert "safeArterialSpatialCandidate" in html and "safeMedicalPath" in html
     assert "SAFE_OP" in html and "verified:true" in html
     assert "c.roadQuality==='ESTIMATE'?'REVIEW':'PASS'" in html
+    assert "SCHEME_MODULE_API_VERSION='2026-08-27-v2-age-regimes'" in html
+    assert "function buildSiteFactStore()" in html
+    # 노후도는 공통 OLD 하나가 아니라 원자료 -> 제도별 파생현황 -> 사업별 링크 구조여야 한다.
+    assert "function buildingRawFacts()" in html
+    assert "function buildAgeDerivedFacts" in html
+    assert "function urbanPlanningAgeAssessment" in html
+    assert "function renewalAgeAssessment" in html
+    assert "URBAN_PLANNING_AGE" in html and "RENEWAL_AGE" in html
+    assert "records:buildingRawFacts()" in html
+    assert "derived:{age:null}" in html
+    assert "aging:{route:route.route,assessment:schemeAgeFact(store,'activation',route.route)}" in html
+    assert "도시계획계 노후도" in html and "도정법계 노후도" in html
+    # 사업별 판정에 쓰이는 노후도 파생현황은 공간현황 박스에서 모두 보여야 한다.
+    assert "제도별 노후도 현황" in html
+    assert 'id="spAgeFactList"' in html and "AGE_SPATIAL_FACT_META" in html
+    assert "사업판정은 이 현황 Fact를 그대로 호출합니다" in html
+    assert '사용승인일 확인</span><b id="ccBuildingOld"' in html
+    assert '20년 경과(참고)</span><b id="ccBuildingOldRatio"' in html
+    assert '노후건축물</span><b id="ccBuildingOld"' not in html
+    # 독립 사업모듈의 추가현황은 Fact Store에 등록되고 공간현황 박스에 자동 노출되어야 한다.
+    assert "사업별 추가 현황" in html and 'id="spSchemeFactList"' in html
+    assert "spatial_status_rows" in html and "renderSchemeSpecificSpatialStatus(store)" in html
+    assert "store.scheme_specific.activation=fact" in html
+    assert "팝업에서 새 현황을 임의 생성하지 않습니다" in html
+    # 사업판정 영역에서 예전 공통 20/30년·OLD 판정을 직접 사용하면 안 된다.
+    decision_start=html.index("function longtermUrbanDeeming")
+    decision_end=html.index("function calculateScheme", decision_start)
+    decision=html[decision_start:decision_end]
+    assert "c.age20" not in decision
+    assert "c.age30" not in decision
+    assert "c.oldFloorRatio" not in decision
+    assert "analysisState.metrics.old_count" not in decision
+    assert "age_status==='OLD'" not in decision
+    assert "f.aging.assessment" in decision
+    assert "schemeAgeFact(c,'redevelopment')" in decision
+    assert "schemeAgeFact(c,'safe')" in decision
+    assert "schemeAgeFact(c,'longterm',route)" in decision
+    assert "schemeAgeFact(c,'growth_potential',typ)" in decision
+    assert "const SCHEME_MODULES=" in html
+    assert "collectFacts:activationSpatialFacts" in html
+    assert "function checkActivationFromFacts(store,f)" in html
+    assert "역세권활성화사업 기초검토서" in html
+    assert "선순위 사업 미리보기" in html
+    assert "위치기반 매스 이미지" in html
     assert html.count("function check") >= 14
     assert "redevelopment:checkRedevelopment" in html
     assert "innovation:checkInnovation" in html
@@ -293,17 +354,39 @@ def check_release_files() -> None:
     assert root_html.read_text(encoding="utf-8").startswith("<!DOCTYPE html>")
 
 
+def _release_heavy_spatial_cache(kind: str) -> None:
+    if kind == "renewal":
+        app._renewal_spatial_index.cache_clear()
+        app._renewal_reference_data.cache_clear()
+    elif kind == "development":
+        app._development_spatial_index.cache_clear()
+        app._development_reference_data.cache_clear()
+    elif kind == "road":
+        app._road_spatial_layers.cache_clear()
+    gc.collect()
+
+
+def _run(label, fn) -> None:
+    started = time.time()
+    fn()
+    print(f"PASS {label} ({time.time()-started:.1f}s)", flush=True)
+
+
 def main() -> None:
-    check_measurement()
-    check_renewal_server_intersection()
-    check_development_server_intersection()
-    check_area_gate()
-    check_redevelopment_boolean_gate()
-    check_centerline_width_buffer()
-    check_bundled_road_dataset()
-    check_road_zip_pipeline()
-    check_feedback_and_ui()
-    check_release_files()
+    _run("measurement", check_measurement)
+    _run("renewal spatial", check_renewal_server_intersection)
+    _release_heavy_spatial_cache("renewal")
+    _run("development spatial", check_development_server_intersection)
+    _release_heavy_spatial_cache("development")
+    _run("redevelopment area gate", check_area_gate)
+    _run("redevelopment boolean gate", check_redevelopment_boolean_gate)
+    _run("centerline width buffer", check_centerline_width_buffer)
+    _run("bundled road", check_bundled_road_dataset)
+    _release_heavy_spatial_cache("road")
+    _run("road zip pipeline", check_road_zip_pipeline)
+    _release_heavy_spatial_cache("road")
+    _run("feedback + UI", check_feedback_and_ui)
+    _run("release files", check_release_files)
     print("v2.5.0 regression checks: PASS")
 
 
