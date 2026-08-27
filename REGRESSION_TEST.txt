@@ -1,8 +1,0 @@
-v1.0.1 regression checks
-- lndpclAr null/blank/0 is NOT accepted as official area.
-- If official area is missing, parcel's LP_PA_CBND_BUBUN geometry area is used for initial screening.
-- A geometry area 160.99 m2 must NOT be classified under 90 m2.
-- A geometry area 58.05 m2 IS classified under 90 m2.
-- BuildingHUB stats show total / old / not-old / unknown / old ratio / old floor-area ratio.
-- BuildingHUB platArea is display-only cross-check for parcel area.
-- VWorld real-width-road dataset 30057 regional download link is generated from PNU sido code.
