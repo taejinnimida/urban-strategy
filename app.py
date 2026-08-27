@@ -21,7 +21,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import lru_cache
 
 import requests
-import psycopg
+try:
+    import psycopg
+except ImportError:  # local/offline test without PostgreSQL driver
+    psycopg = None
 from dataclasses import dataclass, asdict
 from typing import Any, Dict, List, Optional
 
@@ -41,7 +44,7 @@ from shapely.validation import explain_validity
 shapefile.VERBOSE = False
 
 # ============================================================
-# 도시검토 플랫폼 v2.4.3
+# 도시검토 플랫폼 v2.5.0
 # - 서버·정적화면·공간자료를 분리한 Docker 배포판
 # - 서울 14개 정비·개발사업 Rule Engine + 공간근거·관리자 운영
 # - 웹 지도 Polygon 면적 자동계산
@@ -1074,6 +1077,21 @@ RENEWAL_LEGAL_TYPES = {
     "UQ1232": ("urban_district", "도시정비형 재개발지구"),
     "UQ1240": ("reconstruction", "재건축사업구역"),
     "UQ1206": ("reconstruction", "주택재건축사업"),
+    # 아래 유형은 독립 '정비사업 관련 현황도'에는 표시하되 기존
+    # 재개발/재건축 사업방식 자동판정값을 덮어쓰지 않는 표시 전용 유형이다.
+    "UQ1211": ("other_renewal", "주거환경개선사업"),
+    "UQ1212": ("other_renewal", "주거환경관리사업"),
+    "UQ1220": ("other_renewal", "재개발사업구역(세부분류 미확인)"),
+    "UQ1250": ("other_renewal", "결합정비구역"),
+    "UQ1260": ("other_renewal", "자율주택정비사업구역"),
+    "UQ1270": ("other_renewal", "가로주택정비사업구역"),
+    "UQ1280": ("other_renewal", "소규모재건축사업구역"),
+    "UQ1290": ("other_renewal", "기타 정비구역"),
+    # 2026-02 UQ181 실제 SHP의 소규모주택정비 세부분류 코드.
+    "UQ1811": ("other_renewal", "자율주택정비사업"),
+    "UQ1812": ("other_renewal", "가로주택정비사업"),
+    "UQ1813": ("other_renewal", "소규모재건축사업"),
+    "UQ1814": ("other_renewal", "소규모재개발사업"),
 }
 RENEWAL_PROJECT_TYPES = {
     "BZ101": ("housing_planned", "신속통합기획 후보·사업구역"),
@@ -1129,6 +1147,7 @@ def _renewal_reference_data():
                 "geometry": mapping(geom),
                 "properties": {
                     "source": source,
+                    "source_title": "서울 의제처리구역 위치정보(UQ181)" if source == "legal" else "서울 도시계획사업 현황(서울플랜+, UQ120)",
                     "source_layer": stem,
                     "code": code,
                     "renewal_type": type_info[0],
@@ -1200,6 +1219,7 @@ def analyze_renewal_intersections(geometry: Dict[str, Any]) -> Dict[str, Any]:
 
     features, geometries, tree = _renewal_spatial_index()
     overlaps = []
+    context_features = []
     for index in tree.query(site_wgs, predicate="intersects"):
         feature = features[int(index)]
         source_wgs = geometries[int(index)]
@@ -1227,13 +1247,24 @@ def analyze_renewal_intersections(geometry: Dict[str, Any]) -> Dict[str, Any]:
             "_overlap_pct": round(overlap_area / site_area * 100, 4),
         })
         overlaps.append({"type": "Feature", "geometry": mapping(result_geom), "properties": props})
+        # The independent renewal-status map needs the full official zone boundary
+        # (light) and the actual site-overlap polygon (dark).  Return only matched
+        # source zones so the payload stays small while map/judgment remain identical.
+        context_props = dict(props)
+        context_props["_display_role"] = "source_zone"
+        context_features.append({
+            "type": "Feature",
+            "geometry": feature.get("geometry"),
+            "properties": context_props,
+        })
 
     overlaps.sort(key=lambda f: (
         0 if f["properties"].get("source") == "legal" else 1,
         -float(f["properties"].get("overlap_area_m2") or 0),
         str(f["properties"].get("name") or ""),
     ))
-    non_promotion = [f for f in overlaps if f["properties"].get("renewal_type") != "promotion"]
+    decision_types = {"housing_district", "urban_district", "reconstruction", "housing_planned", "urban_planned"}
+    non_promotion = [f for f in overlaps if f["properties"].get("renewal_type") in decision_types]
     promotions = [f for f in overlaps if f["properties"].get("renewal_type") == "promotion"]
     legal_non_promotion = [f for f in non_promotion if f["properties"].get("source") == "legal"]
     legal_promotions = [f for f in promotions if f["properties"].get("source") == "legal"]
@@ -1247,8 +1278,162 @@ def analyze_renewal_intersections(geometry: Dict[str, Any]) -> Dict[str, Any]:
         "primary": primary,
         "primary_promotion": primary_promotion,
         "overlaps": overlaps,
+        "context_features": context_features,
         "metadata": _renewal_reference_data()["metadata"],
         "selection_rule": "법정 UQ181 우선 → 중첩면적 우선, 재정비촉진지구·구역은 별도 트랙",
+    }
+
+
+# UQ181 압축파일 내부 코드표(레이어표_181.xlsx)의 법정 분류를 그대로 사용한다.
+# 정비구역(UQ12xx/UQ18xx)과 재정비촉진(UQ51xx)은 별도 정비현황도에서 다룬다.
+DEVELOPMENT_LEGAL_TYPES = {
+    "UQ1100": ("urban_development", "도시개발구역"),
+    "UQ1300": ("other_project", "농공단지"),
+    "UQ1400": ("other_project", "산업단지"),
+    "UQ1500": ("other_project", "전원개발사업구역·예정구역"),
+    "UQ1600": ("other_project", "대지조성지구"),
+    "UQ1700": ("other_project", "아파트지구개발사업"),
+    "UQ1900": ("other_project", "토지구획정리사업구역"),
+    "UQ2000": ("other_project", "관광지·관광단지"),
+    "UQ2999": ("other_project", "기타 의제처리 사업구역"),
+    "UQ5300": ("other_project", "지역균형발전촉진사업"),
+    "UQ5400": ("other_project", "국민임대주택단지 예정지구"),
+    "UQ5500": ("public_housing", "공공주택지구"),
+    "UQ5600": ("other_project", "일단의주택지조성사업지역"),
+    "UQ5700": ("other_project", "일단의공업용지조성사업지역"),
+    "UQ5800": ("other_project", "일단의불량지구개량사업지역"),
+    "UQ5900": ("other_project", "시가지조성사업"),
+    "UQ6100": ("other_project", "시가지조성사업지구"),
+    "UQ6200": ("other_project", "특정가구정비지구"),
+    "UQ6300": ("other_project", "공공지원민간임대주택공급촉진지구"),
+    "UQ6400": ("other_project", "시장정비구역"),
+    "UQ6500": ("other_project", "택지개발지구"),
+    "UQ9100": ("other_project", "주택건설사업"),
+}
+
+
+@lru_cache(maxsize=1)
+def _development_reference_data():
+    """서울 UQ181의 개발사업 법정구역만 WGS84 GeoJSON으로 변환한다."""
+    transformer = Transformer.from_crs(5174, 4326, always_xy=True)
+    reader = _read_embedded_shapefile(RENEWAL_LEGAL_ZIP_PATH, "UPIS_C_UQ181")
+    fields = [f[0] for f in reader.fields[1:]]
+    features = []
+    for sr in reader.iterShapeRecords():
+        row = dict(zip(fields, sr.record))
+        lclass = str(row.get("LCLAS_CL") or "").strip()
+        type_info = DEVELOPMENT_LEGAL_TYPES.get(lclass)
+        if type_info is None:
+            continue
+        name = str(row.get("DGM_NM") or "미상구역").strip()
+        kind, label = type_info
+        # UQ5500에는 현행 SHP상 '도심 공공주택 복합지구'도 포함된다.
+        # 명칭상 공공주택지구와 동일하게 표시하지 않고 별도 사업구역으로 보존한다.
+        if lclass == "UQ5500" and re.search(r"도심\s*공공주택\s*복합지구", name):
+            kind, label = "other_project", "도심 공공주택 복합지구"
+        try:
+            geom = shape(sr.shape.__geo_interface__)
+            if geom.is_empty:
+                continue
+            geom = geom.simplify(0.25, preserve_topology=True)
+            geom = geometry_transform(transformer.transform, geom)
+        except Exception:
+            continue
+        features.append({
+            "type": "Feature",
+            "geometry": mapping(geom),
+            "properties": {
+                "source": "legal",
+                "source_title": "서울 의제처리구역 위치정보(UQ181)",
+                "source_layer": "UPIS_C_UQ181",
+                "code": lclass,
+                "development_kind": kind,
+                "type_label": label,
+                "name": name,
+                "notice_no": str(row.get("NTFC_SN") or "").strip(),
+                "notice_date": str(row.get("CREATE_DAT") or "").strip(),
+            },
+        })
+    return {
+        "type": "FeatureCollection",
+        "name": "서울시 도시계획·개발사업 법정구역",
+        "features": features,
+        "metadata": {
+            "reference_month": "2026-02",
+            "source": "서울 의제처리구역 위치정보(UQ181)",
+            "classification_source": "uq181_legal.zip 내부 레이어표_181.xlsx",
+            "disclaimer": "공개 GIS 중첩은 초기검토용 참고값이며 최종 결정고시·사업계획·지구지정 도서를 재확인해야 합니다.",
+        },
+    }
+
+
+@lru_cache(maxsize=1)
+def _development_spatial_index():
+    fc = _development_reference_data()
+    features = fc["features"]
+    geometries = [shape(feature["geometry"]) for feature in features]
+    return features, geometries, STRtree(geometries)
+
+
+def analyze_development_intersections(geometry: Dict[str, Any]) -> Dict[str, Any]:
+    """도시개발·공공주택지구·기타 법정 사업구역을 서버에서 실제 중첩한다."""
+    try:
+        site_wgs = _polygonal_only(shape(geometry))
+    except Exception as exc:
+        raise ValueError(f"구역계 GeoJSON을 읽을 수 없습니다: {exc}") from exc
+    if site_wgs is None or site_wgs.is_empty:
+        raise ValueError("구역계는 Polygon 또는 MultiPolygon이어야 합니다.")
+    if not site_wgs.is_valid:
+        site_wgs = _polygonal_only(site_wgs.buffer(0))
+    if site_wgs is None or site_wgs.is_empty or not site_wgs.is_valid:
+        raise ValueError("유효하지 않은 구역계입니다.")
+
+    to_metric = Transformer.from_crs(4326, 5174, always_xy=True).transform
+    to_wgs = Transformer.from_crs(5174, 4326, always_xy=True).transform
+    site_metric = geometry_transform(to_metric, site_wgs)
+    site_area = float(site_metric.area)
+    if site_area <= 0:
+        raise ValueError("구역계 면적이 0입니다.")
+
+    features, geometries, tree = _development_spatial_index()
+    overlaps, context_features = [], []
+    for index in tree.query(site_wgs, predicate="intersects"):
+        feature = features[int(index)]
+        source_wgs = geometries[int(index)]
+        try:
+            intersection_wgs = _polygonal_only(site_wgs.intersection(source_wgs))
+            if intersection_wgs is None or intersection_wgs.is_empty:
+                continue
+            intersection_metric = _polygonal_only(geometry_transform(to_metric, intersection_wgs))
+            if intersection_metric is None or intersection_metric.is_empty:
+                continue
+            overlap_area = float(intersection_metric.area)
+            if overlap_area < 0.5:
+                continue
+            zone_area = float(geometry_transform(to_metric, source_wgs).area)
+            result_geom = geometry_transform(to_wgs, intersection_metric.simplify(0.10, preserve_topology=True))
+        except Exception:
+            continue
+        props = dict(feature.get("properties") or {})
+        props.update({
+            "overlap_area_m2": round(overlap_area, 2),
+            "site_overlap_pct": round(overlap_area / site_area * 100, 4),
+            "zone_overlap_pct": round(overlap_area / zone_area * 100, 4) if zone_area > 0 else None,
+            "_overlap_area": round(overlap_area, 2),
+            "_overlap_pct": round(overlap_area / site_area * 100, 4),
+        })
+        overlaps.append({"type": "Feature", "geometry": mapping(result_geom), "properties": props})
+        context_props = dict(props)
+        context_props["_display_role"] = "source_zone"
+        context_features.append({"type": "Feature", "geometry": feature.get("geometry"), "properties": context_props})
+
+    overlaps.sort(key=lambda f: (-float(f["properties"].get("overlap_area_m2") or 0), str(f["properties"].get("name") or "")))
+    return {
+        "status": "matched" if overlaps else "none",
+        "site_area_m2": round(site_area, 2),
+        "overlaps": overlaps,
+        "context_features": context_features,
+        "metadata": _development_reference_data()["metadata"],
     }
 
 
@@ -1466,6 +1651,8 @@ def _ensure_analytics_table() -> None:
     global ANALYTICS_DB_READY
     if ANALYTICS_DB_READY or not _database_url():
         return
+    if psycopg is None:
+        raise RuntimeError("DATABASE_URL is configured but psycopg is not installed")
     with ANALYTICS_LOCK:
         if ANALYTICS_DB_READY:
             return
@@ -1636,9 +1823,161 @@ def _admin_auth(credentials: Optional[HTTPBasicCredentials] = Depends(ADMIN_SECU
     return True
 
 
+SEOUL_OPEN_DATA_BASE = "http://openapi.seoul.go.kr:8088"
+# 서울시 공공의료 공식 페이지(시립병원 건강돌봄 네트워크, 2024-03-18)에
+# 열거된 서울 소재 시립병원 명칭.  병원 인허가 API의 업태가 '병원'인 경우에만
+# 시립병원 후보로 사용하며, 종합병원은 별도 법정 유형으로 분류한다.
+SEOUL_MUNICIPAL_HOSPITAL_NAMES = {
+    "서울의료원", "보라매병원", "서남병원", "서북병원", "북부병원", "동부병원",
+    "어린이병원", "은평병원",
+}
+
+def _seoul_open_data_key() -> str:
+    return os.getenv("SEOUL_OPEN_DATA_KEY", "").strip()
+
+def _seoul_open_data_rows(service: str, limit: int = 10000) -> List[Dict[str, Any]]:
+    """Read Seoul Open Data rows without turning API uncertainty into a PASS.
+
+    The caller decides whether the returned geometry is legally sufficient.  For
+    the safe-housing medical criterion these APIs expose points, whereas the rule
+    is measured from the medical-site boundary, so they are reference candidates
+    only.
+    """
+    key = _seoul_open_data_key()
+    if not key:
+        return []
+    rows: List[Dict[str, Any]] = []
+    start = 1
+    page = 1000
+    while start <= limit:
+        end = min(start + page - 1, limit)
+        url = f"{SEOUL_OPEN_DATA_BASE}/{quote(key)}/json/{service}/{start}/{end}/"
+        resp = requests.get(url, timeout=20)
+        resp.raise_for_status()
+        payload = resp.json()
+        body = payload.get(service) or {}
+        result = body.get("RESULT") or {}
+        code = str(result.get("CODE") or "")
+        if code and code not in {"INFO-000", "INFO-200"}:
+            raise RuntimeError(f"서울 열린데이터광장 {service} 오류: {code} {result.get('MESSAGE','')}")
+        page_rows = body.get("row") or []
+        rows.extend(page_rows)
+        total = int(body.get("list_total_count") or len(rows))
+        if not page_rows or end >= total:
+            break
+        start = end + 1
+    return rows
+
+def _name_key(value: Any) -> str:
+    return re.sub(r"[^가-힣A-Za-z0-9]", "", str(value or "")).lower()
+
+def _safe_medical_reference(geometry: Dict[str, Any]) -> Dict[str, Any]:
+    """Return official *reference points* near a site for the safe-housing screen.
+
+    No item from this endpoint is sufficient for automatic PASS because the
+    ordinance/operating standard uses distance from the facility *site boundary*.
+    """
+    try:
+        site_wgs = _polygonal_only(shape(geometry))
+    except Exception as exc:
+        raise ValueError(f"구역계 GeoJSON을 읽을 수 없습니다: {exc}") from exc
+    if site_wgs is None or site_wgs.is_empty:
+        raise ValueError("구역계는 Polygon 또는 MultiPolygon이어야 합니다.")
+    to_metric = Transformer.from_crs(4326, 5174, always_xy=True)
+    to_wgs = Transformer.from_crs(5174, 4326, always_xy=True)
+    site_metric = geometry_transform(to_metric.transform, site_wgs)
+
+    metadata = {
+        "criterion": "의료시설 대상부지 경계로부터 350m",
+        "auto_pass_eligible": False,
+        "reason": "공개 API는 의료시설 위치점 중심이며 법정 기준인 대상부지 경계도형이 아니므로 자동 PASS에 사용하지 않음",
+        "hospital_source": "서울시 병원 인허가 정보 (LOCALDATA_010101, 매일 갱신)",
+        "health_center_source": "서울시 시설물 정보 (tbEntranceItem, 2023 일회성·미현행화)",
+        "official_rule": "서울특별시 안심주택 공급 지원에 관한 조례 제2조 및 안심주택 건립·운영기준 1-3-2",
+    }
+    if not _seoul_open_data_key():
+        return {"status": "unavailable", "items": [], "metadata": metadata, "message": "SEOUL_OPEN_DATA_KEY 미설정 · 의료시설 자동 후보조회 불가"}
+
+    items: List[Dict[str, Any]] = []
+    errors: List[str] = []
+    try:
+        hospital_rows = _seoul_open_data_rows("LOCALDATA_010101", 5000)
+        municipal_keys = {_name_key(x) for x in SEOUL_MUNICIPAL_HOSPITAL_NAMES}
+        for row in hospital_rows:
+            state = str(row.get("TRDSTATENM") or row.get("DTLSTATENM") or "")
+            if state and any(token in state for token in ("폐업", "취소", "말소", "휴업")):
+                continue
+            kind = str(row.get("UPTAENM") or "").strip()
+            name = str(row.get("BPLCNM") or "").strip()
+            category = None
+            if kind == "종합병원":
+                category = "general_hospital"
+            elif kind == "병원" and any(k and k in _name_key(name) for k in municipal_keys):
+                category = "municipal_hospital"
+            if not category:
+                continue
+            try:
+                x, y = float(row.get("X")), float(row.get("Y"))
+                pt = shape({"type": "Point", "coordinates": [x, y]})
+                dist = float(site_metric.distance(pt))
+                lon, lat = to_wgs.transform(x, y)
+            except Exception:
+                continue
+            if dist > 1500:
+                continue
+            items.append({
+                "category": category, "name": name or "의료시설", "distance_point_m": round(dist, 1),
+                "geometry": {"type": "Point", "coordinates": [lon, lat]},
+                "address": str(row.get("RDNWHLADDR") or row.get("SITEWHLADDR") or ""),
+                "data_status": "current_reference_point", "auto_pass_eligible": False,
+                "source": "서울시 병원 인허가 정보",
+            })
+    except Exception as exc:
+        errors.append(f"병원 인허가: {exc}")
+
+    # 보건소 위치는 공식 공간자료가 있으나 2023년 일회성 자료이고 현행화되지
+    # 않으므로 위치 후보만 제공한다.  350m 법정 판정에는 쓰지 않는다.
+    try:
+        facility_rows = _seoul_open_data_rows("tbEntranceItem", 10000)
+        for row in facility_rows:
+            usage = str(row.get("FCLT_USG_SE") or "")
+            name = str(row.get("FCLT_NM") or "").strip()
+            if "보건소" not in usage and "보건소" not in name:
+                continue
+            if "보건지소" in usage or "보건지소" in name:
+                continue
+            try:
+                lat, lon = float(row.get("LAT")), float(row.get("LOT"))
+                x, y = to_metric.transform(lon, lat)
+                pt = shape({"type": "Point", "coordinates": [x, y]})
+                dist = float(site_metric.distance(pt))
+            except Exception:
+                continue
+            if dist > 1500:
+                continue
+            items.append({
+                "category": "public_health_center", "name": name or "보건소", "distance_point_m": round(dist, 1),
+                "geometry": {"type": "Point", "coordinates": [lon, lat]},
+                "address": str(row.get("RDN_ADDR") or row.get("LOTNO_ADDR") or ""),
+                "data_status": "stale_reference_point_2023", "auto_pass_eligible": False,
+                "source": "서울시 시설물 정보(2023 일회성)",
+            })
+    except Exception as exc:
+        errors.append(f"보건소 시설물: {exc}")
+
+    items.sort(key=lambda x: (float(x.get("distance_point_m") or 1e12), str(x.get("category")), str(x.get("name"))))
+    return {
+        "status": "reference" if items else ("error" if errors else "none"),
+        "items": items[:30],
+        "metadata": metadata,
+        "errors": errors,
+        "message": "위치점은 후보검색용이며 의료시설 대상부지 경계 350m는 결정도서·공부로 재확인해야 합니다.",
+    }
+
+
 app = FastAPI(
     title="도시검토 플랫폼 - 서울 재개발 웹 MVP",
-    version="2.4.3",
+    version="2.5.0",
     description="구역계 자동분석 + 서울 정비·개발 14개 사업방식 Rule Engine",
 )
 
@@ -1875,7 +2214,7 @@ def reference_renewal_zones():
 def health():
     return {
         "ok": True,
-        "app": "seoul_urban_renewal_platform_v2.4.3",
+        "app": "seoul_urban_renewal_platform_v2.5.0",
         "engine": RULES["rule_set_id"],
         "map": "leaflet-draw",
         "vworld_configured": vworld_ready(),
@@ -1899,7 +2238,10 @@ def health():
         "reconstruction_gate": "requires apartment-complex evidence or explicit reconstruction target confirmation",
         "site_status_card": "neutral land/building status card with current zoning and district placeholders",
         "planning_gis": "VWorld zoning/district/facility/district-unit-plan polygon intersection engine",
-        "renewal_gis": "server-side UQ181/UQ120 intersection; legal-priority; promotion separate",
+        "renewal_gis": "server-side UQ181/UQ120 intersection; legal-priority; promotion separate; full matched boundaries returned for status map",
+        "development_gis": "VWorld district-unit plan + bundled Seoul UQ181 urban-development/public-housing/other legal project intersections",
+        "safe_housing_location_paths": "station / arterial-road-side / medical-facility-center evaluated separately; OR combined",
+        "safe_medical_reference": "Seoul hospital licensing current points + 2023 health-center reference points (REVIEW only)" if _seoul_open_data_key() else "needs_SEOUL_OPEN_DATA_KEY; no automatic medical PASS",
         "road_width_gis": "server bundled official ZIP" if _road_zip_path() else "official ZIP hook ready; data/road_seoul.zip not installed",
         "responsive_ui": "desktop/tablet/mobile responsive layout with mobile workflow and selected-scheme cards",
         "smallscale_group": "block renewal/autonomous renewal/small-scale reconstruction/Moa Town alternative group",
@@ -1930,6 +2272,34 @@ def renewal_intersections(inp: GeometryInput):
     except Exception as exc:
         logging.exception("renewal intersection failed")
         raise HTTPException(status_code=500, detail=f"정비구역 중첩분석 오류: {exc}") from exc
+
+
+@app.post("/api/spatial/development-intersections")
+def development_intersections(inp: GeometryInput):
+    """서울 UQ181 도시개발·공공주택지구·기타 사업구역 서버 중첩분석."""
+    try:
+        return analyze_development_intersections(inp.geometry)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logging.exception("development intersection failed")
+        raise HTTPException(status_code=500, detail=f"개발사업구역 중첩분석 오류: {exc}") from exc
+
+
+@app.post("/api/reference/safe-medical-nearby")
+def safe_medical_nearby(inp: GeometryInput):
+    """안심주택 의료시설 중심지역의 공식 위치자료 후보조회.
+
+    공개자료가 위치점만 제공하므로 법정 '대상부지 경계 350m' 자동 PASS에는
+    사용하지 않고 REVIEW용 참고자료만 반환한다.
+    """
+    try:
+        return _safe_medical_reference(inp.geometry)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logging.exception("safe medical reference failed")
+        return {"status": "error", "items": [], "errors": [str(exc)], "message": "의료시설 공식 위치자료 조회 실패 · 공식자료 확인 필요"}
 
 
 @app.post("/api/spatial/roads")

@@ -1,6 +1,7 @@
 """배포 전 핵심 회귀검사. 실행: python regression_checks.py"""
 
 import os
+import hashlib
 import tempfile
 import zipfile
 from pathlib import Path
@@ -61,10 +62,39 @@ def check_renewal_server_intersection() -> None:
             for row in probe_result["overlaps"]
         )
 
+    assert "other_renewal" in available_types
+    other = next(f for f in features if f["properties"]["renewal_type"] == "other_renewal")
+    other_point = shape(other["geometry"]).representative_point()
+    other_site = box(other_point.x - 0.00001, other_point.y - 0.00001, other_point.x + 0.00001, other_point.y + 0.00001)
+    other_result = app.analyze_renewal_intersections(other_site.__geo_interface__)
+    # 표시 전용 기타 정비 도형은 기존 재개발/재건축 판정값을 직접 만들지 않는다.
+    assert other_result["renewal_area_type"] != "other_renewal"
+
     outside = box(127.49, 37.49, 127.50, 37.50)
     empty = app.analyze_renewal_intersections(outside.__geo_interface__)
     assert empty["status"] == "none"
     assert empty["renewal_area_type"] == "none"
+
+
+def check_development_server_intersection() -> None:
+    features = app._development_reference_data()["features"]
+    assert len(features) >= 500
+    available = {f["properties"]["development_kind"] for f in features}
+    assert {"urban_development", "public_housing", "other_project"}.issubset(available)
+    for kind in ("urban_development", "public_housing", "other_project"):
+        feature = next(f for f in features if f["properties"]["development_kind"] == kind and shape(f["geometry"]).is_valid)
+        point = shape(feature["geometry"]).representative_point()
+        site = box(point.x - 0.00001, point.y - 0.00001, point.x + 0.00001, point.y + 0.00001)
+        result = app.analyze_development_intersections(site.__geo_interface__)
+        assert result["status"] == "matched"
+        assert any(row["properties"]["development_kind"] == kind for row in result["overlaps"])
+        assert result["context_features"]
+        assert result["metadata"]["source"] == "서울 의제처리구역 위치정보(UQ181)"
+
+    outside = box(127.49, 37.49, 127.50, 37.50)
+    empty = app.analyze_development_intersections(outside.__geo_interface__)
+    assert empty["status"] == "none"
+
 
 
 def check_area_gate() -> None:
@@ -216,9 +246,14 @@ def check_feedback_and_ui() -> None:
         "시행령 별표 1 제2호·제4호 / 조례 제6조제1항제2·3호",
         "근거·조문·기준일", "VWorld 실폭도로·도로구간 API GIS AUTO",
         "TL_SPRD_RW 공식 실폭도형 산정",
+        "정비사업 관련 현황도", "도시계획·개발사업 현황도",
+        "공공주택지구", "기타 정비",
+        "대중교통 중심지역 · 간선도로변", "의료시설 중심지역",
+        "운영기준 1-3-1 가목", "운영기준 1-3-1 나목", "운영기준 1-3-2",
     ):
         assert text in html
     assert "/api/spatial/renewal-intersections" in html
+    assert "/api/spatial/development-intersections" in html
     assert "/api/spatial/roads" in html
     assert "st.areaGate!=='PASS'||st.structural!=='PASS'" in html
     assert "n==='redevelopment'&&st.legalEntry!=='PASS'" in html
@@ -227,7 +262,8 @@ def check_feedback_and_ui() -> None:
     assert "최신 공식 세부기준 원문 미확보로 자동 PASS 금지" in html
     assert "const safeMinArea=specialLowZone?5000:1000" in html
     assert "safeSupplyType:schemeVal('safe_supply_type')||'standard'" in html
-    assert "운영기준 4-2-1" in html
+    assert "역세권은 지구단위계획구역이면서" not in html
+    assert "safeArterialSpatialCandidate" in html and "safeMedicalPath" in html
     assert "SAFE_OP" in html and "verified:true" in html
     assert "c.roadQuality==='ESTIMATE'?'REVIEW':'PASS'" in html
     assert html.count("function check") >= 14
@@ -237,24 +273,30 @@ def check_feedback_and_ui() -> None:
 
 def check_release_files() -> None:
     root = Path(app.BASE_DIR)
-    assert app.app.version == "2.4.3"
+    assert app.app.version == "2.5.0"
     assert Path(app.STATIC_HTML_PATH).is_file()
     assert Path(app.DATA_DIR).is_dir()
-    assert (root / "CHANGELOG_v2.4.3.txt").exists()
-    assert (root / "CHANGELOG_v2.4.2.txt").exists()
-    assert (root / "CHANGELOG_v2.4.1.txt").exists()
-    assert (root / "CHANGELOG_v2.4.0.txt").exists()
+    assert (root / "CHANGELOG_v2.5.0.txt").exists()
     readme = (root / "README.md").read_text(encoding="utf-8")
-    assert readme.startswith("# 서울 도시정비플랫폼 Web MVP v2.4.3")
+    assert readme.startswith("# 서울 도시정비플랫폼 Web MVP v2.5.0")
     assert "GitHub 웹 업로드" in readme
     assert "14개 사업방식 근거 기준일" in readme
     assert "분석번호" in readme
-    assert (root / "RULE_AUDIT_v2.4.0.md").exists()
+    assert "SEOUL_OPEN_DATA_KEY" in readme
+    assert (root / "RULE_AUDIT_v2.5.0.md").exists()
+    structured = root / "static" / "app.html"
+    root_html = root / "app.html"
+    # 구조형 작업본에서는 두 HTML의 동일성을 검사하고, 평면 ZIP 검증본에서는
+    # root app.html 자체를 검사한다. 평면 ZIP에는 최상위 하위폴더를 만들지 않는다.
+    if structured.exists():
+        assert hashlib.sha256(root_html.read_bytes()).hexdigest() == hashlib.sha256(structured.read_bytes()).hexdigest()
+    assert root_html.read_text(encoding="utf-8").startswith("<!DOCTYPE html>")
 
 
 def main() -> None:
     check_measurement()
     check_renewal_server_intersection()
+    check_development_server_intersection()
     check_area_gate()
     check_redevelopment_boolean_gate()
     check_centerline_width_buffer()
@@ -262,7 +304,7 @@ def main() -> None:
     check_road_zip_pipeline()
     check_feedback_and_ui()
     check_release_files()
-    print("v2.4.3 regression checks: PASS")
+    print("v2.5.0 regression checks: PASS")
 
 
 if __name__ == "__main__":
