@@ -16,6 +16,7 @@ import uuid
 from collections import deque
 import xml.etree.ElementTree as ET
 from datetime import date, datetime
+from zoneinfo import ZoneInfo
 from urllib.parse import quote, unquote
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import lru_cache
@@ -797,7 +798,7 @@ def analyze_parcels_for_geometry(geometry: Dict[str, Any]) -> Dict[str, Any]:
 
 BUILDING_HUB_BASE_URL = "https://apis.data.go.kr/1613000/BldRgstHubService"
 BUILDING_HUB_TITLE_URL = BUILDING_HUB_BASE_URL + "/getBrTitleInfo"
-ENGINE_AS_OF_DATE = date(2026, 8, 27)
+ENGINE_AS_OF_DATE = datetime.now(ZoneInfo("Asia/Seoul")).date()
 
 
 def _building_hub_key() -> str:
@@ -1898,7 +1899,7 @@ def _safe_medical_reference(geometry: Dict[str, Any]) -> Dict[str, Any]:
         "official_rule": "서울특별시 안심주택 공급 지원에 관한 조례 제2조 및 안심주택 건립·운영기준 1-3-2",
     }
     if not _seoul_open_data_key():
-        return {"status": "unavailable", "items": [], "metadata": metadata, "message": "SEOUL_OPEN_DATA_KEY 미설정 · 의료시설 자동 후보조회 불가"}
+        return {"status": "unavailable", "items": [], "metadata": metadata, "auto_pass_eligible": False, "message": "SEOUL_OPEN_DATA_KEY 미설정 · 의료시설 자동 후보조회 불가"}
 
     items: List[Dict[str, Any]] = []
     errors: List[str] = []
@@ -1970,6 +1971,7 @@ def _safe_medical_reference(geometry: Dict[str, Any]) -> Dict[str, Any]:
     items.sort(key=lambda x: (float(x.get("distance_point_m") or 1e12), str(x.get("category")), str(x.get("name"))))
     return {
         "status": "reference" if items else ("error" if errors else "none"),
+        "auto_pass_eligible": False,
         "items": items[:30],
         "metadata": metadata,
         "errors": errors,
@@ -2253,9 +2255,10 @@ def health():
         "house_density": "excluded_from_primary_redevelopment_screening",
         "parcel_boundary_editor": "pnu_list_click_include_exclude_nearby_union",
         "scheme_architecture": "site facts -> scheme-specific facts -> independent scheme evaluation -> review sheet -> priority comparison",
-        "scheme_module_api": "2026-08-27-v2-age-regimes",
-        "activation_module": "independent facts/evaluation/review-sheet module; other schemes migrate through legacy adapters one-by-one",
+        "scheme_module_api": "2026-08-28-v5-nine-independent-five-shells",
+        "independent_scheme_modules": "activation / growth_potential / safe_housing / shared_housing / station_complex / longterm / public_complex / innovation / urban_redevelopment; redevelopment / reconstruction / residential_environment / smallscale / general_housing are shell-only until redesigned",
         "scheme_specific_spatial_checks": "scheme module may request additional official spatial facts; missing facts remain REVIEW, never inferred PASS",
+        "spatial_evidence_maps": "common cadastral base + zoning + scheme-specific road criteria + safe-housing medical reference; map facts and scheme facts share one Fact Store",
         "provenance_ui": True,
     }
 
@@ -2449,7 +2452,7 @@ def building_hub_title_batch(inp: BuildingHubBatchInput):
             "dataset": "건축HUB 건축물대장정보 서비스",
             "operation": "getBrTitleInfo",
             "data_portal_modified": "2026-07-10",
-            "engine_as_of_date": "2026-08-26",
+            "engine_as_of_date": ENGINE_AS_OF_DATE.isoformat(),
         },
     }
 

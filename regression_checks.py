@@ -1,3 +1,5 @@
+from zoneinfo import ZoneInfo
+from datetime import datetime
 """배포 전 핵심 회귀검사. 실행: python regression_checks.py"""
 
 import os
@@ -213,7 +215,7 @@ def check_road_zip_pipeline() -> None:
 
 def check_age_annotation_reference_only() -> None:
     """서버 age_status는 지도 참고값일 뿐 법적 사업판정 근거가 아님을 고정한다."""
-    assert app.ENGINE_AS_OF_DATE.isoformat() == "2026-08-27"
+    assert app.ENGINE_AS_OF_DATE == datetime.now(ZoneInfo("Asia/Seoul")).date()
     known = app._age_annotation({
         "useAprDay": "19960826",
         "strctCdNm": "철근콘크리트구조",
@@ -256,34 +258,29 @@ def check_feedback_and_ui() -> None:
         "ccLandMini", "ccBuildingMini", "ccPlanningMini", "ccStationMini", "ccCenterMini",
         "ccPlanningDistrictPlan", "ccPlanningRenewal", "smallParcelLayer", "oldParcelLayer",
         "safe_supply_type", "safe_adjacent_high_zone",
-        "구역계만 그리면 14개 사업방식을 자동 검토",
+        "독립엔진 9개 사업을 자동 검토하고, 나머지 5개는 재설계 예정",
         "siteRoadNetworkStats", "scheme_road20_perimeter_ratio",
         "최신 공식 시행본 미확보 · 계획용적률 자동입력 금지",
-        "function redevelopmentEntryGate(c)", "접도율 확인 전 보류",
         "시행령 별표 1 제2호·제4호 / 조례 제6조제1항제2·3호",
-        "근거·조문·기준일", "VWorld 실폭도로·도로구간 API GIS AUTO",
         "TL_SPRD_RW 공식 실폭도형 산정",
         "정비사업 관련 현황도", "도시계획·개발사업 현황도",
         "공공주택지구", "기타 정비",
         "대중교통 중심지역 · 간선도로변", "의료시설 중심지역",
-        "운영기준 1-3-1 가목", "운영기준 1-3-1 나목", "운영기준 1-3-2",
+        "1-3-1 가목", "1-3-1 나목", "운영기준 1-3-2",
     ):
         assert text in html
     assert "/api/spatial/renewal-intersections" in html
     assert "/api/spatial/development-intersections" in html
     assert "/api/spatial/roads" in html
     assert "st.areaGate==='FAIL'||st.structural==='FAIL'" in html
-    assert "n==='redevelopment'&&st.legalEntry!=='PASS'" in html
     assert "const disabled=st.state==='off'" in html
     assert "r.hardGate==='AREA'" in html
     assert "최신 공식 세부기준 원문 미확보로 자동 PASS 금지" in html
-    assert "const safeMinArea=specialLowZone?5000:1000" in html
+    assert "min_m2:specialLowZone?5000:1000" in html
     assert "safeSupplyType:schemeVal('safe_supply_type')||'standard'" in html
     assert "역세권은 지구단위계획구역이면서" not in html
     assert "safeArterialSpatialCandidate" in html and "safeMedicalPath" in html
     assert "SAFE_OP" in html and "verified:true" in html
-    assert "c.roadQuality==='ESTIMATE'?'REVIEW':'PASS'" in html
-    assert "SCHEME_MODULE_API_VERSION='2026-08-27-v2-age-regimes'" in html
     assert "function buildSiteFactStore()" in html
     # 노후도는 공통 OLD 하나가 아니라 원자료 -> 제도별 파생현황 -> 사업별 링크 구조여야 한다.
     assert "function buildingRawFacts()" in html
@@ -307,9 +304,9 @@ def check_feedback_and_ui() -> None:
     assert "spatial_status_rows" in html and "renderSchemeSpecificSpatialStatus(store)" in html
     assert "store.scheme_specific.activation=fact" in html
     assert "팝업에서 새 현황을 임의 생성하지 않습니다" in html
-    # 사업판정 영역에서 예전 공통 20/30년·OLD 판정을 직접 사용하면 안 된다.
-    decision_start=html.index("function longtermUrbanDeeming")
-    decision_end=html.index("function calculateScheme", decision_start)
+    # 독립 사업모듈 영역에서 예전 공통 20/30년·OLD 판정을 직접 사용하면 안 된다.
+    decision_start=html.index("function growthPotentialSpatialFacts")
+    decision_end=html.index("const SCHEME_MODULES=", decision_start)
     decision=html[decision_start:decision_end]
     assert "c.age20" not in decision
     assert "c.age30" not in decision
@@ -317,19 +314,229 @@ def check_feedback_and_ui() -> None:
     assert "analysisState.metrics.old_count" not in decision
     assert "age_status==='OLD'" not in decision
     assert "f.aging.assessment" in decision
-    assert "schemeAgeFact(c,'redevelopment')" in decision
-    assert "schemeAgeFact(c,'safe')" in decision
-    assert "schemeAgeFact(c,'longterm',route)" in decision
-    assert "schemeAgeFact(c,'growth_potential',typ)" in decision
+    assert "schemeAgeFact(store,'safe')" in decision
+    assert "schemeAgeFact(store,'longterm',route)" in decision
+    assert "schemeAgeFact(store,'growth_potential',route)" in decision
+    assert "schemeAgeFact(store,'urban_redevelopment')" in decision
     assert "const SCHEME_MODULES=" in html
+    assert "SCHEME_MODULE_API_VERSION='2026-08-28-v5-nine-independent-five-shells'" in html
+    assert "const SHELL_SCHEMES=new Set(['redevelopment','reconstruction','residential_environment','smallscale','general_housing'])" in html
+    assert "기존 판정엔진 삭제 완료 · 현재 추천/우선순위 미반영" in html
     assert "collectFacts:activationSpatialFacts" in html
     assert "function checkActivationFromFacts(store,f)" in html
     assert "역세권활성화사업 기초검토서" in html
     assert "선순위 사업 미리보기" in html
     assert "위치기반 매스 이미지" in html
-    assert html.count("function check") >= 14
-    assert "redevelopment:checkRedevelopment" in html
-    assert "innovation:checkInnovation" in html
+    assert "collectFacts:innovationSpatialFacts" in html
+
+
+def check_four_independent_scheme_modules() -> None:
+    """성장잠재권·안심주택·상생주택·역세권복합개발은 현황 Fact→독립엔진→전용팝업 구조여야 한다."""
+    html = Path(app.STATIC_DIR, "app.html").read_text(encoding="utf-8")
+
+    # 4개 독립 Fact collector / Rule engine / 전용 검토서가 모두 존재한다.
+    required = (
+        "function growthPotentialSpatialFacts(store)", "function checkGrowthPotentialFromFacts(store,f)",
+        "function safeHousingSpatialFacts(store)", "function checkSafeFromFacts(store,f)",
+        "function sharedHousingSpatialFacts(store)", "function checkSharedHousingFromFacts(store,f)",
+        "function stationComplexSpatialFacts(store)", "function checkStationComplexFromFacts(store,f)",
+        "function renderGrowthPotentialDetailPopup()", "function renderSafeHousingDetailPopup()",
+        "function renderSharedHousingDetailPopup()", "function renderStationComplexDetailPopup()",
+        "store.scheme_specific.growth_potential=fact", "store.scheme_specific.safe=fact",
+        "store.scheme_specific.shared_housing=fact", "store.scheme_specific.station_complex=fact",
+        "collectFacts:growthPotentialSpatialFacts", "collectFacts:safeHousingSpatialFacts",
+        "collectFacts:sharedHousingSpatialFacts", "collectFacts:stationComplexSpatialFacts",
+    )
+    for text in required:
+        assert text in html, text
+
+    # 팝업은 현황 Fact collector를 다시 실행하지 않는다. 분석된 동일 Fact만 읽는다.
+    popup_start = html.index("function renderGrowthPotentialDetailPopup()")
+    popup_end = html.index("function renderSchemeDetailPopup(name)", popup_start)
+    popup = html[popup_start:popup_end]
+    for forbidden in (
+        "growthPotentialSpatialFacts(store)", "safeHousingSpatialFacts(store)",
+        "sharedHousingSpatialFacts(store)", "stationComplexSpatialFacts(store)",
+    ):
+        assert forbidden not in popup, forbidden
+    assert "팝업에서는 새 현황을 계산하지 않습니다" in popup
+
+    # 안심주택: 2026.08.03 기준에서 지구단위계획구역은 역세권 하드게이트가 아니다.
+    safe_start = html.index("function safeHousingSpatialFacts(store)")
+    safe_end = html.index("function sharedHousingSpatialFacts(store)", safe_start)
+    safe = html[safe_start:safe_end]
+    assert "지구단위계획구역으로서 승강장" not in safe
+    assert "station.status==='PASS' && district" not in safe
+    assert "지구단위계획구역(참고)" in safe
+    assert "승강장 경계 250m 이내" in safe
+    assert "통합심의로 350m 검토" in safe
+    assert "의료시설 중심지역 350m" in safe
+
+    # 상생주택: 저이용·유휴와 민간제안을 분리한 현황 Fact를 OR 판정한다.
+    shared_start = html.index("function sharedHousingSpatialFacts(store)")
+    shared_end = html.index("function stationComplexSpatialFacts(store)", shared_start)
+    shared = html[shared_start:shared_end]
+    assert "shared_housing_proposal" in html
+    assert "sharedProposal:schemeYN('shared_housing_proposal')" in html
+    assert "private_proposal:c.sharedProposal" in shared
+    assert "spatialFactRow('민간제안 의사'" in shared
+    assert "f.target.low_use===true||f.target.private_proposal===true" in shared
+    assert "f.target.low_use===false&&f.target.private_proposal===false" in shared
+    assert "scalePass?'PASS':'REVIEW'" in shared
+
+    # 역세권복합개발: 기준에 없는 350m 숫자를 만들지 않는다. 250m 원칙 + 위원회 적용완화 REVIEW.
+    station_start = html.index("function stationComplexSpatialFacts(store)")
+    station_end = html.index("function moduleStrengthRisk", station_start)
+    station = html[station_start:station_end]
+    assert "250~350m" not in station
+    assert "distance_m<=350" not in station
+    assert "승강장 경계 반경 250m 이내 원칙" in station
+    assert "도시·건축공동위원회" in station
+    assert "STATION_COMPLEX" in html and "verified:false" in html
+
+    # 성장잠재권: 35m 간선도로·둘레 1/8·6m 접면과 시행방식별 노후도 Fact를 사용한다.
+    growth_start = html.index("function growthPotentialSpatialFacts(store)")
+    growth_end = html.index("function safeHousingSpatialFacts(store)", growth_start)
+    growth = html[growth_start:growth_end]
+    assert "35m" in growth and "12.5" in growth
+    assert "road6_faces" in growth
+    assert "schemeAgeFact(store,'growth_potential'" in growth
+    assert "지구단위계획형" in growth and "도시정비형" in growth
+
+
+def check_next_four_independent_modules() -> None:
+    """장기전세·도심공공주택복합·도심복합혁신·도시정비형은 공간현황 Fact→독립엔진→팝업 구조여야 한다."""
+    html = Path(app.STATIC_DIR, "app.html").read_text(encoding="utf-8")
+    required = (
+        "function longtermSpatialFacts(store)", "function checkLongtermFromFacts(store,f)",
+        "function publicComplexSpatialFacts(store)", "function checkPublicComplexFromFacts(store,f)",
+        "function innovationSpatialFacts(store)", "function checkInnovationFromFacts(store,f)",
+        "function urbanRedevelopmentSpatialFacts(store)", "function checkUrbanRedevelopmentFromFacts(store,f)",
+        "collectFacts:longtermSpatialFacts", "collectFacts:publicComplexSpatialFacts",
+        "collectFacts:innovationSpatialFacts", "collectFacts:urbanRedevelopmentSpatialFacts",
+        "store.scheme_specific.longterm=fact", "store.scheme_specific.public_complex=fact",
+        "store.scheme_specific.innovation=fact", "store.scheme_specific.urban_redevelopment=fact",
+        "function renderLongtermDetailPopup()", "function renderPublicComplexDetailPopup()",
+        "function renderInnovationDetailPopup()", "function renderUrbanRedevelopmentDetailPopup()",
+    )
+    for text in required:
+        assert text in html, text
+    # 서울 도심공공주택복합: 350m / 노후도 20년 60%이어야 한다.
+    assert "public_complex:chronologicalAgeAssessment(records,20,60" in html
+    assert "승강장 경계 350m 이내" in html
+    public_start=html.index("function publicComplexSpatialFacts(store)")
+    public_end=html.index("function innovationSpatialFacts(store)", public_start)
+    public=html[public_start:public_end]
+    assert "coverage350" in public and "coverage500" not in public
+    assert "정비구역·도시개발구역 중첩" in public
+    assert "도시재생사업 인허가" in public
+    # 장기전세: 350/500 전체포함, 교차지역 200m, 20m 도로 둘레 1/8.
+    long_start=html.index("function longtermSpatialFacts(store)")
+    long_end=html.index("function publicComplexSpatialFacts(store)", long_start)
+    longterm=html[long_start:long_end]
+    for text in ("coverage350", "coverage500", "arterialIntersectionDist<=200", "road20Perimeter>=12.5", "schemeAgeFact(store,'longterm',route)", "700% 특례 입지후보"):
+        assert text in longterm, text
+    density_start=html.index("function longtermDensity(c)")
+    density_end=html.index("function publicComplexDensity(c)", density_start)
+    density=html[density_start:density_end]
+    assert "Number(c.dist)<=250" in density
+    assert "regionalOrHigher&&interchange&&Number(c.dist)<=350" in density
+    assert "상한 500%${specialNote}" in density
+    assert "법적상한 500%${specialNote}" in density
+    assert "const first=c.dist!=null && c.dist<=350" not in density
+    assert "2100000282274" in html
+    # 도심복합개발: 2026 서울 조례·규칙, 유형별 Fact와 동의요건.
+    innov_start=html.index("function innovationSpatialFacts(store)")
+    innov_end=html.index("function urbanRedevelopmentSpatialFacts(store)", innov_start)
+    innov=html[innov_start:innov_end]
+    assert "coverage350_pct" in innov and "coverage500_pct" in innov
+    assert "owner_pct>=66.6667" in innov and "land_pct>=50" in innov
+    assert "INNOVATION_RULE" in innov and "INNOVATION_ORD" in innov
+    # 도시정비형: 정책사업 의제는 독립 추천에 중복집계하지 않는다.
+    urban_start=html.index("function urbanRedevelopmentSpatialFacts(store)")
+    urban_end=html.index("const SCHEME_MODULES=", urban_start)
+    urban=html[urban_start:urban_end]
+    assert "정비가능구역 포함 여부" in urban
+    assert "정비가능구역 용도지역" in urban
+    assert "용도지역은 정비가능구역의 대체 진입경로가 아니라 충족조건" in urban
+    assert "정비가능구역 공식 경계 GIS 미연결" in urban
+    assert "정비구역·정비예정구역·정비가능구역 중 하나에 해당" in urban
+    assert "정책사업 하위 시행방식" in urban
+    assert "독립 추천 판단" in urban
+    assert "시행주체별 추진방식" in urban
+    assert "possibleConditionsPass" in urban
+    assert "center_candidate&&f.possible.zoning_ok" not in urban
+    assert "역세권활성화사업·역세권 장기전세주택 등 의제 추진사업" in html
+    assert "evaluationOrder=Object.keys(schemeNames).filter(name=>name!=='urban_redevelopment').concat('urban_redevelopment')" in html
+    assert "policyRedevelopmentPass" in urban
+    assert "independentRow?.status==='FAIL'" in html
+    # Candidate 계층은 독립모듈 결과만 사용하고 시행자·법정진입을 중복 판정하지 않는다.
+    assert "공간현황 Fact → 독립 사업모듈의 단일 판정결과 사용" in html
+    assert "function candidateExecutionFit(" not in html
+    assert "function candidateStructuralGate(" not in html
+    # 팝업은 collector를 직접 다시 호출하지 않는다.
+    popup_start=html.index("function renderLongtermDetailPopup()")
+    popup_end=html.index("function renderSchemeDetailPopup(name)", popup_start)
+    pop=html[popup_start:popup_end]
+    for forbidden in ("longtermSpatialFacts(store)", "publicComplexSpatialFacts(store)", "innovationSpatialFacts(store)", "urbanRedevelopmentSpatialFacts(store)"):
+        assert forbidden not in pop
+
+
+def check_dedicated_detail_popups() -> None:
+    html=(Path(__file__).resolve().parent / "app.html").read_text(encoding="utf-8")
+    funcs=[
+        "renderGrowthPotentialDetailPopup","renderSafeHousingDetailPopup","renderSharedHousingDetailPopup",
+        "renderStationComplexDetailPopup","renderLongtermDetailPopup","renderPublicComplexDetailPopup",
+        "renderInnovationDetailPopup","renderUrbanRedevelopmentDetailPopup",
+    ]
+    for name in funcs:
+        start=html.index(f"function {name}()")
+        end=html.find("\nfunction ", start+20)
+        block=html[start:end if end >= 0 else None]
+        assert "1. 현황" in block and "2. 검토결과" in block and "4. 추진일정" in block, name
+        assert "schemeSpecificResultRows" in block, name
+        assert "schemeSheetResultRows" not in block, name
+        assert "판정구조" in block or "중복추천 배제" in block, name
+
+
+def check_spatial_evidence_maps() -> None:
+    html=(Path(__file__).resolve().parent / "app.html").read_text(encoding="utf-8")
+    # 공간현황은 판정 근거데이터 화면이다. 필요한 주제도와 공통 지적 베이스가 존재해야 한다.
+    for marker in (
+        'id="ccZoningMiniMap"', 'id="ccSchemeRoadMiniMap"', 'id="ccSafeMedicalMiniMap"',
+        'function compactParcelBaseFeatures()', 'function refreshCommonParcelBases()',
+        'function renderZoningSpatialStatus()', 'function renderSchemeRoadEvidence()',
+        'function renderSafeMedicalSpatialStatus()',
+    ):
+        assert marker in html, marker
+    for layer in (
+        'ccBuildingParcelBase','ccStationParcelBase','ccCenterParcelBase','ccRenewalParcelBase',
+        'ccDevelopmentParcelBase','ccPlanningParcelBase','ccZoningParcelBase',
+        'ccSchemeRoadParcelBase','ccSchemeRoadInfluence','ccSafeMedicalParcelBase',
+    ):
+        assert layer in html, layer
+    # Fact Store가 도면과 사업엔진의 단일 근거가 된다.
+    assert 'spatial_evidence:{zoning:zoningSpatialEvidenceFacts(),roads:schemeRoadEvidenceFacts(c),safe_medical:safeMedicalSpatialEvidenceFacts()}' in html
+    assert 'store.site.spatial_evidence?.roads?.safe' in html
+    assert 'store.site.spatial_evidence?.safe_medical' in html
+    # 도로기준은 제도별로 분리한다. 하나의 generic arterial PASS를 쓰면 안 된다.
+    for key in ("key:'activation'", "key:'safe'", "key:'growth'", "key:'longterm'", "key:'station_complex'", "key:'innovation'", "key:'public_complex'"):
+        assert key in html, key
+    assert "mode:'linear_commercial'" in html
+    assert "threshold:20" in html and "threshold:35" in html
+    assert "mode:'road4_8'" in html
+    assert '도로기능(특별시도·주/보조간선 등) 공식 속성 미연결' in html
+    assert "if(selected==='safe')" in html and "turf.buffer(f,50,{units:'meters'})" in html
+    # 안심주택 의료시설은 위치점 350m를 참고도면으로만 쓰고 법정 부지경계 확보 전 PASS하지 않는다.
+    assert "auto_pass_eligible:false" in html
+    assert '법정 기준은 시설 대상부지 경계' in html or '의료시설 대상부지 경계' in html
+    medical_start=html.index('function safeMedicalPath(')
+    medical_end=html.find('\nfunction ', medical_start+20)
+    medical=html[medical_start:medical_end if medical_end>=0 else None]
+    assert "status='PASS'" not in medical
+    # 용도지역은 공간현황에서 별도 지도와 구성비를 확인한다.
+    assert 'id="spZoningPrimary"' in html and 'id="spZoningPrimaryRatio"' in html
+    assert "LT_C_UQ111" in html
 
 
 def check_release_files() -> None:
@@ -385,10 +592,39 @@ def main() -> None:
     _release_heavy_spatial_cache("road")
     _run("road zip pipeline", check_road_zip_pipeline)
     _release_heavy_spatial_cache("road")
+    _run("age annotation reference", check_age_annotation_reference_only)
     _run("feedback + UI", check_feedback_and_ui)
+    _run("four independent modules", check_four_independent_scheme_modules)
+    _run("next four independent modules", check_next_four_independent_modules)
+    _run("legacy engine purge", test_migrated_scheme_legacy_engines_removed)
+    _run("dedicated detail popups", check_dedicated_detail_popups)
+    _run("spatial evidence maps", check_spatial_evidence_maps)
     _run("release files", check_release_files)
     print("v2.5.0 regression checks: PASS")
 
+
+
+def test_migrated_scheme_legacy_engines_removed():
+    html = Path(app.BASE_DIR, "app.html").read_text(encoding="utf-8")
+    # 모든 구형 사업 판정엔진은 삭제한다. 9개는 독립모듈, 5개는 shell-only다.
+    deprecated_functions = [
+        "checkActivation", "checkSafe", "checkStationComplex", "checkLongterm", "checkPublicComplex",
+        "checkInnovation", "checkGrowthPotential", "checkSharedHousing", "checkUrbanRedevelopment",
+        "checkRedevelopment", "checkReconstruction", "checkResidentialEnvironment", "checkSmallScale", "checkGeneralHousing",
+        "calculateScheme", "redevelopmentEntryGate", "candidateExecutionFit", "candidateStructuralGate", "reconstructionEvidence",
+        "activationUrbanDeeming", "longtermUrbanDeeming", "urbanRedevelopmentAccess",
+        "activationDistrictAgingAssessment", "activationRedevelopmentAgingAssessment",
+    ]
+    for name in deprecated_functions:
+        assert f"function {name}(" not in html, f"deprecated engine/helper {name} remains"
+    assert "legacy-adapter" not in html
+    assert "const SHELL_SCHEMES=new Set(['redevelopment','reconstruction','residential_environment','smallscale','general_housing'])" in html
+    assert "if(SHELL_SCHEMES.has(name))" in html
+    assert "state:'neutral',label:'재설계 예정',rank:0,stage:'SHELL'" in html
+    assert "기존 판정엔진 삭제 완료 · 현재 추천/우선순위 미반영" in html
+    assert "독립모듈 9개만 실제 판정한다. 미전환 5개는 shell 결과만 반환" in html
+    for key in ["activation", "growth_potential", "safe", "shared_housing", "station_complex", "longterm", "public_complex", "innovation", "urban_redevelopment"]:
+        assert f"{key}:{{" in html or f"{key}: {{" in html, f"independent module {key} missing"
 
 if __name__ == "__main__":
     main()
