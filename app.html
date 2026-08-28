@@ -1263,7 +1263,8 @@ body.review-modal-open{overflow:hidden}
 .service-right-box{display:flex;flex-direction:column}
 .service-right-box .cc-candidate-panel{order:1}
 .service-right-box .result-action-panel{order:2}
-.service-right-box .service-condition-box{order:3;margin-top:7px}
+.renewal-location-column .service-condition-box{margin:8px 0 6px;background:#fff;border:1px solid #e4e7ec;border-radius:10px;padding:8px}
+.renewal-location-column .service-condition-box>.service-block-title{margin-bottom:6px}
 .service-target-box>.service-block-title,
 .service-condition-box>.service-block-title{
   display:flex;align-items:center;justify-content:space-between;gap:8px;
@@ -4476,7 +4477,14 @@ async function runAllAutoAnalyses(){
   results.push(await safeAnalysisStep('건축HUB',analyzeBuildingHub,22000));
   results.push(await safeAnalysisStep('도로·접도',analyzeRoadAccess,18000));
   results.push(await safeAnalysisStep('주변 공간현황',refreshMiniContextFeatures,18000));
-  try{runAllSchemeChecks();}catch(e){console.error('[site-review] 사업엔진',e);results.push({label:'사업엔진',status:'rejected',reason:String(e?.message||e)});}
+  const schemeRun=runAllSchemeChecks();
+  if(schemeRun?.moduleErrors?.length){
+    const labels=schemeRun.moduleErrors.map(x=>x.label).join('·');
+    results.push({label:`사업판정(${labels})`,status:'rejected',reason:schemeRun.moduleErrors.map(x=>x.message).join(' / ')});
+  }
+  if(schemeRun?.uiErrors?.length){
+    console.warn('[site-review] UI 일부 오류',schemeRun.uiErrors);
+  }
   return results;
 }
 // 구역계 입력 직후에는 무거운 외부 API를 자동 실행하지 않는다.
@@ -4487,10 +4495,13 @@ async function measureAndSync(){
   clearBoundaryAnalysisForNewGeometry();
   setBoundaryReferenceMetrics();
   const legacyRun=document.getElementById('runBtn');if(legacyRun)legacyRun.disabled=false;
-  try{runAllSchemeChecks();updateCandidateSchemes();renderPriorityPreview();}catch(e){console.error('[site-review] 구역계 준비',e);}
+  // 구역계 준비 단계의 사업판정은 오류가 나도 버튼 활성화와 입력완료 상태를 막지 않는다.
+  runAllSchemeChecks();
   const result=document.getElementById('result');if(result)result.innerHTML='<div class="empty">구역계 설정 완료 · ‘검토하기’를 누르면 연속지적·건축물·도시계획·도로 Fact를 수집합니다.</div>';
   setSiteReviewStatus('구역계 설정 완료 · ‘검토하기’를 눌러 공식 공간분석을 실행하세요.','ready');
-  try{updateCompactInfoRail();refreshCompactMiniMaps();syncServiceOverview();}catch(e){}
+  safeSchemeUiStep('compact-ready',()=>updateCompactInfoRail(),null);
+  safeSchemeUiStep('mini-ready',()=>refreshCompactMiniMaps(),null);
+  safeSchemeUiStep('overview-ready',()=>syncServiceOverview(),null);
 }
 async function runSiteReview(){
   if(!activeGeometry){setSiteReviewStatus('먼저 구역계를 설정하세요.','review');return;}
@@ -4516,14 +4527,24 @@ async function runSiteReview(){
     const failed=steps.filter(x=>x.status==='rejected');
     if(failed.length){
       finalState='review';
-      finalText=`검토 완료 · ${failed.map(x=>x.label).join('·')} 자료는 시간초과/오류로 REVIEW 처리했습니다.`;
+      finalText=`검토 완료 · ${failed.map(x=>x.label).join('·')} 자료/판정은 오류 또는 미확인으로 REVIEW 처리했습니다. 나머지 사업은 계속 판정했습니다.`;
     }
-    try{runAllSchemeChecks();}catch(e){finalState='review';finalText='검토 완료 · 사업판정 일부 오류가 있어 REVIEW로 남겼습니다.';console.error(e);}
+    const moduleErrors=analysisState.scheme_module_errors||[];
+    if(moduleErrors.length){
+      finalState='review';
+      const labels=moduleErrors.map(x=>x.label).join('·');
+      finalText=`검토 완료 · ${labels} 엔진은 오류로 REVIEW 처리했고, 나머지 사업추천은 계속 산정했습니다.`;
+    }
   }catch(e){
     console.error('[site-review] 전체 검토',e);finalState='review';finalText='검토 중 오류가 발생했습니다. 확보된 Fact만 유지하고 미확보 항목은 REVIEW로 남겼습니다.';
   }finally{
     siteReviewRunning=false;setSiteReviewStatus(finalText,finalState);
-    try{updateCompactInfoRail();refreshCompactMiniMaps();syncServiceOverview();updateCandidateSchemes();renderPriorityPreview();}catch(e){}
+    // 최종 UI는 각각 독립 실행한다. 한 렌더러 오류로 추천/미리보기가 함께 중단되지 않는다.
+    safeSchemeUiStep('compact-final',()=>updateCompactInfoRail(),null);
+    safeSchemeUiStep('mini-final',()=>refreshCompactMiniMaps(),null);
+    safeSchemeUiStep('overview-final',()=>syncServiceOverview(),null);
+    safeSchemeUiStep('candidate-final',()=>updateCandidateSchemes(),null);
+    safeSchemeUiStep('priority-final',()=>renderPriorityPreview(),null);
   }
 }
 function resetMeasure(){
@@ -5827,7 +5848,7 @@ function commonSchemeData(){
 // 판정모듈은 DOM/GIS를 직접 추정하지 않고 아래 Fact Store에서 값을 읽는다.
 // 사업별 추가 공간조건도 먼저 facts로 수집한 뒤 판정에 사용한다.
 // ============================================================
-const SCHEME_MODULE_API_VERSION='2026-08-28-v8-six-families-fifteen-modules-three-shells';
+const SCHEME_MODULE_API_VERSION='2026-08-28-v10-failsafe-six-families-fifteen-modules-three-shells';
 var latestSiteFactStore=null;
 var latestSchemeModuleResults={};
 
@@ -7735,7 +7756,7 @@ function renderSchemeComparison(){
     const res=schemeResults[name]||{rows:[],overall:'REVIEW',density:{zone:'-',far:'-',contribution:'-'}};
     const den=res.density||{zone:'-',far:'-',contribution:'-'};
     const cnt=schemeResultCounts(res.rows||[]);
-    const dec=ccCandidateState[name]||ccContextFor(name);
+    const dec=safeCandidateState(name);
     return `<tr>
       <td>${escHtml(schemeNames[name])}</td>
       <td><span class="scheme-compare-status ${dec.state==='on'?'PASS':dec.state==='off'?'FAIL':'REVIEW'}">${escHtml(dec.label)}</span>
@@ -7806,44 +7827,98 @@ function purposeEngineGate(name){
 function purposeDisabledSchemeResult(name,reason){
   return {module:'purpose_gate',facts:null,rows:[],overall:'REVIEW',density:{zone:'-',far:'-',contribution:'-'},strengths:[],risks:[reason],purpose_disabled:true,purpose_disabled_reason:reason};
 }
+function schemeModuleReviewResult(name,error,store){
+  const label=schemeNames[name]||name;
+  const message=String(error?.message||error||'알 수 없는 오류');
+  let density={zone:'-',far:'-',contribution:'-'};
+  try{density=densityForScheme(name,store?.common||{})||density;}catch(_e){}
+  return {
+    module:SCHEME_MODULES[name]?.id||name,
+    family_key:schemeFamilyKey(name),family_label:schemeFamilyLabel(name),
+    facts:store?.scheme_specific?.[name]||null,
+    rows:[{
+      item:'엔진 실행',rule:'사업별 독립 Rule Module 실행',value:`${label} 판정 중 오류`,status:'REVIEW',required:false,hardGate:null,
+      gap:'-',action:'해당 사업만 REVIEW로 유지하고 다른 사업 판정·추천은 계속 실행',alternatives:'',trust:'MANUAL',trustLabel:'엔진오류·확인필요',
+      sourceId:'',sourceType:'시스템',sourceTitle:schemeBasis[name]||'사업별 공식근거',sourceEffective:'-',sourceLocator:'실행오류',sourceUrl:'',sourceVerified:false,
+      note:message
+    }],
+    overall:'REVIEW',density,strengths:[],risks:[`${label} 판정모듈 실행 오류`],followups:[`오류 확인: ${message}`],
+    runtime_error:true,runtime_error_message:message
+  };
+}
+function schemeRunIssue(scope,name,error){
+  return {scope,name,label:schemeNames[name]||name,message:String(error?.message||error||'알 수 없는 오류')};
+}
+function safeSchemeUiStep(label,fn,bucket){
+  try{return fn();}
+  catch(e){
+    const issue={scope:'ui',name:label,label,message:String(e?.message||e)};
+    if(bucket)bucket.push(issue);
+    console.error(`[scheme-ui:${label}]`,e);
+    return null;
+  }
+}
+function evaluateSchemeModulesSafely(store,names=null,evaluator=evaluateSchemeModule){
+  // 독립모듈 15개를 실제 판정한다. 소규모주택정비는 5개 사용자 검토경로를 1개 Family 모듈에서 비교하고, 공간혁신 3종은 shell로 유지한다.
+  const moduleErrors=[];
+  const order=names||Object.keys(schemeNames).filter(name=>name!=='urban_redevelopment').concat('urban_redevelopment');
+  for(const name of order){
+    try{
+      const engineGate=purposeEngineGate(name);
+      const result=engineGate.enabled?evaluator(name,store):purposeDisabledSchemeResult(name,engineGate.reason);
+      schemeResults[name]=result;
+      if(!engineGate.enabled)delete store.scheme_specific[name];
+    }catch(e){
+      activeRuleScheme='';
+      const issue=schemeRunIssue('module',name,e);moduleErrors.push(issue);
+      console.error(`[scheme-module:${name}]`,e);
+      const fallback=schemeModuleReviewResult(name,e,store);
+      schemeResults[name]=fallback;latestSchemeModuleResults[name]=fallback;
+    }
+  }
+  return moduleErrors;
+}
 function runAllSchemeChecks(){
   const panel=document.querySelector('.scheme-panel');
-  if(!panel)return;
+  if(!panel)return {store:null,moduleErrors:[],uiErrors:[],skipped:true};
 
-  // 1) 한 번의 현황 스냅샷을 모든 사업모듈이 공유한다.
-  //    사업모듈은 GIS/DOM을 다시 읽어 서로 다른 결과를 만들지 않는다.
-  const store=buildSiteFactStore();
-  const c=store.common;
-  updateSchemeAutoStrip(c);
-  latestSchemeModuleResults={};
+  const moduleErrors=[],uiErrors=[];
+  let store=null;
+  try{
+    // 1) 한 번의 현황 스냅샷을 모든 사업모듈이 공유한다.
+    store=buildSiteFactStore();
+    const c=store.common;
+    safeSchemeUiStep('auto-strip',()=>updateSchemeAutoStrip(c),uiErrors);
+    latestSchemeModuleResults={};
 
-  // 2) 사업별 검토모듈 실행.
-  //    독립모듈 15개를 실제 판정한다. 소규모주택정비는 5개 사용자 검토경로를 1개 Family 모듈에서 비교하고, 공간혁신 3종은 shell로 유지한다.
-  const evaluationOrder=Object.keys(schemeNames).filter(name=>name!=='urban_redevelopment').concat('urban_redevelopment');
-  for(const name of evaluationOrder){
-    const engineGate=purposeEngineGate(name);
-    const result=engineGate.enabled?evaluateSchemeModule(name,store):purposeDisabledSchemeResult(name,engineGate.reason);
-    schemeResults[name]=result;
-    if(!engineGate.enabled)delete store.scheme_specific[name];
+    // 2) 사업별 검토모듈은 서로 독립 실행한다. 한 모듈 오류는 해당 사업만 REVIEW 처리한다.
+    moduleErrors.push(...evaluateSchemeModulesSafely(store));
+  }catch(e){
+    const issue={scope:'store',name:'fact_store',label:'현황 Fact Store',message:String(e?.message||e)};
+    moduleErrors.push(issue);console.error('[scheme-store]',e);
+    // 전역 Fact Store 오류가 생겨도 이전 결과를 재사용하지 않는다. 화면에는 REVIEW 상태만 남기고 다음 UI 단계는 계속 시도한다.
+    store=null;
   }
 
-  // 3) 공간현황 도면·사업별 추가현황은 같은 Fact Store를 그대로 노출한다.
-  renderZoningSpatialStatus();
-  renderSchemeRoadEvidence();
-  renderSafeMedicalSpatialStatus();
-  renderSchemeSpecificSpatialStatus(store);
+  // 3) 도면·비교표·추천은 각각 독립 실행한다. 특정 렌더러 오류가 추천 전체를 끊지 못하게 한다.
+  if(store){
+    safeSchemeUiStep('zoning-spatial',()=>renderZoningSpatialStatus(),uiErrors);
+    safeSchemeUiStep('road-evidence',()=>renderSchemeRoadEvidence(),uiErrors);
+    safeSchemeUiStep('safe-medical',()=>renderSafeMedicalSpatialStatus(),uiErrors);
+    safeSchemeUiStep('scheme-spatial',()=>renderSchemeSpecificSpatialStatus(store),uiErrors);
+  }
+  safeSchemeUiStep('candidate',()=>updateCandidateSchemes(),uiErrors);
+  safeSchemeUiStep('comparison',()=>renderSchemeComparison(),uiErrors);
+  safeSchemeUiStep('sheets',()=>renderAllSchemeSheets(),uiErrors);
+  if(store)safeSchemeUiStep('compact-info',()=>updateCompactInfoRail(store),uiErrors);
+  safeSchemeUiStep('site-status',()=>updateSiteStatusCard(),uiErrors);
+  safeSchemeUiStep('priority-preview',()=>renderPriorityPreview(),uiErrors);
+  if(mobileSelectedSchemeName)safeSchemeUiStep('mobile-scheme',()=>renderMobileSelectedScheme(mobileSelectedSchemeName),uiErrors);
 
-  // 4) 사업모듈 결과를 Candidate/우선순위가 읽는다.
-  updateCandidateSchemes();
-
-  // 5) 검토서·비교표·현황 UI는 같은 schemeResults를 사용한다.
-  renderSchemeComparison();
-  renderAllSchemeSheets();
-  updateCompactInfoRail(store);
-  updateSiteStatusCard();
-  renderPriorityPreview();
-
-  if(mobileSelectedSchemeName)renderMobileSelectedScheme(mobileSelectedSchemeName);
+  analysisState.scheme_run_errors=[...moduleErrors,...uiErrors];
+  analysisState.scheme_module_errors=moduleErrors;
+  analysisState.scheme_ui_errors=uiErrors;
+  return {store,moduleErrors,uiErrors,skipped:false};
 }
 
 
@@ -8393,6 +8468,28 @@ function candidateStageLabel(stage){
   };
   return m[stage]||stage||'-';
 }
+function candidateEngineErrorState(name,error){
+  const ready=!!activeGeometry;
+  let pState='secondary',pReason='목적사업 판정 확인 필요';
+  try{const p=purposeGate(name,document.getElementById('ccPurpose')?.value||'');pState=p.state;pReason=p.reason;}catch(_e){}
+  return {
+    purpose:document.getElementById('ccPurpose')?.value||'',land:document.getElementById('ccLandControl')?.value||'',actor:document.getElementById('ccActor')?.value||'',
+    ready,officialAreaReady:false,reasons:[`사업추천 계산 오류 · ${String(error?.message||error||'확인 필요')}`,pReason],regulatory:'REVIEW',
+    purposeGate:pState,structural:'REVIEW',structuralReason:'사업별 엔진 오류로 법정진입 확인 필요',
+    areaGate:'REVIEW',areaReason:'해당 사업 면적게이트 재확인',legalEntry:null,legalEntryReason:'',legalEntryRoute:null,
+    execution:{land:'FIT',actor:'FIT',hardMismatch:false,landText:'오류 격리',actorText:'오류 격리'},relations:[],
+    failReasons:[],reviewReasons:['엔진오류'],failureDetail:'',reviewDetail:String(error?.message||error||'확인 필요'),
+    state:ready?'mid':'neutral',label:ready?'판정오류·확인':'구역입력필요',rank:ready?1:0,stage:ready?'REGULATION':'INPUT'
+  };
+}
+function safeCandidateState(name){
+  if(ccCandidateState[name])return ccCandidateState[name];
+  try{return ccContextFor(name);}catch(e){console.error(`[candidate:${name}]`,e);return candidateEngineErrorState(name,e);}
+}
+function safeDensityPotentialForScheme(name,st=null){
+  try{return densityPotentialForScheme(name,st||safeCandidateState(name));}
+  catch(e){console.error(`[density:${name}]`,e);return {tier:0,label:'밀도확인',maxFar:null,targetZone:'',station:false,stationNote:'',reason:'밀도 산정 오류로 REVIEW'};}
+}
 function ccContextFor(name){
   const purpose=document.getElementById('ccPurpose')?.value||'';
   const land=document.getElementById('ccLandControl')?.value||'';
@@ -8535,8 +8632,8 @@ function renderPriorityReview(){
     return;
   }
   root.innerHTML=`<div class="priority-rank-grid">${top.map((name,i)=>{
-    const st=ccCandidateState[name]||ccContextFor(name);
-    const dp=densityPotentialForScheme(name,st);
+    const st=safeCandidateState(name);
+    const dp=safeDensityPotentialForScheme(name,st);
     const fail=st.failReasons?.length?`<div>조건미달: ${escHtml(st.failReasons.join(' · '))}</div>`:'';
     const review=st.reviewReasons?.length?`<div>추가확인: ${escHtml(st.reviewReasons.join(' · '))}</div>`:'';
     return `<article class="priority-rank-card">
@@ -8627,7 +8724,7 @@ const planningScenarioState={1:{manualScheme:false},2:{manualScheme:false},3:{ma
 
 function candidateRegCounts(name){return schemeResultCounts(schemeResults[name]?.rows||[]);}
 function candidateSortTuple(name){
-  const st=ccCandidateState[name]||ccContextFor(name);
+  const st=safeCandidateState(name);
   const cnt=candidateRegCounts(name);
   const module=schemeResults[name]||{};
   const strengths=(module.strengths||[]).length;
@@ -8640,7 +8737,7 @@ function candidateSortTuple(name){
     regulatoryRank:st.regulatory==='PASS'?2:st.regulatory==='REVIEW'?1:0,
     execRank:(st.execution?.land==='FIT'?1:0)+(st.execution?.actor==='FIT'?1:0),
     finalRank:st.state==='on'?2:st.state==='mid'?1:0,
-    densityTier:densityPotentialForScheme(name,st).tier,
+    densityTier:safeDensityPotentialForScheme(name,st).tier,
     strengths,risks,followups,
     review:cnt.review,pass:cnt.pass,fail:cnt.fail
   };
@@ -8660,12 +8757,12 @@ function compareCandidateNames(a,b){
 }
 function rankedSchemeNames(){
   const names=Object.keys(schemeNames);
-  const live=names.filter(n=>(ccCandidateState[n]||ccContextFor(n)).state!=='off').sort(compareCandidateNames);
-  const off=names.filter(n=>(ccCandidateState[n]||ccContextFor(n)).state==='off').sort(compareCandidateNames);
+  const live=names.filter(n=>(safeCandidateState(n)).state!=='off').sort(compareCandidateNames);
+  const off=names.filter(n=>(safeCandidateState(n)).state==='off').sort(compareCandidateNames);
   return [...live,...off];
 }
 function rankingReason(name){
-  const st=ccCandidateState[name]||ccContextFor(name);
+  const st=safeCandidateState(name);
   const cnt=candidateRegCounts(name);
   const bits=[
     schemeFamilyLabel(name),
@@ -8679,13 +8776,13 @@ function rankingReason(name){
   if((module.strengths||[]).length)bits.push(`강점 ${(module.strengths||[]).slice(0,2).join('·')}`);
   if((module.risks||[]).length)bits.push(`약점 ${(module.risks||[]).slice(0,2).join('·')}`);
   if((module.followups||[]).length)bits.push(`후속 ${(module.followups||[]).slice(0,2).join('·')}`);
-  const dp=densityPotentialForScheme(name,st);
+  const dp=safeDensityPotentialForScheme(name,st);
   if(st.state!=='off')bits.push(`${densityTierLabel(dp.tier)}${dp.station?'·역세권':''}`);
   return bits.join(' · ');
 }
 function autoRecommendationTop3(){
   return rankedSchemeNames().filter(n=>{
-    const st=ccCandidateState[n]||ccContextFor(n);
+    const st=safeCandidateState(n);
     // 명백한 FAIL만 순위에서 제외한다. 자문단 인정·위원회 심의·자료보완 REVIEW는
     // 사업 가능성을 닫지 않고 조건부 후보로 남긴다.
     if(st.areaGate==='FAIL'||st.structural==='FAIL')return false;
@@ -8942,7 +9039,7 @@ function planInput(rank,key,label,value,{step='0.1',small='',select=null}={}){
   }
   return `<div class="plan-field"><label>${escHtml(label)}</label><input type="number" step="${step}" value="${escHtml(String(val))}" onchange="updateScenarioInput(${rank},'${key}',this.value,'number')">${small?`<small>${escHtml(small)}</small>`:''}</div>`;
 }
-function scenarioSchemeOptions(selected){return Object.keys(schemeNames).map(n=>{const st=ccCandidateState[n]||ccContextFor(n);const disabled=st.state==='off';return `<option value="${n}"${n===selected?' selected':''}${disabled?' disabled':''}>${escHtml(schemeNames[n])}${disabled?' — 판정 제외':''}</option>`;}).join('');}
+function scenarioSchemeOptions(selected){return Object.keys(schemeNames).map(n=>{const st=safeCandidateState(n);const disabled=st.state==='off';return `<option value="${n}"${n===selected?' selected':''}${disabled?' disabled':''}>${escHtml(schemeNames[n])}${disabled?' — 판정 제외':''}</option>`;}).join('');}
 function renderPlanningScenarioCard(rank){
   const st=planningScenarioState[rank];if(!st?.scheme)return '';
   const x=calculatePlanningScenario(rank),relation=(ccCandidateState[st.scheme]?.relations||[]).join(' / '),farBasis=farBasisForScheme(st.scheme);
@@ -9045,7 +9142,7 @@ function renderPlanningAlternatives(){
     root.innerHTML='<div class="priority-review-empty">현재 구역면적으로는 시뮬레이션할 추천 사업방식이 없습니다. 사업구역 확대 또는 공식 예외인정을 확인하세요.</div>';
     analysisState.planning_alternatives=[];return;
   }
-  strip.innerHTML=top.map((n,i)=>{const st=ccCandidateState[n]||ccContextFor(n);return `<div class="planning-rank-chip"><b>${i+1}순위 · ${escHtml(schemeNames[n])}</b><span>${escHtml(st.label)} · ${escHtml(rankingReason(n))}</span></div>`;}).join('');
+  strip.innerHTML=top.map((n,i)=>{const st=safeCandidateState(n);return `<div class="planning-rank-chip"><b>${i+1}순위 · ${escHtml(schemeNames[n])}</b><span>${escHtml(st.label)} · ${escHtml(rankingReason(n))}</span></div>`;}).join('');
   root.innerHTML=top.map((_,i)=>renderPlanningScenarioCard(i+1)).join('');
   analysisState.planning_alternatives=top.map((_,i)=>calculatePlanningScenario(i+1));
 }
@@ -9201,7 +9298,7 @@ function stationInfluenceForScheme(name,c){
 function densityPotentialForScheme(name,st=null){
   if(SHELL_SCHEMES.has(name))return {tier:0,label:'추후보완예정',maxFar:null,targetZone:'',station:false,stationNote:'',reason:'공간혁신 3종 자동판정 추후보완예정'};
   const c=commonSchemeData();
-  const dec=st||ccCandidateState[name]||ccContextFor(name);
+  const dec=st||safeCandidateState(name);
   if(!dec || dec.state==='off'){
     return {tier:0,label:'제외',maxFar:null,targetZone:'',station:false,stationNote:'',reason:'사업후보 제외'};
   }
@@ -9362,94 +9459,72 @@ function updateCandidateSchemes(){
   let on=0,mid=0,off=0;
   const ranked=[];
   for(const name of Object.keys(schemeNames)){
-    const st=ccContextFor(name);
+    let st;
+    try{st=ccContextFor(name);}
+    catch(e){st=candidateEngineErrorState(name,e);console.error(`[candidate:${name}]`,e);}
     ccCandidateState[name]=st;
     const btn=root.querySelector(`[data-scheme="${name}"]`);
-    if(!btn)continue;
-    btn.classList.remove('candidate-on','candidate-mid','candidate-off','density-tier-0','density-tier-1','density-tier-2','density-tier-3','station-density');
-    if(st.state==='on'){btn.classList.add('candidate-on');on++;}
-    else if(st.state==='mid'){btn.classList.add('candidate-mid');mid++;}
-    else if(st.state==='off'){btn.classList.add('candidate-off');off++;}
-
-    const density=densityPotentialForScheme(name,st);
-    btn.classList.add(`density-tier-${density.tier}`);
-    if(density.station&&st.state!=='off')btn.classList.add('station-density');
-    btn.dataset.densityTier=String(density.tier);
-    btn.dataset.densityLabel=densityTierLabel(density.tier);
-
-    const em=btn.querySelector('em');if(em)em.textContent=st.label;
-    btn.dataset.engineStage=st.stage||'';
-    const reasonTip=[
-      `${candidateStageLabel(st.stage)} · ${st.label}`,
-      st.state!=='off'?`${densityTierLabel(density.tier)} · ${density.reason}`:'',
-      density.station&&st.state!=='off'?`역세권 가중: ${density.stationNote}`:'',
-      st.failureDetail?`미달: ${st.failureDetail}`:'',
-      st.reviewDetail?`확인: ${st.reviewDetail}`:''
-    ].filter(Boolean).join('\n');
-    btn.title=reasonTip;
-    ranked.push({name,rank:st.rank||0,state:st.state,label:st.label,density});
+    try{
+      if(btn){
+        btn.classList.remove('candidate-on','candidate-mid','candidate-off','density-tier-0','density-tier-1','density-tier-2','density-tier-3','station-density');
+        if(st.state==='on'){btn.classList.add('candidate-on');on++;}
+        else if(st.state==='mid'){btn.classList.add('candidate-mid');mid++;}
+        else if(st.state==='off'){btn.classList.add('candidate-off');off++;}
+        const density=safeDensityPotentialForScheme(name,st);
+        btn.classList.add(`density-tier-${density.tier}`);
+        if(density.station&&st.state!=='off')btn.classList.add('station-density');
+        btn.dataset.densityTier=String(density.tier);btn.dataset.densityLabel=densityTierLabel(density.tier);
+        const em=btn.querySelector('em');if(em)em.textContent=st.label;
+        btn.dataset.engineStage=st.stage||'';
+        const reasonTip=[`${candidateStageLabel(st.stage)} · ${st.label}`,st.state!=='off'?`${densityTierLabel(density.tier)} · ${density.reason}`:'',density.station&&st.state!=='off'?`역세권 가중: ${density.stationNote}`:'',st.failureDetail?`미달: ${st.failureDetail}`:'',st.reviewDetail?`확인: ${st.reviewDetail}`:''].filter(Boolean).join('\n');
+        btn.title=reasonTip;
+        ranked.push({name,rank:st.rank||0,state:st.state,label:st.label,density});
+      }else{
+        ranked.push({name,rank:st.rank||0,state:st.state,label:st.label,density:safeDensityPotentialForScheme(name,st)});
+      }
+    }catch(e){
+      console.error(`[candidate-ui:${name}]`,e);
+      const density={tier:0,label:'밀도확인',reason:'UI 오류'};
+      ranked.push({name,rank:st.rank||0,state:st.state,label:st.label,density});
+    }
   }
 
   analysisState.scheme_decisions={};
   for(const x of ranked){
-    const st=ccCandidateState[x.name];
-    analysisState.scheme_decisions[x.name]={
-      scheme:schemeNames[x.name],
-      family_key:schemeFamilyKey(x.name),family_label:schemeFamilyLabel(x.name),
-      state:st.state,
-      label:st.label,
-      stage:st.stage,
-      purpose_gate:st.purposeGate,
-      structural_gate:st.structural,
-      area_gate:st.areaGate,
-      area_reason:st.areaReason||'',
-      regulatory:st.regulatory,
-      execution:st.execution,
-      relations:st.relations||[],
-      fail_reasons:st.failReasons||[],
-      review_reasons:st.reviewReasons||[],
-      failure_detail:st.failureDetail||'',
-      review_detail:st.reviewDetail||'',
-      strengths:schemeResults[x.name]?.strengths||[],
-      risks:schemeResults[x.name]?.risks||[],
-      followups:schemeResults[x.name]?.followups||[],
-      module:schemeResults[x.name]?.module||'shell',
-      density_potential:x.density||densityPotentialForScheme(x.name,st),
-      reasons:st.reasons||[]
-    };
+    try{
+      const st=ccCandidateState[x.name]||candidateEngineErrorState(x.name,new Error('후보상태 미생성'));
+      analysisState.scheme_decisions[x.name]={
+        scheme:schemeNames[x.name],family_key:schemeFamilyKey(x.name),family_label:schemeFamilyLabel(x.name),state:st.state,label:st.label,stage:st.stage,
+        purpose_gate:st.purposeGate,structural_gate:st.structural,area_gate:st.areaGate,area_reason:st.areaReason||'',regulatory:st.regulatory,execution:st.execution,
+        relations:st.relations||[],fail_reasons:st.failReasons||[],review_reasons:st.reviewReasons||[],failure_detail:st.failureDetail||'',review_detail:st.reviewDetail||'',
+        strengths:schemeResults[x.name]?.strengths||[],risks:schemeResults[x.name]?.risks||[],followups:schemeResults[x.name]?.followups||[],module:schemeResults[x.name]?.module||'shell',
+        density_potential:x.density||safeDensityPotentialForScheme(x.name,st),reasons:st.reasons||[]
+      };
+    }catch(e){console.error(`[candidate-decision:${x.name}]`,e);}
   }
 
-  updateSmallscaleRouteButtons();
+  try{updateSmallscaleRouteButtons();}catch(e){console.error('[candidate-smallscale-ui]',e);}
 
-  const sum=document.getElementById('ccCandidateSummary');
-  const purpose=document.getElementById('ccPurpose')?.value;
-  const land=document.getElementById('ccLandControl')?.value;
-  const actor=document.getElementById('ccActor')?.value;
-  if(sum){
-    if(!activeGeometry){
-      sum.textContent='지도에 그리기·지번 입력·SHP 중 하나로 구역계를 설정하세요.';
-    }else if((latestSiteFactStore?.common||commonSchemeData()).area==null){
-      sum.textContent='구역계 설정 완료 · ‘검토하기’를 실행하면 공식 필지면적과 공간정보를 수집해 사업방식을 판정합니다.';
-    }else if(!(purpose&&land&&actor)){
-      sum.textContent=on+mid
-        ? `필수면적 우선판정 · 우선검토 ${on}개 · 예외/추가확인 ${mid}개 · 제외/미달 ${off}개`
-        : `현재 구역면적으로 추천할 수 있는 사업방식이 없습니다. 면적기준·예외인정 여부를 상세보기에서 확인하세요.`;
-    }else{
-      sum.textContent=on+mid
-        ? `우선검토 ${on}개 · 예외/추가확인 ${mid}개 · 제외/미달 ${off}개 · 필수면적 미달 사업은 순위에서 제외`
-        : `현재 구역면적으로 추천할 수 있는 사업방식이 없습니다. 사업구역 확대 또는 명시적 예외인정 여부를 검토하세요.`;
+  try{
+    const sum=document.getElementById('ccCandidateSummary');
+    const purpose=document.getElementById('ccPurpose')?.value,land=document.getElementById('ccLandControl')?.value,actor=document.getElementById('ccActor')?.value;
+    if(sum){
+      if(!activeGeometry)sum.textContent='지도에 그리기·지번 입력·SHP 중 하나로 구역계를 설정하세요.';
+      else if((latestSiteFactStore?.common||commonSchemeData()).area==null)sum.textContent='구역계 설정 완료 · ‘검토하기’를 실행하면 공식 필지면적과 공간정보를 수집해 사업방식을 판정합니다.';
+      else if(!(purpose&&land&&actor))sum.textContent=on+mid?`필수면적 우선판정 · 우선검토 ${on}개 · 예외/추가확인 ${mid}개 · 제외/미달 ${off}개`:'현재 구역면적으로 추천할 수 있는 사업방식이 없습니다. 면적기준·예외인정 여부를 상세보기에서 확인하세요.';
+      else sum.textContent=on+mid?`우선검토 ${on}개 · 예외/추가확인 ${mid}개 · 제외/미달 ${off}개 · 필수면적 미달 사업은 순위에서 제외`:'현재 구역면적으로 추천할 수 있는 사업방식이 없습니다. 사업구역 확대 또는 명시적 예외인정 여부를 검토하세요.';
     }
-  }
-  // 추천순위 데이터는 즉시 갱신하되, 무거운 계획안 UI는 팝업이 열렸을 때 렌더링
-  const top3=autoRecommendationTop3();
-  analysisState.recommendations=top3.map((n,i)=>({
-    rank:i+1,scheme:n,name:schemeNames[n],reason:rankingReason(n),decision:ccCandidateState[n]?.label||''
-  }));
-  if(document.getElementById('planningSimulationModal')?.classList.contains('open')){
-    updatePlanningAlternatives();
-  }
-  queueAnalysisAnalytics();
+  }catch(e){console.error('[candidate-summary]',e);}
 
+  try{
+    const top3=autoRecommendationTop3();
+    analysisState.recommendations=top3.map((n,i)=>({rank:i+1,scheme:n,name:schemeNames[n],reason:rankingReason(n),decision:ccCandidateState[n]?.label||''}));
+  }catch(e){
+    console.error('[candidate-ranking]',e);
+    analysisState.recommendations=ranked.filter(x=>x.state==='on'||x.state==='mid').sort((a,b)=>b.rank-a.rank).slice(0,3).map((x,i)=>({rank:i+1,scheme:x.name,name:schemeNames[x.name],reason:'일부 추천 계산 오류로 기본 후보순위 표시',decision:x.label||'REVIEW'}));
+  }
+  try{if(document.getElementById('planningSimulationModal')?.classList.contains('open'))updatePlanningAlternatives();}catch(e){console.error('[candidate-planning-ui]',e);}
+  try{queueAnalysisAnalytics();}catch(e){console.error('[candidate-analytics]',e);}
 }
 const SMALLSCALE_ROUTE_UI={
   autonomous:{label:'자율주택정비사업',short:'자율주택정비'},
@@ -9461,7 +9536,7 @@ const SMALLSCALE_ROUTE_UI={
 let activeSmallscaleRoute='';
 function updateSmallscaleRouteButtons(){
   const root=document.getElementById('ccSchemeIcons');if(!root)return;
-  const parent=ccCandidateState.smallscale||ccContextFor('smallscale');
+  const parent=safeCandidateState('smallscale');
   const routes=schemeResults.smallscale?.facts?.routes||latestSiteFactStore?.scheme_specific?.smallscale?.routes||{};
   root.querySelectorAll('[data-smallscale-route]').forEach(btn=>{
     const key=btn.dataset.smallscaleRoute,route=routes[key];
@@ -10278,10 +10353,6 @@ function buildServiceLayout(){
           <div id="serviceLocationMount"></div>
         </div>
         <div class="service-right-box">
-          <section class="service-condition-box">
-            <div class="service-block-title"><b>결과 정교화 — 선택사항</b><span>자동분석 후 목적·토지확보·추진주체로 실현성 순위 보정</span></div>
-            <div class="service-condition-inputs" id="serviceConditionInputs"></div>
-          </section>
           <div id="serviceSchemeMount"></div>
           <div id="serviceResultMount"></div>
           <section class="service-priority-preview" id="servicePriorityPreview">
@@ -10338,7 +10409,17 @@ function buildServiceLayout(){
   document.body.insertAdjacentHTML('beforeend',serviceModalMarkup());
 
   main.querySelector('#serviceLocationMount').appendChild(location);
-  inputs.forEach(x=>main.querySelector('#serviceConditionInputs').appendChild(x));
+
+  // 선택 입력은 사용 흐름상 '검토하기' 직전에 둔다.
+  // 구역계를 설정한 뒤 필요하면 목적·토지확보·추진주체를 보완하고 바로 검토를 실행한다.
+  const reviewBar=location.querySelector('.boundary-review-bar');
+  if(reviewBar){
+    const conditionBox=document.createElement('section');
+    conditionBox.className='service-condition-box';
+    conditionBox.innerHTML=`<div class="service-block-title"><b>결과 정교화 — 선택사항</b><span>목적·토지확보·추진주체로 실현성 순위 보정</span></div><div class="service-condition-inputs" id="serviceConditionInputs"></div>`;
+    reviewBar.insertAdjacentElement('beforebegin',conditionBox);
+    inputs.forEach(x=>conditionBox.querySelector('#serviceConditionInputs').appendChild(x));
+  }
   main.querySelector('#serviceSchemeMount').appendChild(candidate);
   main.querySelector('#serviceResultMount').appendChild(resultActions);
 
@@ -10480,23 +10561,25 @@ function renderActivationDetailPopup(){
 }
 function renderPriorityPreview(){
   const root=document.getElementById('servicePriorityPreviewBody');if(!root)return;
-  const top=autoRecommendationTop3();
+  let top=[];
+  try{top=autoRecommendationTop3();}catch(e){console.error('[priority-ranking]',e);top=(analysisState.recommendations||[]).map(x=>x.scheme).filter(Boolean).slice(0,3);}
   if(!top.length){root.innerHTML='<div><div class="priority-preview-rank"><strong>선순위 사업 산정 전</strong></div><table class="priority-preview-table"><tbody><tr><th>사업정보</th><td>현황분석과 사업별 하드게이트 확인 후 표시합니다.</td></tr></tbody></table></div><div class="priority-mass-placeholder"><b>위치기반 매스 이미지</b><span>대상지 형상·도로·계획규모 기반 프로토타입 영역</span><em>현재 버전은 UI 자리만 제공</em></div>';return;}
-  const name=top[0],st=ccCandidateState[name]||ccContextFor(name),res=schemeResults[name]||{};
-  const store=latestSiteFactStore||buildSiteFactStore(),c=store.common;
+  const name=top[0],st=safeCandidateState(name),res=schemeResults[name]||{};
+  const store=latestSiteFactStore;
+  const c=store?.common||{};
   let target=(res.density||{}).zone||'-',far=(res.density||{}).far||'-';
-  if(name==='activation'&&res.facts){const pr=activationPlanningRange(res.facts);target=`기본 ${pr.base_max} / 조건부 최대 ${pr.conditional_max}`;far=activationFarText(c.zoning,pr.conditional_max);}
+  try{if(name==='activation'&&res.facts){const pr=activationPlanningRange(res.facts);target=`기본 ${pr.base_max} / 조건부 최대 ${pr.conditional_max}`;far=activationFarText(c.zoning,pr.conditional_max);}}catch(e){console.error('[priority-activation]',e);}
+  let reason='-';try{reason=rankingReason(name)||'-';}catch(e){reason=st.reviewDetail||'일부 판정오류로 근거 확인 필요';}
+  const area=store?.site?.area_m2??numOrNull(document.getElementById('area_m2')?.value);
   root.innerHTML=`<div><div class="priority-preview-rank"><span>1순위</span><strong>${escHtml(schemeNames[name]||name)}</strong></div><table class="priority-preview-table"><tbody>
     <tr><th>판정</th><td>${escHtml(st.label||activationFeasibilityLabel(res.overall||'REVIEW'))}</td></tr>
-    <tr><th>대상면적</th><td>${escHtml(fmtSchemeArea(store.site.area_m2))}</td></tr>
+    <tr><th>대상면적</th><td>${escHtml(fmtSchemeArea(area))}</td></tr>
     <tr><th>현황 용도지역</th><td>${escHtml(c.zoning||'-')}</td></tr>
     <tr><th>검토 용도지역</th><td>${escHtml(target)}</td></tr>
     <tr><th>용적률 검토</th><td>${escHtml(far)}</td></tr>
-    <tr><th>핵심근거</th><td>${escHtml(rankingReason(name)||'-')}</td></tr>
+    <tr><th>핵심근거</th><td>${escHtml(reason)}</td></tr>
   </tbody></table></div><div class="priority-mass-placeholder"><b>위치기반 매스 이미지</b><span>대상지 형상·도로·계획규모를 반영하는 프로토타입 영역</span><em>초기 사업검토용 · 건축설계 결과 아님</em></div>`;
 }
-
-
 function schemeSheetFeasibility(status){
   if(status==='PASS')return '추진 가능';
   if(status==='FAIL')return '대상지 요건 미충족';
@@ -10930,9 +11013,9 @@ function renderSchemeDetailPopup(name){
 function renderSchemeComparePopup(){
   const body=document.getElementById('schemeComparePopupBody');if(!body)return;
   const rows=rankedSchemeNames().map((name,i)=>{
-    const st=ccCandidateState[name]||ccContextFor(name);
+    const st=safeCandidateState(name);
     const res=schemeResults[name]||{overall:'REVIEW',density:{zone:'-',far:'-',contribution:'-'}};
-    const dp=densityPotentialForScheme(name,st);
+    const dp=safeDensityPotentialForScheme(name,st);
     const fail=regulatoryReasonSummary(name,'FAIL');
     const review=regulatoryReasonSummary(name,'REVIEW');
     const issue=st.state==='off'

@@ -297,7 +297,7 @@ def check_feedback_and_ui() -> None:
     assert "schemeAgeFact(store,'growth_potential',route)" in decision
     assert "schemeAgeFact(store,'urban_redevelopment')" in decision
     assert "const SCHEME_MODULES=" in html
-    assert "SCHEME_MODULE_API_VERSION='2026-08-28-v8-six-families-fifteen-modules-three-shells'" in html
+    assert "SCHEME_MODULE_API_VERSION='2026-08-28-v10-failsafe-six-families-fifteen-modules-three-shells'" in html
     assert "const SHELL_SCHEMES=new Set(['urban_innovation_zone','facility_complex_zone','mixed_use_zone'])" in html
     assert "현재 자동 활성화·추천·우선순위 미반영" in html
     assert "collectFacts:activationSpatialFacts" in html
@@ -445,7 +445,7 @@ def check_next_four_independent_modules() -> None:
     assert "possibleConditionsPass" in urban
     assert "center_candidate&&f.possible.zoning_ok" not in urban
     assert "역세권활성화사업·역세권 장기전세주택 등 의제 추진사업" in html
-    assert "evaluationOrder=Object.keys(schemeNames).filter(name=>name!=='urban_redevelopment').concat('urban_redevelopment')" in html
+    assert "const order=names||Object.keys(schemeNames).filter(name=>name!=='urban_redevelopment').concat('urban_redevelopment')" in html
     assert "policyRedevelopmentPass" in urban
     assert "independentRow?.status==='FAIL'" in html
     # Candidate 계층은 독립모듈 결과만 사용하고 시행자·법정진입을 중복 판정하지 않는다.
@@ -819,7 +819,7 @@ def check_purpose_filter_and_frontage_facts() -> None:
     assert 'onchange="runAllSchemeChecks()"' in html
     assert "if(name==='safe' && purpose!=='housing_rental')return {enabled:false" in html
     assert "const engineGate=purposeEngineGate(name);" in html
-    assert "engineGate.enabled?evaluateSchemeModule(name,store):purposeDisabledSchemeResult(name,engineGate.reason)" in html
+    assert "engineGate.enabled?evaluator(name,store):purposeDisabledSchemeResult(name,engineGate.reason)" in html
     assert "if(!engineGate.enabled)delete store.scheme_specific[name]" in html
     assert "if(name==='safe' && purpose!=='housing_rental')return {state:'off'" in html
     assert "const HOUSING_PURPOSE_VALUES=new Set(['housing','housing_rental'])" in html
@@ -840,7 +840,7 @@ def check_remaining_four_independent_modules_and_sources() -> None:
     html = (root / "app.html").read_text(encoding="utf-8")
     py = (root / "app.py").read_text(encoding="utf-8")
 
-    assert "SCHEME_MODULE_API_VERSION='2026-08-28-v8-six-families-fifteen-modules-three-shells'" in html
+    assert "SCHEME_MODULE_API_VERSION='2026-08-28-v10-failsafe-six-families-fifteen-modules-three-shells'" in html
     assert "const SHELL_SCHEMES=new Set(['urban_innovation_zone','facility_complex_zone','mixed_use_zone'])" in html
     required = (
         "function redevelopmentSpatialFacts(store)", "function checkRedevelopmentFromFacts(store,f)",
@@ -922,7 +922,7 @@ def check_remaining_four_independent_modules_and_sources() -> None:
     # 서버측 구형 재개발 판정엔진/중복 API는 제거한다.
     assert "def evaluate_redevelopment(" not in py
     assert '/api/redevelopment/evaluate' not in py
-    assert '"scheme_module_api": "2026-08-28-v8-six-families-fifteen-modules-three-shells"' in py
+    assert '"scheme_module_api": "2026-08-28-v10-failsafe-six-families-fifteen-modules-three-shells"' in py
     assert '15 independent modules including smallscale 5-route family and prior_negotiation' in py
 
 def check_scheme_family_separation() -> None:
@@ -1074,9 +1074,66 @@ def check_r8_boundary_map_smallscale_prior() -> None:
         assert f"{shell}:{{" not in module_block and f"{shell}: {{" not in module_block
     assert "현재 자동 활성화·추천·우선순위 미반영" in html
     assert "15 independent modules including smallscale 5-route family and prior_negotiation" in py
-    assert '"engine": "site_fact_store_v2.5.0_r8"' in py
+    assert '"engine": "site_fact_store_v2.5.0_r10"' in py
     assert "five user review routes: autonomous / block / small-scale reconstruction / small-scale redevelopment / Moa Town+Moa Housing policy route" in py
-    assert "v8-six-families-fifteen-modules-three-shells" in html and "v8-six-families-fifteen-modules-three-shells" in py
+    assert "v10-failsafe-six-families-fifteen-modules-three-shells" in html and "v10-failsafe-six-families-fifteen-modules-three-shells" in py
+
+
+def check_r9_refinement_placement() -> None:
+    """r9: 결과 정교화 선택입력은 검토하기 버튼 바로 위에 배치한다."""
+    root = Path(app.BASE_DIR)
+    html = (root / "app.html").read_text(encoding="utf-8")
+    # 서비스 우측 패널에서 제거되고, 위치도 내 review bar 직전에 동적으로 삽입되어야 한다.
+    right_start=html.index('<div class="service-right-box">')
+    right_end=html.index('</div>\n      </div>\n    </section>', right_start)
+    right_block=html[right_start:right_end]
+    assert 'service-condition-box' not in right_block
+    assert "const reviewBar=location.querySelector('.boundary-review-bar');" in html
+    assert "reviewBar.insertAdjacentElement('beforebegin',conditionBox);" in html
+    assert '결과 정교화 — 선택사항' in html
+    assert 'id="serviceConditionInputs"' in html
+
+
+
+def check_r10_scheme_fail_safe() -> None:
+    """r10: 한 사업엔진/렌더러 오류가 나머지 사업추천과 미리보기를 중단하지 않는다."""
+    root = Path(app.BASE_DIR)
+    html = (root / "app.html").read_text(encoding="utf-8")
+    py = (root / "app.py").read_text(encoding="utf-8")
+
+    # 사업모듈은 개별 격리하고 오류 사업만 REVIEW 결과를 만든다.
+    assert "function evaluateSchemeModulesSafely(store,names=null,evaluator=evaluateSchemeModule)" in html
+    safe_block = html[html.index("function evaluateSchemeModulesSafely"):html.index("function runAllSchemeChecks", html.index("function evaluateSchemeModulesSafely"))]
+    assert "for(const name of order)" in safe_block
+    assert "catch(e)" in safe_block
+    assert "schemeModuleReviewResult(name,e,store)" in safe_block
+    assert "schemeResults[name]=fallback" in safe_block
+
+    # Candidate/밀도 계산도 사업별 fail-safe이며, 순위 계산 실패 시 기본 후보순위를 남긴다.
+    assert "function candidateEngineErrorState(name,error)" in html
+    assert "function safeCandidateState(name)" in html
+    assert "function safeDensityPotentialForScheme(name,st=null)" in html
+    cand = html[html.index("function updateCandidateSchemes()"):html.index("const SMALLSCALE_ROUTE_UI=", html.index("function updateCandidateSchemes()"))]
+    assert "try{st=ccContextFor(name);}" in cand and "candidateEngineErrorState(name,e)" in cand
+    assert "analysisState.recommendations=ranked.filter" in cand
+
+    # UI 렌더링은 개별 단계로 격리되어 priority preview가 앞 단계 오류에 묶이지 않는다.
+    runall = html[html.index("function runAllSchemeChecks()"):html.index("// ---------- Boundary input", html.index("function runAllSchemeChecks()"))]
+    for marker in (
+        "safeSchemeUiStep('candidate'", "safeSchemeUiStep('comparison'",
+        "safeSchemeUiStep('sheets'", "safeSchemeUiStep('priority-preview'"
+    ):
+        assert marker in runall, marker
+    review = html[html.index("async function runSiteReview()"):html.index("function resetMeasure()", html.index("async function runSiteReview()"))]
+    assert "나머지 사업추천은 계속 산정했습니다" in review
+    assert "safeSchemeUiStep('candidate-final'" in review
+    assert "safeSchemeUiStep('priority-final'" in review
+
+    # 사전협상 공식 11차 개정 PDF 원본을 배포근거자료로 함께 보존한다.
+    pdf = root / "도시계획변경 사전협상 운영지침(11차개정_2026.06.29).pdf"
+    assert pdf.is_file() and pdf.stat().st_size > 500_000
+    assert 'site_fact_store_v2.5.0_r10' in py
+    assert 'v10-failsafe-six-families-fifteen-modules-three-shells' in html and 'v10-failsafe-six-families-fifteen-modules-three-shells' in py
 
 def main() -> None:
     _run("measurement", check_measurement)
@@ -1101,6 +1158,8 @@ def main() -> None:
     _run("remaining four + sources", check_remaining_four_independent_modules_and_sources)
     _run("scheme family separation", check_scheme_family_separation)
     _run("r8 boundary + map + smallscale + prior", check_r8_boundary_map_smallscale_prior)
+    _run("r9 refinement placement", check_r9_refinement_placement)
+    _run("r10 scheme fail-safe", check_r10_scheme_fail_safe)
     _run("release files", check_release_files)
     print("v2.5.0 regression checks: PASS")
 
