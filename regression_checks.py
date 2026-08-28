@@ -548,7 +548,7 @@ def check_spatial_evidence_maps() -> None:
         assert layer in html, layer
     # Fact Store가 도면과 사업엔진의 단일 근거가 된다. 공통 도로는 판정값이 아니라 raw fact로 보존한다.
     assert 'road_raw:roadRawFacts(c)' in html
-    assert 'spatial_evidence:{zoning:zoningSpatialEvidenceFacts(),roads:schemeRoadEvidenceFacts(c),safe_medical:safeMedicalSpatialEvidenceFacts()}' in html
+    assert 'spatial_evidence:{zoning:zoningSpatialEvidenceFacts(),roads:schemeRoadEvidenceFacts(c),frontage:schemeFrontageEvidenceFacts(c),safe_medical:safeMedicalSpatialEvidenceFacts()}' in html
     assert 'function roadRawFacts(cArg=null)' in html
     assert 'has_20m_width_candidate' in html
     assert 'has_20m:c.has20' not in html
@@ -560,11 +560,24 @@ def check_spatial_evidence_maps() -> None:
         assert key in html, key
     for fact_key in ('activationRoadFact','safeHousingRoadFact','growthPotential35mRoadFact','longtermArterialIntersectionFact','stationComplexRoadFact','innovationDistrictRoadFact','publicComplexRoadFact'):
         assert fact_key in html, fact_key
-    assert "mode:'linear_commercial'" in html
+    assert "mode:'width6_frontage'" in html
     assert "threshold:20" in html and "threshold:35" in html
     assert "mode:'road4_8'" in html
     assert '도로기능(특별시도·주/보조간선 등) 공식 속성 미연결' in html
     assert "if(selected==='safe')" in html and "turf.buffer(f,50,{units:'meters'})" in html
+
+    # 접도율/접면기준은 제도별 Fact로 분리하며 공통 frontage Boolean/ratio로 대체하지 않는다.
+    assert 'function schemeFrontageEvidenceFacts(cArg=null)' in html
+    for fact_key in ('redevelopmentFrontage6Fact','activationFrontageFact','safeHousingFrontageFact','growthPotentialFrontage35Fact','longtermFrontage20Fact','stationComplexFrontageFact','innovationFrontageFact','publicComplexFrontageFact'):
+        assert fact_key in html, fact_key
+    for dom_id in ('spRoadFrontageLabel','spRoadFrontageValue','spRoadFrontageBasis','spRoadFrontageContact','spRoadFrontageStatus'):
+        assert f'id="{dom_id}"' in html, dom_id
+    assert '주택재개발 shell 판정엔진과는 분리된 공간현황 Fact' in html
+    assert "key:'redevelopment'" in html
+    # 용도지역 지도는 용도지역별 실제 색상과 동일 색 범례를 제공한다.
+    assert 'function zoningColorSpec(name)' in html
+    assert 'zoning-legend-chip' in html
+
     # A width candidate alone must never make the long-term arterial path PASS.
     lt_start=html.index('function longtermSpatialFacts(store)')
     lt_end=html.index('function checkLongtermFromFacts', lt_start)
@@ -632,6 +645,86 @@ def _run(label, fn) -> None:
     print(f"PASS {label} ({time.time()-started:.1f}s)", flush=True)
 
 
+
+
+
+def check_safe_medical_api_adapter() -> None:
+    # Render에서 실제 사용 중인 환경변수명(data.seoul.go.kr_KEY)도 인식해야 한다.
+    with patch.dict(os.environ, {"SEOUL_OPEN_DATA_KEY": "", "data.seoul.go.kr_KEY": "render-test-key"}, clear=False):
+        key, env_name = app._seoul_open_data_key_info()
+        assert key == "render-test-key"
+        assert env_name == "data.seoul.go.kr_KEY"
+
+        # 인증 오류가 top-level RESULT로 와도 '0건'으로 삼키지 않고 명시 오류 처리한다.
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+            def json(self):
+                return {"RESULT": {"CODE": "INFO-100", "MESSAGE": "인증키가 유효하지 않습니다."}}
+
+        with patch.object(app.requests, "get", return_value=FakeResponse()):
+            try:
+                app._seoul_open_data_rows("LOCALDATA_010101", 5)
+                raise AssertionError("top-level OpenAPI error was swallowed")
+            except RuntimeError as exc:
+                assert "INFO-100" in str(exc)
+
+        to_metric = app.Transformer.from_crs(4326, 5174, always_xy=True)
+        x, y = to_metric.transform(127.0000, 37.5000)
+        site = {
+            "type": "Polygon",
+            "coordinates": [[[126.998, 37.498], [127.002, 37.498], [127.002, 37.502], [126.998, 37.502], [126.998, 37.498]]],
+        }
+
+        def fake_rows(service, limit=10000):
+            if service == "LOCALDATA_010101":
+                return [
+                    {"TRDSTATENM": "영업/정상", "UPTAENM": "종합병원", "BPLCNM": "테스트종합병원", "X": x, "Y": y, "RDNWHLADDR": "서울 테스트로 1"},
+                    {"TRDSTATENM": "영업/정상", "UPTAENM": "병원", "BPLCNM": "서울의료원", "X": x + 30, "Y": y + 30, "RDNWHLADDR": "서울 테스트로 2"},
+                ]
+            if service == "LOCALDATA_010102":
+                return [
+                    {"TRDSTATENM": "영업/정상", "UPTAENM": "보건소", "BPLCNM": "테스트구보건소", "X": x + 60, "Y": y + 60, "RDNWHLADDR": "서울 테스트로 3"},
+                    {"TRDSTATENM": "영업/정상", "UPTAENM": "보건지소", "BPLCNM": "테스트보건지소", "X": x + 80, "Y": y + 80},
+                ]
+            if service == "tbEntranceItem":
+                raise AssertionError("current health-center API succeeded, stale fallback must not run")
+            return []
+
+        with patch.object(app, "_seoul_open_data_rows", side_effect=fake_rows):
+            result = app._safe_medical_reference(site)
+        cats = {row["category"] for row in result["items"]}
+        assert {"general_hospital", "municipal_hospital", "public_health_center"}.issubset(cats)
+        assert result["metadata"]["credential_env"] == "data.seoul.go.kr_KEY"
+        assert result["auto_pass_eligible"] is False
+        assert result["nearby_counts"]["public_health_center"] == 1
+        assert result["source_stats"]["health_center"]["service"] == "LOCALDATA_010102"
+
+    html=(Path(__file__).resolve().parent / "app.html").read_text(encoding="utf-8")
+    assert 'id="spSafeMedicalApiInfo"' in html
+    assert "data.nearby_counts||{}" in html
+    assert "data.source_stats||{}" in html
+    assert "API 확인필요" in html
+
+def check_purpose_filter_and_frontage_facts() -> None:
+    html=(Path(__file__).resolve().parent / "app.html").read_text(encoding="utf-8")
+    # 안심주택은 단순 주거가 아니라 주거(임대) 목적에서만 실제 Rule Module을 실행한다.
+    assert '<option value="housing">주거(일반)</option>' in html
+    assert '<option value="housing_rental">주거(임대)</option>' in html
+    assert 'onchange="runAllSchemeChecks()"' in html
+    assert "if(name==='safe' && purpose!=='housing_rental')return {enabled:false" in html
+    assert "const engineGate=purposeEngineGate(name);" in html
+    assert "engineGate.enabled?evaluateSchemeModule(name,store):purposeDisabledSchemeResult(name,engineGate.reason)" in html
+    assert "if(!engineGate.enabled)delete store.scheme_specific[name]" in html
+    assert "if(name==='safe' && purpose!=='housing_rental')return {state:'off'" in html
+    assert "const HOUSING_PURPOSE_VALUES=new Set(['housing','housing_rental'])" in html
+    # 주거(임대)는 다른 주거계열 분류에는 주거로 취급하되 안심주택만 별도 hard gate를 가진다.
+    assert "if(purpose==='housing'||purpose==='housing_rental')return 'housing';" in html
+    # shell-only 주택재개발은 접도 Fact가 생겨도 판정엔진으로 부활하면 안 된다.
+    assert "const SHELL_SCHEMES=new Set(['redevelopment','reconstruction','residential_environment','smallscale','general_housing'])" in html
+    assert "fact_key:'redevelopmentFrontage6Fact'" in html
+    assert 'function checkRedevelopment(' not in html
+
 def main() -> None:
     _run("measurement", check_measurement)
     _run("renewal spatial", check_renewal_server_intersection)
@@ -653,6 +746,8 @@ def main() -> None:
     _run("dedicated detail popups", check_dedicated_detail_popups)
     _run("startup drawing + legacy UI", check_startup_drawing_and_legacy_ui)
     _run("spatial evidence maps", check_spatial_evidence_maps)
+    _run("safe medical api adapter", check_safe_medical_api_adapter)
+    _run("purpose filter + frontage facts", check_purpose_filter_and_frontage_facts)
     _run("release files", check_release_files)
     print("v2.5.0 regression checks: PASS")
 

@@ -1835,16 +1835,36 @@ SEOUL_MUNICIPAL_HOSPITAL_NAMES = {
     "어린이병원", "은평병원",
 }
 
+SEOUL_OPEN_DATA_KEY_ENV_NAMES = (
+    "SEOUL_OPEN_DATA_KEY",
+    "data.seoul.go.kr_KEY",  # Render에 기존 등록된 이름도 그대로 지원
+    "DATA_SEOUL_GO_KR_KEY",
+)
+
+def _seoul_open_data_key_info() -> tuple[str, str]:
+    """Return the configured Seoul Open Data key and the env-var name only.
+
+    The key value itself is never exposed in API responses/logs.  v2.5.0 초기
+    배포본은 SEOUL_OPEN_DATA_KEY만 읽었지만 실제 Render 환경에는
+    data.seoul.go.kr_KEY 이름으로 등록되어 있었으므로 두 이름을 모두
+    허용한다.
+    """
+    for env_name in SEOUL_OPEN_DATA_KEY_ENV_NAMES:
+        value = os.getenv(env_name, "").strip()
+        if value:
+            return value, env_name
+    return "", ""
+
 def _seoul_open_data_key() -> str:
-    return os.getenv("SEOUL_OPEN_DATA_KEY", "").strip()
+    return _seoul_open_data_key_info()[0]
 
 def _seoul_open_data_rows(service: str, limit: int = 10000) -> List[Dict[str, Any]]:
     """Read Seoul Open Data rows without turning API uncertainty into a PASS.
 
-    The caller decides whether the returned geometry is legally sufficient.  For
-    the safe-housing medical criterion these APIs expose points, whereas the rule
-    is measured from the medical-site boundary, so they are reference candidates
-    only.
+    Seoul Open Data sometimes returns API errors in a top-level RESULT object
+    rather than under the requested service key.  Treat that as an explicit
+    error instead of silently returning zero rows, because zero rows must never
+    be mistaken for 'no nearby facility'.
     """
     key = _seoul_open_data_key()
     if not key:
@@ -1854,18 +1874,42 @@ def _seoul_open_data_rows(service: str, limit: int = 10000) -> List[Dict[str, An
     page = 1000
     while start <= limit:
         end = min(start + page - 1, limit)
-        url = f"{SEOUL_OPEN_DATA_BASE}/{quote(key)}/json/{service}/{start}/{end}/"
+        url = f"{SEOUL_OPEN_DATA_BASE}/{quote(key, safe='')}/json/{service}/{start}/{end}/"
         resp = requests.get(url, timeout=20)
         resp.raise_for_status()
-        payload = resp.json()
-        body = payload.get(service) or {}
+        try:
+            payload = resp.json()
+        except Exception as exc:
+            raise RuntimeError(f"서울 열린데이터광장 {service} JSON 응답 해석 실패") from exc
+        if not isinstance(payload, dict):
+            raise RuntimeError(f"서울 열린데이터광장 {service} 응답 형식 오류")
+
+        top_result = payload.get("RESULT") or {}
+        top_code = str(top_result.get("CODE") or "") if isinstance(top_result, dict) else ""
+        if top_code and top_code not in {"INFO-000", "INFO-200"}:
+            raise RuntimeError(f"서울 열린데이터광장 {service} 오류: {top_code} {top_result.get('MESSAGE','')}")
+
+        body = payload.get(service)
+        if not isinstance(body, dict):
+            # 서비스명 대소문자는 API에서 중요하지만 응답 wrapper는 간혹
+            # 표기가 달라질 수 있어 case-insensitive로 한 번 더 찾는다.
+            body = next((v for k, v in payload.items() if str(k).lower() == service.lower() and isinstance(v, dict)), None)
+        if not isinstance(body, dict):
+            keys = ", ".join(str(k) for k in list(payload.keys())[:5])
+            raise RuntimeError(f"서울 열린데이터광장 {service} 응답에 서비스 블록 없음 ({keys or 'empty'})")
+
         result = body.get("RESULT") or {}
-        code = str(result.get("CODE") or "")
+        code = str(result.get("CODE") or "") if isinstance(result, dict) else ""
         if code and code not in {"INFO-000", "INFO-200"}:
             raise RuntimeError(f"서울 열린데이터광장 {service} 오류: {code} {result.get('MESSAGE','')}")
         page_rows = body.get("row") or []
-        rows.extend(page_rows)
-        total = int(body.get("list_total_count") or len(rows))
+        if not isinstance(page_rows, list):
+            raise RuntimeError(f"서울 열린데이터광장 {service} row 형식 오류")
+        rows.extend(x for x in page_rows if isinstance(x, dict))
+        try:
+            total = int(str(body.get("list_total_count") or len(rows)).replace(",", ""))
+        except ValueError:
+            total = len(rows)
         if not page_rows or end >= total:
             break
         start = end + 1
@@ -1877,8 +1921,9 @@ def _name_key(value: Any) -> str:
 def _safe_medical_reference(geometry: Dict[str, Any]) -> Dict[str, Any]:
     """Return official *reference points* near a site for the safe-housing screen.
 
-    No item from this endpoint is sufficient for automatic PASS because the
-    ordinance/operating standard uses distance from the facility *site boundary*.
+    The OpenAPI rows provide point coordinates.  The safe-housing legal test is
+    measured from the eligible medical facility *site boundary*, so these points
+    are map/evidence candidates only and can never create an automatic PASS.
     """
     try:
         site_wgs = _polygonal_only(shape(geometry))
@@ -1890,41 +1935,70 @@ def _safe_medical_reference(geometry: Dict[str, Any]) -> Dict[str, Any]:
     to_wgs = Transformer.from_crs(5174, 4326, always_xy=True)
     site_metric = geometry_transform(to_metric.transform, site_wgs)
 
+    key, key_env = _seoul_open_data_key_info()
     metadata = {
         "criterion": "의료시설 대상부지 경계로부터 350m",
         "auto_pass_eligible": False,
         "reason": "공개 API는 의료시설 위치점 중심이며 법정 기준인 대상부지 경계도형이 아니므로 자동 PASS에 사용하지 않음",
         "hospital_source": "서울시 병원 인허가 정보 (LOCALDATA_010101, 매일 갱신)",
-        "health_center_source": "서울시 시설물 정보 (tbEntranceItem, 2023 일회성·미현행화)",
+        "health_center_source": "서울시 의원 인허가 정보 (LOCALDATA_010102, 매일 갱신; 보건소만 선별)",
+        "health_center_fallback": "서울시 시설물 정보 (tbEntranceItem, 2023 일회성) — LOCALDATA_010102 실패 시 위치 참고용",
         "official_rule": "서울특별시 안심주택 공급 지원에 관한 조례 제2조 및 안심주택 건립·운영기준 1-3-2",
+        "credential_env": key_env or None,
     }
-    if not _seoul_open_data_key():
-        return {"status": "unavailable", "items": [], "metadata": metadata, "auto_pass_eligible": False, "message": "SEOUL_OPEN_DATA_KEY 미설정 · 의료시설 자동 후보조회 불가"}
+    if not key:
+        return {
+            "status": "unavailable", "items": [], "metadata": metadata,
+            "auto_pass_eligible": False,
+            "message": "서울 열린데이터광장 인증키 미설정 · SEOUL_OPEN_DATA_KEY 또는 data.seoul.go.kr_KEY 확인",
+            "errors": ["서울 열린데이터광장 인증키 환경변수를 찾지 못했습니다."],
+            "warnings": [], "source_stats": {},
+        }
+
+    def _row_is_active(row: Dict[str, Any]) -> bool:
+        state = " ".join(str(row.get(k) or "") for k in ("TRDSTATENM", "DTLSTATENM"))
+        return not any(token in state for token in ("폐업", "취소", "말소", "휴업"))
+
+    def _row_point_5174(row: Dict[str, Any]) -> tuple[float, float, float, float, float]:
+        x, y = float(row.get("X")), float(row.get("Y"))
+        if not (50000 <= x <= 400000 and 300000 <= y <= 700000):
+            raise ValueError("EPSG:5174 범위를 벗어난 좌표")
+        pt = shape({"type": "Point", "coordinates": [x, y]})
+        dist = float(site_metric.distance(pt))
+        lon, lat = to_wgs.transform(x, y)
+        if not (124 <= lon <= 132 and 33 <= lat <= 39):
+            raise ValueError("WGS84 변환 결과가 국내 범위를 벗어남")
+        return x, y, lon, lat, dist
 
     items: List[Dict[str, Any]] = []
     errors: List[str] = []
+    warnings: List[str] = []
+    stats: Dict[str, Any] = {}
+
+    # 1) 종합병원 + 서울시 관리 시립병원: 병원 인허가 API
     try:
         hospital_rows = _seoul_open_data_rows("LOCALDATA_010101", 5000)
         municipal_keys = {_name_key(x) for x in SEOUL_MUNICIPAL_HOSPITAL_NAMES}
+        eligible_total = 0
+        coord_skipped = 0
         for row in hospital_rows:
-            state = str(row.get("TRDSTATENM") or row.get("DTLSTATENM") or "")
-            if state and any(token in state for token in ("폐업", "취소", "말소", "휴업")):
+            if not _row_is_active(row):
                 continue
-            kind = str(row.get("UPTAENM") or "").strip()
+            type_name = str(row.get("METRORGASSRNM") or row.get("UPTAENM") or "").strip()
             name = str(row.get("BPLCNM") or "").strip()
             category = None
-            if kind == "종합병원":
+            if type_name == "종합병원" or str(row.get("UPTAENM") or "").strip() == "종합병원":
                 category = "general_hospital"
-            elif kind == "병원" and any(k and k in _name_key(name) for k in municipal_keys):
+            elif any(k and k in _name_key(name) for k in municipal_keys):
+                # 종합병원이 아닌 시립병원도 안심주택 의료시설 후보로 별도 보존.
                 category = "municipal_hospital"
             if not category:
                 continue
+            eligible_total += 1
             try:
-                x, y = float(row.get("X")), float(row.get("Y"))
-                pt = shape({"type": "Point", "coordinates": [x, y]})
-                dist = float(site_metric.distance(pt))
-                lon, lat = to_wgs.transform(x, y)
+                _, _, lon, lat, dist = _row_point_5174(row)
             except Exception:
+                coord_skipped += 1
                 continue
             if dist > 1500:
                 continue
@@ -1933,49 +2007,131 @@ def _safe_medical_reference(geometry: Dict[str, Any]) -> Dict[str, Any]:
                 "geometry": {"type": "Point", "coordinates": [lon, lat]},
                 "address": str(row.get("RDNWHLADDR") or row.get("SITEWHLADDR") or ""),
                 "data_status": "current_reference_point", "auto_pass_eligible": False,
-                "source": "서울시 병원 인허가 정보",
+                "source": "서울시 병원 인허가 정보", "source_service": "LOCALDATA_010101",
+                "facility_type": type_name,
             })
+        stats["hospital"] = {
+            "service": "LOCALDATA_010101", "rows": len(hospital_rows),
+            "eligible_total": eligible_total, "coordinate_skipped": coord_skipped,
+        }
     except Exception as exc:
-        errors.append(f"병원 인허가: {exc}")
+        errors.append(f"병원 인허가 LOCALDATA_010101: {exc}")
+        stats["hospital"] = {"service": "LOCALDATA_010101", "error": str(exc)}
 
-    # 보건소 위치는 공식 공간자료가 있으나 2023년 일회성 자료이고 현행화되지
-    # 않으므로 위치 후보만 제공한다.  350m 법정 판정에는 쓰지 않는다.
+    # 2) 보건소: 의원 인허가 API의 '보건소' 유형을 우선 사용한다.
+    #    이 데이터는 매일 갱신되며 EPSG:5174 좌표를 제공한다.
+    health_center_found = 0
+    clinic_failed = False
     try:
-        facility_rows = _seoul_open_data_rows("tbEntranceItem", 10000)
-        for row in facility_rows:
-            usage = str(row.get("FCLT_USG_SE") or "")
-            name = str(row.get("FCLT_NM") or "").strip()
-            if "보건소" not in usage and "보건소" not in name:
+        clinic_rows = _seoul_open_data_rows("LOCALDATA_010102", 5000)
+        eligible_total = 0
+        coord_skipped = 0
+        for row in clinic_rows:
+            if not _row_is_active(row):
                 continue
-            if "보건지소" in usage or "보건지소" in name:
+            name = str(row.get("BPLCNM") or "").strip()
+            type_name = " ".join(filter(None, [
+                str(row.get("METRORGASSRNM") or "").strip(),
+                str(row.get("UPTAENM") or "").strip(),
+            ])).strip()
+            probe = f"{type_name} {name}"
+            if "보건소" not in probe or "보건지소" in probe:
                 continue
+            eligible_total += 1
             try:
-                lat, lon = float(row.get("LAT")), float(row.get("LOT"))
-                x, y = to_metric.transform(lon, lat)
-                pt = shape({"type": "Point", "coordinates": [x, y]})
-                dist = float(site_metric.distance(pt))
+                _, _, lon, lat, dist = _row_point_5174(row)
             except Exception:
+                coord_skipped += 1
                 continue
+            health_center_found += 1
             if dist > 1500:
                 continue
             items.append({
                 "category": "public_health_center", "name": name or "보건소", "distance_point_m": round(dist, 1),
                 "geometry": {"type": "Point", "coordinates": [lon, lat]},
-                "address": str(row.get("RDN_ADDR") or row.get("LOTNO_ADDR") or ""),
-                "data_status": "stale_reference_point_2023", "auto_pass_eligible": False,
-                "source": "서울시 시설물 정보(2023 일회성)",
+                "address": str(row.get("RDNWHLADDR") or row.get("SITEWHLADDR") or ""),
+                "data_status": "current_reference_point", "auto_pass_eligible": False,
+                "source": "서울시 의원 인허가 정보", "source_service": "LOCALDATA_010102",
+                "facility_type": type_name or "보건소",
             })
+        stats["health_center"] = {
+            "service": "LOCALDATA_010102", "rows": len(clinic_rows),
+            "eligible_total": eligible_total, "coordinate_skipped": coord_skipped,
+        }
+        if eligible_total == 0:
+            warnings.append("LOCALDATA_010102 응답에서 보건소 유형을 찾지 못해 시설물 자료를 보조조회합니다.")
     except Exception as exc:
-        errors.append(f"보건소 시설물: {exc}")
+        clinic_failed = True
+        warnings.append(f"보건소 최신 인허가 LOCALDATA_010102 조회 실패: {exc}")
+        stats["health_center"] = {"service": "LOCALDATA_010102", "error": str(exc)}
 
+    # 3) 보건소 보조자료: 최신 인허가 API가 실패하거나 보건소 행이 없을 때만 사용.
+    #    2023년 일회성 자료이므로 위치 참고 외에는 사용하지 않는다.
+    if clinic_failed or health_center_found == 0:
+        try:
+            facility_rows = _seoul_open_data_rows("tbEntranceItem", 10000)
+            fallback_total = 0
+            for row in facility_rows:
+                usage = str(row.get("FCLT_USG_SE") or "")
+                name = str(row.get("FCLT_NM") or "").strip()
+                if "보건소" not in usage and "보건소" not in name:
+                    continue
+                if "보건지소" in usage or "보건지소" in name:
+                    continue
+                fallback_total += 1
+                try:
+                    lat, lon = float(row.get("LAT")), float(row.get("LOT"))
+                    x, y = to_metric.transform(lon, lat)
+                    pt = shape({"type": "Point", "coordinates": [x, y]})
+                    dist = float(site_metric.distance(pt))
+                except Exception:
+                    continue
+                if dist > 1500:
+                    continue
+                items.append({
+                    "category": "public_health_center", "name": name or "보건소", "distance_point_m": round(dist, 1),
+                    "geometry": {"type": "Point", "coordinates": [lon, lat]},
+                    "address": str(row.get("RDN_ADDR") or row.get("LOTNO_ADDR") or ""),
+                    "data_status": "stale_reference_point_2023", "auto_pass_eligible": False,
+                    "source": "서울시 시설물 정보(2023 일회성)", "source_service": "tbEntranceItem",
+                    "facility_type": usage or "보건소",
+                })
+            stats["health_center_fallback"] = {
+                "service": "tbEntranceItem", "rows": len(facility_rows), "eligible_total": fallback_total,
+            }
+        except Exception as exc:
+            errors.append(f"보건소 보조자료 tbEntranceItem: {exc}")
+            stats["health_center_fallback"] = {"service": "tbEntranceItem", "error": str(exc)}
+
+    # 동일 시설이 주/보조 API에 함께 잡히는 경우 지도 중복표시 방지.
+    deduped: Dict[tuple[str, str, int, int], Dict[str, Any]] = {}
+    for item in items:
+        coords = (item.get("geometry") or {}).get("coordinates") or [0, 0]
+        key_tuple = (
+            str(item.get("category") or ""), _name_key(item.get("name")),
+            int(round(float(coords[0]) * 100000)), int(round(float(coords[1]) * 100000)),
+        )
+        old = deduped.get(key_tuple)
+        if old is None or str(item.get("data_status")) == "current_reference_point":
+            deduped[key_tuple] = item
+    items = list(deduped.values())
     items.sort(key=lambda x: (float(x.get("distance_point_m") or 1e12), str(x.get("category")), str(x.get("name"))))
+
+    nearby_counts = {
+        "general_hospital": sum(1 for x in items if x.get("category") == "general_hospital"),
+        "municipal_hospital": sum(1 for x in items if x.get("category") == "municipal_hospital"),
+        "public_health_center": sum(1 for x in items if x.get("category") == "public_health_center"),
+    }
     return {
         "status": "reference" if items else ("error" if errors else "none"),
         "auto_pass_eligible": False,
         "items": items[:30],
         "metadata": metadata,
         "errors": errors,
-        "message": "위치점은 후보검색용이며 의료시설 대상부지 경계 350m는 결정도서·공부로 재확인해야 합니다.",
+        "warnings": warnings,
+        "source_stats": stats,
+        "nearby_counts": nearby_counts,
+        "message": "공식 위치점은 후보검색용이며 의료시설 대상부지 경계 350m는 결정도서·공부로 재확인해야 합니다.",
     }
 
 
@@ -2245,7 +2401,8 @@ def health():
         "renewal_gis": "server-side UQ181/UQ120 intersection; legal-priority; promotion separate; full matched boundaries returned for status map",
         "development_gis": "VWorld district-unit plan + bundled Seoul UQ181 urban-development/public-housing/other legal project intersections",
         "safe_housing_location_paths": "station / arterial-road-side / medical-facility-center evaluated separately; OR combined",
-        "safe_medical_reference": "Seoul hospital licensing current points + 2023 health-center reference points (REVIEW only)" if _seoul_open_data_key() else "needs_SEOUL_OPEN_DATA_KEY; no automatic medical PASS",
+        "safe_medical_reference": "Seoul hospital + clinic licensing current points (REVIEW only; site-boundary geometry still required)" if _seoul_open_data_key() else "needs Seoul Open Data key; no automatic medical PASS",
+        "safe_medical_key_env": _seoul_open_data_key_info()[1] or None,
         "road_width_gis": "server bundled official ZIP" if _road_zip_path() else "official ZIP hook ready; data/road_seoul.zip not installed",
         "responsive_ui": "desktop/tablet/mobile responsive layout with mobile workflow and selected-scheme cards",
         "smallscale_group": "block renewal/autonomous renewal/small-scale reconstruction/Moa Town alternative group",
@@ -2258,7 +2415,8 @@ def health():
         "scheme_module_api": "2026-08-28-v5-nine-independent-five-shells",
         "independent_scheme_modules": "activation / growth_potential / safe_housing / shared_housing / station_complex / longterm / public_complex / innovation / urban_redevelopment; redevelopment / reconstruction / residential_environment / smallscale / general_housing are shell-only until redesigned",
         "scheme_specific_spatial_checks": "scheme module may request additional official spatial facts; missing facts remain REVIEW, never inferred PASS",
-        "spatial_evidence_maps": "common cadastral base + zoning + scheme-specific road criteria + safe-housing medical reference; map facts and scheme facts share one Fact Store",
+        "spatial_evidence_maps": "common cadastral base + colored zoning + scheme-specific road/frontage facts + safe-housing medical reference; map facts and scheme facts share one Fact Store",
+        "purpose_filter": "safe-housing rule module runs only when purpose=housing_rental; other schemes keep existing purpose/candidate logic",
         "provenance_ui": True,
     }
 

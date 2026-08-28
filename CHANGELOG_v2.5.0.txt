@@ -89,3 +89,20 @@ urban-strategy v2.5.0
 - 20m 도로 공통값을 `has_20m_width_candidate`로 명확히 변경하고, 장기전세의 `longtermArterialIntersectionFact`는 20m 폭원·접면 조건이 맞더라도 도로기능 확인 전에는 PASS하지 않는다.
 - 제도별 도로 Fact 이름을 `activationRoadFact / safeHousingRoadFact / growthPotential35mRoadFact / longtermArterialIntersectionFact / stationComplexRoadFact / innovationDistrictRoadFact / publicComplexRoadFact`로 고정했다.
 - 회귀검사에 startup drawing 등록순서, 구형 검토시트 비표시, 공통 지적 베이스, 용도지역 면적·구성비, 안심주택 의료시설 부지경계 미확보 REVIEW, 제도별 도로 Fact 분리 및 공통 간선 Boolean 재등장 금지를 추가했다.
+
+[2026-08-28 · 목적사업 필터·제도별 접도 Fact·용도지역 색상 보강]
+- 목적사업에 `주거(일반)`과 `주거(임대)`를 분리하고, 안심주택 Rule Module은 `주거(임대)`를 선택한 경우에만 실제 collectFacts/evaluate 단계가 실행되도록 hard gate를 추가했다. 다른 목적에서는 판정 후 숨김이 아니라 모듈 실행 자체를 건너뛰며 사업카드도 목적 불일치로 비활성화한다.
+- `주거(임대)`는 다른 주거계열 사업에는 주거 목적과 동일하게 적용하되, 안심주택만 임대 목적 전용 후보로 별도 처리한다.
+- 공간현황의 도로 화면을 `제도별 도로·접도 현황`으로 확장하고 공통 접도율을 만들지 않는다. `redevelopmentFrontage6Fact / activationFrontageFact / safeHousingFrontageFact / growthPotentialFrontage35Fact / longtermFrontage20Fact` 등 제도별 Fact를 독립 저장한다.
+- 주택재개발 접도율은 현재 공간현황 Fact로만 표시하며 shell-only 재개발 판정엔진을 부활시키지 않는다. 폭 6m 이상 도로와 연속 접면 원자료를 이용한 건축물 기준 현황값을 표시하되 향후 재개발 독립모듈 확정 전에는 추천판정에 사용하지 않는다.
+- 역세권활성화, 안심주택, 성장잠재권, 역세권 장기전세 등은 각 제도의 실제 도로·접면 정의를 별도 표시한다. 도면의 값과 Rule Module이 사용하는 값은 같은 Fact Store를 사용한다.
+- 용도지역 현황도는 주거·준주거·상업·공업·녹지계열 및 세부 용도지역에 구분색을 적용하고, 범례에도 동일 색상·용도지역명·면적·구성비를 표시한다. 색은 시각화용이며 판정은 기존 VWorld LT_C_UQ111 Fact를 그대로 사용한다.
+- 회귀검사에 안심주택 임대목적 hard gate, 제도별 접도 Fact 키, 재개발 shell 유지, 접도현황 DOM, 용도지역 색상·범례를 추가했다.
+
+[2026-08-28 의료시설 OpenAPI 연결 보강]
+- Render 환경변수 `data.seoul.go.kr_KEY`를 `SEOUL_OPEN_DATA_KEY`와 함께 인식하도록 호환 처리.
+- 서울 열린데이터광장 top-level RESULT 인증/서비스 오류를 0건으로 삼키지 않고 REVIEW 원인으로 노출.
+- 종합병원·시립병원: LOCALDATA_010101, 보건소: LOCALDATA_010102(매일 갱신) 우선 연결.
+- LOCALDATA_010102 실패 시에만 tbEntranceItem(2023 일회성)을 위치 참고용 fallback으로 사용.
+- 공간현황 의료시설도에 API 연결상태·인근 종합병원/시립병원/보건소 건수·오류 원인을 표시.
+- 위치점/350m 참고버퍼는 계속 자동 PASS 금지; 대상부지 경계 확보 전 REVIEW 유지.
