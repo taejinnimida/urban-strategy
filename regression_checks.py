@@ -102,51 +102,28 @@ def check_development_server_intersection() -> None:
 
 
 def check_area_gate() -> None:
-    result = app.evaluate_redevelopment({"area_m2": 1399})
-    area = next(row for row in result["checks"] if row["id"] == "AREA")
-    assert area["status"] == "FAIL"
-    assert result["physical_eligibility"]["status"] == "FAIL"
-
-    pending = app.evaluate_redevelopment({"area_m2": 7000})
-    pending_area = next(row for row in pending["checks"] if row["id"] == "AREA")
-    assert pending_area["status"] == "UNKNOWN"
-
-    approved = app.evaluate_redevelopment({"area_m2": 7000, "area_5000_exception_approved": True})
-    approved_area = next(row for row in approved["checks"] if row["id"] == "AREA")
-    assert approved_area["status"] == "PASS"
+    """주택재개발 면적 하드게이트는 단일 frontend Fact module에만 존재해야 한다."""
+    html = Path(app.STATIC_DIR, "app.html").read_text(encoding="utf-8")
+    block = html[html.index("function redevelopmentSpatialFacts(store)"):html.index("function reconstructionSpatialFacts(store)")]
+    assert "area>=10000" in block
+    assert "area>=5000" in block
+    assert "c.areaExceptionApproved?'PASS':'REVIEW'" in block
+    assert "else{areaStatus='FAIL'" in block
+    # 이전 Python 중복 판정엔진은 제거되어야 한다.
+    py = Path(app.BASE_DIR, "app.py").read_text(encoding="utf-8")
+    assert "def evaluate_redevelopment(" not in py
+    assert '/api/redevelopment/evaluate' not in py
 
 
 def check_redevelopment_boolean_gate() -> None:
-    """면적 AND 노후도 AND 추가요건 1개가 실제 최종판정을 지배해야 한다."""
-    base = {
-        "area_m2": 22716,
-        "total_building_count": 53,
-        "old_building_count": 33,
-        "total_parcel_count": 79,
-        "small_parcel_count": 18,
-        "house_density_per_ha": 34.3,
-        "total_floor_area_m2": 1000,
-        "old_floor_area_m2": 515,
-    }
-    # 화면 사례: 확인된 추가요건은 모두 미달, 접도율만 미확인 -> PASS가 아니라 REVIEW.
-    pending = app.evaluate_redevelopment(base)
-    assert pending["physical_eligibility"]["status"] == "REVIEW"
-
-    # 접도율도 미달로 확인되면 선택요건 전부 FAIL -> 주택재개발 신규입안 FAIL.
-    failed = app.evaluate_redevelopment({
-        **base,
-        "road_basis_building_count": 53,
-        "road_access_building_count_6m": 30,
-    })
-    assert failed["physical_eligibility"]["status"] == "FAIL"
-
-    # 접도율 40% 이하가 공식 GIS AUTO로 확인되면 +1 충족 -> PASS.
-    passed = app.evaluate_redevelopment({
-        **base,
-        "road_basis_building_count": 53,
-        "road_access_building_count_6m": 20,
-    })
-    assert passed["physical_eligibility"]["status"] == "PASS"
+    """면적 AND 노후도 AND 추가요건(OR) 구조가 frontend 독립모듈에 고정되어야 한다."""
+    html = Path(app.STATIC_DIR, "app.html").read_text(encoding="utf-8")
+    block = html[html.index("function redevelopmentSpatialFacts(store)"):html.index("function reconstructionSpatialFacts(store)")]
+    assert "smallStatus==='PASS'||densityStatus==='PASS'" in block
+    assert "frontageThreshold" in block and "extraStatus='REVIEW'" in block
+    assert "[smallStatus,densityStatus,frontageStatus].every(x=>x==='FAIL')" in block
+    assert "노후·불량건축물 수 60% 이상" in block
+    assert "과소필지 40% 이상 또는 주택접도율 40% 이하 또는 호수밀도 60호/ha 이상" in block
 
 
 def check_centerline_width_buffer() -> None:
@@ -258,7 +235,7 @@ def check_feedback_and_ui() -> None:
         "ccLandMini", "ccBuildingMini", "ccPlanningMini", "ccStationMini", "ccCenterMini",
         "ccPlanningDistrictPlan", "ccPlanningRenewal", "smallParcelLayer", "oldParcelLayer",
         "safe_supply_type", "safe_adjacent_high_zone",
-        "독립엔진 9개 사업을 자동 검토하고, 나머지 5개는 재설계 예정",
+        "독립엔진 13개 사업을 자동 검토하고, 소규모주택정비는 재설계 예정",
         "siteRoadNetworkStats", "scheme_road20_perimeter_ratio",
         "최신 공식 시행본 미확보 · 계획용적률 자동입력 금지",
         "시행령 별표 1 제2호·제4호 / 조례 제6조제1항제2·3호",
@@ -320,8 +297,8 @@ def check_feedback_and_ui() -> None:
     assert "schemeAgeFact(store,'growth_potential',route)" in decision
     assert "schemeAgeFact(store,'urban_redevelopment')" in decision
     assert "const SCHEME_MODULES=" in html
-    assert "SCHEME_MODULE_API_VERSION='2026-08-28-v5-nine-independent-five-shells'" in html
-    assert "const SHELL_SCHEMES=new Set(['redevelopment','reconstruction','residential_environment','smallscale','general_housing'])" in html
+    assert "SCHEME_MODULE_API_VERSION='2026-08-28-v6-family-separated-thirteen-independent-one-shell'" in html
+    assert "const SHELL_SCHEMES=new Set(['smallscale'])" in html
     assert "기존 판정엔진 삭제 완료 · 현재 추천/우선순위 미반영" in html
     assert "collectFacts:activationSpatialFacts" in html
     assert "function checkActivationFromFacts(store,f)" in html
@@ -569,11 +546,11 @@ def check_spatial_evidence_maps() -> None:
 
     # 접도율/접면기준은 제도별 Fact로 분리하며 공통 frontage Boolean/ratio로 대체하지 않는다.
     assert 'function schemeFrontageEvidenceFacts(cArg=null)' in html
-    for fact_key in ('redevelopmentFrontage6Fact','activationFrontageFact','safeHousingFrontageFact','growthPotentialFrontage35Fact','longtermFrontage20Fact','stationComplexFrontageFact','innovationFrontageFact','publicComplexFrontageFact'):
+    for fact_key in ('redevelopmentFrontage6Fact','residentialEnvironmentFrontage4Fact','activationFrontageFact','safeHousingFrontageFact','growthPotentialFrontage35Fact','longtermFrontage20Fact','stationComplexFrontageFact','innovationFrontageFact','publicComplexFrontageFact'):
         assert fact_key in html, fact_key
     for dom_id in ('spRoadFrontageLabel','spRoadFrontageValue','spRoadFrontageBasis','spRoadFrontageContact','spRoadFrontageStatus'):
         assert f'id="{dom_id}"' in html, dom_id
-    assert '주택재개발 shell 판정엔진과는 분리된 공간현황 Fact' in html
+    assert '사업진입조건 확인을 위한 개략적 추정치로, 현장조서 및 도면검토를 통해 보완될 수 있음' in html
     assert "key:'redevelopment'" in html
     # 용도지역 지도는 용도지역별 실제 색상과 동일 색 범례를 제공한다.
     assert 'function zoningColorSpec(name)' in html
@@ -848,14 +825,154 @@ def check_purpose_filter_and_frontage_facts() -> None:
     assert "const HOUSING_PURPOSE_VALUES=new Set(['housing','housing_rental'])" in html
     # 주거(임대)는 다른 주거계열 분류에는 주거로 취급하되 안심주택만 별도 hard gate를 가진다.
     assert "if(purpose==='housing'||purpose==='housing_rental')return 'housing';" in html
-    # shell-only 주택재개발은 접도 Fact가 생겨도 판정엔진으로 부활하면 안 된다.
-    assert "const SHELL_SCHEMES=new Set(['redevelopment','reconstruction','residential_environment','smallscale','general_housing'])" in html
+    # 주택재개발은 독립모듈로 전환됐지만 접도율은 도로중심선 기반 개략 Fact로 유지한다.
+    assert "const SHELL_SCHEMES=new Set(['smallscale'])" in html
     assert "fact_key:'redevelopmentFrontage6Fact'" in html
     assert "trySpatialLayerCandidates(['TL_SPRD_MANAGE','LT_C_SPRD_MANAGE']" in html
     assert "trySpatialLayerCandidates(['TL_SPRD_RW'" not in html
     assert "사업진입조건 확인을 위한 개략적 추정치로, 현장조서 및 도면검토를 통해 보완될 수 있음" in html
     assert "analysisState.quality.road='ESTIMATE'" in html
     assert 'function checkRedevelopment(' not in html
+
+def check_remaining_four_independent_modules_and_sources() -> None:
+    """주택재개발·재건축·주거환경개선·일반주택건설은 독립모듈이며 모든 검토항목에 공식근거가 붙어야 한다."""
+    root = Path(app.BASE_DIR)
+    html = (root / "app.html").read_text(encoding="utf-8")
+    py = (root / "app.py").read_text(encoding="utf-8")
+
+    assert "SCHEME_MODULE_API_VERSION='2026-08-28-v6-family-separated-thirteen-independent-one-shell'" in html
+    assert "const SHELL_SCHEMES=new Set(['smallscale'])" in html
+    required = (
+        "function redevelopmentSpatialFacts(store)", "function checkRedevelopmentFromFacts(store,f)",
+        "function reconstructionSpatialFacts(store)", "function checkReconstructionFromFacts(store,f)",
+        "function residentialEnvironmentSpatialFacts(store)", "function checkResidentialEnvironmentFromFacts(store,f)",
+        "function generalHousingSpatialFacts(store)", "function checkGeneralHousingFromFacts(store,f)",
+        "collectFacts:redevelopmentSpatialFacts", "collectFacts:reconstructionSpatialFacts",
+        "collectFacts:residentialEnvironmentSpatialFacts", "collectFacts:generalHousingSpatialFacts",
+        "function renderRemainingSchemeDetailPopup(name)",
+        "['redevelopment','reconstruction','residential_environment','general_housing'].includes(name)",
+    )
+    for text in required:
+        assert text in html, text
+
+    module_block = html[html.index("const SCHEME_MODULES="):html.index("function evaluateSchemeModule", html.index("const SCHEME_MODULES="))]
+    for key in ("redevelopment", "reconstruction", "residential_environment", "general_housing"):
+        assert f"{key}:{{" in module_block or f"{key}: {{" in module_block
+    assert "smallscale:{" not in module_block and "smallscale: {" not in module_block
+
+    # 신규 4개 사업의 모든 schemeRow는 sourceId + locator를 명시한다.
+    blocks = [
+        ("function checkRedevelopmentFromFacts(store,f)", "function reconstructionSpatialFacts(store)"),
+        ("function checkReconstructionFromFacts(store,f)", "function residentialEnvironmentSpatialFacts(store)"),
+        ("function checkResidentialEnvironmentFromFacts(store,f)", "function generalHousingSpatialFacts(store)"),
+        ("function checkGeneralHousingFromFacts(store,f)", "const SCHEME_MODULES="),
+    ]
+    for start_text, end_text in blocks:
+        block = html[html.index(start_text):html.index(end_text, html.index(start_text))]
+        calls = [line for line in block.splitlines() if "schemeRow(" in line]
+        assert calls, start_text
+        for line in calls:
+            assert "sourceId:" in line, f"sourceId missing: {line.strip()}"
+            assert "locator:" in line, f"locator missing: {line.strip()}"
+
+    # 화면의 결과/계획기준 표 모두 근거를 노출하고, 행이 없어도 default source를 붙인다.
+    popup = html[html.index("function renderRemainingSchemeDetailPopup(name)"):html.index("function renderSchemeComparePopup()")]
+    assert popup.count("<th>근거</th>") >= 2
+    assert "검토표의 모든 항목은 근거유형·기준일·조문/장절을 함께 표시합니다." in popup
+    assert "const resolved=ruleSourceFor(scheme,item)" in html
+    assert "source=schemeSheetSourceCell({sourceType:src.type" in html
+
+    # 13개 전용검토서의 계획기준 근거 셀도 단순 근거명 문자열이 아니라 공통 source renderer를 사용한다.
+    assert "function schemeSheetSourceFor(scheme,item,sourceId='',locator='')" in html
+    raw_source_cells = (
+        '<td>안심주택 운영기준의 용도지역별 계획기준</td>',
+        '<td>서울특별시 지구단위계획 수립기준</td>',
+        '<td>역세권 장기전세주택 건립 운영기준</td>',
+        '<td>운영기준 용도지역 변경기준</td>',
+        '<td>도심복합개발법·서울시 조례/시행규칙</td>',
+        '<td>2030 서울특별시 도시·주거환경정비기본계획</td>',
+    )
+    for raw in raw_source_cells:
+        assert raw not in html, f"unstructured source cell remains: {raw}"
+
+    # 일반 주택건설 30~49세대는 주택유형별 50세대 예외 여부를 확인하기 전 PASS하지 않는다.
+    assert "else if(units>=30){approvalStatus='REVIEW'" in html
+    assert "30~49세대 · 주택유형별 승인기준 확인" in html
+
+    # 최신 서울 도시계획조례 재편 번호: 용적률은 제48조. 구 제55조를 신규 일반주택 기준에 쓰지 않는다.
+    assert "locator:'제48조 용도지역 안에서의 용적률'" in html
+    assert "서울특별시 도시계획 조례 제48조" in html
+    gh = html[html.index("function generalHousingSpatialFacts(store)"):html.index("const SCHEME_MODULES=", html.index("function generalHousingSpatialFacts(store)"))]
+    assert "도시계획 조례 제55조" not in gh
+
+    # 주거환경개선 접도율(4m)과 주택재개발 접도율(6m)은 서로 다른 Fact다.
+    assert "fact_key:'residentialEnvironmentFrontage4Fact'" in html
+    assert "fact_key:'redevelopmentFrontage6Fact'" in html
+    assert "frontage_access_buildings_4m" in html and "frontage_access_buildings_6m" in html
+
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    list_block = readme[readme.index("## v2.5.0 독립 검토모듈 13종"):readme.index("## v2.4.3", readme.index("## v2.5.0 독립 검토모듈 13종"))]
+    for label in ("주택재개발", "재건축", "주거환경개선", "일반 주택건설"):
+        assert f"- {label}" in list_block
+    assert "근거유형 / 공식 근거명 / 조문·장절 / 기준일 / 원문 링크" in list_block
+
+    # 서버측 구형 재개발 판정엔진/중복 API는 제거한다.
+    assert "def evaluate_redevelopment(" not in py
+    assert '/api/redevelopment/evaluate' not in py
+    assert '"scheme_module_api": "2026-08-28-v6-family-separated-thirteen-independent-one-shell"' in py
+    assert 'smallscale only remains shell-only' in py
+
+def check_scheme_family_separation() -> None:
+    """주택정비 3종은 raw Fact만 공유하고 일반 주택건설은 독립 family로 분리한다."""
+    root = Path(app.BASE_DIR)
+    html = (root / "app.html").read_text(encoding="utf-8")
+
+    assert "const SCHEME_FAMILY_META={" in html
+    assert "housing_renewal:{label:'주택정비사업'" in html
+    assert "general_housing:{label:'민간 주택개발'" in html
+    assert "const HOUSING_RENEWAL_SCHEMES=new Set(SCHEME_FAMILY_META.housing_renewal.members)" in html
+    assert "function housingRenewalFamilyFacts(store)" in html
+    assert "family_specific:{},scheme_specific:{}" in html
+    assert "공유하는 것은 공간·건축물 원자료 Fact뿐이며 입안요건 판정은 각 독립 Rule Module에서 수행" in html
+
+    # 세 주택정비사업만 family raw fact를 읽는다.
+    for fn in ("redevelopmentSpatialFacts", "reconstructionSpatialFacts", "residentialEnvironmentSpatialFacts"):
+        start = html.index(f"function {fn}(store)")
+        end = html.find("\nfunction ", start + 20)
+        block = html[start:end if end != -1 else len(html)]
+        assert "housingRenewalFamilyFacts(store)" in block, fn
+
+    gh_start = html.index("function generalHousingSpatialFacts(store)")
+    gh_end = html.index("function checkGeneralHousingFromFacts", gh_start)
+    gh = html[gh_start:gh_end]
+    assert "housingRenewalFamilyFacts(store)" not in gh
+    assert "independent_from_renewal:true" in gh
+    assert "주택정비사업 Family Fact/노후도/과소필지/주택접도율을 진입조건으로 사용하지 않는다" in gh
+
+    # 일반주택은 재개발/재건축 실패의 자동 fallback으로 제시하지 않는다.
+    alt = html[html.index("function schemeAlternativeText"):html.index("function ruleTrust", html.index("function schemeAlternativeText"))]
+    assert "redevelopment:'주거환경개선·소규모주택정비(별도 검토)'" in alt
+    assert "reconstruction:'소규모재건축·리모델링(별도 검토)'" in alt
+    assert "redevelopment:'소규모주택정비·주거환경개선·일반주택건설'" not in alt
+    assert "reconstruction:'소규모재건축·리모델링·일반주택건설'" not in alt
+
+    # 첫 화면에서도 Family를 구분해 보여준다.
+    assert 'data-family="housing_renewal">주택정비사업' in html
+    assert 'data-family="general_housing">민간 주택개발' in html
+    assert 'data-family="policy_special">정책·특례사업' in html
+    assert 'data-family="smallscale_pending">소규모정비' in html
+    assert "family_key:schemeFamilyKey(x.name),family_label:schemeFamilyLabel(x.name)" in html
+    # 전체비교에서도 family 축을 잃지 않는다.
+    assert "<th>사업 Family</th><th>사업방식</th>" in html
+    assert "${escHtml(schemeFamilyLabel(name))}" in html
+
+    # 일반주택의 도시계획 중첩은 정비구역 자료가 아니라 범용 도시계획 공간근거를 사용한다.
+    assert "PLANNING_GIS:{type:'공간정보·고시',title:'서울도시계획포털·VWorld 도시계획 공식 공간자료'" in html
+    gh_eval_start = html.index("function checkGeneralHousingFromFacts(store,f)")
+    gh_eval_end = html.index("const SCHEME_MODULES=", gh_eval_start)
+    gh_eval = html[gh_eval_start:gh_eval_end]
+    assert "sourceId:'PLANNING_GIS'" in gh_eval
+    assert "sourceId:'RENEWAL_GIS'" not in gh_eval
 
 def main() -> None:
     _run("measurement", check_measurement)
@@ -877,6 +994,8 @@ def main() -> None:
     _run("safe medical api adapter", check_safe_medical_api_adapter)
     _run("safe medical boundary resolution", check_safe_medical_boundary_resolution)
     _run("purpose filter + frontage facts", check_purpose_filter_and_frontage_facts)
+    _run("remaining four + sources", check_remaining_four_independent_modules_and_sources)
+    _run("scheme family separation", check_scheme_family_separation)
     _run("release files", check_release_files)
     print("v2.5.0 regression checks: PASS")
 
@@ -884,7 +1003,7 @@ def main() -> None:
 
 def test_migrated_scheme_legacy_engines_removed():
     html = Path(app.BASE_DIR, "app.html").read_text(encoding="utf-8")
-    # 모든 구형 사업 판정엔진은 삭제한다. 9개는 독립모듈, 5개는 shell-only다.
+    # 모든 구형 사업 판정엔진은 삭제한다. 13개는 독립모듈, 소규모주택정비만 shell-only다.
     deprecated_functions = [
         "checkActivation", "checkSafe", "checkStationComplex", "checkLongterm", "checkPublicComplex",
         "checkInnovation", "checkGrowthPotential", "checkSharedHousing", "checkUrbanRedevelopment",
@@ -896,12 +1015,12 @@ def test_migrated_scheme_legacy_engines_removed():
     for name in deprecated_functions:
         assert f"function {name}(" not in html, f"deprecated engine/helper {name} remains"
     assert "legacy-adapter" not in html
-    assert "const SHELL_SCHEMES=new Set(['redevelopment','reconstruction','residential_environment','smallscale','general_housing'])" in html
+    assert "const SHELL_SCHEMES=new Set(['smallscale'])" in html
     assert "if(SHELL_SCHEMES.has(name))" in html
     assert "state:'neutral',label:'재설계 예정',rank:0,stage:'SHELL'" in html
     assert "기존 판정엔진 삭제 완료 · 현재 추천/우선순위 미반영" in html
-    assert "독립모듈 9개만 실제 판정한다. 미전환 5개는 shell 결과만 반환" in html
-    for key in ["activation", "growth_potential", "safe", "shared_housing", "station_complex", "longterm", "public_complex", "innovation", "urban_redevelopment"]:
+    assert "독립모듈 13개를 실제 판정한다. 소규모주택정비 1개만 shell로 유지" in html
+    for key in ["redevelopment", "reconstruction", "residential_environment", "general_housing", "activation", "growth_potential", "safe", "shared_housing", "station_complex", "longterm", "public_complex", "innovation", "urban_redevelopment"]:
         assert f"{key}:{{" in html or f"{key}: {{" in html, f"independent module {key} missing"
 
 if __name__ == "__main__":

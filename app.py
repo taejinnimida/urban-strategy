@@ -26,7 +26,6 @@ try:
     import psycopg
 except ImportError:  # local/offline test without PostgreSQL driver
     psycopg = None
-from dataclasses import dataclass, asdict
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Request, Response, Depends
@@ -47,7 +46,7 @@ shapefile.VERBOSE = False
 # ============================================================
 # 도시검토 플랫폼 v2.5.0
 # - 서버·정적화면·공간자료를 분리한 Docker 배포판
-# - 서울 14개 정비·개발사업 Rule Engine + 공간근거·관리자 운영
+# - 서울 13개 독립 정비·개발사업 Rule Module + 소규모주택정비 shell + 공간근거·관리자 운영
 # - 웹 지도 Polygon 면적 자동계산
 # 기준일: 2026-08-26
 # ============================================================
@@ -76,47 +75,8 @@ def _index_html() -> str:
     with open(STATIC_HTML_PATH, encoding="utf-8") as fp:
         return fp.read()
 
-RULES = {'rule_set_id': 'seoul_housing_redevelopment_2026_08_v03', 'title': '서울 주택정비형 재개발 1차 입안대상 판정', 'scope': '서울특별시 주택정비형 재개발사업 정비계획 입안대상지역 1차 스크리닝', 'as_of': '2026-08-26', 'thresholds': {'area_normal_m2': 10000, 'area_exception_m2': 5000, 'old_building_count_ratio': 0.6, 'old_building_count_ratio_promotion_district': 0.5, 'old_building_count_deemed_selection_ratio': 0.75, 'small_parcel_ratio': 0.4, 'housing_road_access_ratio': 0.4, 'house_density_per_ha': 60, 'old_floor_area_ratio': 0.6, 'old_floor_area_ratio_promotion_district': 0.5, 'request_owner_consent_ratio': 0.3, 'proposal_owner_consent_ratio': 0.6, 'proposal_land_area_consent_ratio': 0.5}, 'policy_watch': [{'id': 'OLD_COUNT_DEEMED_70_WATCH', 'status': 'UNVERIFIED_NOT_ACTIVE', 'current': '노후·불량건축물 수 75% 이상이면 조례상 추가요건을 갖춘 것으로 보는 간주규정', 'possible_future': '70% 완화 가능성 언급이 있어 향후 시행령 개정 여부 추적 필요', 'engine_behavior': '현행 75%만 적용. 법령 공포·시행 전에는 70%를 판정에 사용하지 않음'}], 'sources': [{'id': 'ENFORCEMENT_DECREE_APPENDIX1', 'title': '도시 및 주거환경정비법 시행령 제7조제1항 별표 1', 'url': 'https://www.law.go.kr/lsInfoP.do?lsId=009521', 'note': '재개발 정비계획 입안대상지역 기본요건 및 노후·불량건축물 75% 간주규정'}, {'id': 'SEOUL_ORDINANCE_ART2_5', 'title': '서울특별시 도시 및 주거환경정비 조례 제2조제5호', 'url': 'https://law.go.kr/LSW/ordinInfoP.do?ordinSeq=2130189', 'note': '호수밀도 정의 및 유형별 산정기준'}, {'id': 'SEOUL_ORDINANCE_ART6', 'title': '서울특별시 도시 및 주거환경정비 조례 제6조', 'url': 'https://law.go.kr/LSW/ordinInfoP.do?ordinSeq=2130189', 'note': '주택정비형 재개발 면적·노후도·과소필지·주택접도율·호수밀도 요건'}, {'id': 'SEOUL_ORDINANCE_ART9_2', 'title': '서울특별시 도시 및 주거환경정비 조례 제9조의2', 'url': 'https://law.go.kr/LSW/ordinInfoP.do?ordinSeq=2130189', 'note': '정비계획 입안요청 동의비율'}, {'id': 'SEOUL_ORDINANCE_ART10', 'title': '서울특별시 도시 및 주거환경정비 조례 제10조', 'url': 'https://law.go.kr/LSW/ordinInfoP.do?ordinSeq=2130189', 'note': '정비계획 입안제안 동의요건'}]}
-RULES['sources'].append({'id':'SEOUL_ORDINANCE_ART2_10','title':'서울특별시 도시 및 주거환경정비 조례 제2조제10호','url':'https://law.go.kr/LSW/ordinInfoP.do?ordinSeq=2130189','note':'주택접도율 정의: 도로 접도길이 4m 이상. 제6조에서 주택정비형 재개발은 도로폭 6m 이상 적용'})
-RULES['rule_set_id'] = 'seoul_urban_strategy_14schemes_2026_08_v04'
-
-
-@dataclass
-class Check:
-    id: str
-    group: str
-    label: str
-    requirement: str
-    actual: Optional[str]
-    status: str  # PASS, FAIL, UNKNOWN, INFO
-    source_ids: List[str]
-    note: str = ""
-
-    def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
-
-
-def _load_rules() -> Dict[str, Any]:
-    # 규칙은 단일 파일 배포를 위해 코드에 내장되어 있습니다.
-    return RULES
-
-
-def _ratio(numerator: Optional[float], denominator: Optional[float]) -> Optional[float]:
-    if numerator is None or denominator is None or denominator == 0:
-        return None
-    return numerator / denominator
-
-
-def _pct(v: Optional[float]) -> Optional[str]:
-    return None if v is None else f"{v * 100:.1f}%"
-
-
-def _check_ge(check_id: str, group: str, label: str, actual: Optional[float], threshold: float,
-              unit: str, source_ids: List[str], note: str = "") -> Check:
-    if actual is None:
-        return Check(check_id, group, label, f">= {threshold:g}{unit}", None, "UNKNOWN", source_ids, note)
-    return Check(check_id, group, label, f">= {threshold:g}{unit}", f"{actual:g}{unit}",
-                 "PASS" if actual >= threshold else "FAIL", source_ids, note)
+# Legacy backend redevelopment evaluator removed in r6.
+# Authoritative scheme decisions are produced in app.html from the shared Fact Store.
 
 
 def calculate_house_density(detail: Dict[str, Any]) -> Dict[str, Any]:
@@ -213,206 +173,7 @@ def calculate_house_density(detail: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def evaluate_redevelopment(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """서울 주택정비형 재개발 정비계획 입안대상지역 1차 스크리닝."""
-    rules = _load_rules()
-    t = rules["thresholds"]
-
-    promotion = bool(payload.get("promotion_district", False))
-    committee_exception = bool(payload.get("area_5000_exception_approved", False))
-
-    area = payload.get("area_m2")
-    total_buildings = payload.get("total_building_count")
-    old_buildings = payload.get("old_building_count")
-    total_parcels = payload.get("total_parcel_count")
-    small_parcels = payload.get("small_parcel_count")
-    total_road_basis_buildings = payload.get("road_basis_building_count")
-    road_access_buildings = payload.get("road_access_building_count_6m")
-    house_density = payload.get("house_density_per_ha")
-    total_floor_area = payload.get("total_floor_area_m2")
-    old_floor_area = payload.get("old_floor_area_m2")
-
-    # 상세 호수밀도 입력이 있고 직접입력값이 없으면 자동 계산
-    density_calc = None
-    if house_density is None and payload.get("house_density_detail"):
-        density_calc = calculate_house_density(payload["house_density_detail"])
-        if density_calc.get("status") == "OK":
-            house_density = density_calc["house_density_per_ha"]
-
-    owner_request_consent = payload.get("request_owner_consent_ratio")
-    owner_proposal_consent = payload.get("proposal_owner_consent_ratio")
-    land_proposal_consent = payload.get("proposal_land_area_consent_ratio")
-
-    old_count_ratio = _ratio(old_buildings, total_buildings)
-    small_parcel_ratio = _ratio(small_parcels, total_parcels)
-    road_access_ratio = _ratio(road_access_buildings, total_road_basis_buildings)
-    old_floor_ratio = _ratio(old_floor_area, total_floor_area)
-
-    checks: List[Check] = []
-
-    # 면적요건: 현행 서울 조례 문언에 따라 일반지역은 서울시 도시계획위원회,
-    # 재정비촉진지구는 도시재정비위원회 심의 인정 시 5천㎡ 이상 가능.
-    if area is None:
-        checks.append(Check("AREA", "mandatory", "구역면적",
-                            "10,000㎡ 이상; 관련 위원회 심의 인정 시 5,000㎡ 이상",
-                            None, "UNKNOWN", ["SEOUL_ORDINANCE_ART6"]))
-    else:
-        if area >= t["area_normal_m2"]:
-            status, note = "PASS", "통상 면적기준 충족"
-        elif area >= t["area_exception_m2"] and committee_exception:
-            status = "PASS"
-            note = ("재정비촉진지구 도시재정비위원회 심의 인정 입력" if promotion
-                    else "서울특별시 도시계획위원회 심의 인정 입력")
-        elif area >= t["area_exception_m2"]:
-            status = "UNKNOWN"
-            note = ("5,000~10,000㎡: 재정비촉진지구 도시재정비위원회 심의 인정 확인 필요" if promotion
-                    else "5,000~10,000㎡: 서울특별시 도시계획위원회 심의 인정 확인 필요")
-        else:
-            status, note = "FAIL", "5,000㎡ 미만"
-        checks.append(Check("AREA", "mandatory", "구역면적",
-                            "10,000㎡ 이상; 관련 위원회 심의 인정 시 5,000㎡ 이상",
-                            f"{area:,.0f}㎡", status, ["SEOUL_ORDINANCE_ART6"], note))
-
-    old_count_threshold = (t["old_building_count_ratio_promotion_district"]
-                           if promotion else t["old_building_count_ratio"])
-    if old_count_ratio is None:
-        checks.append(Check("OLD_COUNT", "mandatory", "노후·불량건축물 수 비율",
-                            f">= {old_count_threshold*100:.0f}%", None, "UNKNOWN",
-                            ["ENFORCEMENT_DECREE_APPENDIX1", "SEOUL_ORDINANCE_ART6"]))
-    else:
-        checks.append(Check("OLD_COUNT", "mandatory", "노후·불량건축물 수 비율",
-                            f">= {old_count_threshold*100:.0f}%", _pct(old_count_ratio),
-                            "PASS" if old_count_ratio >= old_count_threshold else "FAIL",
-                            ["ENFORCEMENT_DECREE_APPENDIX1", "SEOUL_ORDINANCE_ART6"],
-                            "재정비촉진지구 50% 기준" if promotion else "서울 일반지역 60% 기준"))
-
-    # 시행령 별표 1 간주규정: 노후·불량건축물 수 75% 이상이면 조례가 따로 정한 추가요건을 갖춘 것으로 봄
-    deemed_threshold = t["old_building_count_deemed_selection_ratio"]
-    if old_count_ratio is None:
-        checks.append(Check("DEEMED_SELECTION_BY_OLD_COUNT", "selection", "노후도 간주규정",
-                            f">= {deemed_threshold*100:.0f}%", None, "UNKNOWN",
-                            ["ENFORCEMENT_DECREE_APPENDIX1"],
-                            "충족 시 과소필지·접도·호수밀도 등 조례상 추가요건 충족으로 간주"))
-    else:
-        checks.append(Check("DEEMED_SELECTION_BY_OLD_COUNT", "selection", "노후도 간주규정",
-                            f">= {deemed_threshold*100:.0f}%", _pct(old_count_ratio),
-                            "PASS" if old_count_ratio >= deemed_threshold else "FAIL",
-                            ["ENFORCEMENT_DECREE_APPENDIX1"],
-                            "현행 기준 75%. 법령 개정 전까지 70%를 적용하지 않음"))
-
-    if small_parcel_ratio is None:
-        checks.append(Check("SMALL_PARCEL", "selection", "과소필지 비율", ">= 40%", None, "UNKNOWN",
-                            ["SEOUL_ORDINANCE_ART6"], "과소필지=90㎡ 미만 토지"))
-    else:
-        checks.append(Check("SMALL_PARCEL", "selection", "과소필지 비율", ">= 40%", _pct(small_parcel_ratio),
-                            "PASS" if small_parcel_ratio >= t["small_parcel_ratio"] else "FAIL",
-                            ["SEOUL_ORDINANCE_ART6"], "과소필지=90㎡ 미만 토지"))
-
-    if road_access_ratio is None:
-        checks.append(Check("ROAD_ACCESS", "selection", "주택접도율", "<= 40%", None, "UNKNOWN",
-                            ["SEOUL_ORDINANCE_ART2_10", "SEOUL_ORDINANCE_ART6"], "폭 6m 이상 도로에 대지가 길이 4m 이상 접한 경우"))
-    else:
-        checks.append(Check("ROAD_ACCESS", "selection", "주택접도율", "<= 40%", _pct(road_access_ratio),
-                            "PASS" if road_access_ratio <= t["housing_road_access_ratio"] else "FAIL",
-                            ["SEOUL_ORDINANCE_ART2_10", "SEOUL_ORDINANCE_ART6"], "폭 6m 이상 도로에 대지가 길이 4m 이상 접한 경우"))
-
-    density_note = "서울시 조례 제2조제5호 유형별 산정기준"
-    if density_calc and density_calc.get("status") == "OK":
-        density_note += f"; 상세입력에서 자동계산(환산동수 {density_calc['equivalent_building_count']}동)"
-    checks.append(_check_ge("HOUSE_DENSITY", "selection", "호수밀도", house_density,
-                            t["house_density_per_ha"], "호/ha", ["SEOUL_ORDINANCE_ART2_5", "SEOUL_ORDINANCE_ART6"],
-                            density_note))
-
-    old_floor_threshold = (t["old_floor_area_ratio_promotion_district"]
-                           if promotion else t["old_floor_area_ratio"])
-    if old_floor_ratio is None:
-        checks.append(Check("OLD_FLOOR_AREA", "selection", "노후·불량건축물 연면적 비율",
-                            f">= {old_floor_threshold*100:.0f}%", None, "UNKNOWN",
-                            ["ENFORCEMENT_DECREE_APPENDIX1"]))
-    else:
-        checks.append(Check("OLD_FLOOR_AREA", "selection", "노후·불량건축물 연면적 비율",
-                            f">= {old_floor_threshold*100:.0f}%", _pct(old_floor_ratio),
-                            "PASS" if old_floor_ratio >= old_floor_threshold else "FAIL",
-                            ["ENFORCEMENT_DECREE_APPENDIX1"]))
-
-    def consent_check(cid: str, label: str, actual: Optional[float], threshold: float, source: List[str]) -> Check:
-        if actual is None:
-            return Check(cid, "consent", label, f">= {threshold*100:.0f}%", None, "UNKNOWN", source)
-        return Check(cid, "consent", label, f">= {threshold*100:.0f}%", _pct(actual),
-                     "PASS" if actual >= threshold else "FAIL", source)
-
-    checks.append(consent_check("REQUEST_OWNER_CONSENT", "입안요청 토지등소유자 동의율",
-                                owner_request_consent, t["request_owner_consent_ratio"], ["SEOUL_ORDINANCE_ART9_2"]))
-    checks.append(consent_check("PROPOSAL_OWNER_CONSENT", "입안제안 토지등소유자 동의율",
-                                owner_proposal_consent, t["proposal_owner_consent_ratio"], ["SEOUL_ORDINANCE_ART10"]))
-    checks.append(consent_check("PROPOSAL_LAND_CONSENT", "입안제안 토지면적 동의율",
-                                land_proposal_consent, t["proposal_land_area_consent_ratio"], ["SEOUL_ORDINANCE_ART10"]))
-
-    mandatory = [c for c in checks if c.group == "mandatory"]
-    selection = [c for c in checks if c.group == "selection"]
-
-    if any(c.status == "FAIL" for c in mandatory):
-        physical_status = "FAIL"
-        physical_message = "필수요건 중 미충족 항목이 있어 현재 입력값 기준으로 입안대상 1차 요건을 충족하지 못합니다."
-    elif any(c.status == "UNKNOWN" for c in mandatory):
-        physical_status = "REVIEW"
-        physical_message = "필수요건에 확인되지 않은 값이 있어 판정을 보류합니다."
-    elif any(c.status == "PASS" for c in selection):
-        physical_status = "PASS"
-        if any(c.id == "DEEMED_SELECTION_BY_OLD_COUNT" and c.status == "PASS" for c in selection):
-            physical_message = "필수요건을 충족하고 노후·불량건축물 수 75% 이상 간주규정이 적용되어 추가요건을 충족한 것으로 판정합니다."
-        else:
-            physical_message = "필수요건과 선택요건(1개 이상)을 충족한 것으로 입력되어 정비계획 입안대상지역 1차 요건을 충족합니다."
-    elif all(c.status == "FAIL" for c in selection):
-        physical_status = "FAIL"
-        physical_message = "필수요건은 충족하지만 간주규정 및 선택요건이 모두 미충족입니다."
-    else:
-        physical_status = "REVIEW"
-        physical_message = "필수요건은 충족했으나 선택요건 중 확인되지 않은 값이 있어 추가 데이터가 필요합니다."
-
-    special_notes: List[str] = [
-        "노후·불량건축물 75% 간주규정은 현행 시행령 기준으로 판정에 직접 반영합니다.",
-        "서울시 조례 제6조에 따라 입안대상 정량요건 외에도 도시·주거환경정비기본계획 적합성 검토가 별도로 필요합니다.",
-        "향후 법령이 개정되면 룰셋 버전을 새로 만들어 기준일과 시행일을 분리하여 적용해야 합니다.",
-        "이 결과는 정비구역 지정, 도시계획위원회 심의, 사업성 또는 조합설립 가능성을 확정하지 않습니다."
-    ]
-
-    sources = {s["id"]: s for s in rules["sources"]}
-
-    return {
-        "engine": {
-            "id": rules["rule_set_id"],
-            "title": rules["title"],
-            "scope": rules["scope"],
-            "as_of": rules["as_of"]
-        },
-        "derived": {
-            "old_building_count_ratio": old_count_ratio,
-            "small_parcel_ratio": small_parcel_ratio,
-            "housing_road_access_ratio": road_access_ratio,
-            "old_floor_area_ratio": old_floor_ratio,
-            "house_density_calculation": density_calc
-        },
-        "physical_eligibility": {
-            "status": physical_status,
-            "message": physical_message,
-            "meaning": "정비계획 입안대상지역 정량요건 1차 스크리닝"
-        },
-        "checks": [c.to_dict() for c in checks],
-        "special_notes": special_notes,
-        "policy_watch": rules.get("policy_watch", []),
-        "sources": sources,
-        "input_data_map": {
-            "area_m2": "GIS polygon 자동계산 가능",
-            "total_building_count / old_building_count": "건물통합정보+건축HUB 자동화 예정",
-            "total_parcel_count / small_parcel_count": "연속지적 기반 자동화 가능(90㎡ 미만)",
-            "road_basis_building_count / road_access_building_count_6m": "도로폭원+대지접도 공간연산 필요",
-            "house_density_per_ha": "직접입력 또는 조례 제2조제5호 상세산정 엔진 사용",
-            "house_density_detail": "건축물 유형·면적을 넣으면 조례식으로 계산",
-            "total_floor_area_m2 / old_floor_area_m2": "건축물대장 연면적 기반 자동화 예정",
-            "consent ratios": "공공 API 자동취득 곤란; 사용자 입력"
-        }
-    }
+# Deprecated duplicate redevelopment evaluator intentionally absent.
 
 
 GEOD = Geod(ellps="WGS84")
@@ -2644,27 +2405,8 @@ def _safe_medical_reference(geometry: Dict[str, Any]) -> Dict[str, Any]:
 app = FastAPI(
     title="도시검토 플랫폼 - 서울 재개발 웹 MVP",
     version="2.5.0",
-    description="구역계 자동분석 + 서울 정비·개발 14개 사업방식 Rule Engine",
+    description="구역계 자동분석 + 서울 정비·개발 13개 독립 사업모듈 + 소규모주택정비 보류 shell",
 )
-
-
-class RedevelopmentInput(BaseModel):
-    area_m2: Optional[float] = Field(None, ge=0)
-    total_building_count: Optional[float] = Field(None, ge=0)
-    old_building_count: Optional[float] = Field(None, ge=0)
-    total_parcel_count: Optional[float] = Field(None, ge=0)
-    small_parcel_count: Optional[float] = Field(None, ge=0)
-    road_basis_building_count: Optional[float] = Field(None, ge=0)
-    road_access_building_count_6m: Optional[float] = Field(None, ge=0)
-    house_density_per_ha: Optional[float] = Field(None, ge=0)
-    house_density_detail: Optional[Dict[str, Any]] = None
-    total_floor_area_m2: Optional[float] = Field(None, ge=0)
-    old_floor_area_m2: Optional[float] = Field(None, ge=0)
-    promotion_district: bool = False
-    area_5000_exception_approved: bool = False
-    request_owner_consent_ratio: Optional[float] = Field(None, ge=0, le=1)
-    proposal_owner_consent_ratio: Optional[float] = Field(None, ge=0, le=1)
-    proposal_land_area_consent_ratio: Optional[float] = Field(None, ge=0, le=1)
 
 
 class GeometryInput(BaseModel):
@@ -2881,7 +2623,7 @@ def health():
     return {
         "ok": True,
         "app": "seoul_urban_renewal_platform_v2.5.0",
-        "engine": RULES["rule_set_id"],
+        "engine": "site_fact_store_v2.5.0_r6",
         "map": "leaflet-draw",
         "vworld_configured": vworld_ready(),
         "analytics_storage": _analytics_storage_mode(),
@@ -2911,15 +2653,15 @@ def health():
         "safe_medical_key_env": _seoul_open_data_key_info()[1] or None,
         "road_width_gis": "VWorld TL_SPRD_MANAGE centerline + ROAD_BT preliminary frontage estimate; no TL_SPRD_RW dependency",
         "responsive_ui": "desktop/tablet/mobile responsive layout with mobile workflow and selected-scheme cards",
-        "smallscale_group": "block renewal/autonomous renewal/small-scale reconstruction/Moa Town alternative group",
+        "smallscale_group": "shell-only; autonomous / block / small-scale reconstruction / small-scale redevelopment will be redesigned separately",
         "workspace_ui": "three-column location/spatial evidence/integrated status layout; all decision facts surface in spatial-status boxes",
         "boundary_input_ui": "draw polygon or input Seoul gu/dong/jibun parcel addresses",
         "mini_map_hierarchy": "strong in-site features with thin surrounding spatial context",
-        "house_density": "excluded_from_primary_redevelopment_screening",
+        "house_density": "shared factual calculation; redevelopment uses >=60/ha as one additional entry criterion and residential-environment uses >=80/ha as a mandatory non-management criterion",
         "parcel_boundary_editor": "pnu_list_click_include_exclude_nearby_union",
         "scheme_architecture": "site facts -> scheme-specific facts -> independent scheme evaluation -> review sheet -> priority comparison",
-        "scheme_module_api": "2026-08-28-v5-nine-independent-five-shells",
-        "independent_scheme_modules": "activation / growth_potential / safe_housing / shared_housing / station_complex / longterm / public_complex / innovation / urban_redevelopment; redevelopment / reconstruction / residential_environment / smallscale / general_housing are shell-only until redesigned",
+        "scheme_module_api": "2026-08-28-v6-family-separated-thirteen-independent-one-shell",
+        "independent_scheme_modules": "redevelopment / reconstruction / residential_environment / general_housing / activation / growth_potential / safe_housing / shared_housing / station_complex / longterm / public_complex / innovation / urban_redevelopment; smallscale only remains shell-only",
         "scheme_specific_spatial_checks": "scheme module may request additional official spatial facts; missing facts remain REVIEW, never inferred PASS",
         "spatial_evidence_maps": "common cadastral base + colored zoning + scheme-specific road/frontage facts + safe-housing medical reference; map facts and scheme facts share one Fact Store",
         "purpose_filter": "safe-housing rule module runs only when purpose=housing_rental; other schemes keep existing purpose/candidate logic",
@@ -3121,11 +2863,6 @@ def building_hub_title_batch(inp: BuildingHubBatchInput):
             "engine_as_of_date": ENGINE_AS_OF_DATE.isoformat(),
         },
     }
-
-
-@app.post("/api/redevelopment/evaluate")
-def redevelopment_evaluate(inp: RedevelopmentInput):
-    return evaluate_redevelopment(inp.model_dump())
 
 
 @app.post("/api/redevelopment/house-density")
