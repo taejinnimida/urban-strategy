@@ -1703,12 +1703,12 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="spatial-module-head"><b>안심주택 의료시설 현황</b><span id="spSafeMedicalState">공식자료 조회 전</span></div>
 <div class="spatial-metrics">
 <div><span>최근접 의료시설</span><b id="spSafeMedicalNearest">-</b></div>
-<div><span>위치점 거리</span><b id="spSafeMedicalDistance">-</b></div>
-<div><span>350m 위치점 후보</span><b id="spSafeMedicalCandidates">-</b></div>
-<div><span>법정 부지경계</span><b id="spSafeMedicalBoundary">미확보</b></div>
+<div><span>부지경계 거리</span><b id="spSafeMedicalDistance">-</b></div>
+<div><span>350m 확정 후보</span><b id="spSafeMedicalCandidates">-</b></div>
+<div><span>부지경계 산정</span><b id="spSafeMedicalBoundary">미확보</b></div>
 </div>
-<div class="spatial-tags"><span>종합병원</span><span>서울시 관리 시립병원</span><span>보건소</span><span>350m 참고범위</span></div>
-<div class="spatial-caption">도면정보 · 공통 지적 베이스 + 의료시설 공식 위치점 + 위치점 기준 350m 참고범위 · 법정 기준은 시설 대상부지 경계이므로 경계도형 확보 전 REVIEW</div>
+<div class="spatial-tags"><span>종합병원: 도시계획시설 → 건축물대장 대지</span><span>보건소: 공식 위치점 소재필지</span><span>연속지적 경계</span><span>부지경계 350m</span></div>
+<div class="spatial-caption">도면정보 · 공통 지적 베이스 + 공식 의료시설 위치점 + 판정에 실제 사용한 시설부지 경계 + 그 경계의 350m 범위 · 도시계획시설 종합의료시설은 결정경계, 비도시계획시설 병원은 건축물대장 총괄표제부/표제부의 대지·부속지번을 연속지적으로 복원하며 위치점이 부속필지인 경우 서울시 인허가 지번주소를 보조후보로 사용 · 보건소는 최신 공식 위치점 소재필지 적용 · 2023 보조자료 및 경계 미확정은 REVIEW</div>
 <div class="spatial-caption" id="spSafeMedicalApiInfo">서울 열린데이터광장 API 연결상태 확인 전</div>
 <div class="spatial-mini-map" id="ccSafeMedicalMiniMap"></div>
 </section>
@@ -2708,8 +2708,9 @@ const ccSchemeRoadBoundary=L.geoJSON(null,{style:{weight:3,color:'#101828',fillO
 
 const ccSafeMedicalMini=L.map('ccSafeMedicalMiniMap',{zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,doubleClickZoom:false,boxZoom:false,keyboard:false,touchZoom:false}).setView([37.5665,126.9780],15);
 const ccSafeMedicalParcelBase=L.geoJSON(null,{style:compactParcelBaseStyle}).addTo(ccSafeMedicalMini);
-const ccSafeMedicalBuffers=L.geoJSON(null,{style:{weight:1,color:'#7a5af8',fillColor:'#d9d6fe',fillOpacity:.08,dashArray:'5,4'}}).addTo(ccSafeMedicalMini);
-const ccSafeMedicalPoints=L.geoJSON(null,{pointToLayer:(f,latlng)=>L.circleMarker(latlng,{radius:5,weight:1.5,color:'#7a5af8',fillColor:'#bdb4fe',fillOpacity:.82}),onEachFeature:(f,l)=>{const p=f.properties||{};l.bindTooltip(`${escHtml(p.name||'의료시설')} · ${escHtml(p.category_label||p.category||'')} · 위치점거리 ${p.distance_point_m==null?'-':Number(p.distance_point_m).toFixed(1)+'m'} · 법정 부지경계 재확인`);}}).addTo(ccSafeMedicalMini);
+const ccSafeMedicalBuffers=L.geoJSON(null,{style:{weight:1.2,color:'#7a5af8',fillColor:'#d9d6fe',fillOpacity:.10,dashArray:'5,4'},onEachFeature:(f,l)=>{const p=f.properties||{};l.bindTooltip(`${escHtml(p.name||'의료시설')} · 시설부지 경계 기준 350m`);}}).addTo(ccSafeMedicalMini);
+const ccSafeMedicalFacilitySites=L.geoJSON(null,{style:f=>{const p=f.properties||{};return p.boundary_status==='CONFIRMED'?{weight:2.4,color:'#6938ef',fillColor:'#9b8afb',fillOpacity:.24}:{weight:1.8,color:'#f79009',fillColor:'#fedf89',fillOpacity:.16,dashArray:'4,3'};},onEachFeature:(f,l)=>{const p=f.properties||{};const dist=p.distance_boundary_m==null?'-':Number(p.distance_boundary_m).toFixed(1)+'m';const parcels=p.parcel_count?` · ${Number(p.parcel_count)}필지`:'';const ledger=p.building_title?.ledger_kind==='recap'?'총괄표제부':p.building_title?.ledger_kind==='title'?'표제부':'';const bld=p.building_title?.bldNm?` · 건축물대장${ledger?' '+ledger:''} ${escHtml(p.building_title.bldNm)}`:(ledger?` · 건축물대장 ${ledger}`:'');const source=p.parcel_candidate_basis==='official_license_address'?' · 인허가 지번주소 기준':p.parcel_candidate_basis==='official_point'?' · 공식 위치점 기준':'';l.bindTooltip(`${escHtml(p.name||'의료시설')} · ${escHtml(p.boundary_basis_label||'부지경계')}${parcels}${bld}${source} · 대상지 경계거리 ${dist} · ${escHtml(p.boundary_status||'REVIEW')}`);}}).addTo(ccSafeMedicalMini);
+const ccSafeMedicalPoints=L.geoJSON(null,{pointToLayer:(f,latlng)=>L.circleMarker(latlng,{radius:4.5,weight:1.5,color:'#7a5af8',fillColor:'#bdb4fe',fillOpacity:.82}),onEachFeature:(f,l)=>{const p=f.properties||{};l.bindTooltip(`${escHtml(p.name||'의료시설')} · ${escHtml(p.category_label||p.category||'')} · 공식 위치점 ${p.distance_point_m==null?'-':Number(p.distance_point_m).toFixed(1)+'m'} · ${escHtml(p.boundary_basis_label||p.boundary_note||'부지경계 미확정')}`);}}).addTo(ccSafeMedicalMini);
 const ccSafeMedicalBoundary=L.geoJSON(null,{style:{weight:3,color:'#101828',fillOpacity:0}}).addTo(ccSafeMedicalMini);
 
 async function loadBuiltInCenterDataset(){
@@ -2830,38 +2831,42 @@ function renderZoningSpatialStatus(){
   fitCompactMiniMap(ccZoningMini,ccZoningBoundary,ccZoningLayer);
 }
 function safeMedicalCategoryLabel(cat){return cat==='general_hospital'?'종합병원':cat==='municipal_hospital'?'시립병원':cat==='public_health_center'?'보건소':String(cat||'의료시설');}
+function safeMedicalBoundaryBasisLabel(item){return item?.boundary_basis_label||item?.boundary_basis||'부지경계 미확정';}
 function renderSafeMedicalSpatialStatus(){
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
-  ccSafeMedicalPoints.clearLayers();ccSafeMedicalBuffers.clearLayers();ccSafeMedicalBoundary.clearLayers();
+  ccSafeMedicalPoints.clearLayers();ccSafeMedicalBuffers.clearLayers();ccSafeMedicalFacilitySites.clearLayers();ccSafeMedicalBoundary.clearLayers();
   if(!activeGeometry){for(const id of ['spSafeMedicalNearest','spSafeMedicalDistance','spSafeMedicalCandidates'])set(id,'-');set('spSafeMedicalBoundary','미확보');set('spSafeMedicalState','구역 설정 전');const apiInfo=document.getElementById('spSafeMedicalApiInfo');if(apiInfo)apiInfo.textContent='서울 열린데이터광장 API 연결상태 확인 전';return;}
   const site=turf.feature(activeGeometry);ccSafeMedicalBoundary.addData(site);
   const evidence=latestSiteFactStore?.site?.spatial_evidence?.safe_medical||safeMedicalSpatialEvidenceFacts();
-  const items=(evidence.items||[]).map(x=>{const f={type:'Feature',geometry:x.geometry,properties:Object.assign({},x,{category_label:safeMedicalCategoryLabel(x.category)})};return f;});
-  if(items.length){
-    ccSafeMedicalPoints.addData({type:'FeatureCollection',features:items});
-    const buffers=[];
-    for(const f of items){try{const b=turf.buffer(f,350,{units:'meters'});b.properties={name:f.properties.name,reference_only:true};buffers.push(b);}catch(e){}}
-    if(buffers.length)ccSafeMedicalBuffers.addData({type:'FeatureCollection',features:buffers});
+  const pointFeatures=[],siteFeatures=[],bufferFeatures=[];
+  for(const x of evidence.items||[]){
+    if(x.geometry)pointFeatures.push({type:'Feature',geometry:x.geometry,properties:Object.assign({},x,{category_label:safeMedicalCategoryLabel(x.category)})});
+    if(x.facility_boundary_geometry)siteFeatures.push({type:'Feature',geometry:x.facility_boundary_geometry,properties:Object.assign({},x)});
+    if(x.buffer_350_geometry && x.boundary_status==='CONFIRMED')bufferFeatures.push({type:'Feature',geometry:x.buffer_350_geometry,properties:{name:x.name,boundary_basis_label:safeMedicalBoundaryBasisLabel(x)}});
   }
-  const nearest=evidence.nearest||null,within=evidence.candidates_350||[];
+  if(pointFeatures.length)ccSafeMedicalPoints.addData({type:'FeatureCollection',features:pointFeatures});
+  if(siteFeatures.length)ccSafeMedicalFacilitySites.addData({type:'FeatureCollection',features:siteFeatures});
+  if(bufferFeatures.length)ccSafeMedicalBuffers.addData({type:'FeatureCollection',features:bufferFeatures});
+  const nearest=evidence.nearest_boundary||evidence.nearest||null,within=evidence.candidates_350||[],confirmed=evidence.confirmed_boundaries||[];
   set('spSafeMedicalNearest',nearest?`${nearest.name} (${safeMedicalCategoryLabel(nearest.category)})`:'-');
-  set('spSafeMedicalDistance',nearest?`${Number(nearest.distance_point_m).toFixed(1)}m`:'-');
+  set('spSafeMedicalDistance',nearest&&Number.isFinite(Number(nearest.distance_boundary_m))?`${Number(nearest.distance_boundary_m).toFixed(1)}m`:(nearest?`점 ${Number(nearest.distance_point_m).toFixed(1)}m · 경계 REVIEW`:'-'));
   set('spSafeMedicalCandidates',evidence.known?`${within.length}건`:'미조회');
-  set('spSafeMedicalBoundary','미확보 · REVIEW');
+  const basisSet=[...new Set(confirmed.map(x=>safeMedicalBoundaryBasisLabel(x)))];
+  set('spSafeMedicalBoundary',confirmed.length?`${confirmed.length}건 확정${basisSet.length?` · ${basisSet.slice(0,2).join(' / ')}`:''}`:'미확보 · REVIEW');
   const counts=safeMedicalAnalysis.nearbyCounts||{};
   const apiInfo=document.getElementById('spSafeMedicalApiInfo');
   const errorText=(safeMedicalAnalysis.errors||[]).filter(Boolean).join(' / ');
   const warningText=(safeMedicalAnalysis.warnings||[]).filter(Boolean).join(' / ');
   const envName=safeMedicalAnalysis.metadata?.credential_env||'';
   if(apiInfo){
-    if(safeMedicalAnalysis.loading)apiInfo.textContent='서울 열린데이터광장 API 조회 중';
+    if(safeMedicalAnalysis.loading)apiInfo.textContent='서울 열린데이터광장 API + 지적/건축물대장/도시계획시설 결합 조회 중';
     else if(errorText)apiInfo.textContent=`API 확인필요 · ${errorText}${warningText?' · '+warningText:''}`;
-    else if(evidence.known)apiInfo.textContent=`API 연결 · ${envName||'인증키'} · 인근 1.5km 종합병원 ${Number(counts.general_hospital||0)} · 시립병원 ${Number(counts.municipal_hospital||0)} · 보건소 ${Number(counts.public_health_center||0)}${warningText?' · '+warningText:''}`;
+    else if(evidence.known)apiInfo.textContent=`API 연결 · ${envName||'인증키'} · 인근 1.5km 종합병원 ${Number(counts.general_hospital||0)} · 시립병원 ${Number(counts.municipal_hospital||0)} · 보건소 ${Number(counts.public_health_center||0)} · 부지경계 확정 ${Number(counts.boundary_confirmed||0)} · 350m 확정 ${Number(counts.boundary_confirmed_350||0)}${warningText?' · '+warningText:''}`;
     else apiInfo.textContent='서울 열린데이터광장 API 미조회';
   }
-  set('spSafeMedicalState',safeMedicalAnalysis.loading?'조회 중':errorText?'API 확인필요':evidence.known?(evidence.status==='reference'?'위치점 후보 조회':'공식자료 '+(evidence.status||'확인')):'공식자료 미조회');
+  set('spSafeMedicalState',safeMedicalAnalysis.loading?'조회 중':errorText?'API 확인필요':within.length?'350m Fact 확정':confirmed.length?'부지경계 확인':'경계 REVIEW');
   try{
-    const fg=L.featureGroup();ccSafeMedicalBoundary.eachLayer(l=>fg.addLayer(l));ccSafeMedicalPoints.eachLayer(l=>fg.addLayer(l));
+    const fg=L.featureGroup();for(const layer of [ccSafeMedicalBoundary,ccSafeMedicalPoints,ccSafeMedicalFacilitySites])layer.eachLayer(l=>fg.addLayer(l));
     const b=fg.getBounds();if(b.isValid())ccSafeMedicalMini.fitBounds(b.pad(.18),{animate:false,maxZoom:16});
   }catch(e){}
   setTimeout(()=>{try{ccSafeMedicalMini.invalidateSize(false);}catch(e){}},0);
@@ -3149,7 +3154,7 @@ function resetPlanningAnalysis(){
   ccPlanningBoundary.clearLayers();ccPlanningZoning.clearLayers();ccPlanningDistrict.clearLayers();ccPlanningFacility.clearLayers();ccPlanningDistrictPlan.clearLayers();ccPlanningRenewal.clearLayers();
   ccRenewalStatusContext.clearLayers();ccRenewalStatusOverlap.clearLayers();ccRenewalStatusBoundary.clearLayers();
   ccDevelopmentStatusContext.clearLayers();ccDevelopmentStatusOverlap.clearLayers();ccDevelopmentStatusBoundary.clearLayers();
-  ccZoningLayer.clearLayers();ccZoningBoundary.clearLayers();ccSchemeRoadLayer.clearLayers();ccSchemeRoadInfluence.clearLayers();ccSchemeRoadBoundary.clearLayers();ccSafeMedicalPoints.clearLayers();ccSafeMedicalBuffers.clearLayers();ccSafeMedicalBoundary.clearLayers();
+  ccZoningLayer.clearLayers();ccZoningBoundary.clearLayers();ccSchemeRoadLayer.clearLayers();ccSchemeRoadInfluence.clearLayers();ccSchemeRoadBoundary.clearLayers();ccSafeMedicalPoints.clearLayers();ccSafeMedicalBuffers.clearLayers();ccSafeMedicalFacilitySites.clearLayers();ccSafeMedicalBoundary.clearLayers();
   const ids=['planningZoneSummary','planningDistrictSummary','planningFacilitySummary','planningDistrictPlanSummary','planningRenewalSummary','planningPromotionSummary'];
   for(const id of ids){const el=document.getElementById(id);if(el)el.textContent='미조회';}
   const dl=document.getElementById('planningDetailList');if(dl)dl.textContent='대상구역을 설정하면 자동 조회합니다.';
@@ -5710,9 +5715,17 @@ function zoningSpatialEvidenceFacts(){
   return {known:planningAnalysis.loaded&&!uq111Error,source:'VWorld LT_C_UQ111',primary:rows[0]?.name||planningAnalysis.primaryZoning||'',primary_pct:rows[0]?.pct??planningAnalysis.primaryRatio??null,rows,mixed:!!planningAnalysis.zoningMixed,cross_overlap_m2:Number(planningAnalysis.zoningOverlapArea||0),status:uq111Error?'REVIEW':planningAnalysis.loaded?'CONFIRMED':'REVIEW'};
 }
 function safeMedicalSpatialEvidenceFacts(){
-  const items=(safeMedicalAnalysis.items||[]).map(x=>({category:x.category,name:x.name||'의료시설',distance_point_m:Number(x.distance_point_m),geometry:x.geometry,address:x.address||'',source:x.source||'',data_status:x.data_status||''}));
-  const candidates=items.filter(x=>Number.isFinite(x.distance_point_m)&&x.distance_point_m<=350);
-  return {known:!!safeMedicalAnalysis.loaded,status:safeMedicalAnalysis.status||'unavailable',items,candidates_350:candidates,nearest:items[0]||null,boundary_geometry_available:false,criterion:'의료시설 대상부지 경계 350m',source_note:safeMedicalAnalysis.message||'',auto_pass_eligible:false,metadata:{...(safeMedicalAnalysis.metadata||{})},errors:[...(safeMedicalAnalysis.errors||[])],warnings:[...(safeMedicalAnalysis.warnings||[])],source_stats:{...(safeMedicalAnalysis.sourceStats||{})},nearby_counts:{...(safeMedicalAnalysis.nearbyCounts||{})}};
+  const items=(safeMedicalAnalysis.items||[]).map(x=>({
+    category:x.category,name:x.name||'의료시설',distance_point_m:Number(x.distance_point_m),geometry:x.geometry,address:x.address||'',source:x.source||'',data_status:x.data_status||'',
+    boundary_status:x.boundary_status||'REVIEW',boundary_basis:x.boundary_basis||'BOUNDARY_NOT_RESOLVED',boundary_basis_label:x.boundary_basis_label||'',boundary_note:x.boundary_note||'',
+    facility_boundary_geometry:x.facility_boundary_geometry||null,buffer_350_geometry:x.buffer_350_geometry||null,distance_boundary_m:Number.isFinite(Number(x.distance_boundary_m))?Number(x.distance_boundary_m):null,
+    within_350:x.within_350===true,auto_pass_eligible:x.auto_pass_eligible===true,primary_pnu:x.primary_pnu||'',related_pnus:x.related_pnus||[],parcel_count:x.parcel_count??null,building_title:x.building_title||null,parcel_candidate_basis:x.parcel_candidate_basis||''
+  }));
+  const confirmed=items.filter(x=>x.boundary_status==='CONFIRMED'&&x.facility_boundary_geometry);
+  const candidates=confirmed.filter(x=>x.auto_pass_eligible&&x.within_350===true&&Number.isFinite(x.distance_boundary_m));
+  const pointCandidates=items.filter(x=>Number.isFinite(x.distance_point_m)&&x.distance_point_m<=350);
+  const nearestBoundary=[...confirmed].filter(x=>Number.isFinite(x.distance_boundary_m)).sort((a,b)=>a.distance_boundary_m-b.distance_boundary_m)[0]||null;
+  return {known:!!safeMedicalAnalysis.loaded,status:safeMedicalAnalysis.status||'unavailable',items,candidates_350:candidates,reference_point_candidates_350:pointCandidates,confirmed_boundaries:confirmed,nearest_boundary:nearestBoundary,nearest:items[0]||null,boundary_geometry_available:confirmed.length>0,criterion:'의료시설 대상부지 경계 350m',source_note:safeMedicalAnalysis.message||'',auto_pass_eligible:candidates.length>0,metadata:{...(safeMedicalAnalysis.metadata||{})},errors:[...(safeMedicalAnalysis.errors||[])],warnings:[...(safeMedicalAnalysis.warnings||[])],source_stats:{...(safeMedicalAnalysis.sourceStats||{})},nearby_counts:{...(safeMedicalAnalysis.nearbyCounts||{})}};
 }
 
 function buildSiteFactStore(){
@@ -5990,7 +6003,7 @@ function safeHousingSpatialFacts(store){
       spatialFactRow('역세권',station.value,station.status==='PASS'?'CONFIRMED':'REVIEW',station.note),
       spatialFactRow('지구단위계획구역(참고)',district.known?(district.overlap?'중첩':'현황 중첩 없음'):'자료 미확인',district.known?'CONFIRMED':'REVIEW',`${district.note||''} · 안심주택 역세권 하드게이트가 아닌 도시계획 현황 참고`),
       spatialFactRow('간선도로변 50m',arterial.value,arterial.status==='PASS'?'CONFIRMED':'REVIEW',arterial.note),
-      spatialFactRow('의료시설 중심지역 350m',medical.value,'REVIEW',medical.note),
+      spatialFactRow('의료시설 중심지역 350m',medical.value,medical.status,medical.note),
       spatialFactRow('중심지역 포함률',coverage==null?'-':`${Number(coverage).toFixed(1)}%`,coverage==null?'REVIEW':'CONFIRMED','대상지 50% 이상 포함 원칙 · 미달 시 통합심의 인정/추가 공공기여 검토'),
       spatialFactRow('학교 출입구 50m',schoolFacilities.length?`학교시설 중첩/인접 후보 ${schoolFacilities.length}건`:'출입구 점자료 미확보','REVIEW','학교시설 폴리곤은 출입구 50m를 확정할 수 없음'),
       spatialFactRow('서울도심 배제범위',characteristic.length?characteristic.map(x=>x.name).join(' / '):'전용 경계 미연결','REVIEW','율곡·사직로 이북 및 퇴계로 이남 등 운영기준 배제범위 공식 경계 확인'),
@@ -7090,20 +7103,27 @@ function safeArterialPath(c,stationPath,roadEvidence=null){
 function safeMedicalPath(c,medicalEvidence=null){
   const evidence=medicalEvidence||safeMedicalSpatialEvidenceFacts();
   const refs=evidence.candidates_350||[];
-  const nearest=evidence.nearest||null;
-  let status='REVIEW',note='의료시설 대상부지 경계 350m는 공식 경계도형으로 재확인 필요';
-  if(c.medicalDist!=null&&c.medicalDist<=350){
-    status='REVIEW';note='수기 거리값은 있으나 의료시설 대상부지 경계 원자료·측정근거 확인 전 자동 PASS 금지';
-  }else if(refs.length){
-    status='REVIEW';note=`서울시 공식 위치점 후보 ${refs.length}건 · 위치점이 법정 대상부지 경계도형은 아니므로 자동 PASS 금지`;
+  const nearestBoundary=evidence.nearest_boundary||null;
+  const nearestPoint=evidence.nearest||null;
+  let status='REVIEW',note=evidence.source_note||'의료시설 대상부지 경계 Fact 확인 필요';
+  if(refs.length){
+    const best=[...refs].sort((a,b)=>a.distance_boundary_m-b.distance_boundary_m)[0];
+    status='PASS';
+    note=`시설부지 경계 CONFIRMED · ${safeMedicalBoundaryBasisLabel(best)} · 대상지와 부지경계 최단거리 ${Number(best.distance_boundary_m).toFixed(1)}m`;
+  }else if(c.medicalDist!=null&&c.medicalDist<=350){
+    status='REVIEW';note='수기 거리값은 있으나 시설부지 경계 Fact가 확인되지 않아 자동 PASS 금지';
+  }else if(evidence.reference_point_candidates_350?.length){
+    status='REVIEW';note=`350m 이내 공식 위치점 ${evidence.reference_point_candidates_350.length}건이 있으나 시설부지 경계가 미확정된 후보가 있어 REVIEW`;
+  }else if(evidence.confirmed_boundaries?.length){
+    status='REVIEW';note='확인된 의료시설 부지경계는 350m 밖이나, 경계 미확정 의료시설 후보가 남아 있어 FAIL 확정 금지';
   }else if(evidence.known&&evidence.status==='none'){
-    status='REVIEW';note='종합병원·시립병원 최신 위치점 후보는 없으나 보건소 자료 현행성 및 의료시설 부지경계가 미확보되어 FAIL 확정 금지';
-  }else{
-    status='REVIEW';note=evidence.source_note||'SEOUL_OPEN_DATA_KEY 또는 공식 의료시설 공간자료 확인 필요';
+    status='REVIEW';note='공식 위치자료에서 인근 후보를 확인하지 못했으나 데이터·경계 완전성 때문에 자동 FAIL은 하지 않음';
   }
-  const value=c.medicalDist!=null?`${Number(c.medicalDist).toFixed(1)}m (수기)`:
-    nearest?`${nearest.name} 위치점 ${Number(nearest.distance_point_m).toFixed(1)}m · ${nearest.source}`:'-';
-  return {key:'medical',label:'의료시설 중심지역',status,note,coverage:null,value};
+  const value=refs.length?`${refs[0].name} 부지경계 ${Number(refs[0].distance_boundary_m).toFixed(1)}m`:
+    nearestBoundary?`${nearestBoundary.name} 부지경계 ${Number(nearestBoundary.distance_boundary_m).toFixed(1)}m · ${safeMedicalBoundaryBasisLabel(nearestBoundary)}`:
+    c.medicalDist!=null?`${Number(c.medicalDist).toFixed(1)}m (수기)`:
+    nearestPoint?`${nearestPoint.name} 위치점 ${Number(nearestPoint.distance_point_m).toFixed(1)}m · 경계 REVIEW`:'-';
+  return {key:'medical',label:'의료시설 중심지역',status,note,coverage:null,value,boundary_basis:refs[0]?.boundary_basis||nearestBoundary?.boundary_basis||'BOUNDARY_NOT_RESOLVED'};
 }
 
 
@@ -9965,7 +9985,7 @@ function renderSafeHousingDetailPopup(){
   </tbody></table></section>
   <section class="activation-section"><h4>2. 검토결과</h4><table class="activation-table"><thead><tr><th>구분</th><th>검토항목</th><th>기준</th><th>대상지 현황</th><th>판정·후속</th><th>근거</th></tr></thead><tbody>${resultRows}</tbody></table>${schemeDetailSummary(res)}</section>
   <section class="activation-section"><h4>3. 계획기준</h4><table class="activation-table"><thead><tr><th>검토항목</th><th>적용가능 범위</th><th>적용조건·해석</th><th>근거</th></tr></thead><tbody>${planRows}</tbody></table></section>
-  <section class="activation-section"><h4>4. 추진일정</h4><div class="activation-procedure">${steps}</div><div style="padding:0 9px 9px;font-size:8px;color:#667085">의료시설 중심지역은 시설 대상부지 경계 350m를 확정할 공간자료가 없으면 REVIEW를 유지합니다. 지구단위계획구역 중첩은 참고 현황이며 역세권 하드게이트로 사용하지 않습니다.</div></section>
+  <section class="activation-section"><h4>4. 추진일정</h4><div class="activation-procedure">${steps}</div><div style="padding:0 9px 9px;font-size:8px;color:#667085">의료시설 중심지역은 도시계획시설 종합의료시설 경계 → 비도시계획시설 병원 건축물대장 대지·부속지번 → 보건소 공식 위치점 소재필지 순으로 부지경계를 생성하며, 경계 미확정은 REVIEW를 유지합니다. 지구단위계획구역 중첩은 참고 현황이며 역세권 하드게이트로 사용하지 않습니다.</div></section>
   <div class="scheme-modal-note"><b>판정구조</b> 역세권·간선도로변·의료시설 350m·학교 출입구·서울도심 배제범위·안심주택 노후도를 공간현황에 먼저 생성하고 같은 Fact로 본 검토서를 작성합니다.</div></div>`;
 }
 

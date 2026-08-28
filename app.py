@@ -450,6 +450,7 @@ def measure_geojson(geometry: Dict[str, Any]) -> Dict[str, Any]:
 
 
 VWORLD_DATA_URL = "https://api.vworld.kr/req/data"
+VWORLD_SEARCH_URL = "https://api.vworld.kr/req/search"
 VWORLD_LAND_URL = "https://api.vworld.kr/ned/data/getLandCharacteristics"
 VWORLD_PROXY_URL = "https://map.vworld.kr/proxy.do?url="
 VWORLD_LAYER_PARCEL = "LP_PA_CBND_BUBUN"
@@ -798,6 +799,8 @@ def analyze_parcels_for_geometry(geometry: Dict[str, Any]) -> Dict[str, Any]:
 
 BUILDING_HUB_BASE_URL = "https://apis.data.go.kr/1613000/BldRgstHubService"
 BUILDING_HUB_TITLE_URL = BUILDING_HUB_BASE_URL + "/getBrTitleInfo"
+BUILDING_HUB_RECAP_TITLE_URL = BUILDING_HUB_BASE_URL + "/getBrRecapTitleInfo"
+BUILDING_HUB_ATCH_JIBUN_URL = BUILDING_HUB_BASE_URL + "/getBrAtchJibunInfo"
 ENGINE_AS_OF_DATE = datetime.now(ZoneInfo("Asia/Seoul")).date()
 
 
@@ -869,27 +872,51 @@ def _items_from_data_go_kr_xml(text: str) -> tuple[List[Dict[str, Any]], int]:
         items.append(row)
     return items,total
 
-def _query_building_hub_title(pnu: str) -> List[Dict[str, Any]]:
+def _query_building_hub_rows(url: str, pnu: str) -> List[Dict[str, Any]]:
     key = _building_hub_key()
     if not key:
         raise RuntimeError("BUILDING_HUB_API_KEY가 설정되지 않았습니다.")
-    base=_pnu_to_bld_params(pnu); page=1; size=100; out=[]
-    while page<=20:
-        params={"serviceKey":key,**base,"numOfRows":size,"pageNo":page}
-        resp=requests.get(BUILDING_HUB_TITLE_URL,params=params,timeout=25)
-        if resp.status_code>=400: raise RuntimeError(f"건축HUB HTTP {resp.status_code}: {resp.text[:240]}")
-        ctype=(resp.headers.get('content-type') or '').lower(); text=resp.text
+    base = _pnu_to_bld_params(pnu)
+    page = 1
+    size = 100
+    out: List[Dict[str, Any]] = []
+    while page <= 20:
+        params = {"serviceKey": key, **base, "numOfRows": size, "pageNo": page}
+        resp = requests.get(url, params=params, timeout=25)
+        if resp.status_code >= 400:
+            raise RuntimeError(f"건축HUB HTTP {resp.status_code}: {resp.text[:240]}")
+        ctype = (resp.headers.get('content-type') or '').lower()
+        text = resp.text
         try:
             if 'json' in ctype or text.lstrip().startswith('{'):
-                items,total=_items_from_data_go_kr(resp.json())
+                items, total = _items_from_data_go_kr(resp.json())
             else:
-                items,total=_items_from_data_go_kr_xml(text)
+                items, total = _items_from_data_go_kr_xml(text)
         except Exception as exc:
-            raise RuntimeError(f"건축HUB 응답 파싱 실패: {text[:300].replace(chr(10),' ')}") from exc
+            raise RuntimeError(f"건축HUB 응답 파싱 실패: {text[:300].replace(chr(10), ' ')}") from exc
         out.extend(items)
-        if len(out)>=total or len(items)<size: break
-        page+=1
+        if len(out) >= total or len(items) < size:
+            break
+        page += 1
     return out
+
+
+def _query_building_hub_title(pnu: str) -> List[Dict[str, Any]]:
+    return _query_building_hub_rows(BUILDING_HUB_TITLE_URL, pnu)
+
+
+def _query_building_hub_recap_title(pnu: str) -> List[Dict[str, Any]]:
+    """대지 전체를 대표하는 총괄표제부를 우선 조회한다."""
+    return _query_building_hub_rows(BUILDING_HUB_RECAP_TITLE_URL, pnu)
+
+
+def _query_building_hub_atch_jibun(pnu: str) -> List[Dict[str, Any]]:
+    """건축물대장 부속지번을 조회한다.
+
+    비도시계획시설 병원이 여러 필지에 걸친 경우 대표필지 한 필지만
+    법정 의료시설 부지로 쓰지 않기 위해 getBrAtchJibunInfo를 사용한다.
+    """
+    return _query_building_hub_rows(BUILDING_HUB_ATCH_JIBUN_URL, pnu)
 
 
 def _parse_yyyymmdd(value: Any) -> Optional[date]:
@@ -958,12 +985,428 @@ def _normalize_building_title(item: Dict[str, Any], pnu: str) -> Dict[str, Any]:
         "bcRat", "vlRat", "vlRatEstmTotArea", "etcPurps",
         "grndFlrCnt", "ugrndFlrCnt", "hhldCnt", "fmlyCnt", "hoCnt",
         "regstrGbCd", "regstrGbCdNm", "regstrKindCd", "regstrKindCdNm",
-        "crtnDay", "sigunguCd", "bjdongCd", "platGbCd", "bun", "ji",
+        "bylotCnt", "crtnDay", "sigunguCd", "bjdongCd", "platGbCd", "bun", "ji",
     ]
     result = {k: item.get(k) for k in keep}
     result["pnu"] = pnu
     result.update(_age_annotation(item))
     return result
+
+
+def _digits4(value: Any) -> str:
+    digits = "".join(ch for ch in str(value or "") if ch.isdigit())
+    return digits.zfill(4)[-4:] if digits else "0000"
+
+
+def _building_hub_attachment_pnu(row: Dict[str, Any]) -> Optional[str]:
+    sigungu = "".join(ch for ch in str(row.get("atchSigunguCd") or row.get("sigunguCd") or "") if ch.isdigit())
+    bjdong = "".join(ch for ch in str(row.get("atchBjdongCd") or row.get("bjdongCd") or "") if ch.isdigit())
+    if len(sigungu) != 5 or len(bjdong) != 5:
+        return None
+    plat = str(row.get("atchPlatGbCd") or row.get("platGbCd") or "0").strip()
+    land_code = "2" if plat == "1" else "1"  # 건축HUB 산=1, PNU 산=2
+    bun = _digits4(row.get("atchBun") or row.get("bun"))
+    ji = _digits4(row.get("atchJi") or row.get("ji"))
+    pnu = f"{sigungu}{bjdong}{land_code}{bun}{ji}"
+    return pnu if len(pnu) == 19 and pnu.isdigit() else None
+
+
+def _vworld_features_at_point(layer: str, lon: float, lat: float, size: int = 100) -> List[Dict[str, Any]]:
+    """VWorld polygon layer에서 공식 위치점과 교차하는 도형을 조회한다."""
+    if not _vworld_key():
+        raise RuntimeError("VWorld API 키가 설정되지 않았습니다.")
+    params = {
+        "key": _vworld_key(), "domain": _vworld_domain(),
+        "service": "data", "version": "2.0", "request": "getfeature",
+        "format": "json", "size": min(max(int(size), 1), 1000), "page": 1,
+        "geometry": "true", "attribute": "true", "crs": "EPSG:4326",
+        "data": layer, "geomfilter": f"POINT({float(lon)},{float(lat)})",
+    }
+    resp, route = _vworld_get(VWORLD_DATA_URL, params=params, timeout=20)
+    if resp.status_code >= 400:
+        raise RuntimeError(f"VWorld {layer} HTTP {resp.status_code}: {resp.text[:240]}")
+    try:
+        payload = resp.json()
+    except Exception as exc:
+        raise RuntimeError(f"VWorld {layer} JSON 응답 해석 실패") from exc
+    status = str((payload.get("response") or {}).get("status") or "").upper()
+    if status == "NOT_FOUND":
+        return []
+    if status != "OK":
+        raise RuntimeError(_response_error_message(payload))
+    fc = (((payload.get("response") or {}).get("result") or {}).get("featureCollection") or {})
+    out = []
+    point = shape({"type": "Point", "coordinates": [lon, lat]})
+    for f in fc.get("features") or []:
+        if not f.get("geometry"):
+            continue
+        try:
+            g = shape(f["geometry"])
+            if not g.covers(point):
+                continue
+        except Exception:
+            continue
+        out.append({"type": "Feature", "id": f.get("id"), "geometry": f.get("geometry"), "properties": dict(f.get("properties") or {})})
+    logger.info("VWorld point layer=%s route=%s hits=%s", layer, route, len(out))
+    return out
+
+
+def _vworld_parcel_at_point(lon: float, lat: float) -> Dict[str, Any]:
+    """공식 시설 위치점이 실제로 포함되는 연속지적 필지를 찾는다.
+
+    점이 지적경계에 정확히 걸려 둘 이상이 covers하는 경우에는 임의로
+    최근접 필지를 선택하지 않고 ambiguous를 반환한다.
+    """
+    to_metric = Transformer.from_crs(4326, 5174, always_xy=True)
+    to_wgs = Transformer.from_crs(5174, 4326, always_xy=True)
+    x, y = to_metric.transform(float(lon), float(lat))
+    probe_metric = shape({"type": "Point", "coordinates": [x, y]}).buffer(8.0)
+    probe_wgs = geometry_transform(to_wgs.transform, probe_metric)
+    candidates = _fetch_vworld_parcel_candidates(probe_wgs)
+    point = shape({"type": "Point", "coordinates": [float(lon), float(lat)]})
+    hits = []
+    for f in candidates:
+        try:
+            if shape(f.get("geometry")).covers(point):
+                hits.append(f)
+        except Exception:
+            continue
+    unique: Dict[str, Dict[str, Any]] = {}
+    for f in hits:
+        pnu = str((f.get("properties") or {}).get("pnu") or "").strip()
+        if pnu:
+            unique[pnu] = f
+    hits = list(unique.values())
+    if len(hits) == 1:
+        return {"status": "resolved", "feature": hits[0], "pnu": str((hits[0].get("properties") or {}).get("pnu") or "")}
+    if len(hits) > 1:
+        return {"status": "ambiguous", "feature": None, "pnu": None, "candidate_pnus": sorted(unique)}
+    return {"status": "not_found", "feature": None, "pnu": None, "candidate_pnus": []}
+
+
+def _vworld_parcel_by_address(address: str) -> Dict[str, Any]:
+    """서울시 인허가 시설의 공식 지번주소를 VWorld 주소검색→지적 포함관계로 연결한다.
+
+    병원 위치점이 대표 대지가 아닌 부속필지 쪽에 찍힌 경우에만 보조 후보로 쓴다.
+    문자열 주소만으로 PNU를 확정하지 않고, 검색 좌표가 실제 포함되는 연속지적 필지를
+    재확인한다. 최근접 필지 추정은 하지 않는다.
+    """
+    query = re.sub(r"\s+", " ", str(address or "")).strip()
+    if not query:
+        return {"status": "not_found", "feature": None, "pnu": None, "address": query}
+    if not _vworld_key():
+        return {"status": "unavailable", "feature": None, "pnu": None, "address": query, "reason": "VWorld API 키 미설정"}
+    params = {
+        "key": _vworld_key(), "domain": _vworld_domain(),
+        "service": "search", "version": "2.0", "request": "search",
+        "format": "json", "size": 10, "page": 1,
+        "query": query, "type": "ADDRESS", "category": "parcel", "crs": "EPSG:4326",
+    }
+    try:
+        resp, route = _vworld_get(VWORLD_SEARCH_URL, params=params, timeout=20)
+        if resp.status_code >= 400:
+            return {"status": "error", "feature": None, "pnu": None, "address": query, "reason": f"VWorld 주소검색 HTTP {resp.status_code}"}
+        payload = resp.json()
+        rsp = payload.get("response") or {}
+        status = str(rsp.get("status") or "").upper()
+        if status == "NOT_FOUND":
+            return {"status": "not_found", "feature": None, "pnu": None, "address": query, "route": route}
+        if status != "OK":
+            return {"status": "error", "feature": None, "pnu": None, "address": query, "route": route, "reason": _response_error_message(payload)}
+        items = (((rsp.get("result") or {}).get("items")) or [])
+        if not items:
+            return {"status": "not_found", "feature": None, "pnu": None, "address": query, "route": route}
+        norm = lambda v: re.sub(r"\s+", "", str(v or ""))
+        qn = norm(query)
+        ranked = sorted(items, key=lambda it: (0 if norm((it.get("address") or {}).get("parcel")) and (norm((it.get("address") or {}).get("parcel")) in qn or qn in norm((it.get("address") or {}).get("parcel"))) else 1))
+        for it in ranked[:5]:
+            point = it.get("point") or {}
+            try:
+                lon, lat = float(point.get("x")), float(point.get("y"))
+            except Exception:
+                continue
+            resolved = _vworld_parcel_at_point(lon, lat)
+            if resolved.get("status") == "resolved":
+                result = dict(resolved)
+                result.update({"address": query, "route": route, "search_item": it})
+                return result
+        return {"status": "not_found", "feature": None, "pnu": None, "address": query, "route": route, "reason": "주소검색 결과 좌표의 지적필지 확정 실패"}
+    except Exception as exc:
+        return {"status": "error", "feature": None, "pnu": None, "address": query, "reason": str(exc)}
+
+
+def _fetch_vworld_parcels_for_pnus(pnus: List[str], anchor_feature: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    wanted = {str(x) for x in pnus if str(x)}
+    if not wanted or not anchor_feature or not anchor_feature.get("geometry"):
+        return {}
+    to_metric = Transformer.from_crs(4326, 5174, always_xy=True)
+    to_wgs = Transformer.from_crs(5174, 4326, always_xy=True)
+    anchor_metric = geometry_transform(to_metric.transform, shape(anchor_feature["geometry"]))
+    search_wgs = geometry_transform(to_wgs.transform, anchor_metric.buffer(350.0))
+    candidates = _fetch_vworld_parcel_candidates(search_wgs)
+    out = {}
+    for f in candidates:
+        pnu = str((f.get("properties") or {}).get("pnu") or "").strip()
+        if pnu in wanted:
+            out[pnu] = f
+    return out
+
+
+def _medical_planning_facility_boundary(lon: float, lat: float) -> Dict[str, Any]:
+    """보건위생시설 중 명칭/속성으로 '종합의료시설'이 확인되는 도형만 사용."""
+    try:
+        features = _vworld_features_at_point("LT_C_UPISUQ157", lon, lat, 100)
+    except Exception as exc:
+        return {"status": "error", "geometry": None, "error": str(exc), "features": []}
+    matched = []
+    for f in features:
+        p = f.get("properties") or {}
+        text = " ".join(str(v) for v in p.values() if isinstance(v, (str, int, float)))
+        compact = re.sub(r"\s+", "", text)
+        if "종합의료시설" in compact or "종합의료" in compact:
+            matched.append(f)
+    if not matched:
+        return {"status": "none", "geometry": None, "features": features}
+    try:
+        geom = unary_union([shape(f["geometry"]) for f in matched if f.get("geometry")])
+        geom = _polygonal_only(geom)
+        if geom is None or geom.is_empty:
+            return {"status": "invalid", "geometry": None, "features": matched}
+        return {"status": "resolved", "geometry": mapping(geom), "features": matched}
+    except Exception as exc:
+        return {"status": "error", "geometry": None, "error": str(exc), "features": matched}
+
+
+def _medical_building_site_boundary(primary_pnu: str, primary_feature: Dict[str, Any], facility_name: str) -> Dict[str, Any]:
+    """비도시계획시설 병원의 건축물대장상 전체 대지를 지적경계로 복원한다.
+
+    총괄표제부를 우선하고, 없거나 의료시설 매칭이 안 될 때 표제부로 보완한다.
+    부속지번/외필지 일부라도 확인되지 않으면 참고경계만 반환하고 자동 PASS에는 쓰지 않는다.
+    """
+    if not building_hub_ready():
+        return {"status": "unavailable", "geometry": None, "reason": "BUILDING_HUB_API_KEY 미설정"}
+
+    def scored(rows: List[Dict[str, Any]], ledger_kind: str):
+        nk = _name_key(facility_name)
+        out = []
+        for row in rows:
+            purpose = str(row.get("mainPurpsCdNm") or row.get("etcPurps") or "")
+            bld_name = str(row.get("bldNm") or "")
+            score = 0
+            if "의료시설" in purpose or "병원" in purpose:
+                score += 10
+            if nk and nk in _name_key(bld_name):
+                score += 5
+            if ledger_kind == "recap":
+                score += 2
+            if str(row.get("mainAtchGbCd") or "") in {"0", "1"}:
+                score += 1
+            if score:
+                try: area = float(row.get("platArea") or 0)
+                except Exception: area = 0.0
+                out.append((score, area, row, ledger_kind))
+        return out
+
+    recap_error = None
+    title_error = None
+    candidates = []
+    try:
+        candidates.extend(scored(_query_building_hub_recap_title(primary_pnu), "recap"))
+    except Exception as exc:
+        recap_error = str(exc)
+    if not candidates:
+        try:
+            candidates.extend(scored(_query_building_hub_title(primary_pnu), "title"))
+        except Exception as exc:
+            title_error = str(exc)
+    if not candidates:
+        reasons = []
+        if recap_error: reasons.append(f"총괄표제부 조회 실패: {recap_error}")
+        if title_error: reasons.append(f"표제부 조회 실패: {title_error}")
+        if not reasons: reasons.append("건축물대장에서 의료시설 용도/병원명 매칭 실패")
+        return {"status": "unmatched", "geometry": None, "reason": " / ".join(reasons)}
+
+    candidates.sort(key=lambda x: (x[0], x[1]), reverse=True)
+    selected = candidates[0][2]
+    ledger_kind = candidates[0][3]
+    mgm = str(selected.get("mgmBldrgstPk") or "").strip()
+    try:
+        attachments = _query_building_hub_atch_jibun(primary_pnu)
+    except Exception as exc:
+        return {
+            "status": "partial", "geometry": primary_feature.get("geometry"),
+            "reason": f"건축물대장 부속지번 조회 실패: {exc}", "primary_pnu": primary_pnu,
+            "title": {**_normalize_building_title(selected, primary_pnu), "ledger_kind": ledger_kind},
+        }
+
+    related_rows = [r for r in attachments if not mgm or str(r.get("mgmBldrgstPk") or "").strip() == mgm]
+    related_pnus = [primary_pnu]
+    for row in related_rows:
+        rpnu = _building_hub_attachment_pnu(row)
+        if rpnu and rpnu not in related_pnus:
+            related_pnus.append(rpnu)
+    try: expected_attach = max(0, int(float(selected.get("bylotCnt") or 0)))
+    except Exception: expected_attach = 0
+
+    found = _fetch_vworld_parcels_for_pnus(related_pnus, primary_feature)
+    if primary_pnu not in found:
+        found[primary_pnu] = primary_feature
+    title_info = {**_normalize_building_title(selected, primary_pnu), "ledger_kind": ledger_kind}
+    missing = [rpnu for rpnu in related_pnus if rpnu not in found]
+    partial_geom = _polygonal_only(unary_union([shape(f["geometry"]) for f in found.values() if f.get("geometry")])) if found else None
+    if missing:
+        return {
+            "status": "partial", "geometry": mapping(partial_geom) if partial_geom is not None and not partial_geom.is_empty else primary_feature.get("geometry"),
+            "reason": f"건축물대장 관련지번 중 지적경계 {len(missing)}필지 미복원",
+            "primary_pnu": primary_pnu, "related_pnus": related_pnus, "missing_pnus": missing,
+            "expected_attachment_count": expected_attach, "resolved_attachment_count": max(0, len(found)-1), "title": title_info,
+        }
+    if expected_attach > max(0, len(related_pnus)-1):
+        return {
+            "status": "partial", "geometry": mapping(partial_geom) if partial_geom is not None and not partial_geom.is_empty else primary_feature.get("geometry"),
+            "reason": f"건축물대장 외필지수 미충족(대장 {expected_attach} / 부속지번 API {max(0,len(related_pnus)-1)})",
+            "primary_pnu": primary_pnu, "related_pnus": related_pnus,
+            "expected_attachment_count": expected_attach, "resolved_attachment_count": max(0, len(found)-1), "title": title_info,
+        }
+    geom = partial_geom
+    if geom is None or geom.is_empty:
+        return {"status": "invalid", "geometry": None, "reason": "건축물대장 대지 지적경계 Union 실패"}
+    return {
+        "status": "resolved", "geometry": mapping(geom), "primary_pnu": primary_pnu,
+        "related_pnus": related_pnus, "parcel_count": len(found),
+        "expected_attachment_count": expected_attach, "resolved_attachment_count": max(0, len(found)-1),
+        "title": title_info,
+        "reason": f"건축물대장 {'총괄표제부' if ledger_kind == 'recap' else '표제부'} 의료시설 매칭 + 부속지번 + 연속지적 경계 복원",
+    }
+
+
+def _medical_boundary_metrics(site_wgs, boundary_geometry: Dict[str, Any]) -> Dict[str, Any]:
+    to_metric = Transformer.from_crs(4326, 5174, always_xy=True)
+    to_wgs = Transformer.from_crs(5174, 4326, always_xy=True)
+    site_metric = geometry_transform(to_metric.transform, site_wgs)
+    boundary_wgs = _polygonal_only(shape(boundary_geometry))
+    if boundary_wgs is None or boundary_wgs.is_empty:
+        raise ValueError("의료시설 부지경계가 비어 있습니다.")
+    boundary_metric = geometry_transform(to_metric.transform, boundary_wgs)
+    distance = float(site_metric.distance(boundary_metric))
+    buffer_metric = boundary_metric.buffer(350.0)
+    return {
+        "distance_boundary_m": round(distance, 1),
+        "within_350": distance <= 350.0 + 1e-6,
+        "buffer_350_geometry": mapping(geometry_transform(to_wgs.transform, buffer_metric)),
+    }
+
+
+def _resolve_medical_facility_boundary(item: Dict[str, Any], site_wgs) -> Dict[str, Any]:
+    geometry = item.get("geometry") or {}
+    coords = geometry.get("coordinates") or []
+    if len(coords) < 2:
+        return {"boundary_status": "REVIEW", "boundary_basis": "BOUNDARY_NOT_RESOLVED", "boundary_note": "공식 시설 위치좌표 없음", "auto_pass_eligible": False}
+    lon, lat = float(coords[0]), float(coords[1])
+    category = str(item.get("category") or "")
+    stale_reference = str(item.get("data_status") or "").startswith("stale_reference_point")
+
+    if category in {"general_hospital", "municipal_hospital"}:
+        planning = _medical_planning_facility_boundary(lon, lat)
+        if planning.get("status") == "resolved" and planning.get("geometry"):
+            metrics = _medical_boundary_metrics(site_wgs, planning["geometry"])
+            return {
+                "boundary_status": "CONFIRMED", "boundary_basis": "URBAN_PLANNING_MEDICAL_FACILITY",
+                "boundary_basis_label": "도시계획시설 종합의료시설 경계", "facility_boundary_geometry": planning["geometry"],
+                "boundary_note": "공식 병원 위치점과 중첩하는 VWorld 보건위생시설 중 '종합의료시설' 확인",
+                "auto_pass_eligible": True, **metrics,
+            }
+
+    point_error = None
+    try:
+        point_parcel = _vworld_parcel_at_point(lon, lat)
+    except Exception as exc:
+        point_error = str(exc)
+        point_parcel = {"status": "error", "feature": None, "pnu": None}
+
+    if category == "public_health_center":
+        if point_parcel.get("status") != "resolved" or not point_parcel.get("feature"):
+            note = "공식 위치점이 지적경계에 걸려 필지 확정 불가" if point_parcel.get("status") == "ambiguous" else "공식 위치점 소재 지적필지 미확인"
+            if point_error: note = f"공식 위치점 소재 지적필지 조회 실패: {point_error}"
+            return {"boundary_status": "REVIEW", "boundary_basis": "BOUNDARY_NOT_RESOLVED", "boundary_note": note, "auto_pass_eligible": False, "parcel_lookup_status": point_parcel.get("status")}
+        feature = point_parcel["feature"]
+        pnu = point_parcel.get("pnu")
+        metrics = _medical_boundary_metrics(site_wgs, feature["geometry"])
+        if stale_reference:
+            return {
+                "boundary_status": "REVIEW", "boundary_basis": "CADASTRAL_PARCEL_FROM_STALE_REFERENCE_POINT",
+                "boundary_basis_label": "2023 보조 위치점 소재 지적필지(참고)", "facility_boundary_geometry": feature["geometry"],
+                "boundary_note": "2023년 일회성 보조 위치자료이므로 지적경계를 복원해도 법정 PASS에는 사용하지 않음",
+                "primary_pnu": pnu, "parcel_count": 1, "auto_pass_eligible": False, **metrics,
+            }
+        return {
+            "boundary_status": "CONFIRMED", "boundary_basis": "CADASTRAL_PARCEL_FROM_OFFICIAL_POINT",
+            "boundary_basis_label": "보건소 공식 위치점 소재 지적필지", "facility_boundary_geometry": feature["geometry"],
+            "boundary_note": "서울시 공식 보건소 위치좌표가 포함되는 연속지적 필지경계를 시설부지로 적용",
+            "primary_pnu": pnu, "parcel_count": 1, "auto_pass_eligible": True, **metrics,
+        }
+
+    parcel_candidates = []
+    if point_parcel.get("status") == "resolved" and point_parcel.get("feature"):
+        parcel_candidates.append(("official_point", point_parcel.get("pnu"), point_parcel.get("feature")))
+    address_lookup = None
+    parcel_address = str(item.get("parcel_address") or item.get("address") or "").strip()
+    if parcel_address:
+        address_lookup = _vworld_parcel_by_address(parcel_address)
+        if address_lookup.get("status") == "resolved" and address_lookup.get("feature"):
+            apnu = address_lookup.get("pnu")
+            if not any(pnu == apnu for _, pnu, _ in parcel_candidates):
+                parcel_candidates.append(("official_license_address", apnu, address_lookup.get("feature")))
+
+    attempts = []
+    for candidate_basis, candidate_pnu, candidate_feature in parcel_candidates:
+        if not candidate_pnu or not candidate_feature: continue
+        bsite = _medical_building_site_boundary(candidate_pnu, candidate_feature, str(item.get("name") or ""))
+        attempts.append((candidate_basis, candidate_pnu, candidate_feature, bsite))
+        if bsite.get("status") == "resolved" and bsite.get("geometry"):
+            metrics = _medical_boundary_metrics(site_wgs, bsite["geometry"])
+            title = bsite.get("title") or {}
+            ledger_label = "총괄표제부" if title.get("ledger_kind") == "recap" else "표제부"
+            basis_note = "공식 위치점 소재필지" if candidate_basis == "official_point" else "서울시 인허가 지번주소 소재필지"
+            return {
+                "boundary_status": "CONFIRMED", "boundary_basis": "BUILDING_REGISTER_SITE_PARCELS",
+                "boundary_basis_label": "건축물대장 대지·부속지번 지적경계", "facility_boundary_geometry": bsite["geometry"],
+                "boundary_note": f"{basis_note}에서 건축물대장 {ledger_label}·부속지번으로 전체 대지 복원",
+                "auto_pass_eligible": True, "primary_pnu": candidate_pnu,
+                "related_pnus": bsite.get("related_pnus") or [candidate_pnu], "parcel_count": bsite.get("parcel_count"),
+                "building_title": title, "parcel_candidate_basis": candidate_basis, **metrics,
+            }
+
+    partial = None; partial_basis = None; partial_pnu = None; partial_note = None; partial_title = None
+    for cbasis, cpnu, cfeature, bsite in attempts:
+        if bsite.get("geometry"):
+            partial, partial_basis, partial_pnu = bsite.get("geometry"), cbasis, cpnu
+            partial_note, partial_title = bsite.get("reason"), bsite.get("title")
+            break
+        if partial is None and cfeature and cfeature.get("geometry"):
+            partial, partial_basis, partial_pnu = cfeature.get("geometry"), cbasis, cpnu
+            partial_note, partial_title = bsite.get("reason"), bsite.get("title")
+    if partial is None and point_parcel.get("status") == "resolved" and point_parcel.get("feature"):
+        partial, partial_basis, partial_pnu = point_parcel["feature"].get("geometry"), "official_point", point_parcel.get("pnu")
+    if partial is None and address_lookup and address_lookup.get("status") == "resolved" and address_lookup.get("feature"):
+        partial, partial_basis, partial_pnu = address_lookup["feature"].get("geometry"), "official_license_address", address_lookup.get("pnu")
+
+    notes = []
+    if point_error: notes.append(f"위치점 지적조회 오류: {point_error}")
+    elif point_parcel.get("status") != "resolved": notes.append(f"위치점 지적조회 {point_parcel.get('status')}")
+    if address_lookup and address_lookup.get("status") != "resolved": notes.append(f"인허가 지번주소 지적조회 {address_lookup.get('status')}")
+    if partial_note: notes.append(partial_note)
+    out = {
+        "boundary_status": "REVIEW", "boundary_basis": "CADASTRAL_PARCEL_REFERENCE_ONLY" if partial else "BOUNDARY_NOT_RESOLVED",
+        "boundary_basis_label": "병원 공식자료 기반 지적필지(건축물대장 전체대지 미확정)" if partial else "부지경계 미확정",
+        "facility_boundary_geometry": partial, "boundary_note": " / ".join(notes) or "건축물대장 관련 대지 전체 미확인",
+        "primary_pnu": partial_pnu, "building_title": partial_title, "parcel_candidate_basis": partial_basis,
+        "auto_pass_eligible": False,
+    }
+    if partial:
+        try: out.update(_medical_boundary_metrics(site_wgs, partial))
+        except Exception: pass
+    return out
 
 
 VWORLD_LAND_LEDGER_URL = "https://api.vworld.kr/ned/data/ladfrlList"
@@ -1938,8 +2381,13 @@ def _safe_medical_reference(geometry: Dict[str, Any]) -> Dict[str, Any]:
     key, key_env = _seoul_open_data_key_info()
     metadata = {
         "criterion": "의료시설 대상부지 경계로부터 350m",
-        "auto_pass_eligible": False,
-        "reason": "공개 API는 의료시설 위치점 중심이며 법정 기준인 대상부지 경계도형이 아니므로 자동 PASS에 사용하지 않음",
+        "auto_pass_eligible": True,
+        "boundary_resolution_order": [
+            "도시계획시설 종합의료시설 경계",
+            "비도시계획시설 병원: 건축물대장 대지·부속지번 + 연속지적",
+            "보건소: 공식 위치점 소재 연속지적 필지",
+        ],
+        "reason": "위치점 자체는 PASS에 쓰지 않고, 공식 위치점에서 복원한 시설부지 경계가 CONFIRMED인 경우에만 350m 자동판정",
         "hospital_source": "서울시 병원 인허가 정보 (LOCALDATA_010101, 매일 갱신)",
         "health_center_source": "서울시 의원 인허가 정보 (LOCALDATA_010102, 매일 갱신; 보건소만 선별)",
         "health_center_fallback": "서울시 시설물 정보 (tbEntranceItem, 2023 일회성) — LOCALDATA_010102 실패 시 위치 참고용",
@@ -2006,6 +2454,8 @@ def _safe_medical_reference(geometry: Dict[str, Any]) -> Dict[str, Any]:
                 "category": category, "name": name or "의료시설", "distance_point_m": round(dist, 1),
                 "geometry": {"type": "Point", "coordinates": [lon, lat]},
                 "address": str(row.get("RDNWHLADDR") or row.get("SITEWHLADDR") or ""),
+                "road_address": str(row.get("RDNWHLADDR") or ""),
+                "parcel_address": str(row.get("SITEWHLADDR") or ""),
                 "data_status": "current_reference_point", "auto_pass_eligible": False,
                 "source": "서울시 병원 인허가 정보", "source_service": "LOCALDATA_010101",
                 "facility_type": type_name,
@@ -2050,6 +2500,8 @@ def _safe_medical_reference(geometry: Dict[str, Any]) -> Dict[str, Any]:
                 "category": "public_health_center", "name": name or "보건소", "distance_point_m": round(dist, 1),
                 "geometry": {"type": "Point", "coordinates": [lon, lat]},
                 "address": str(row.get("RDNWHLADDR") or row.get("SITEWHLADDR") or ""),
+                "road_address": str(row.get("RDNWHLADDR") or ""),
+                "parcel_address": str(row.get("SITEWHLADDR") or ""),
                 "data_status": "current_reference_point", "auto_pass_eligible": False,
                 "source": "서울시 의원 인허가 정보", "source_service": "LOCALDATA_010102",
                 "facility_type": type_name or "보건소",
@@ -2115,23 +2567,77 @@ def _safe_medical_reference(geometry: Dict[str, Any]) -> Dict[str, Any]:
         if old is None or str(item.get("data_status")) == "current_reference_point":
             deduped[key_tuple] = item
     items = list(deduped.values())
-    items.sort(key=lambda x: (float(x.get("distance_point_m") or 1e12), str(x.get("category")), str(x.get("name"))))
+    items.sort(key=lambda x: (float(x.get("distance_point_m")) if x.get("distance_point_m") is not None else 1e12, str(x.get("category")), str(x.get("name"))))
 
+    # API 과다호출을 막기 위해 대상지에서 가까운 후보부터 최대 8건의 시설부지 경계를 복원한다.
+    # 나머지 후보는 자동 FAIL 근거로 쓰지 않고 REVIEW로 남긴다.
+    boundary_resolve_limit = 8
+    resolve_indexes = list(range(min(boundary_resolve_limit, len(items))))
+
+    def resolve_one(index: int):
+        item = dict(items[index])
+        try:
+            resolved = _resolve_medical_facility_boundary(item, site_wgs)
+        except Exception as exc:
+            resolved = {
+                "boundary_status": "REVIEW", "boundary_basis": "BOUNDARY_NOT_RESOLVED",
+                "boundary_note": f"시설부지 경계 복원 오류: {exc}", "auto_pass_eligible": False,
+            }
+        item.update(resolved)
+        return index, item
+
+    if resolve_indexes:
+        with ThreadPoolExecutor(max_workers=min(4, len(resolve_indexes))) as ex:
+            futures = [ex.submit(resolve_one, i) for i in resolve_indexes]
+            for fut in as_completed(futures):
+                i, resolved_item = fut.result()
+                items[i] = resolved_item
+
+    resolved_set = set(resolve_indexes)
+    for i, item in enumerate(items):
+        if i in resolved_set:
+            continue
+        item.update({
+            "boundary_status": "REVIEW", "boundary_basis": "BOUNDARY_NOT_RESOLVED",
+            "boundary_note": f"공식 위치점 거리 {item.get('distance_point_m')}m · 인근 {boundary_resolve_limit}건 경계복원 우선순위 밖(법정 FAIL 확정에는 사용하지 않음)",
+            "auto_pass_eligible": False,
+        })
+
+    confirmed_boundaries = [x for x in items if x.get("boundary_status") == "CONFIRMED" and x.get("facility_boundary_geometry")]
+    confirmed_350 = [x for x in confirmed_boundaries if x.get("within_350") is True]
+    review_boundaries = [x for x in items if x.get("boundary_status") != "CONFIRMED"]
     nearby_counts = {
         "general_hospital": sum(1 for x in items if x.get("category") == "general_hospital"),
         "municipal_hospital": sum(1 for x in items if x.get("category") == "municipal_hospital"),
         "public_health_center": sum(1 for x in items if x.get("category") == "public_health_center"),
+        "boundary_confirmed": len(confirmed_boundaries),
+        "boundary_confirmed_350": len(confirmed_350),
+        "boundary_review": len(review_boundaries),
     }
+    stats["boundary_resolution"] = {
+        "candidate_limit": boundary_resolve_limit, "attempted": len(resolve_indexes),
+        "confirmed": len(confirmed_boundaries), "within_350": len(confirmed_350),
+        "review": len(review_boundaries),
+    }
+    if confirmed_350:
+        message = f"공식 시설부지 경계가 확인된 350m 이내 의료시설 {len(confirmed_350)}건 · 동일 경계 Fact로 안심주택 입지를 판정합니다."
+        status = "resolved"
+    elif confirmed_boundaries:
+        message = "일부 의료시설 부지경계는 확인됐으나 350m 이내 확인시설은 없습니다. 미확정 후보가 남아 있으면 FAIL이 아니라 REVIEW를 유지합니다."
+        status = "resolved"
+    else:
+        message = "의료시설 위치점은 확인했으나 법정 판정용 시설부지 경계가 확정되지 않아 REVIEW입니다."
+        status = "reference" if items else ("error" if errors else "none")
     return {
-        "status": "reference" if items else ("error" if errors else "none"),
-        "auto_pass_eligible": False,
+        "status": status,
+        "auto_pass_eligible": bool(confirmed_350),
         "items": items[:30],
         "metadata": metadata,
         "errors": errors,
         "warnings": warnings,
         "source_stats": stats,
         "nearby_counts": nearby_counts,
-        "message": "공식 위치점은 후보검색용이며 의료시설 대상부지 경계 350m는 결정도서·공부로 재확인해야 합니다.",
+        "message": message,
     }
 
 
@@ -2401,7 +2907,7 @@ def health():
         "renewal_gis": "server-side UQ181/UQ120 intersection; legal-priority; promotion separate; full matched boundaries returned for status map",
         "development_gis": "VWorld district-unit plan + bundled Seoul UQ181 urban-development/public-housing/other legal project intersections",
         "safe_housing_location_paths": "station / arterial-road-side / medical-facility-center evaluated separately; OR combined",
-        "safe_medical_reference": "Seoul hospital + clinic licensing current points (REVIEW only; site-boundary geometry still required)" if _seoul_open_data_key() else "needs Seoul Open Data key; no automatic medical PASS",
+        "safe_medical_reference": "Seoul medical points + site-boundary resolver (planning medical facility > building-register site parcels; health-center cadastral parcel)" if _seoul_open_data_key() else "needs Seoul Open Data key; no automatic medical PASS",
         "safe_medical_key_env": _seoul_open_data_key_info()[1] or None,
         "road_width_gis": "server bundled official ZIP" if _road_zip_path() else "official ZIP hook ready; data/road_seoul.zip not installed",
         "responsive_ui": "desktop/tablet/mobile responsive layout with mobile workflow and selected-scheme cards",
@@ -2455,10 +2961,12 @@ def development_intersections(inp: GeometryInput):
 
 @app.post("/api/reference/safe-medical-nearby")
 def safe_medical_nearby(inp: GeometryInput):
-    """안심주택 의료시설 중심지역의 공식 위치자료 후보조회.
+    """안심주택 의료시설 중심지역 공식 위치 + 시설부지 경계 복원.
 
-    공개자료가 위치점만 제공하므로 법정 '대상부지 경계 350m' 자동 PASS에는
-    사용하지 않고 REVIEW용 참고자료만 반환한다.
+    종합병원/시립병원은 도시계획시설 종합의료시설 경계를 우선하고,
+    비도시계획시설 병원은 건축물대장 대지·부속지번과 연속지적을 결합한다.
+    보건소는 서울시 공식 위치점이 포함되는 연속지적 필지경계를 적용한다.
+    경계가 CONFIRMED인 경우에만 350m 자동 PASS가 가능하다.
     """
     try:
         return _safe_medical_reference(inp.geometry)

@@ -585,13 +585,20 @@ def check_spatial_evidence_maps() -> None:
     assert "arterialFunctionConfirmed=roadEvidence?.function_confirmed===true" in lt
     assert "arterialFunctionConfirmed?'PASS':'REVIEW'" in lt
     assert "c.roadQuality==='AUTO'?'PASS'" not in lt
-    # 안심주택 의료시설은 위치점 350m를 참고도면으로만 쓰고 법정 부지경계 확보 전 PASS하지 않는다.
-    assert "auto_pass_eligible:false" in html
-    assert '법정 기준은 시설 대상부지 경계' in html or '의료시설 대상부지 경계' in html
+    # 안심주택 의료시설은 위치점 자체가 아니라 복원된 시설부지 경계 Fact만 PASS를 만들 수 있다.
+    assert 'boundary_status:x.boundary_status' in html
+    assert 'facility_boundary_geometry:x.facility_boundary_geometry' in html
+    assert 'candidates=confirmed.filter' in html
+    assert "x.auto_pass_eligible&&x.within_350===true" in html
+    assert 'ccSafeMedicalFacilitySites' in html
+    assert '부지경계 거리' in html and '350m 확정 후보' in html
     medical_start=html.index('function safeMedicalPath(')
     medical_end=html.find('\nfunction ', medical_start+20)
     medical=html[medical_start:medical_end if medical_end>=0 else None]
-    assert "status='PASS'" not in medical
+    assert "if(refs.length)" in medical and "status='PASS'" in medical
+    assert 'reference_point_candidates_350' in medical
+    assert "위치점" in medical and "REVIEW" in medical
+    assert "spatialFactRow('의료시설 중심지역 350m',medical.value,medical.status,medical.note)" in html
     # 용도지역은 공간현황에서 별도 지도와 구성비를 확인한다.
     assert 'id="spZoningPrimary"' in html and 'id="spZoningPrimaryRatio"' in html
     assert "LT_C_UQ111" in html
@@ -618,6 +625,8 @@ def check_release_files() -> None:
     assert "분석번호" in readme
     assert "SEOUL_OPEN_DATA_KEY" in readme
     assert (root / "RULE_AUDIT_v2.5.0.md").exists()
+    # 기준본에 포함된 공식 근거 PDF 8종이 배포 ZIP에서 누락되지 않도록 고정한다.
+    assert len(list(root.glob("*.pdf"))) >= 8
     structured = root / "static" / "app.html"
     root_html = root / "app.html"
     # 구조형 작업본에서는 두 HTML의 동일성을 검사하고, 평면 ZIP 검증본에서는
@@ -691,12 +700,24 @@ def check_safe_medical_api_adapter() -> None:
                 raise AssertionError("current health-center API succeeded, stale fallback must not run")
             return []
 
-        with patch.object(app, "_seoul_open_data_rows", side_effect=fake_rows):
+        def fake_boundary(item, site_wgs):
+            return {
+                "boundary_status": "CONFIRMED",
+                "boundary_basis": "CADASTRAL_PARCEL_FROM_OFFICIAL_POINT" if item.get("category") == "public_health_center" else "URBAN_PLANNING_MEDICAL_FACILITY",
+                "boundary_basis_label": "테스트 시설부지 경계",
+                "facility_boundary_geometry": site,
+                "buffer_350_geometry": site,
+                "distance_boundary_m": 0.0,
+                "within_350": True,
+                "auto_pass_eligible": True,
+            }
+        with patch.object(app, "_seoul_open_data_rows", side_effect=fake_rows), patch.object(app, "_resolve_medical_facility_boundary", side_effect=fake_boundary):
             result = app._safe_medical_reference(site)
         cats = {row["category"] for row in result["items"]}
         assert {"general_hospital", "municipal_hospital", "public_health_center"}.issubset(cats)
         assert result["metadata"]["credential_env"] == "data.seoul.go.kr_KEY"
-        assert result["auto_pass_eligible"] is False
+        assert result["auto_pass_eligible"] is True
+        assert result["nearby_counts"]["boundary_confirmed_350"] >= 1
         assert result["nearby_counts"]["public_health_center"] == 1
         assert result["source_stats"]["health_center"]["service"] == "LOCALDATA_010102"
 
@@ -705,6 +726,112 @@ def check_safe_medical_api_adapter() -> None:
     assert "data.nearby_counts||{}" in html
     assert "data.source_stats||{}" in html
     assert "API 확인필요" in html
+
+def check_safe_medical_boundary_resolution() -> None:
+    site = {
+        "type": "Polygon",
+        "coordinates": [[[126.999, 37.499], [127.001, 37.499], [127.001, 37.501], [126.999, 37.501], [126.999, 37.499]]],
+    }
+    site_shape = shape(site)
+    facility_geom = {
+        "type": "Polygon",
+        "coordinates": [[[126.9995, 37.4995], [127.0002, 37.4995], [127.0002, 37.5002], [126.9995, 37.5002], [126.9995, 37.4995]]],
+    }
+    primary = {"type": "Feature", "geometry": facility_geom, "properties": {"pnu": "1111010100100010001"}}
+
+    hospital = {"category": "general_hospital", "name": "테스트종합병원", "geometry": {"type": "Point", "coordinates": [127.0, 37.5]}}
+    with patch.object(app, "_medical_planning_facility_boundary", return_value={"status": "resolved", "geometry": facility_geom, "features": []}):
+        result = app._resolve_medical_facility_boundary(hospital, site_shape)
+    assert result["boundary_status"] == "CONFIRMED"
+    assert result["boundary_basis"] == "URBAN_PLANNING_MEDICAL_FACILITY"
+    assert result["within_350"] is True
+    assert result["auto_pass_eligible"] is True
+
+    health = {"category": "public_health_center", "name": "테스트보건소", "geometry": {"type": "Point", "coordinates": [127.0, 37.5]}}
+    with patch.object(app, "_vworld_parcel_at_point", return_value={"status": "resolved", "feature": primary, "pnu": primary["properties"]["pnu"]}):
+        result = app._resolve_medical_facility_boundary(health, site_shape)
+    assert result["boundary_status"] == "CONFIRMED"
+    assert result["boundary_basis"] == "CADASTRAL_PARCEL_FROM_OFFICIAL_POINT"
+    assert result["primary_pnu"] == primary["properties"]["pnu"]
+
+    stale_health = {**health, "data_status": "stale_reference_point_2023"}
+    with patch.object(app, "_vworld_parcel_at_point", return_value={"status": "resolved", "feature": primary, "pnu": primary["properties"]["pnu"]}):
+        stale_result = app._resolve_medical_facility_boundary(stale_health, site_shape)
+    assert stale_result["boundary_status"] == "REVIEW"
+    assert stale_result["auto_pass_eligible"] is False
+    assert stale_result["boundary_basis"] == "CADASTRAL_PARCEL_FROM_STALE_REFERENCE_POINT"
+
+    with patch.object(app, "_medical_planning_facility_boundary", return_value={"status": "none", "geometry": None, "features": []}), \
+         patch.object(app, "_vworld_parcel_at_point", return_value={"status": "resolved", "feature": primary, "pnu": primary["properties"]["pnu"]}), \
+         patch.object(app, "_medical_building_site_boundary", return_value={"status": "resolved", "geometry": facility_geom, "related_pnus": [primary["properties"]["pnu"], "1111010100100010002"], "parcel_count": 2, "reason": "test"}):
+        result = app._resolve_medical_facility_boundary(hospital, site_shape)
+    assert result["boundary_status"] == "CONFIRMED"
+    assert result["boundary_basis"] == "BUILDING_REGISTER_SITE_PARCELS"
+    assert result["parcel_count"] == 2
+
+    row = {
+        "atchSigunguCd": "11110", "atchBjdongCd": "10100", "atchPlatGbCd": "0",
+        "atchBun": "12", "atchJi": "3",
+    }
+    related_pnu = app._building_hub_attachment_pnu(row)
+    assert related_pnu == "1111010100100120003"
+
+    # 비도시계획시설 병원이 다수 필지에 걸친 경우 건축HUB 부속지번과
+    # 연속지적을 실제로 Union해 1개 시설부지 경계를 만드는지 확인한다.
+    primary_pnu = primary["properties"]["pnu"]
+    related_feature = {
+        "type": "Feature",
+        "geometry": {"type": "Polygon", "coordinates": [[[127.0002, 37.4995], [127.0008, 37.4995], [127.0008, 37.5002], [127.0002, 37.5002], [127.0002, 37.4995]]]},
+        "properties": {"pnu": related_pnu},
+    }
+    title_row = {
+        "mgmBldrgstPk": "TEST-HOSPITAL-1", "mainPurpsCdNm": "의료시설",
+        "bldNm": "테스트종합병원", "platArea": "12000", "bylotCnt": "1",
+        "sigunguCd": "11110", "bjdongCd": "10100", "platGbCd": "0", "bun": "1", "ji": "1",
+    }
+    attachment_row = {**row, "mgmBldrgstPk": "TEST-HOSPITAL-1"}
+    with patch.object(app, "building_hub_ready", return_value=True), \
+         patch.object(app, "_query_building_hub_recap_title", return_value=[]), \
+         patch.object(app, "_query_building_hub_title", return_value=[title_row]), \
+         patch.object(app, "_query_building_hub_atch_jibun", return_value=[attachment_row]), \
+         patch.object(app, "_fetch_vworld_parcels_for_pnus", return_value={primary_pnu: primary, related_pnu: related_feature}):
+        multi = app._medical_building_site_boundary(primary_pnu, primary, "테스트종합병원")
+    assert multi["status"] == "resolved"
+    assert multi["parcel_count"] == 2
+    assert set(multi["related_pnus"]) == {primary_pnu, related_pnu}
+    assert shape(multi["geometry"]).area > shape(primary["geometry"]).area
+
+    address_primary = {"type": "Feature", "geometry": facility_geom, "properties": {"pnu": "1111010100100990001"}}
+    hospital_with_addr = {**hospital, "parcel_address": "서울특별시 종로구 테스트동 99-1"}
+    with patch.object(app, "_medical_planning_facility_boundary", return_value={"status": "none", "geometry": None, "features": []}), \
+         patch.object(app, "_vworld_parcel_at_point", return_value={"status": "not_found", "feature": None, "pnu": None}), \
+         patch.object(app, "_vworld_parcel_by_address", return_value={"status": "resolved", "feature": address_primary, "pnu": address_primary["properties"]["pnu"]}), \
+         patch.object(app, "_medical_building_site_boundary", return_value={"status": "resolved", "geometry": facility_geom, "related_pnus": [address_primary["properties"]["pnu"]], "parcel_count": 1, "title": {"ledger_kind": "recap"}}):
+        addr_result = app._resolve_medical_facility_boundary(hospital_with_addr, site_shape)
+    assert addr_result["boundary_status"] == "CONFIRMED"
+    assert addr_result["boundary_basis"] == "BUILDING_REGISTER_SITE_PARCELS"
+    assert addr_result["parcel_candidate_basis"] == "official_license_address"
+
+    recap_row = {**title_row, "regstrKindCdNm": "총괄표제부"}
+    with patch.object(app, "building_hub_ready", return_value=True), \
+         patch.object(app, "_query_building_hub_recap_title", return_value=[recap_row]), \
+         patch.object(app, "_query_building_hub_title") as title_mock, \
+         patch.object(app, "_query_building_hub_atch_jibun", return_value=[attachment_row]), \
+         patch.object(app, "_fetch_vworld_parcels_for_pnus", return_value={primary_pnu: primary, related_pnu: related_feature}):
+        recap_multi = app._medical_building_site_boundary(primary_pnu, primary, "테스트종합병원")
+    assert recap_multi["status"] == "resolved"
+    assert recap_multi["title"]["ledger_kind"] == "recap"
+    title_mock.assert_not_called()
+
+    html=(Path(__file__).resolve().parent / "app.html").read_text(encoding="utf-8")
+    for marker in (
+        "URBAN_PLANNING_MEDICAL_FACILITY", "BUILDING_REGISTER_SITE_PARCELS",
+        "CADASTRAL_PARCEL_FROM_OFFICIAL_POINT", "CADASTRAL_PARCEL_FROM_STALE_REFERENCE_POINT",
+        "official_license_address", "getBrRecapTitleInfo", "ccSafeMedicalFacilitySites",
+        "buffer_350_geometry", "distance_boundary_m",
+    ):
+        assert marker in html or marker in (Path(__file__).resolve().parent / "app.py").read_text(encoding="utf-8"), marker
+
 
 def check_purpose_filter_and_frontage_facts() -> None:
     html=(Path(__file__).resolve().parent / "app.html").read_text(encoding="utf-8")
@@ -747,6 +874,7 @@ def main() -> None:
     _run("startup drawing + legacy UI", check_startup_drawing_and_legacy_ui)
     _run("spatial evidence maps", check_spatial_evidence_maps)
     _run("safe medical api adapter", check_safe_medical_api_adapter)
+    _run("safe medical boundary resolution", check_safe_medical_boundary_resolution)
     _run("purpose filter + frontage facts", check_purpose_filter_and_frontage_facts)
     _run("release files", check_release_files)
     print("v2.5.0 regression checks: PASS")
