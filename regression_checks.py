@@ -252,7 +252,7 @@ def check_feedback_and_ui() -> None:
     html = Path(app.STATIC_DIR, "app.html").read_text(encoding="utf-8")
     for text in (
         "오류·개선의견", 'href="/admin"', "⚙ 관리자", "planningRenewalSummary",
-        "실폭도로·접도율 공간분석", "RULE_SOURCE_CATALOG", "sourceLocator",
+        "도로중심선·접도조건 개략분석", "RULE_SOURCE_CATALOG", "sourceLocator",
         "기준까지 차이", "다음 조치·대안", "자동확정", "공부·현장 확인",
         "analysis_id:analysisId", "장기전세 간선도로 교차지역 200m 판정",
         "ccLandMini", "ccBuildingMini", "ccPlanningMini", "ccStationMini", "ccCenterMini",
@@ -262,7 +262,7 @@ def check_feedback_and_ui() -> None:
         "siteRoadNetworkStats", "scheme_road20_perimeter_ratio",
         "최신 공식 시행본 미확보 · 계획용적률 자동입력 금지",
         "시행령 별표 1 제2호·제4호 / 조례 제6조제1항제2·3호",
-        "TL_SPRD_RW 공식 실폭도형 산정",
+        "도로중심선 ROAD_BT 기반 개략범위",
         "정비사업 관련 현황도", "도시계획·개발사업 현황도",
         "공공주택지구", "기타 정비",
         "대중교통 중심지역 · 간선도로변", "의료시설 중심지역",
@@ -271,7 +271,8 @@ def check_feedback_and_ui() -> None:
         assert text in html
     assert "/api/spatial/renewal-intersections" in html
     assert "/api/spatial/development-intersections" in html
-    assert "/api/spatial/roads" in html
+    assert "TL_SPRD_MANAGE" in html
+    assert "TL_SPRD_RW" not in html
     assert "st.areaGate==='FAIL'||st.structural==='FAIL'" in html
     assert "const disabled=st.state==='off'" in html
     assert "r.hardGate==='AREA'" in html
@@ -850,6 +851,10 @@ def check_purpose_filter_and_frontage_facts() -> None:
     # shell-only 주택재개발은 접도 Fact가 생겨도 판정엔진으로 부활하면 안 된다.
     assert "const SHELL_SCHEMES=new Set(['redevelopment','reconstruction','residential_environment','smallscale','general_housing'])" in html
     assert "fact_key:'redevelopmentFrontage6Fact'" in html
+    assert "trySpatialLayerCandidates(['TL_SPRD_MANAGE','LT_C_SPRD_MANAGE']" in html
+    assert "trySpatialLayerCandidates(['TL_SPRD_RW'" not in html
+    assert "사업진입조건 확인을 위한 개략적 추정치로, 현장조서 및 도면검토를 통해 보완될 수 있음" in html
+    assert "analysisState.quality.road='ESTIMATE'" in html
     assert 'function checkRedevelopment(' not in html
 
 def main() -> None:
@@ -861,10 +866,6 @@ def main() -> None:
     _run("redevelopment area gate", check_area_gate)
     _run("redevelopment boolean gate", check_redevelopment_boolean_gate)
     _run("centerline width buffer", check_centerline_width_buffer)
-    _run("bundled road", check_bundled_road_dataset)
-    _release_heavy_spatial_cache("road")
-    _run("road zip pipeline", check_road_zip_pipeline)
-    _release_heavy_spatial_cache("road")
     _run("age annotation reference", check_age_annotation_reference_only)
     _run("feedback + UI", check_feedback_and_ui)
     _run("four independent modules", check_four_independent_scheme_modules)
