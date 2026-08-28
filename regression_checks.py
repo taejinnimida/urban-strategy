@@ -235,7 +235,7 @@ def check_feedback_and_ui() -> None:
         "ccLandMini", "ccBuildingMini", "ccPlanningMini", "ccStationMini", "ccCenterMini",
         "ccPlanningDistrictPlan", "ccPlanningRenewal", "smallParcelLayer", "oldParcelLayer",
         "safe_supply_type", "safe_adjacent_high_zone",
-        "독립엔진 13개 사업을 자동 검토하고, 소규모주택정비는 재설계 예정",
+        "사업방식 적용판정",
         "siteRoadNetworkStats", "scheme_road20_perimeter_ratio",
         "최신 공식 시행본 미확보 · 계획용적률 자동입력 금지",
         "시행령 별표 1 제2호·제4호 / 조례 제6조제1항제2·3호",
@@ -297,9 +297,9 @@ def check_feedback_and_ui() -> None:
     assert "schemeAgeFact(store,'growth_potential',route)" in decision
     assert "schemeAgeFact(store,'urban_redevelopment')" in decision
     assert "const SCHEME_MODULES=" in html
-    assert "SCHEME_MODULE_API_VERSION='2026-08-28-v6-family-separated-thirteen-independent-one-shell'" in html
-    assert "const SHELL_SCHEMES=new Set(['smallscale'])" in html
-    assert "기존 판정엔진 삭제 완료 · 현재 추천/우선순위 미반영" in html
+    assert "SCHEME_MODULE_API_VERSION='2026-08-28-v8-six-families-fifteen-modules-three-shells'" in html
+    assert "const SHELL_SCHEMES=new Set(['urban_innovation_zone','facility_complex_zone','mixed_use_zone'])" in html
+    assert "현재 자동 활성화·추천·우선순위 미반영" in html
     assert "collectFacts:activationSpatialFacts" in html
     assert "function checkActivationFromFacts(store,f)" in html
     assert "역세권활성화사업 기초검토서" in html
@@ -599,7 +599,7 @@ def check_release_files() -> None:
     readme = (root / "README.md").read_text(encoding="utf-8")
     assert readme.startswith("# 서울 도시정비플랫폼 Web MVP v2.5.0")
     assert "GitHub 웹 업로드" in readme
-    assert "14개 사업방식 근거 기준일" in readme
+    assert "사업방식 근거 기준일" in readme
     assert "분석번호" in readme
     assert "SEOUL_OPEN_DATA_KEY" in readme
     assert (root / "RULE_AUDIT_v2.5.0.md").exists()
@@ -826,7 +826,7 @@ def check_purpose_filter_and_frontage_facts() -> None:
     # 주거(임대)는 다른 주거계열 분류에는 주거로 취급하되 안심주택만 별도 hard gate를 가진다.
     assert "if(purpose==='housing'||purpose==='housing_rental')return 'housing';" in html
     # 주택재개발은 독립모듈로 전환됐지만 접도율은 도로중심선 기반 개략 Fact로 유지한다.
-    assert "const SHELL_SCHEMES=new Set(['smallscale'])" in html
+    assert "const SHELL_SCHEMES=new Set(['urban_innovation_zone','facility_complex_zone','mixed_use_zone'])" in html
     assert "fact_key:'redevelopmentFrontage6Fact'" in html
     assert "trySpatialLayerCandidates(['TL_SPRD_MANAGE','LT_C_SPRD_MANAGE']" in html
     assert "trySpatialLayerCandidates(['TL_SPRD_RW'" not in html
@@ -840,8 +840,8 @@ def check_remaining_four_independent_modules_and_sources() -> None:
     html = (root / "app.html").read_text(encoding="utf-8")
     py = (root / "app.py").read_text(encoding="utf-8")
 
-    assert "SCHEME_MODULE_API_VERSION='2026-08-28-v6-family-separated-thirteen-independent-one-shell'" in html
-    assert "const SHELL_SCHEMES=new Set(['smallscale'])" in html
+    assert "SCHEME_MODULE_API_VERSION='2026-08-28-v8-six-families-fifteen-modules-three-shells'" in html
+    assert "const SHELL_SCHEMES=new Set(['urban_innovation_zone','facility_complex_zone','mixed_use_zone'])" in html
     required = (
         "function redevelopmentSpatialFacts(store)", "function checkRedevelopmentFromFacts(store,f)",
         "function reconstructionSpatialFacts(store)", "function checkReconstructionFromFacts(store,f)",
@@ -850,7 +850,7 @@ def check_remaining_four_independent_modules_and_sources() -> None:
         "collectFacts:redevelopmentSpatialFacts", "collectFacts:reconstructionSpatialFacts",
         "collectFacts:residentialEnvironmentSpatialFacts", "collectFacts:generalHousingSpatialFacts",
         "function renderRemainingSchemeDetailPopup(name)",
-        "['redevelopment','reconstruction','residential_environment','general_housing'].includes(name)",
+        "['redevelopment','reconstruction','residential_environment','general_housing','smallscale','prior_negotiation'].includes(name)",
     )
     for text in required:
         assert text in html, text
@@ -858,7 +858,10 @@ def check_remaining_four_independent_modules_and_sources() -> None:
     module_block = html[html.index("const SCHEME_MODULES="):html.index("function evaluateSchemeModule", html.index("const SCHEME_MODULES="))]
     for key in ("redevelopment", "reconstruction", "residential_environment", "general_housing"):
         assert f"{key}:{{" in module_block or f"{key}: {{" in module_block
-    assert "smallscale:{" not in module_block and "smallscale: {" not in module_block
+    assert "smallscale:{" in module_block or "smallscale: {" in module_block
+    assert "prior_negotiation:{" in module_block or "prior_negotiation: {" in module_block
+    for shell in ("urban_innovation_zone", "facility_complex_zone", "mixed_use_zone"):
+        assert f"{shell}:{{" not in module_block and f"{shell}: {{" not in module_block
 
     # 신규 4개 사업의 모든 schemeRow는 sourceId + locator를 명시한다.
     blocks = [
@@ -882,7 +885,7 @@ def check_remaining_four_independent_modules_and_sources() -> None:
     assert "const resolved=ruleSourceFor(scheme,item)" in html
     assert "source=schemeSheetSourceCell({sourceType:src.type" in html
 
-    # 13개 전용검토서의 계획기준 근거 셀도 단순 근거명 문자열이 아니라 공통 source renderer를 사용한다.
+    # 독립 전용검토서의 계획기준 근거 셀도 단순 근거명 문자열이 아니라 공통 source renderer를 사용한다.
     assert "function schemeSheetSourceFor(scheme,item,sourceId='',locator='')" in html
     raw_source_cells = (
         '<td>안심주택 운영기준의 용도지역별 계획기준</td>',
@@ -911,25 +914,25 @@ def check_remaining_four_independent_modules_and_sources() -> None:
     assert "frontage_access_buildings_4m" in html and "frontage_access_buildings_6m" in html
 
     readme = (root / "README.md").read_text(encoding="utf-8")
-    list_block = readme[readme.index("## v2.5.0 독립 검토모듈 13종"):readme.index("## v2.4.3", readme.index("## v2.5.0 독립 검토모듈 13종"))]
-    for label in ("주택재개발", "재건축", "주거환경개선", "일반 주택건설"):
-        assert f"- {label}" in list_block
+    list_block = readme[readme.index("## v2.5.0 사업방식 구조 · 독립 검토모듈"):readme.index("## v2.4.3", readme.index("## v2.5.0 사업방식 구조 · 독립 검토모듈"))]
+    for label in ("주택재개발", "재건축", "주거환경개선", "주택개발사업"):
+        assert label in list_block
     assert "근거유형 / 공식 근거명 / 조문·장절 / 기준일 / 원문 링크" in list_block
 
     # 서버측 구형 재개발 판정엔진/중복 API는 제거한다.
     assert "def evaluate_redevelopment(" not in py
     assert '/api/redevelopment/evaluate' not in py
-    assert '"scheme_module_api": "2026-08-28-v6-family-separated-thirteen-independent-one-shell"' in py
-    assert 'smallscale only remains shell-only' in py
+    assert '"scheme_module_api": "2026-08-28-v8-six-families-fifteen-modules-three-shells"' in py
+    assert '15 independent modules including smallscale 5-route family and prior_negotiation' in py
 
 def check_scheme_family_separation() -> None:
-    """주택정비 3종은 raw Fact만 공유하고 일반 주택건설은 독립 family로 분리한다."""
+    """주택정비 3종은 raw Fact만 공유하고 주택개발사업은 독립 family로 분리한다."""
     root = Path(app.BASE_DIR)
     html = (root / "app.html").read_text(encoding="utf-8")
 
     assert "const SCHEME_FAMILY_META={" in html
     assert "housing_renewal:{label:'주택정비사업'" in html
-    assert "general_housing:{label:'민간 주택개발'" in html
+    assert "general_housing:{label:'민간주택개발'" in html
     assert "const HOUSING_RENEWAL_SCHEMES=new Set(SCHEME_FAMILY_META.housing_renewal.members)" in html
     assert "function housingRenewalFamilyFacts(store)" in html
     assert "family_specific:{},scheme_specific:{}" in html
@@ -958,9 +961,11 @@ def check_scheme_family_separation() -> None:
 
     # 첫 화면에서도 Family를 구분해 보여준다.
     assert 'data-family="housing_renewal">주택정비사업' in html
-    assert 'data-family="general_housing">민간 주택개발' in html
-    assert 'data-family="policy_special">정책·특례사업' in html
-    assert 'data-family="smallscale_pending">소규모정비' in html
+    assert 'data-family="smallscale_housing">소규모주택정비사업' in html
+    assert 'data-family="general_housing">민간주택개발' in html
+    assert 'data-family="special_housing">특례 주택사업' in html
+    assert 'data-family="urban_renewal">도심정비사업' in html
+    assert 'data-family="special_development">특례개발사업' in html
     assert "family_key:schemeFamilyKey(x.name),family_label:schemeFamilyLabel(x.name)" in html
     # 전체비교에서도 family 축을 잃지 않는다.
     assert "<th>사업 Family</th><th>사업방식</th>" in html
@@ -973,6 +978,105 @@ def check_scheme_family_separation() -> None:
     gh_eval = html[gh_eval_start:gh_eval_end]
     assert "sourceId:'PLANNING_GIS'" in gh_eval
     assert "sourceId:'RENEWAL_GIS'" not in gh_eval
+
+def check_r8_boundary_map_smallscale_prior() -> None:
+    """r8: 구역계 준비/수동 검토, 지도대안, 소규모정비 5경로, 사전협상, 3개 shell을 고정한다."""
+    root = Path(app.BASE_DIR)
+    html = (root / "app.html").read_text(encoding="utf-8")
+    py = (root / "app.py").read_text(encoding="utf-8")
+
+    # 구역계 입력 수단: 기존 직접그리기·지번 입력을 유지하고 SHP를 추가한다.
+    for marker in (
+        'id="boundaryDrawTab"', 'id="boundaryAddressTab"', 'id="boundaryShpTab"',
+        'function lookupBoundaryAddresses()', 'function applyAddressPreviewAsBoundary()',
+        'function loadBoundaryShp()', 'normalizeShpGeojson', 'geometryLooksLikeSeoul',
+    ):
+        assert marker in html, marker
+
+    # 지도는 일반/항공/항공+도시계획을 선택하고, 용도지역·도시계획시설을 반투명 오버레이한다.
+    for marker in (
+        '<option value="normal">일반지도</option>', '<option value="satellite">항공사진</option>',
+        '<option value="satellite_planning">항공사진 + 도시계획</option>',
+        'id="mapOverlayZoning"', 'id="mapOverlayFacility"', 'id="mapOverlayOpacity"',
+        "const mapBaseSatellite=L.tileLayer", "const mainMapZoningWms=L.tileLayer.wms",
+        "const mainMapFacilityWms=L.tileLayer.wms", "function setMapVisualMode(mode)",
+        "function syncMapPlanningOverlay()",
+    ):
+        assert marker in html, marker
+    assert "항공·도시계획 오버레이는 구역계 작성을 돕는 시각자료" in html
+
+    # 회귀오류 방지: 도형 생성 직후 무거운 API를 자동 실행하지 않고 검토버튼을 활성화한다.
+    m_start=html.index("async function measureAndSync()")
+    m_end=html.index("async function runSiteReview()", m_start)
+    prep=html[m_start:m_end]
+    assert "clearBoundaryAnalysisForNewGeometry()" in prep
+    assert "setBoundaryReferenceMetrics()" in prep
+    assert "runAllAutoAnalyses()" not in prep
+    assert "setSiteReviewStatus('구역계 설정 완료" in prep
+    assert "btn.disabled=siteReviewRunning||!activeGeometry" in html
+    # reset/사업엔진 오류가 생겨도 구역계 준비 흐름과 검토버튼 활성화를 막지 않는다.
+    clear_start=html.index("function clearBoundaryAnalysisForNewGeometry()")
+    clear_end=html.index("function setBoundaryReferenceMetrics()", clear_start)
+    clear_block=html[clear_start:clear_end]
+    assert "try{resetMeasure();}catch(e)" in clear_block
+    reset_start=html.index("function resetMeasure()")
+    reset_end=html.index("async function analyzeParcels()", reset_start)
+    reset_block=html[reset_start:reset_end]
+    assert "try{runAllSchemeChecks();}catch(e)" in reset_block
+
+    review_start=html.index("async function runSiteReview()")
+    review_end=html.index("function resetMeasure()", review_start)
+    review=html[review_start:review_end]
+    assert "const steps=await runAllAutoAnalyses()" in review
+    assert "finally{" in review and "siteReviewRunning=false" in review
+    assert "safeAnalysisStep('연속지적'" in html
+    assert "Promise.race" in html and "ANALYSIS_STEP_TIMEOUT_MS" in html
+    # draw/address/SHP 모두 동일 geometry->prep 경로를 탄다.
+    created=html[html.index("map.on(L.Draw.Event.CREATED"):html.index("map.on(L.Draw.Event.EDITED")]
+    assert "await measureAndSync()" in created
+    address=html[html.index("async function applyAddressPreviewAsBoundary()") : html.index("function normalizeShpGeojson")]
+    assert "await measureAndSync()" in address
+    shp=html[html.index("async function loadBoundaryShp()") : html.index("function clearBoundaryShp()")]
+    assert "await measureAndSync()" in shp
+
+    # 6개 Family UI와 소규모정비 5개 사용자 검토경로.
+    families=(
+        ('housing_renewal','주택정비사업'), ('smallscale_housing','소규모주택정비사업'),
+        ('general_housing','민간주택개발'), ('special_housing','특례 주택사업'),
+        ('urban_renewal','도심정비사업'), ('special_development','특례개발사업'),
+    )
+    for key,label in families:
+        assert f'data-family="{key}">{label}' in html
+    for route,label in (
+        ('autonomous','자율주택정비'), ('block','가로주택정비'),
+        ('reconstruction','소규모재건축'), ('redevelopment','소규모재개발'),
+        ('moa','모아타운+모아주택'),
+    ):
+        assert f'data-smallscale-route="{route}"' in html and label in html
+    assert "function smallscaleSpatialFacts(store)" in html
+    assert "function checkSmallscaleFromFacts(store,f)" in html
+    assert "별도 5번째 법정사업으로 판정하지 않고" in html
+    assert "showSmallscaleRouteBasis" in html
+
+    # 사전협상은 실제 독립모듈이고, 면적 5천㎡ 근거는 사전협상조례가 아니라 서울 도시계획조례 제17조로 연결한다.
+    assert "function priorNegotiationSpatialFacts(store)" in html
+    assert "function checkPriorNegotiationFromFacts(store,f)" in html
+    assert "prior_negotiation:{id:'prior_negotiation'" in html
+    assert "PRIOR_NEGOTIATION_AREA:{type:'조례',title:'서울특별시 도시계획 조례'" in html
+    assert "locator:'제17조 · 사전협상 대상지 5천제곱미터 이상'" in html
+    assert "sourceId:'PRIOR_NEGOTIATION_AREA'" in html
+    assert "2026-06-29 제11차 개정" in html
+
+    # 공간혁신 3종은 shell로만 남아 실제 모듈/추천에 진입하지 않는다.
+    assert "const SHELL_SCHEMES=new Set(['urban_innovation_zone','facility_complex_zone','mixed_use_zone'])" in html
+    module_block=html[html.index("const SCHEME_MODULES="):html.index("function evaluateSchemeModule", html.index("const SCHEME_MODULES="))]
+    for shell in ('urban_innovation_zone','facility_complex_zone','mixed_use_zone'):
+        assert f"{shell}:{{" not in module_block and f"{shell}: {{" not in module_block
+    assert "현재 자동 활성화·추천·우선순위 미반영" in html
+    assert "15 independent modules including smallscale 5-route family and prior_negotiation" in py
+    assert '"engine": "site_fact_store_v2.5.0_r8"' in py
+    assert "five user review routes: autonomous / block / small-scale reconstruction / small-scale redevelopment / Moa Town+Moa Housing policy route" in py
+    assert "v8-six-families-fifteen-modules-three-shells" in html and "v8-six-families-fifteen-modules-three-shells" in py
 
 def main() -> None:
     _run("measurement", check_measurement)
@@ -996,6 +1100,7 @@ def main() -> None:
     _run("purpose filter + frontage facts", check_purpose_filter_and_frontage_facts)
     _run("remaining four + sources", check_remaining_four_independent_modules_and_sources)
     _run("scheme family separation", check_scheme_family_separation)
+    _run("r8 boundary + map + smallscale + prior", check_r8_boundary_map_smallscale_prior)
     _run("release files", check_release_files)
     print("v2.5.0 regression checks: PASS")
 
@@ -1003,7 +1108,7 @@ def main() -> None:
 
 def test_migrated_scheme_legacy_engines_removed():
     html = Path(app.BASE_DIR, "app.html").read_text(encoding="utf-8")
-    # 모든 구형 사업 판정엔진은 삭제한다. 13개는 독립모듈, 소규모주택정비만 shell-only다.
+    # 모든 구형 사업 판정엔진은 삭제한다. 15개는 독립모듈, 공간혁신 3종만 shell-only다.
     deprecated_functions = [
         "checkActivation", "checkSafe", "checkStationComplex", "checkLongterm", "checkPublicComplex",
         "checkInnovation", "checkGrowthPotential", "checkSharedHousing", "checkUrbanRedevelopment",
@@ -1015,12 +1120,12 @@ def test_migrated_scheme_legacy_engines_removed():
     for name in deprecated_functions:
         assert f"function {name}(" not in html, f"deprecated engine/helper {name} remains"
     assert "legacy-adapter" not in html
-    assert "const SHELL_SCHEMES=new Set(['smallscale'])" in html
+    assert "const SHELL_SCHEMES=new Set(['urban_innovation_zone','facility_complex_zone','mixed_use_zone'])" in html
     assert "if(SHELL_SCHEMES.has(name))" in html
-    assert "state:'neutral',label:'재설계 예정',rank:0,stage:'SHELL'" in html
-    assert "기존 판정엔진 삭제 완료 · 현재 추천/우선순위 미반영" in html
-    assert "독립모듈 13개를 실제 판정한다. 소규모주택정비 1개만 shell로 유지" in html
-    for key in ["redevelopment", "reconstruction", "residential_environment", "general_housing", "activation", "growth_potential", "safe", "shared_housing", "station_complex", "longterm", "public_complex", "innovation", "urban_redevelopment"]:
+    assert "state:'neutral',label:'추후보완예정',rank:0,stage:'SHELL'" in html
+    assert "현재 자동 활성화·추천·우선순위 미반영" in html
+    assert "독립모듈 15개를 실제 판정한다. 소규모주택정비는 5개 사용자 검토경로를 1개 Family 모듈에서 비교하고, 공간혁신 3종은 shell로 유지한다." in html
+    for key in ["redevelopment", "reconstruction", "residential_environment", "general_housing", "smallscale", "prior_negotiation", "activation", "growth_potential", "safe", "shared_housing", "station_complex", "longterm", "public_complex", "innovation", "urban_redevelopment"]:
         assert f"{key}:{{" in html or f"{key}: {{" in html, f"independent module {key} missing"
 
 if __name__ == "__main__":
