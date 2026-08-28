@@ -499,6 +499,28 @@ def check_dedicated_detail_popups() -> None:
         assert "판정구조" in block or "중복추천 배제" in block, name
 
 
+def check_boundary_draw_bootstrap_and_legacy_sheet_hidden() -> None:
+    html=(Path(__file__).resolve().parent / "app.html").read_text(encoding="utf-8")
+    # 초기 공간현황 렌더링이 사업 Fact 상수 선언 전에 실행되면 JS가 중단되어 구역계 이벤트가 등록되지 않는다.
+    draw_event=html.index("map.on(L.Draw.Event.CREATED")
+    init_anchor=html.rfind("enforceLocationMapBoundaryOnly();", 0, draw_event)
+    assert init_anchor >= 0
+    bootstrap_slice=html[init_anchor:draw_event]
+    assert "refreshCompactMiniMaps();" not in bootstrap_slice
+    assert "function startMobilePolygonDraw()" in html
+    assert "new L.Draw.Polygon(map" in html
+    assert "map.on(L.Draw.Event.CREATED" in html
+    # 제도별 도로도면은 구역계가 없을 때 Fact 엔진을 호출하지 않는다.
+    rs=html.index("function renderSchemeRoadEvidence()")
+    re=html.index("function schemeRoadEvidenceStyle", rs) if "function schemeRoadEvidenceStyle" in html[rs:] else rs+5000
+    body=html[rs:re]
+    assert "if(!activeGeometry)" in body
+    assert body.index("if(!activeGeometry)") < body.index("schemeRoadEvidenceFacts()")
+    # 과거의 대형 비교검토 입력판은 사용자 화면에서 제거하고 내부 DOM 저장소로만 유지한다.
+    assert 'class="panel scheme-panel legacy-scheme-input-store" style="display:none!important"' in html
+    assert '<h2>4. 역세권·도심복합 사업방식 비교 검토시트</h2>' not in html
+
+
 def check_spatial_evidence_maps() -> None:
     html=(Path(__file__).resolve().parent / "app.html").read_text(encoding="utf-8")
     # 공간현황은 판정 근거데이터 화면이다. 필요한 주제도와 공통 지적 베이스가 존재해야 한다.
@@ -598,6 +620,7 @@ def main() -> None:
     _run("next four independent modules", check_next_four_independent_modules)
     _run("legacy engine purge", test_migrated_scheme_legacy_engines_removed)
     _run("dedicated detail popups", check_dedicated_detail_popups)
+    _run("boundary draw bootstrap", check_boundary_draw_bootstrap_and_legacy_sheet_hidden)
     _run("spatial evidence maps", check_spatial_evidence_maps)
     _run("release files", check_release_files)
     print("v2.5.0 regression checks: PASS")
