@@ -499,26 +499,35 @@ def check_dedicated_detail_popups() -> None:
         assert "판정구조" in block or "중복추천 배제" in block, name
 
 
-def check_boundary_draw_bootstrap_and_legacy_sheet_hidden() -> None:
+
+def check_startup_drawing_and_legacy_ui() -> None:
     html=(Path(__file__).resolve().parent / "app.html").read_text(encoding="utf-8")
-    # 초기 공간현황 렌더링이 사업 Fact 상수 선언 전에 실행되면 JS가 중단되어 구역계 이벤트가 등록되지 않는다.
-    draw_event=html.index("map.on(L.Draw.Event.CREATED")
-    init_anchor=html.rfind("enforceLocationMapBoundaryOnly();", 0, draw_event)
-    assert init_anchor >= 0
-    bootstrap_slice=html[init_anchor:draw_event]
-    assert "refreshCompactMiniMaps();" not in bootstrap_slice
-    assert "function startMobilePolygonDraw()" in html
-    assert "new L.Draw.Polygon(map" in html
-    assert "map.on(L.Draw.Event.CREATED" in html
-    # 제도별 도로도면은 구역계가 없을 때 Fact 엔진을 호출하지 않는다.
-    rs=html.index("function renderSchemeRoadEvidence()")
-    re=html.index("function schemeRoadEvidenceStyle", rs) if "function schemeRoadEvidenceStyle" in html[rs:] else rs+5000
-    body=html[rs:re]
-    assert "if(!activeGeometry)" in body
-    assert body.index("if(!activeGeometry)") < body.index("schemeRoadEvidenceFacts()")
-    # 과거의 대형 비교검토 입력판은 사용자 화면에서 제거하고 내부 DOM 저장소로만 유지한다.
-    assert 'class="panel scheme-panel legacy-scheme-input-store" style="display:none!important"' in html
-    assert '<h2>4. 역세권·도심복합 사업방식 비교 검토시트</h2>' not in html
+    # drawing control + three lifecycle handlers must exist and startup rendering must not
+    # execute between control construction and CREATED registration. That interval is where
+    # a TDZ/initialization error previously killed all drawing events.
+    draw=html.index("const drawControl=")
+    created=html.index("map.on(L.Draw.Event.CREATED", draw)
+    edited=html.index("map.on(L.Draw.Event.EDITED", created)
+    deleted=html.index("map.on(L.Draw.Event.DELETED", edited)
+    assert html.find("refreshCompactMiniMaps();", draw, created) == -1
+    assert draw < created < edited < deleted
+    assert "new L.Draw.Polygon(map" in html and "drawer.enable();" in html
+    assert "function ccLabelOf(id)" in html
+    for marker in ("async function measureAndSync()", "async function lookupBoundaryAddresses()", "async function applyAddressPreviewAsBoundary()", "async function analyzeParcels()", "async function analyzeBuildings()", "async function analyzeBuildingHub()", "async function analyzeRoadAccess()"):
+        assert marker in html, marker
+    created_block=html[created:edited]
+    assert "drawnItems.addLayer(e.layer)" in created_block
+    assert "activeGeometry=e.layer.toGeoJSON().geometry" in created_block
+    assert "await measureAndSync()" in created_block
+    # Initial evidence render is deferred until after all declarations and service layout setup.
+    layout=html.index("buildServiceLayout();")
+    final_refresh=html.find("refreshCompactMiniMaps();", layout)
+    assert final_refresh > layout
+    assert final_refresh > html.index("let planningFacilityConstraintCache=")
+    # Old manual comparison sheet may remain as hidden engine-state DOM, but never user-visible.
+    assert "역세권·도심복합 사업방식 비교 검토시트" not in html
+    assert '<section class="panel scheme-panel legacy-engine-state" aria-hidden="true" style="display:none!important">' in html
+    assert ".legacy-engine-state{display:none!important}" in html
 
 
 def check_spatial_evidence_maps() -> None:
@@ -537,18 +546,32 @@ def check_spatial_evidence_maps() -> None:
         'ccSchemeRoadParcelBase','ccSchemeRoadInfluence','ccSafeMedicalParcelBase',
     ):
         assert layer in html, layer
-    # Fact Store가 도면과 사업엔진의 단일 근거가 된다.
+    # Fact Store가 도면과 사업엔진의 단일 근거가 된다. 공통 도로는 판정값이 아니라 raw fact로 보존한다.
+    assert 'road_raw:roadRawFacts(c)' in html
     assert 'spatial_evidence:{zoning:zoningSpatialEvidenceFacts(),roads:schemeRoadEvidenceFacts(c),safe_medical:safeMedicalSpatialEvidenceFacts()}' in html
+    assert 'function roadRawFacts(cArg=null)' in html
+    assert 'has_20m_width_candidate' in html
+    assert 'has_20m:c.has20' not in html
+    assert 'arterialRoad' not in html and 'arterial_road' not in html
     assert 'store.site.spatial_evidence?.roads?.safe' in html
     assert 'store.site.spatial_evidence?.safe_medical' in html
     # 도로기준은 제도별로 분리한다. 하나의 generic arterial PASS를 쓰면 안 된다.
     for key in ("key:'activation'", "key:'safe'", "key:'growth'", "key:'longterm'", "key:'station_complex'", "key:'innovation'", "key:'public_complex'"):
         assert key in html, key
+    for fact_key in ('activationRoadFact','safeHousingRoadFact','growthPotential35mRoadFact','longtermArterialIntersectionFact','stationComplexRoadFact','innovationDistrictRoadFact','publicComplexRoadFact'):
+        assert fact_key in html, fact_key
     assert "mode:'linear_commercial'" in html
     assert "threshold:20" in html and "threshold:35" in html
     assert "mode:'road4_8'" in html
     assert '도로기능(특별시도·주/보조간선 등) 공식 속성 미연결' in html
     assert "if(selected==='safe')" in html and "turf.buffer(f,50,{units:'meters'})" in html
+    # A width candidate alone must never make the long-term arterial path PASS.
+    lt_start=html.index('function longtermSpatialFacts(store)')
+    lt_end=html.index('function checkLongtermFromFacts', lt_start)
+    lt=html[lt_start:lt_end]
+    assert "arterialFunctionConfirmed=roadEvidence?.function_confirmed===true" in lt
+    assert "arterialFunctionConfirmed?'PASS':'REVIEW'" in lt
+    assert "c.roadQuality==='AUTO'?'PASS'" not in lt
     # 안심주택 의료시설은 위치점 350m를 참고도면으로만 쓰고 법정 부지경계 확보 전 PASS하지 않는다.
     assert "auto_pass_eligible:false" in html
     assert '법정 기준은 시설 대상부지 경계' in html or '의료시설 대상부지 경계' in html
@@ -559,6 +582,14 @@ def check_spatial_evidence_maps() -> None:
     # 용도지역은 공간현황에서 별도 지도와 구성비를 확인한다.
     assert 'id="spZoningPrimary"' in html and 'id="spZoningPrimaryRatio"' in html
     assert "LT_C_UQ111" in html
+    assert "area_m2:Number(r.area||0)" in html and "pct:r.pct==null?null:Number(r.pct)" in html
+    assert "toLocaleString('ko-KR',{maximumFractionDigits:0})}㎡" in html
+    # Every major spatial-status map must receive the common cadastral base.
+    base_start=html.index('function refreshCommonParcelBases()')
+    base_end=html.find('\nfunction ', base_start+20)
+    base_block=html[base_start:base_end if base_end >= 0 else None]
+    for layer in ('ccBuildingParcelBase','ccStationParcelBase','ccCenterParcelBase','ccRenewalParcelBase','ccDevelopmentParcelBase','ccPlanningParcelBase','ccZoningParcelBase','ccSchemeRoadParcelBase','ccSafeMedicalParcelBase'):
+        assert layer in base_block, layer
 
 
 def check_release_files() -> None:
@@ -620,7 +651,7 @@ def main() -> None:
     _run("next four independent modules", check_next_four_independent_modules)
     _run("legacy engine purge", test_migrated_scheme_legacy_engines_removed)
     _run("dedicated detail popups", check_dedicated_detail_popups)
-    _run("boundary draw bootstrap", check_boundary_draw_bootstrap_and_legacy_sheet_hidden)
+    _run("startup drawing + legacy UI", check_startup_drawing_and_legacy_ui)
     _run("spatial evidence maps", check_spatial_evidence_maps)
     _run("release files", check_release_files)
     print("v2.5.0 regression checks: PASS")
