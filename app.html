@@ -849,7 +849,7 @@ button,select,input{max-width:100%}
 .boundary-action-row button.boundary-primary{background:#101828;color:#fff;border-color:#101828}
  .boundary-action-row button:disabled{opacity:.38;cursor:not-allowed}
 .boundary-map-ui{display:grid;grid-template-columns:minmax(140px,.7fr) 1.3fr;gap:7px;padding:7px 8px;border-top:1px solid #eaecf0;background:#f8fafc;font-size:9px}
-.boundary-map-ui label{display:flex;gap:6px;align-items:center;color:#344054;font-weight:800}.boundary-map-ui select{width:100%;min-height:32px;border:1px solid #d0d5dd;background:#fff;padding:4px 7px;font-size:9px}.boundary-map-overlays{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.boundary-map-overlays input{margin:0}.boundary-map-note{grid-column:1/-1;color:#667085;line-height:1.4}.boundary-review-bar{display:grid;grid-template-columns:minmax(150px,.45fr) 1fr;gap:8px;padding:8px;border-top:1px solid #e4e7ec;background:#fff}.boundary-review-bar button{border:0;background:#175cd3;color:#fff;font-weight:900;min-height:38px;cursor:pointer}.boundary-review-bar button:disabled{opacity:.5;cursor:wait}.boundary-review-status{border:1px solid #d0d5dd;background:#f9fafb;padding:7px 9px;font-size:9px;color:#475467;line-height:1.4}.boundary-shp-input{width:100%;border:1px dashed #98a2b3;background:#f9fafb;padding:8px;font-size:9px}.boundary-address-status.boundary-shp-status{margin-top:6px}
+.boundary-map-ui label{display:flex;gap:6px;align-items:center;color:#344054;font-weight:800}.boundary-map-ui select{width:100%;min-height:32px;border:1px solid #d0d5dd;background:#fff;padding:4px 7px;font-size:9px}.boundary-map-overlays{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.boundary-map-overlays input{margin:0}.boundary-map-note{grid-column:1/-1;color:#667085;line-height:1.4}.boundary-review-bar{display:grid;grid-template-columns:minmax(150px,.45fr) 1fr;gap:8px;padding:8px;border-top:1px solid #e4e7ec;background:#fff}.boundary-review-bar button{border:0;background:#175cd3;color:#fff;font-weight:900;min-height:38px;cursor:pointer}.boundary-review-bar button:disabled{opacity:.5;cursor:wait}.boundary-review-status{border:1px solid #d0d5dd;background:#f9fafb;padding:7px 9px;font-size:9px;color:#475467;line-height:1.4}.site-analysis-progress{grid-column:1/-1;border:1px solid #d0d5dd;border-radius:8px;background:#fcfcfd;padding:8px 9px;display:none}.site-analysis-progress.active,.site-analysis-progress.done,.site-analysis-progress.review{display:block}.site-analysis-progress-head{display:flex;justify-content:space-between;gap:8px;align-items:center;font-size:9px}.site-analysis-progress-head b{color:#101828}.site-analysis-progress-head span{font-variant-numeric:tabular-nums;font-weight:900;color:#175cd3}.site-analysis-progress-track{height:6px;margin-top:7px;background:#eaecf0;border-radius:999px;overflow:hidden}.site-analysis-progress-track i{display:block;height:100%;width:0;background:#175cd3;border-radius:999px;transition:width .18s ease}.site-analysis-progress-steps{display:flex;gap:4px;flex-wrap:wrap;margin-top:7px}.site-analysis-progress-steps span{padding:3px 5px;border:1px solid #e4e7ec;background:#fff;border-radius:5px;font-size:7px;color:#667085}.site-analysis-progress-steps span.running{border-color:#84adff;background:#eff8ff;color:#175cd3;font-weight:900}.site-analysis-progress-steps span.fulfilled{border-color:#abefc6;background:#ecfdf3;color:#067647}.site-analysis-progress-steps span.rejected{border-color:#fedf89;background:#fffaeb;color:#b54708}.site-analysis-progress-note{margin-top:6px;font-size:8px;color:#667085;line-height:1.45}.scheme-popup-fallback{border:1px solid #fedf89;background:#fffaeb;border-radius:9px;padding:12px;color:#7a2e0e;font-size:10px;line-height:1.55}.boundary-shp-input{width:100%;border:1px dashed #98a2b3;background:#f9fafb;padding:8px;font-size:9px}.boundary-address-status.boundary-shp-status{margin-top:6px}
 .boundary-address-input{width:100%;min-height:94px;resize:vertical;border:1px solid #d0d5dd;padding:8px;font-size:11px;line-height:1.55;margin-bottom:7px;box-sizing:border-box}
 .boundary-address-status{margin-top:7px;padding:6px 8px;background:#f9fafb;border:1px solid #eaecf0;font-size:9px;line-height:1.45;color:#475467}
 .leaflet-draw.leaflet-control{display:none!important}
@@ -1638,7 +1638,7 @@ body.service-layout-ready>.shell{display:none!important}
 </div>
 </div><div id="map"></div>
 <div class="cc-map-instruction" id="ccMapInstruction">지도에 그리기·지번 입력·SHP 중 하나로 사업구역을 설정하세요.</div>
-<div class="boundary-review-bar"><button id="siteReviewBtn" type="button" onclick="runSiteReview()" disabled>검토하기</button><div class="boundary-review-status" id="siteReviewStatus">구역계를 설정한 뒤 ‘검토하기’를 누르면 공식 공간자료 수집과 사업판정을 실행합니다.</div></div>
+<div class="boundary-review-bar"><button id="siteReviewBtn" type="button" onclick="runSiteReview()" disabled>검토하기</button><div class="boundary-review-status" id="siteReviewStatus">구역계를 설정한 뒤 ‘검토하기’를 누르면 공식 공간자료 수집과 사업판정을 실행합니다.</div><div class="site-analysis-progress" id="siteAnalysisProgress" aria-live="polite"><div class="site-analysis-progress-head"><b id="siteAnalysisProgressTitle">분석 대기</b><span id="siteAnalysisElapsed">00:00</span></div><div class="site-analysis-progress-track"><i id="siteAnalysisProgressBar"></i></div><div class="site-analysis-progress-steps" id="siteAnalysisProgressSteps"></div><div class="site-analysis-progress-note" id="siteAnalysisProgressNote">외부 공식자료 응답시간에 따라 수 분이 걸릴 수 있습니다. 미응답 자료는 임의 추정하지 않고 REVIEW로 남깁니다.</div></div></div>
 
 <div class="map-foot">
 <div class="metric"><div class="k">도형면적(참고)</div><div class="v" id="mArea">-</div></div>
@@ -3114,10 +3114,24 @@ function refreshCompactMiniMaps(){
   fitCompactMiniMap(ccLandMini,ccLandMiniBoundary,ccLandMiniParcels);
   fitCompactMiniMap(ccBuildingMini,ccBuildingMiniBoundary,ccBuildingMiniBuildings);
   refreshStationCenterMiniMaps();
+  renderIndependentSpatialStatusMaps();
   renderZoningSpatialStatus();
   renderSchemeRoadEvidence();
   renderSafeMedicalSpatialStatus();
+  setTimeout(()=>invalidateAllSpatialMaps(false),0);
 }
+function invalidateAllSpatialMaps(refresh=true){
+  const maps=[ccLandMini,ccBuildingMini,ccZoningMini,ccStationMini,ccCenterMini,ccRenewalStatusMini,ccDevelopmentStatusMini,ccSchemeRoadMini,ccSafeMedicalMini,ccPlanningMini];
+  for(const m of maps){try{m.invalidateSize(false);}catch(e){}}
+  if(refresh){
+    try{refreshCommonParcelBases();}catch(e){}
+    try{renderIndependentSpatialStatusMaps();}catch(e){}
+    try{renderZoningSpatialStatus();}catch(e){}
+    try{renderSchemeRoadEvidence();}catch(e){}
+    try{renderSafeMedicalSpatialStatus();}catch(e){}
+  }
+}
+
 function enforceLocationMapBoundaryOnly(){
   const overlays=[
     parcelLayer,buildingLayer,smallParcelLayer,oldParcelLayer,frontagePassLayer,frontageFailLayer,
@@ -4423,25 +4437,68 @@ async function analyzeRoadAccess(){
   }catch(e){summary.textContent='접도율 계산 실패: '+String(e.message||e);conn.textContent='접도율 REVIEW';conn.className='conn planned';}
 }
 let siteReviewRunning=false;
-const ANALYSIS_STEP_TIMEOUT_MS=18000;
+// 정확성 우선: 외부 공식자료가 느린 경우에도 성급히 REVIEW로 끊지 않도록 단계별 대기시간을 넉넉히 둔다.
+const ANALYSIS_STEP_TIMEOUT_MS=60000;
+const ANALYSIS_PROGRESS_ORDER=['도형면적','역세권 경계','연속지적','토지대장','건축물 공간','도시계획 GIS','건축HUB','도로·접도','주변 공간현황','사업판정'];
+const analysisProgressState={startedAt:0,timer:null,steps:new Map(),finished:false};
+function formatAnalysisElapsed(ms){const sec=Math.max(0,Math.floor(ms/1000)),m=Math.floor(sec/60),s=sec%60;return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;}
+function renderAnalysisProgress(){
+  const root=document.getElementById('siteAnalysisProgress'),elapsed=document.getElementById('siteAnalysisElapsed'),bar=document.getElementById('siteAnalysisProgressBar'),steps=document.getElementById('siteAnalysisProgressSteps'),title=document.getElementById('siteAnalysisProgressTitle'),note=document.getElementById('siteAnalysisProgressNote');
+  if(!root)return;
+  const rows=ANALYSIS_PROGRESS_ORDER.map(label=>[label,analysisProgressState.steps.get(label)||{status:'waiting',elapsed_ms:null}]);
+  const completed=rows.filter(([,x])=>['fulfilled','rejected'].includes(x.status)).length;
+  const running=rows.find(([,x])=>x.status==='running');
+  const pct=Math.round(completed/ANALYSIS_PROGRESS_ORDER.length*100);
+  if(elapsed&&analysisProgressState.startedAt)elapsed.textContent=formatAnalysisElapsed(Date.now()-analysisProgressState.startedAt);
+  if(bar)bar.style.width=`${analysisProgressState.finished?100:pct}%`;
+  if(title)title.textContent=analysisProgressState.finished?'분석 완료':running?`${running[0]} 분석 중`:'공식자료 분석 준비';
+  if(steps)steps.innerHTML=rows.map(([label,x])=>`<span class="${x.status}">${escHtml(label)}${x.elapsed_ms!=null?` · ${formatAnalysisElapsed(x.elapsed_ms)}`:''}</span>`).join('');
+  const rejected=rows.filter(([,x])=>x.status==='rejected').map(([label])=>label);
+  if(note){
+    if(analysisProgressState.finished)note.textContent=rejected.length?`총 분석시간 ${formatAnalysisElapsed(Date.now()-analysisProgressState.startedAt)} · ${rejected.join('·')}은 공식자료 미응답/오류로 REVIEW 처리 · 나머지 판정은 유지`:`총 분석시간 ${formatAnalysisElapsed(Date.now()-analysisProgressState.startedAt)} · 공식자료 수집과 사업판정을 완료했습니다.`;
+    else note.textContent='정확성 우선 모드 · 공식자료 응답을 기다립니다. 오래 걸려도 임의값으로 PASS하지 않습니다.';
+  }
+}
+function beginAnalysisProgress(){
+  analysisProgressState.startedAt=Date.now();analysisProgressState.finished=false;analysisProgressState.steps=new Map(ANALYSIS_PROGRESS_ORDER.map(x=>[x,{status:'waiting',elapsed_ms:null,started_at:null}]));
+  const root=document.getElementById('siteAnalysisProgress');if(root){root.className='site-analysis-progress active';}
+  if(analysisProgressState.timer)clearInterval(analysisProgressState.timer);
+  analysisProgressState.timer=setInterval(renderAnalysisProgress,1000);renderAnalysisProgress();
+}
+function markAnalysisProgress(label,status){
+  if(!ANALYSIS_PROGRESS_ORDER.includes(label))return;
+  const now=Date.now(),prev=analysisProgressState.steps.get(label)||{};
+  const started=prev.started_at||now;analysisProgressState.steps.set(label,{...prev,status,started_at:started,elapsed_ms:['fulfilled','rejected'].includes(status)?now-started:null});renderAnalysisProgress();
+}
+function finishAnalysisProgress(state='done'){
+  analysisProgressState.finished=true;if(analysisProgressState.timer){clearInterval(analysisProgressState.timer);analysisProgressState.timer=null;}
+  const root=document.getElementById('siteAnalysisProgress');if(root)root.className=`site-analysis-progress ${state==='review'?'review':'done'}`;renderAnalysisProgress();
+  analysisState.analysis_runtime={started_at:analysisProgressState.startedAt,elapsed_ms:analysisProgressState.startedAt?Date.now()-analysisProgressState.startedAt:0,steps:Object.fromEntries(analysisProgressState.steps)};
+}
+function resetAnalysisProgress(){
+  if(analysisProgressState.timer){clearInterval(analysisProgressState.timer);analysisProgressState.timer=null;}analysisProgressState.startedAt=0;analysisProgressState.finished=false;analysisProgressState.steps=new Map();
+  const root=document.getElementById('siteAnalysisProgress');if(root)root.className='site-analysis-progress';
+  const elapsed=document.getElementById('siteAnalysisElapsed');if(elapsed)elapsed.textContent='00:00';
+}
 function setSiteReviewStatus(text,state='idle'){
   const el=document.getElementById('siteReviewStatus');if(el){el.textContent=text;el.dataset.state=state;}
   const btn=document.getElementById('siteReviewBtn');if(btn){btn.disabled=siteReviewRunning||!activeGeometry;btn.textContent=siteReviewRunning?'검토 중…':'검토하기';}
 }
 async function safeAnalysisStep(label,fn,timeoutMs=ANALYSIS_STEP_TIMEOUT_MS){
-  let timer=null;
+  let timer=null;markAnalysisProgress(label,'running');
   try{
     const timeout=new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error(`${label} 응답시간 초과(${Math.round(timeoutMs/1000)}초)`)),timeoutMs);});
     const value=await Promise.race([Promise.resolve().then(fn),timeout]);
-    if(timer)clearTimeout(timer);
+    if(timer)clearTimeout(timer);markAnalysisProgress(label,'fulfilled');
     return {label,status:'fulfilled',value};
   }catch(e){
-    if(timer)clearTimeout(timer);
+    if(timer)clearTimeout(timer);markAnalysisProgress(label,'rejected');
     console.error(`[site-review] ${label}`,e);
     return {label,status:'rejected',reason:String(e?.message||e)};
   }
 }
 function clearBoundaryAnalysisForNewGeometry(){
+  resetAnalysisProgress();
   parcelFeatureMap.clear();selectedParcelPnus.clear();
   currentBuildingFeatures=[];hubRecordsByPnu.clear();
   currentRoadWidthFeatures=[];currentRoadManageFeatures=[];
@@ -4470,14 +4527,16 @@ async function runAllAutoAnalyses(){
   // 도시계획 GIS는 병렬, 필지→토지대장 및 건축물→건축HUB→도로접도는 의존순서를 지킨다.
   // 각 단계는 시간제한을 두어 외부 API 하나가 멈춰도 검토 버튼이 영구 잠기지 않게 한다.
   const results=[];
-  setSiteReviewStatus('공식 공간자료를 조회하고 있습니다 · 도시계획/필지/건축물','running');
-  const planningPromise=safeAnalysisStep('도시계획 GIS',analyzePlanningGIS,24000);
-  const parcels=await safeAnalysisStep('연속지적',analyzeParcels,18000);results.push(parcels);
-  const parallel=await Promise.all([safeAnalysisStep('토지대장',analyzeLandLedger,18000),safeAnalysisStep('건축물 공간',analyzeBuildings,18000),planningPromise]);results.push(...parallel);
-  results.push(await safeAnalysisStep('건축HUB',analyzeBuildingHub,22000));
-  results.push(await safeAnalysisStep('도로·접도',analyzeRoadAccess,18000));
-  results.push(await safeAnalysisStep('주변 공간현황',refreshMiniContextFeatures,18000));
+  setSiteReviewStatus('공식 공간자료를 조회하고 있습니다 · 단계별 진행시간을 아래에 표시합니다.','running');
+  const planningPromise=safeAnalysisStep('도시계획 GIS',analyzePlanningGIS,90000);
+  const parcels=await safeAnalysisStep('연속지적',analyzeParcels,60000);results.push(parcels);
+  const parallel=await Promise.all([safeAnalysisStep('토지대장',analyzeLandLedger,60000),safeAnalysisStep('건축물 공간',analyzeBuildings,60000),planningPromise]);results.push(...parallel);
+  results.push(await safeAnalysisStep('건축HUB',analyzeBuildingHub,120000));
+  results.push(await safeAnalysisStep('도로·접도',analyzeRoadAccess,60000));
+  results.push(await safeAnalysisStep('주변 공간현황',refreshMiniContextFeatures,45000));
+  markAnalysisProgress('사업판정','running');
   const schemeRun=runAllSchemeChecks();
+  markAnalysisProgress('사업판정',schemeRun?.moduleErrors?.length?'rejected':'fulfilled');
   if(schemeRun?.moduleErrors?.length){
     const labels=schemeRun.moduleErrors.map(x=>x.label).join('·');
     results.push({label:`사업판정(${labels})`,status:'rejected',reason:schemeRun.moduleErrors.map(x=>x.message).join(' / ')});
@@ -4506,13 +4565,13 @@ async function measureAndSync(){
 async function runSiteReview(){
   if(!activeGeometry){setSiteReviewStatus('먼저 구역계를 설정하세요.','review');return;}
   if(siteReviewRunning)return;
-  siteReviewRunning=true;setSiteReviewStatus('검토 시작 · 도형과 공식 공간자료를 확인합니다.','running');
+  siteReviewRunning=true;beginAnalysisProgress();setSiteReviewStatus('검토 시작 · 도형과 공식 공간자료를 정확성 우선으로 확인합니다.','running');
   let finalState='done',finalText='검토 완료 · 공식 공간 Fact와 사업별 판정을 갱신했습니다.';
   try{
     const measured=await safeAnalysisStep('도형면적',async()=>{
       const r=await fetch('/api/spatial/measure',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry:activeGeometry})});
       const d=await r.json();if(!r.ok)throw new Error(d.detail||'면적 계산 실패');return d;
-    },8000);
+    },30000);
     if(measured.status==='fulfilled'){
       const d=measured.value;
       document.getElementById('area_m2').value=Number(d.area_m2).toFixed(2);
@@ -4521,7 +4580,7 @@ async function runSiteReview(){
       document.getElementById('mPerimeter').textContent=fmt(d.perimeter_m,0)+' m';
     }else setBoundaryReferenceMetrics();
 
-    if(stationAnalysis.loaded)await safeAnalysisStep('역세권 경계',analyzeStationBoundary,12000);
+    if(stationAnalysis.loaded)await safeAnalysisStep('역세권 경계',analyzeStationBoundary,45000);else markAnalysisProgress('역세권 경계','fulfilled');
     const steps=await runAllAutoAnalyses();
     if(measured.status==='rejected')steps.unshift(measured);
     const failed=steps.filter(x=>x.status==='rejected');
@@ -4538,13 +4597,14 @@ async function runSiteReview(){
   }catch(e){
     console.error('[site-review] 전체 검토',e);finalState='review';finalText='검토 중 오류가 발생했습니다. 확보된 Fact만 유지하고 미확보 항목은 REVIEW로 남겼습니다.';
   }finally{
-    siteReviewRunning=false;setSiteReviewStatus(finalText,finalState);
+    siteReviewRunning=false;finishAnalysisProgress(finalState);setSiteReviewStatus(`${finalText} · 총 ${formatAnalysisElapsed(analysisState.analysis_runtime?.elapsed_ms||0)}`,finalState);
     // 최종 UI는 각각 독립 실행한다. 한 렌더러 오류로 추천/미리보기가 함께 중단되지 않는다.
     safeSchemeUiStep('compact-final',()=>updateCompactInfoRail(),null);
     safeSchemeUiStep('mini-final',()=>refreshCompactMiniMaps(),null);
     safeSchemeUiStep('overview-final',()=>syncServiceOverview(),null);
     safeSchemeUiStep('candidate-final',()=>updateCandidateSchemes(),null);
     safeSchemeUiStep('priority-final',()=>renderPriorityPreview(),null);
+    setTimeout(()=>invalidateAllSpatialMaps(true),80);
   }
 }
 function resetMeasure(){
@@ -5848,7 +5908,7 @@ function commonSchemeData(){
 // 판정모듈은 DOM/GIS를 직접 추정하지 않고 아래 Fact Store에서 값을 읽는다.
 // 사업별 추가 공간조건도 먼저 facts로 수집한 뒤 판정에 사용한다.
 // ============================================================
-const SCHEME_MODULE_API_VERSION='2026-08-28-v10-failsafe-six-families-fifteen-modules-three-shells';
+const SCHEME_MODULE_API_VERSION='2026-08-28-v11-popup-spatial-progress-failsafe';
 var latestSiteFactStore=null;
 var latestSchemeModuleResults={};
 
@@ -9557,25 +9617,31 @@ function updateSmallscaleRouteButtons(){
     btn.title=route?`${meta?.label||key} · ${label}\n${route.value||''}`:`${meta?.label||key} · ${label}`;
   });
 }
+function renderSchemePopupFallback(name,error=null){
+  const title=document.getElementById('schemeDetailPopupTitle'),body=document.getElementById('schemeDetailPopupBody');if(!body)return;
+  const res=schemeResults[name]||latestSchemeModuleResults[name]||null,label=schemeNames[name]||name;
+  if(title)title.textContent=`${label} 기초검토서`;
+  const rows=(res?.rows||[]).slice(0,8).map(r=>`<tr><th>${escHtml(r.item||'-')}</th><td>${escHtml(r.value??'-')}</td><td>${escHtml(overallLabel(r.status||'REVIEW'))}</td><td>${escHtml(r.note||r.action||'-')}</td></tr>`).join('');
+  body.innerHTML=`<div class="activation-sheet"><div class="activation-sheet-title"><div><h3>${escHtml(label)}</h3><p>사업별 Rule Engine 결과 표시</p></div><div class="activation-feasibility"><span>판정상태</span><b class="${escHtml(res?.overall||'REVIEW')}">${escHtml(schemeSheetFeasibility(res?.overall||'REVIEW'))}</b></div></div>${rows?`<section class="activation-section"><h4>검토결과</h4><table class="activation-table"><tbody>${rows}</tbody></table></section>`:''}<div class="scheme-popup-fallback"><b>${error?'상세검토서 렌더링 일부 오류':'상세 현황 생성 대기'}</b><br>${error?escHtml(String(error?.message||error)):'먼저 검토하기를 실행하면 현황 Fact와 사업별 상세검토서를 표시합니다.'}<br>팝업 표시 자체는 유지하며, 새 현황을 여기서 임의 계산하지 않습니다.</div></div>`;
+}
+function openSchemeDetailSafely(name){
+  openReviewModal('schemeDetailModal');
+  try{renderSchemeDetailPopup(name);}catch(e){console.error(`[scheme-popup:${name}]`,e);renderSchemePopupFallback(name,e);}
+}
 function showSmallscaleRouteBasis(route){
   activeSmallscaleRoute=route;
   document.querySelectorAll('#ccSchemeIcons button').forEach(b=>b.classList.remove('candidate-selected'));
   const btn=document.querySelector(`#ccSchemeIcons [data-smallscale-route="${route}"]`);if(btn)btn.classList.add('candidate-selected');
-  renderMobileSelectedScheme('smallscale');
-  renderSchemeDetailPopup('smallscale');
-  openReviewModal('schemeDetailModal');
+  try{renderMobileSelectedScheme('smallscale');}catch(e){console.error('[scheme-mobile:smallscale]',e);}
+  openSchemeDetailSafely('smallscale');
 }
 function showCandidateBasis(name){
   activeSmallscaleRoute='';
   document.querySelectorAll('#ccSchemeIcons button').forEach(b=>b.classList.toggle('candidate-selected',b.dataset.scheme===name));
-  renderMobileSelectedScheme(name);
-  renderSchemeDetailPopup(name);
-  openReviewModal('schemeDetailModal');
+  try{renderMobileSelectedScheme(name);}catch(e){console.error(`[scheme-mobile:${name}]`,e);}
+  openSchemeDetailSafely(name);
 }
-function scrollToSchemeDetail(name){
-  renderSchemeDetailPopup(name);
-  openReviewModal('schemeDetailModal');
-}
+function scrollToSchemeDetail(name){openSchemeDetailSafely(name);}
 
 function ccTopEntries(mp,limit=5){
   return [...mp.entries()].sort((a,b)=>b[1]-a[1]).slice(0,limit);
@@ -10451,16 +10517,13 @@ function buildServiceLayout(){
   main.id='mobileDecisionSection';
 
   // 지도 이동 후 Leaflet 크기 재계산
-  setTimeout(()=>{try{map.invalidateSize(false);ccLandMini.invalidateSize(false);ccBuildingMini.invalidateSize(false);ccPlanningMini.invalidateSize(false);ccStationMini.invalidateSize(false);ccCenterMini.invalidateSize(false)}catch(e){} syncServiceOverview();},120);
+  setTimeout(()=>{try{map.invalidateSize(false);invalidateAllSpatialMaps(true);}catch(e){} syncServiceOverview();},160);
 }
 function openSiteOverviewModal(target='summary'){
   syncServiceOverview();
   openReviewModal('siteOverviewModal');
   setTimeout(()=>{
-    try{
-      ccLandMini.invalidateSize(false);ccBuildingMini.invalidateSize(false);ccPlanningMini.invalidateSize(false);
-      ccStationMini.invalidateSize(false);ccCenterMini.invalidateSize(false);
-    }catch(e){}
+    try{invalidateAllSpatialMaps(true);}catch(e){}
     const el=document.getElementById(`siteDetail_${target}`);
     const body=document.querySelector('#siteOverviewModal .review-modal-body');
     if(el&&body&&body.contains(el))body.scrollTop=Math.max(0,el.offsetTop-10);

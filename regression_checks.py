@@ -297,7 +297,7 @@ def check_feedback_and_ui() -> None:
     assert "schemeAgeFact(store,'growth_potential',route)" in decision
     assert "schemeAgeFact(store,'urban_redevelopment')" in decision
     assert "const SCHEME_MODULES=" in html
-    assert "SCHEME_MODULE_API_VERSION='2026-08-28-v10-failsafe-six-families-fifteen-modules-three-shells'" in html
+    assert "SCHEME_MODULE_API_VERSION='2026-08-28-v11-popup-spatial-progress-failsafe'" in html
     assert "const SHELL_SCHEMES=new Set(['urban_innovation_zone','facility_complex_zone','mixed_use_zone'])" in html
     assert "현재 자동 활성화·추천·우선순위 미반영" in html
     assert "collectFacts:activationSpatialFacts" in html
@@ -840,7 +840,7 @@ def check_remaining_four_independent_modules_and_sources() -> None:
     html = (root / "app.html").read_text(encoding="utf-8")
     py = (root / "app.py").read_text(encoding="utf-8")
 
-    assert "SCHEME_MODULE_API_VERSION='2026-08-28-v10-failsafe-six-families-fifteen-modules-three-shells'" in html
+    assert "SCHEME_MODULE_API_VERSION='2026-08-28-v11-popup-spatial-progress-failsafe'" in html
     assert "const SHELL_SCHEMES=new Set(['urban_innovation_zone','facility_complex_zone','mixed_use_zone'])" in html
     required = (
         "function redevelopmentSpatialFacts(store)", "function checkRedevelopmentFromFacts(store,f)",
@@ -922,7 +922,7 @@ def check_remaining_four_independent_modules_and_sources() -> None:
     # 서버측 구형 재개발 판정엔진/중복 API는 제거한다.
     assert "def evaluate_redevelopment(" not in py
     assert '/api/redevelopment/evaluate' not in py
-    assert '"scheme_module_api": "2026-08-28-v10-failsafe-six-families-fifteen-modules-three-shells"' in py
+    assert '"scheme_module_api": "2026-08-28-v11-popup-spatial-progress-failsafe"' in py
     assert '15 independent modules including smallscale 5-route family and prior_negotiation' in py
 
 def check_scheme_family_separation() -> None:
@@ -1074,9 +1074,9 @@ def check_r8_boundary_map_smallscale_prior() -> None:
         assert f"{shell}:{{" not in module_block and f"{shell}: {{" not in module_block
     assert "현재 자동 활성화·추천·우선순위 미반영" in html
     assert "15 independent modules including smallscale 5-route family and prior_negotiation" in py
-    assert '"engine": "site_fact_store_v2.5.0_r10"' in py
+    assert '"engine": "site_fact_store_v2.5.0_r11"' in py
     assert "five user review routes: autonomous / block / small-scale reconstruction / small-scale redevelopment / Moa Town+Moa Housing policy route" in py
-    assert "v10-failsafe-six-families-fifteen-modules-three-shells" in html and "v10-failsafe-six-families-fifteen-modules-three-shells" in py
+    assert "v11-popup-spatial-progress-failsafe" in html and "v11-popup-spatial-progress-failsafe" in py
 
 
 def check_r9_refinement_placement() -> None:
@@ -1132,8 +1132,47 @@ def check_r10_scheme_fail_safe() -> None:
     # 사전협상 공식 11차 개정 PDF 원본을 배포근거자료로 함께 보존한다.
     pdf = root / "도시계획변경 사전협상 운영지침(11차개정_2026.06.29).pdf"
     assert pdf.is_file() and pdf.stat().st_size > 500_000
-    assert 'site_fact_store_v2.5.0_r10' in py
-    assert 'v10-failsafe-six-families-fifteen-modules-three-shells' in html and 'v10-failsafe-six-families-fifteen-modules-three-shells' in py
+    assert 'site_fact_store_v2.5.0_r11' in py
+    assert 'v11-popup-spatial-progress-failsafe' in html and 'v11-popup-spatial-progress-failsafe' in py
+
+
+def check_r11_popup_spatial_progress() -> None:
+    """r11: 사업별 팝업·공간현황 도면·장시간 분석 진행표시가 회귀하지 않아야 한다."""
+    root = Path(app.BASE_DIR)
+    html = (root / "app.html").read_text(encoding="utf-8")
+    py = (root / "app.py").read_text(encoding="utf-8")
+
+    # 사업카드를 누르면 모달을 먼저 열고 렌더러 오류도 fallback으로 표시한다.
+    assert "function openSchemeDetailSafely(name)" in html
+    popup = html[html.index("function renderSchemePopupFallback"):html.index("function ccTopEntries", html.index("function renderSchemePopupFallback"))]
+    assert "openReviewModal('schemeDetailModal')" in popup
+    assert "renderSchemeDetailPopup(name)" in popup
+    assert "renderSchemePopupFallback(name,e)" in popup
+    assert "팝업 표시 자체는 유지" in popup
+    assert "openSchemeDetailSafely(name);" in popup
+
+    # 공간현황은 구역계만 남지 않도록 전체 미니맵을 DOM 이동/최종분석 후 재계산한다.
+    assert "function invalidateAllSpatialMaps(refresh=true)" in html
+    inv = html[html.index("function invalidateAllSpatialMaps"):html.index("function enforceLocationMapBoundaryOnly", html.index("function invalidateAllSpatialMaps"))]
+    for map_name in ("ccLandMini","ccBuildingMini","ccZoningMini","ccStationMini","ccCenterMini","ccRenewalStatusMini","ccDevelopmentStatusMini","ccSchemeRoadMini","ccSafeMedicalMini","ccPlanningMini"):
+        assert map_name in inv, map_name
+    for renderer in ("refreshCommonParcelBases()","renderIndependentSpatialStatusMaps()","renderZoningSpatialStatus()","renderSchemeRoadEvidence()","renderSafeMedicalSpatialStatus()"):
+        assert renderer in inv, renderer
+    assert "setTimeout(()=>invalidateAllSpatialMaps(true),80);" in html
+    assert "map.invalidateSize(false);invalidateAllSpatialMaps(true)" in html
+
+    # 사용자가 장시간 분석을 기다릴 수 있도록 진행시간·단계상태를 표시하고 정확성 우선 timeout을 사용한다.
+    for dom_id in ("siteAnalysisProgress","siteAnalysisElapsed","siteAnalysisProgressBar","siteAnalysisProgressSteps","siteAnalysisProgressNote"):
+        assert f'id="{dom_id}"' in html, dom_id
+    for fn in ("beginAnalysisProgress","markAnalysisProgress","finishAnalysisProgress","renderAnalysisProgress"):
+        assert f"function {fn}" in html, fn
+    assert "정확성 우선 모드" in html
+    assert "analyzePlanningGIS,90000" in html
+    assert "analyzeBuildingHub,120000" in html
+    assert "analyzeRoadAccess,60000" in html
+    assert "총 ${formatAnalysisElapsed" in html
+    assert 'site_fact_store_v2.5.0_r11' in py
+    assert 'v11-popup-spatial-progress-failsafe' in html and 'v11-popup-spatial-progress-failsafe' in py
 
 def main() -> None:
     _run("measurement", check_measurement)
@@ -1160,6 +1199,7 @@ def main() -> None:
     _run("r8 boundary + map + smallscale + prior", check_r8_boundary_map_smallscale_prior)
     _run("r9 refinement placement", check_r9_refinement_placement)
     _run("r10 scheme fail-safe", check_r10_scheme_fail_safe)
+    _run("r11 popup + spatial + progress", check_r11_popup_spatial_progress)
     _run("release files", check_release_files)
     print("v2.5.0 regression checks: PASS")
 

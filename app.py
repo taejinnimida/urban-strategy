@@ -2623,7 +2623,7 @@ def health():
     return {
         "ok": True,
         "app": "seoul_urban_renewal_platform_v2.5.0",
-        "engine": "site_fact_store_v2.5.0_r10",
+        "engine": "site_fact_store_v2.5.0_r11",
         "map": "leaflet-draw",
         "vworld_configured": vworld_ready(),
         "analytics_storage": _analytics_storage_mode(),
@@ -2660,7 +2660,7 @@ def health():
         "house_density": "shared factual calculation; redevelopment uses >=60/ha as one additional entry criterion and residential-environment uses >=80/ha as a mandatory non-management criterion",
         "parcel_boundary_editor": "pnu_list_click_include_exclude_nearby_union",
         "scheme_architecture": "site facts -> scheme-specific facts -> independent scheme evaluation -> review sheet -> priority comparison",
-        "scheme_module_api": "2026-08-28-v10-failsafe-six-families-fifteen-modules-three-shells",
+        "scheme_module_api": "2026-08-28-v11-popup-spatial-progress-failsafe",
         "independent_scheme_modules": "15 independent modules including smallscale 5-route family and prior_negotiation; urban_innovation_zone / facility_complex_zone / mixed_use_zone remain future shells",
         "scheme_specific_spatial_checks": "scheme module may request additional official spatial facts; missing facts remain REVIEW, never inferred PASS",
         "spatial_evidence_maps": "common cadastral base + colored zoning + scheme-specific road/frontage facts + safe-housing medical reference; map facts and scheme facts share one Fact Store",
