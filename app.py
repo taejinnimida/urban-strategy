@@ -1833,6 +1833,337 @@ def analyze_road_intersections(geometry: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+
+def _polygon_parts(geom: Any) -> List[Any]:
+    if geom is None or geom.is_empty:
+        return []
+    if isinstance(geom, Polygon):
+        return [geom]
+    if isinstance(geom, MultiPolygon):
+        return [g for g in geom.geoms if not g.is_empty]
+    if isinstance(geom, GeometryCollection):
+        out: List[Any] = []
+        for g in geom.geoms:
+            out.extend(_polygon_parts(g))
+        return out
+    return []
+
+
+def _street_block_road_width_m(metric_geom: Any, properties: Dict[str, Any]) -> Optional[float]:
+    """가로구역 경계용 도로 폭원을 구한다.
+
+    공식 폭원 속성이 있으면 우선 사용하고, TL_SPRD_RW처럼 폭원 속성이 없는
+    실폭도로 폴리곤은 면적/둘레를 장방형으로 환산한 대표 폭원을 사용한다.
+    이 4m 기준은 법정 가로구역 정의가 아니라 자동분석 운영기준이다.
+    """
+    explicit = _road_width_m(properties or {})
+    if explicit is not None:
+        return explicit
+    try:
+        area = float(metric_geom.area)
+        perimeter = float(metric_geom.length)
+        if area <= 0 or perimeter <= 0:
+            return None
+        semi = perimeter / 2.0
+        disc = semi * semi - 4.0 * area
+        if disc > 0:
+            width = (semi - math.sqrt(disc)) / 2.0
+            if 0.5 < width < 100:
+                return float(width)
+        rect = metric_geom.minimum_rotated_rectangle
+        coords = list(rect.exterior.coords)
+        sides = []
+        for i in range(min(4, len(coords) - 1)):
+            dx = coords[i + 1][0] - coords[i][0]
+            dy = coords[i + 1][1] - coords[i][1]
+            sides.append(math.hypot(dx, dy))
+        if sides:
+            width = min(sides)
+            if 0.5 < width < 100:
+                return float(width)
+    except Exception:
+        return None
+    return None
+
+
+def _street_block_site_parts(frame_metric: Any, barrier_union: Any, site_metric: Any) -> List[tuple[Any, float]]:
+    """현재 barrier에서 대상지와 겹치는 열린 공간 조각을 큰 순서대로 반환한다."""
+    try:
+        open_space = frame_metric.difference(barrier_union)
+    except Exception:
+        return []
+    site_area = max(1.0, float(site_metric.area))
+    out: List[tuple[Any, float]] = []
+    for part in _polygon_parts(open_space):
+        if part.area <= 1.0:
+            continue
+        try:
+            ia = float(part.intersection(site_metric).area)
+        except Exception:
+            ia = 0.0
+        if ia > max(1.0, site_area * 0.002):
+            out.append((part, ia))
+    out.sort(key=lambda x: x[1], reverse=True)
+    return out
+
+
+def _street_block_facility_effect(primary: Any, facility: Any, frame_metric: Any, barrier_union: Any, site_metric: Any) -> tuple[bool, str]:
+    """내부 고립시설은 제외하고 실제 블록을 분리/폐합하는 시설만 경계로 채택한다."""
+    try:
+        fac = facility.buffer(0.20, join_style=2)
+        if fac.is_empty or not fac.intersects(primary):
+            return False, "outside_primary"
+
+        # 내부의 작은 공원·주차장·학교는 hole만 만들 뿐 가로구역을 둘로 나누지 않는다.
+        split = primary.difference(fac)
+        significant = [g for g in _polygon_parts(split) if g.area >= max(25.0, float(primary.area) * 0.01)]
+        if len(significant) >= 2:
+            return True, "traverse_split"
+
+        # 도로만으로는 외곽으로 열린 블록이 시설을 더했을 때 닫히면 외곽경계 역할로 인정한다.
+        before_open = primary.boundary.distance(frame_metric.boundary) <= 0.75
+        if before_open:
+            test_union = unary_union([barrier_union, fac]).buffer(0.20, join_style=2)
+            test_parts = _street_block_site_parts(frame_metric, test_union, site_metric)
+            if test_parts:
+                after_primary = test_parts[0][0]
+                after_open = after_primary.boundary.distance(frame_metric.boundary) <= 0.75
+                if not after_open:
+                    return True, "outer_boundary_closure"
+    except Exception:
+        return False, "geometry_error"
+    return False, "isolated_internal"
+
+
+def analyze_street_block(
+    geometry: Dict[str, Any],
+    barrier_features: Optional[List[Dict[str, Any]]] = None,
+    max_radius_m: float = 500.0,
+) -> Dict[str, Any]:
+    """역세권활성화용 가로구역을 대상지 주변에서 자동 추출한다.
+
+    엔진 운영기준(법정 도로폭 기준이 아님):
+      1) TL_SPRD_RW 실폭도로 중 대표 폭원 4m 이상을 기본 barrier로 사용
+      2) 4m 미만 도로는 도면 현황에는 남기되 가로구역 분할에는 사용하지 않음
+      3) 철도·하천·공원·학교·광장·녹지·공공공지·공용주차장은 무조건 빼지 않고,
+         실제 블록을 관통·분리하거나 도로 사이 외곽경계를 폐합할 때만 조건부 barrier로 사용
+
+    서울 전역의 별도 법정 가로구역 SHP를 만들지 않고 대상지 주변에서만 계산한다.
+    """
+    layers = _road_spatial_layers()
+    if not layers.get("available"):
+        raise FileNotFoundError(str(layers.get("reason") or "서울 실폭도로 원본 미설치"))
+
+    try:
+        site_wgs = _polygonal_only(shape(geometry))
+    except Exception as exc:
+        raise ValueError(f"구역계 GeoJSON을 읽을 수 없습니다: {exc}") from exc
+    if site_wgs is None or site_wgs.is_empty:
+        raise ValueError("구역계는 Polygon 또는 MultiPolygon이어야 합니다.")
+    if not site_wgs.is_valid:
+        site_wgs = _polygonal_only(site_wgs.buffer(0))
+    if site_wgs is None or site_wgs.is_empty or not site_wgs.is_valid:
+        raise ValueError("유효하지 않은 구역계입니다.")
+
+    to_metric = Transformer.from_crs(4326, 5174, always_xy=True).transform
+    to_wgs = Transformer.from_crs(5174, 4326, always_xy=True).transform
+    site_metric = geometry_transform(to_metric, site_wgs)
+    site_area = float(site_metric.area)
+    if site_area <= 0:
+        raise ValueError("구역계 면적이 0입니다.")
+
+    facility_entries: List[Dict[str, Any]] = []
+    for feat in barrier_features or []:
+        try:
+            geom = _polygonal_only(shape((feat or {}).get("geometry") or {}))
+            if geom is None or geom.is_empty:
+                continue
+            if not geom.is_valid:
+                geom = _polygonal_only(geom.buffer(0))
+            if geom is None or geom.is_empty:
+                continue
+            facility_entries.append({
+                "metric": geometry_transform(to_metric, geom),
+                "feature": feat,
+                "type": str(((feat or {}).get("properties") or {}).get("_block_barrier_type") or "시설"),
+            })
+        except Exception:
+            continue
+
+    road_rows = layers.get("rw") or []
+    road_tree = layers.get("rw_tree")
+    if road_tree is None:
+        raise FileNotFoundError("서울 실폭도로 공간색인이 없습니다.")
+
+    road_min_width_m = 4.0
+    radius_steps = [90.0, 140.0, 210.0, 300.0, 400.0, float(max_radius_m)]
+    radius_steps = sorted({r for r in radius_steps if r <= float(max_radius_m)} | {float(max_radius_m)})
+    resolved = None
+
+    for radius in radius_steps:
+        frame_metric = site_metric.buffer(radius, cap_style=3, join_style=2).envelope
+        frame_wgs = geometry_transform(to_wgs, frame_metric)
+        selected_items: List[Dict[str, Any]] = []
+        road_metric: List[Any] = []
+        under4_count = 0
+        unknown_width_count = 0
+        for idx in road_tree.query(frame_wgs, predicate="intersects"):
+            row = road_rows[int(idx)]
+            try:
+                gm = geometry_transform(to_metric, row["geometry"])
+                if gm.is_empty or not gm.intersects(frame_metric):
+                    continue
+                width = row.get("_street_block_width_m")
+                if width is None:
+                    width = _street_block_road_width_m(gm, row.get("properties") or {})
+                    row["_street_block_width_m"] = width
+                item = {"row": row, "metric": gm, "width": width}
+                selected_items.append(item)
+                if width is None:
+                    unknown_width_count += 1
+                    continue
+                if width >= road_min_width_m:
+                    road_metric.append(gm)
+                else:
+                    under4_count += 1
+            except Exception:
+                continue
+            if len(selected_items) >= 6000:
+                break
+
+        if not road_metric:
+            continue
+        try:
+            barrier_union = unary_union(road_metric).buffer(0.20, join_style=2)
+        except Exception:
+            continue
+
+        base_parts = _street_block_site_parts(frame_metric, barrier_union, site_metric)
+        if not base_parts:
+            continue
+        current_primary = base_parts[0][0]
+
+        relevant_facilities = [x for x in facility_entries if x["metric"].intersects(frame_metric)]
+        # 철도·하천을 먼저 검토하고, 나머지 시설은 실제 분리/폐합 효과가 있을 때만 이어 붙인다.
+        relevant_facilities.sort(key=lambda x: 0 if re.search(r"철도|하천", x["type"]) else 1)
+        used_facilities: List[Dict[str, Any]] = []
+        ignored_facilities = 0
+        for entry in relevant_facilities[:300]:
+            use, reason = _street_block_facility_effect(current_primary, entry["metric"], frame_metric, barrier_union, site_metric)
+            if not use:
+                ignored_facilities += 1
+                continue
+            try:
+                barrier_union = unary_union([barrier_union, entry["metric"]]).buffer(0.20, join_style=2)
+                now_parts = _street_block_site_parts(frame_metric, barrier_union, site_metric)
+                if not now_parts:
+                    ignored_facilities += 1
+                    continue
+                current_primary = now_parts[0][0]
+                feat = dict(entry["feature"])
+                feat["properties"] = dict((entry["feature"].get("properties") or {}))
+                feat["properties"].update({"_block_barrier_role": reason, "_block_barrier_used": True})
+                used_facilities.append(feat)
+            except Exception:
+                ignored_facilities += 1
+
+        intersecting = _street_block_site_parts(frame_metric, barrier_union, site_metric)
+        if not intersecting:
+            continue
+        primary, primary_site_area = intersecting[0]
+        touches_frame = primary.boundary.distance(frame_metric.boundary) <= 0.75
+        significant = [(g, ia) for g, ia in intersecting if ia >= max(5.0, site_area * 0.05)]
+        if touches_frame and radius < float(max_radius_m):
+            continue
+
+        map_margin = primary.buffer(30)
+        road_features = []
+        road_context = []
+        for item in selected_items:
+            row, gm, width = item["row"], item["metric"], item["width"]
+            try:
+                if not gm.intersects(map_margin):
+                    continue
+                props = dict(row.get("properties") or {})
+                props.update({
+                    "_block_width_m": width,
+                    "_block_barrier_used": bool(width is not None and width >= road_min_width_m),
+                    "_block_width_basis": "official_width" if _road_width_m(row.get("properties") or {}) is not None else "TL_SPRD_RW 실폭도형 대표폭원 추정",
+                })
+                feature = {"type": "Feature", "geometry": mapping(row["geometry"]), "properties": props}
+                if width is not None and width >= road_min_width_m:
+                    road_features.append(feature)
+                else:
+                    road_context.append(feature)
+            except Exception:
+                continue
+            if len(road_features) >= 800 and len(road_context) >= 800:
+                break
+
+        block_wgs = geometry_transform(to_wgs, primary)
+        block_area = float(primary.area)
+        site_land_area = float(site_metric.difference(barrier_union).area)
+        primary_site_pct = (primary_site_area / site_land_area * 100.0) if site_land_area > 0 else None
+        resolved = {
+            "status": "resolved" if not touches_frame else "open_boundary",
+            "block": {"type": "Feature", "geometry": mapping(block_wgs), "properties": {"block_area_m2": block_area, "road_min_width_m": road_min_width_m}},
+            "blocks": {
+                "type": "FeatureCollection",
+                "features": [
+                    {"type": "Feature", "geometry": mapping(geometry_transform(to_wgs, g)), "properties": {"site_intersection_m2": ia}}
+                    for g, ia in significant[:12]
+                ],
+            },
+            "road_barriers": {"type": "FeatureCollection", "features": road_features},
+            "road_context": {"type": "FeatureCollection", "features": road_context},
+            "facility_barriers": {"type": "FeatureCollection", "features": used_facilities},
+            "metadata": {
+                "method": "road4m_conditional_facility_polygonization",
+                "radius_m": radius,
+                "road_source": layers.get("source"),
+                "road_mode": layers.get("road_mode"),
+                "road_min_width_m": road_min_width_m,
+                "road_count": len(road_features),
+                "road_under4_context_count": len(road_context),
+                "road_under4_total_count": under4_count,
+                "road_width_unknown_count": unknown_width_count,
+                "facility_barrier_count": len(used_facilities),
+                "facility_ignored_internal_count": ignored_facilities,
+                "facility_input_count": len(facility_entries),
+                "facility_rule": "내부 고립시설 제외 · 블록 관통분리 또는 외곽경계 폐합 시만 조건부 barrier",
+                "block_area_m2": block_area,
+                "site_primary_block_pct": primary_site_pct,
+                "site_spans_multiple_blocks": len(significant) > 1,
+                "touches_search_frame": touches_frame,
+                "topology_tolerance_m": 0.20,
+                "legal_width_rule": False,
+                "engine_note": "4m 이상 도로는 자동분석 운영기준이며 역세권활성화 운영기준의 법정 도로폭 기준이 아님",
+            },
+        }
+        break
+
+    if resolved is not None:
+        return resolved
+    return {
+        "status": "unresolved",
+        "block": None,
+        "blocks": {"type": "FeatureCollection", "features": []},
+        "road_barriers": {"type": "FeatureCollection", "features": []},
+        "road_context": {"type": "FeatureCollection", "features": []},
+        "facility_barriers": {"type": "FeatureCollection", "features": []},
+        "metadata": {
+            "method": "road4m_conditional_facility_polygonization",
+            "road_source": layers.get("source"),
+            "road_mode": layers.get("road_mode"),
+            "road_min_width_m": road_min_width_m,
+            "facility_input_count": len(facility_entries),
+            "max_radius_m": float(max_radius_m),
+            "legal_width_rule": False,
+            "reason": "4m 이상 도로와 조건부 시설경계로 대상지를 둘러싼 닫힌 가로구역을 자동 확정하지 못했습니다.",
+        },
+    }
+
+
 # ---------------------------------------------------------------------------
 # Anonymous product analytics
 # - No account, name, email, raw IP, or raw polygon is stored.
@@ -2413,6 +2744,12 @@ class GeometryInput(BaseModel):
     geometry: Dict[str, Any]
 
 
+class StreetBlockInput(BaseModel):
+    geometry: Dict[str, Any]
+    barrier_features: List[Dict[str, Any]] = Field(default_factory=list, max_length=3000)
+    max_radius_m: float = Field(500.0, ge=120.0, le=1000.0)
+
+
 class BuildingHubBatchInput(BaseModel):
     pnus: List[str] = Field(..., min_length=1, max_length=50)
 
@@ -2653,6 +2990,7 @@ def health():
         "safe_medical_reference": "Seoul medical points + site-boundary resolver (planning medical facility > building-register site parcels; health-center cadastral parcel)" if _seoul_open_data_key() else "needs Seoul Open Data key; no automatic medical PASS",
         "safe_medical_key_env": _seoul_open_data_key_info()[1] or None,
         "road_width_gis": "VWorld TL_SPRD_MANAGE ROAD_BT first; bundled Seoul TL_SPRD_RW real-width polygon fallback",
+        "street_block_gis": "TL_SPRD_RW 4m+ road barriers + conditional VWorld UPIS facility barriers -> automatic street-block polygonization",
         "responsive_ui": "desktop/tablet/mobile responsive layout with mobile workflow and selected-scheme cards",
         "smallscale_group": "five user review routes: autonomous / block / small-scale reconstruction / small-scale redevelopment / Moa Town+Moa Housing policy route; Moa is not a fifth statutory project",
         "workspace_ui": "three-column location/spatial evidence/integrated status layout; all decision facts surface in spatial-status boxes",
@@ -2661,7 +2999,7 @@ def health():
         "house_density": "shared factual calculation; redevelopment uses >=60/ha as one additional entry criterion and residential-environment uses >=80/ha as a mandatory non-management criterion",
         "parcel_boundary_editor": "pnu_list_click_include_exclude_nearby_union",
         "scheme_architecture": "site facts -> scheme-specific facts -> independent scheme evaluation -> review sheet -> priority comparison",
-        "scheme_module_api": "2026-08-31-r13-criterion-layer1",
+        "scheme_module_api": "2026-08-31-r15-street-block-4m-conditional",
         "independent_scheme_modules": "15 independent modules including smallscale 5-route family and prior_negotiation; urban_innovation_zone / facility_complex_zone / mixed_use_zone remain future shells",
         "scheme_specific_spatial_checks": "scheme module may request additional official spatial facts; missing facts remain REVIEW, never inferred PASS",
         "spatial_evidence_maps": "common cadastral base + colored zoning + scheme-specific road/frontage facts + safe-housing medical reference; map facts and scheme facts share one Fact Store",
@@ -2733,6 +3071,19 @@ def road_intersections(inp: GeometryInput):
         logging.exception("road intersection failed")
         raise HTTPException(status_code=500, detail=f"실폭도로 중첩분석 오류: {exc}") from exc
 
+
+@app.post("/api/spatial/street-block")
+def street_block(inp: StreetBlockInput):
+    """4m 이상 실폭도로를 기본경계로 하고 실제 분리·폐합하는 시설만 조건부 반영해 가로구역을 자동 추출합니다."""
+    try:
+        return analyze_street_block(inp.geometry, inp.barrier_features, inp.max_radius_m)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logging.exception("street block analysis failed")
+        raise HTTPException(status_code=500, detail=f"가로구역 자동추출 오류: {exc}") from exc
 
 
 @app.get("/api/vworld/test")
