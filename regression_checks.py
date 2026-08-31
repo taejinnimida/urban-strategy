@@ -12,7 +12,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import shapefile
-from shapely.geometry import LineString, box, shape
+from shapely.geometry import LineString, box, shape, mapping
 
 import app
 
@@ -604,8 +604,9 @@ def check_release_files() -> None:
     assert "분석번호" in readme
     assert "SEOUL_OPEN_DATA_KEY" in readme
     assert (root / "RULE_AUDIT_v2.5.0.md").exists()
-    assert (root / "CHANGELOG_v2.5.0-r16.txt").exists()
-    assert (root / "BASIC_UNIT_DATA_SETUP.txt").exists()
+    assert not list(root.glob("CHANGELOG_v2.5.0-r*.txt"))
+    basic_zip = root / "basic_unit_seoul.zip"
+    assert basic_zip.is_file() and basic_zip.stat().st_size > 10_000_000
     road_zip = root / "road_seoul.zip"
     assert road_zip.is_file() and road_zip.stat().st_size > 20_000_000
     # 기준본에 포함된 공식 근거 PDF 8종이 배포 ZIP에서 누락되지 않도록 고정한다.
@@ -1359,6 +1360,42 @@ def check_r17_spatial_relation_road_facts() -> None:
     assert "TL_SPRD_RW 실폭도로는 지적/기초단위구 경계와 위상정합을 전제할 수 없으므로" in py
     assert "_road_spatial_layers()" not in py[py.index("def _street_block_from_basic_units"):py.index("def analyze_street_block")]
 
+
+def check_r18_bundled_basic_unit_and_frontage_caveat() -> None:
+    """R18: actual Seoul basic-unit SHP is bundled and frontage limitations remain visible without real-width-road arithmetic."""
+    root = Path(app.BASE_DIR)
+    basic_zip = root / "basic_unit_seoul.zip"
+    assert basic_zip.is_file() and basic_zip.stat().st_size > 10_000_000
+    app._basic_unit_spatial_layers.cache_clear()
+    layers = app._basic_unit_spatial_layers()
+    assert layers.get("available") is True, layers
+    assert layers.get("feature_count") == 72307, layers.get("feature_count")
+    assert layers.get("base_date") == "20250630", layers.get("base_date")
+    assert layers.get("source_crs_note") == "SGIS 제공기준 EPSG:5179 · PRJ 우선"
+    # End-to-end: use one real bundled basic-unit polygon and a synthetic ROAD_BT centerline
+    # exactly along its outer boundary. The result must resolve to that seed without TL_SPRD_RW.
+    unit = layers["rows"][1234]["geometry"]
+    poly = unit if unit.geom_type == "Polygon" else max(unit.geoms, key=lambda g: g.area)
+    point = poly.representative_point()
+    site = point.buffer(0.00002).envelope
+    boundary_road = {
+        "type": "Feature",
+        "geometry": mapping(LineString(list(poly.exterior.coords))),
+        "properties": {"ROAD_BT": 8.0, "ROAD_NM": "R18 regression boundary"},
+    }
+    result = app.analyze_street_block(mapping(site), [], [boundary_road], 500)
+    assert result["status"] in {"resolved", "partial"}, result
+    assert result["metadata"].get("uses_real_width_polygon") is False
+    assert result["metadata"].get("merged_basic_unit_count") == 1
+    html = (root / "app.html").read_text(encoding="utf-8")
+    assert "접도 분석 단서" in html
+    assert "지적측량성과도·도로대장·결정도서 및 현장조사" in html
+    assert "analysis_caveat" in html
+    assert "TL_SPRD_RW 실폭도로는 지적 연산에 사용하지 않습니다" in html
+    changelog = (root / "CHANGELOG_v2.5.0.txt").read_text(encoding="utf-8")
+    assert changelog.startswith("[v2.5.0-r18")
+    assert not list(root.glob("CHANGELOG_v2.5.0-r*.txt"))
+
 def main() -> None:
     _run("measurement", check_measurement)
     _run("renewal spatial", check_renewal_server_intersection)
@@ -1393,6 +1430,7 @@ def main() -> None:
     _run("r15 street block 4m conditional", check_r15_street_block_4m_conditional)
     _run("r16 basic unit street block", check_r16_basic_unit_street_block)
     _run("r17 spatial relation road facts", check_r17_spatial_relation_road_facts)
+    _run("r18 bundled basic unit + frontage caveat", check_r18_bundled_basic_unit_and_frontage_caveat)
     _run("release files", check_release_files)
     print("v2.5.0 regression checks: PASS")
 

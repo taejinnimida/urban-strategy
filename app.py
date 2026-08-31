@@ -2029,6 +2029,7 @@ def _basic_unit_spatial_layers() -> Dict[str, Any]:
     if not rows:
         return {"available": False, "reason": "기초단위구 ZIP에서 서울 Polygon을 찾지 못함", "file": os.path.basename(zip_path)}
     geoms = [r['geometry'] for r in rows]
+    base_dates = sorted({str((r.get('properties') or {}).get('BASE_DATE') or '').strip() for r in rows if str((r.get('properties') or {}).get('BASE_DATE') or '').strip()})
     return {
         'available': True,
         'rows': rows,
@@ -2036,6 +2037,8 @@ def _basic_unit_spatial_layers() -> Dict[str, Any]:
         'source': '국가데이터처 SGIS 2025 기초단위구 경계(시도)',
         'file': os.path.basename(zip_path),
         'feature_count': len(rows),
+        'base_dates': base_dates,
+        'base_date': base_dates[-1] if base_dates else None,
         'source_crs_note': 'SGIS 제공기준 EPSG:5179 · PRJ 우선',
     }
 
@@ -3175,6 +3178,7 @@ def health():
         "road_width_gis": "VWorld TL_SPRD_MANAGE ROAD_BT is the road-width Fact source; TL_SPRD_RW is visualization/reference only",
         "street_block_gis": "SGIS 2025 basic-unit seed + VWorld TL_SPRD_MANAGE ROAD_BT 4m+ merge verification; no TL_SPRD_RW fallback",
         "street_block_basic_unit_configured": bool(_basic_unit_zip_path()),
+        "street_block_basic_unit_file": os.path.basename(_basic_unit_zip_path()) if _basic_unit_zip_path() else None,
         "responsive_ui": "desktop/tablet/mobile responsive layout with mobile workflow and selected-scheme cards",
         "smallscale_group": "five user review routes: autonomous / block / small-scale reconstruction / small-scale redevelopment / Moa Town+Moa Housing policy route; Moa is not a fifth statutory project",
         "workspace_ui": "three-column location/spatial evidence/integrated status layout; all decision facts surface in spatial-status boxes",
