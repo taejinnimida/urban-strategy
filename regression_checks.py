@@ -107,7 +107,8 @@ def check_area_gate() -> None:
     block = html[html.index("function redevelopmentSpatialFacts(store)"):html.index("function reconstructionSpatialFacts(store)")]
     assert "area>=10000" in block
     assert "area>=5000" in block
-    assert "c.areaExceptionApproved?'PASS':'REVIEW'" in block
+    assert "areaStatus='PASS';areaConditional=!c.areaExceptionApproved" in block
+    assert "위원회 인정 등 예외경로를 사업가능 경로로 반영" in block
     assert "else{areaStatus='FAIL'" in block
     # 이전 Python 중복 판정엔진은 제거되어야 한다.
     py = Path(app.BASE_DIR, "app.py").read_text(encoding="utf-8")
@@ -298,7 +299,7 @@ def check_feedback_and_ui() -> None:
     assert "schemeAgeFact(store,'growth_potential',route)" in decision
     assert "schemeAgeFact(store,'urban_redevelopment')" in decision
     assert "const SCHEME_MODULES=" in html
-    assert "SCHEME_MODULE_API_VERSION='2026-08-31-v11-data-recovery-fix1'" in html
+    assert "SCHEME_MODULE_API_VERSION='2026-08-31-r13-criterion-layer1'" in html
     assert "const SHELL_SCHEMES=new Set(['urban_innovation_zone','facility_complex_zone','mixed_use_zone'])" in html
     assert "현재 자동 활성화·추천·우선순위 미반영" in html
     assert "collectFacts:activationSpatialFacts" in html
@@ -844,7 +845,7 @@ def check_remaining_four_independent_modules_and_sources() -> None:
     html = (root / "app.html").read_text(encoding="utf-8")
     py = (root / "app.py").read_text(encoding="utf-8")
 
-    assert "SCHEME_MODULE_API_VERSION='2026-08-31-v11-data-recovery-fix1'" in html
+    assert "SCHEME_MODULE_API_VERSION='2026-08-31-r13-criterion-layer1'" in html
     assert "const SHELL_SCHEMES=new Set(['urban_innovation_zone','facility_complex_zone','mixed_use_zone'])" in html
     required = (
         "function redevelopmentSpatialFacts(store)", "function checkRedevelopmentFromFacts(store,f)",
@@ -926,7 +927,7 @@ def check_remaining_four_independent_modules_and_sources() -> None:
     # 서버측 구형 재개발 판정엔진/중복 API는 제거한다.
     assert "def evaluate_redevelopment(" not in py
     assert '/api/redevelopment/evaluate' not in py
-    assert '"scheme_module_api": "2026-08-31-v11-data-recovery-fix1"' in py
+    assert '"scheme_module_api": "2026-08-31-r13-criterion-layer1"' in py
     assert '15 independent modules including smallscale 5-route family and prior_negotiation' in py
 
 def check_scheme_family_separation() -> None:
@@ -1080,7 +1081,7 @@ def check_r8_boundary_map_smallscale_prior() -> None:
     assert "15 independent modules including smallscale 5-route family and prior_negotiation" in py
     assert '"engine": "site_fact_store_v2.5.0_r11"' in py
     assert "five user review routes: autonomous / block / small-scale reconstruction / small-scale redevelopment / Moa Town+Moa Housing policy route" in py
-    assert "v11-data-recovery-fix1" in html and "v11-data-recovery-fix1" in py
+    assert "r13-criterion-layer1" in html and "r13-criterion-layer1" in py
 
 
 def check_r9_refinement_placement() -> None:
@@ -1138,7 +1139,7 @@ def check_r10_scheme_fail_safe() -> None:
     pdf = root / "도시계획변경 사전협상 운영지침(11차개정_2026.06.29).pdf"
     assert pdf.is_file() and pdf.stat().st_size > 500_000
     assert 'site_fact_store_v2.5.0_r11' in py
-    assert 'v11-data-recovery-fix1' in html and 'v11-data-recovery-fix1' in py
+    assert 'r13-criterion-layer1' in html and 'r13-criterion-layer1' in py
 
 
 def check_r11_popup_spatial_progress() -> None:
@@ -1177,7 +1178,7 @@ def check_r11_popup_spatial_progress() -> None:
     assert "analyzeRoadAccess,60000" in html
     assert "총 ${formatAnalysisElapsed" in html
     assert 'site_fact_store_v2.5.0_r11' in py
-    assert 'v11-data-recovery-fix1' in html and 'v11-data-recovery-fix1' in py
+    assert 'r13-criterion-layer1' in html and 'r13-criterion-layer1' in py
 
 
 
@@ -1214,7 +1215,46 @@ def check_r11_data_recovery_fix1() -> None:
     assert "Fact Store 오류로 선순위 산정을 중단" in preview
 
     assert '"road_access": "VWorld TL_SPRD_MANAGE + ROAD_BT first; bundled TL_SPRD_RW automatic fallback"' in py
-    assert '"scheme_module_api": "2026-08-31-v11-data-recovery-fix1"' in py
+    assert '"scheme_module_api": "2026-08-31-r13-criterion-layer1"' in py
+
+
+
+def check_r13_criterion_layer1() -> None:
+    """R13: Fact 수집상태와 사업판정을 분리하고 역세권활성화/주택재개발 판정경로를 연결한다."""
+    root = Path(app.BASE_DIR)
+    html = (root / "app.html").read_text(encoding="utf-8")
+    py = (root / "app.py").read_text(encoding="utf-8")
+
+    assert "function schemeSpecificDecisionForRow(scheme,r)" in html
+    assert "충족 · 단서" in html
+    assert "사업별 기준판정" in html
+    render_start=html.index("function schemeSpecificDecisionLabel")
+    render = html[render_start:html.index("function ageFactValue", render_start)]
+    assert "현황확인" not in render
+    assert "불충족" in render and "확인필요" in render
+
+    station = html[html.index("function activationStationCriterion"):html.index("function checkActivationFromFacts", html.index("function activationStationCriterion"))]
+    assert "share>=50" in station
+    assert "share>0" in station
+    assert "block_committee" in station
+    assert "위원회 심의 가능" in station
+    assert "direct_inside_block_pending" in station
+
+    activation = html[html.index("function checkActivationFromFacts"):html.index("function safeDistrictPlanOverlapState", html.index("function checkActivationFromFacts"))]
+    for item in ("승강장 거리", "가로구역 포함", "역세권"):
+        assert f"schemeRow('{item}'" in activation
+    assert "conditional:stationDecision.overall.conditional" in activation
+    assert "areaStatus='PASS';areaConditional=true" in activation
+
+    redevelopment = html[html.index("function redevelopmentSpatialFacts"):html.index("function reconstructionSpatialFacts", html.index("function redevelopmentSpatialFacts"))]
+    assert "5,000~10,000㎡ · 조례상 위원회 인정 등 예외경로를 사업가능 경로로 반영" in redevelopment
+    assert "criterionStatus:smallStatus" in redevelopment
+    assert "criterionStatus:densityStatus" in redevelopment
+    assert "criterionStatus:age?.status||'REVIEW'" in redevelopment
+    assert "conditional:f.area.conditional===true" in redevelopment
+
+    assert "SCHEME_MODULE_API_VERSION='2026-08-31-r13-criterion-layer1'" in html
+    assert '"scheme_module_api": "2026-08-31-r13-criterion-layer1"' in py
 
 def main() -> None:
     _run("measurement", check_measurement)
@@ -1245,6 +1285,7 @@ def main() -> None:
     _run("r10 scheme fail-safe", check_r10_scheme_fail_safe)
     _run("r11 popup + spatial + progress", check_r11_popup_spatial_progress)
     _run("r11 data recovery fix1", check_r11_data_recovery_fix1)
+    _run("r13 criterion layer1", check_r13_criterion_layer1)
     _run("release files", check_release_files)
     print("v2.5.0 regression checks: PASS")
 
