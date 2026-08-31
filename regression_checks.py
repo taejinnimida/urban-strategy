@@ -249,7 +249,8 @@ def check_feedback_and_ui() -> None:
     assert "/api/spatial/renewal-intersections" in html
     assert "/api/spatial/development-intersections" in html
     assert "TL_SPRD_MANAGE" in html
-    assert "TL_SPRD_RW" not in html
+    assert "TL_SPRD_RW" in html
+    assert "/api/spatial/roads" in html
     assert "st.areaGate==='FAIL'||st.structural==='FAIL'" in html
     assert "const disabled=st.state==='off'" in html
     assert "r.hardGate==='AREA'" in html
@@ -297,7 +298,7 @@ def check_feedback_and_ui() -> None:
     assert "schemeAgeFact(store,'growth_potential',route)" in decision
     assert "schemeAgeFact(store,'urban_redevelopment')" in decision
     assert "const SCHEME_MODULES=" in html
-    assert "SCHEME_MODULE_API_VERSION='2026-08-28-v11-popup-spatial-progress-failsafe'" in html
+    assert "SCHEME_MODULE_API_VERSION='2026-08-31-v11-data-recovery-fix1'" in html
     assert "const SHELL_SCHEMES=new Set(['urban_innovation_zone','facility_complex_zone','mixed_use_zone'])" in html
     assert "현재 자동 활성화·추천·우선순위 미반영" in html
     assert "collectFacts:activationSpatialFacts" in html
@@ -603,6 +604,8 @@ def check_release_files() -> None:
     assert "분석번호" in readme
     assert "SEOUL_OPEN_DATA_KEY" in readme
     assert (root / "RULE_AUDIT_v2.5.0.md").exists()
+    road_zip = root / "road_seoul.zip"
+    assert road_zip.is_file() and road_zip.stat().st_size > 20_000_000
     # 기준본에 포함된 공식 근거 PDF 8종이 배포 ZIP에서 누락되지 않도록 고정한다.
     assert len(list(root.glob("*.pdf"))) >= 8
     structured = root / "static" / "app.html"
@@ -831,7 +834,8 @@ def check_purpose_filter_and_frontage_facts() -> None:
     assert "trySpatialLayerCandidates(['TL_SPRD_MANAGE','LT_C_SPRD_MANAGE']" in html
     assert "trySpatialLayerCandidates(['TL_SPRD_RW'" not in html
     assert "사업진입조건 확인을 위한 개략적 추정치로, 현장조서 및 도면검토를 통해 보완될 수 있음" in html
-    assert "analysisState.quality.road='ESTIMATE'" in html
+    assert "const roadQuality=estimateUsed?'ESTIMATE':'AUTO'" in html
+    assert "analysisState.quality.road=roadQuality" in html
     assert 'function checkRedevelopment(' not in html
 
 def check_remaining_four_independent_modules_and_sources() -> None:
@@ -840,7 +844,7 @@ def check_remaining_four_independent_modules_and_sources() -> None:
     html = (root / "app.html").read_text(encoding="utf-8")
     py = (root / "app.py").read_text(encoding="utf-8")
 
-    assert "SCHEME_MODULE_API_VERSION='2026-08-28-v11-popup-spatial-progress-failsafe'" in html
+    assert "SCHEME_MODULE_API_VERSION='2026-08-31-v11-data-recovery-fix1'" in html
     assert "const SHELL_SCHEMES=new Set(['urban_innovation_zone','facility_complex_zone','mixed_use_zone'])" in html
     required = (
         "function redevelopmentSpatialFacts(store)", "function checkRedevelopmentFromFacts(store,f)",
@@ -922,7 +926,7 @@ def check_remaining_four_independent_modules_and_sources() -> None:
     # 서버측 구형 재개발 판정엔진/중복 API는 제거한다.
     assert "def evaluate_redevelopment(" not in py
     assert '/api/redevelopment/evaluate' not in py
-    assert '"scheme_module_api": "2026-08-28-v11-popup-spatial-progress-failsafe"' in py
+    assert '"scheme_module_api": "2026-08-31-v11-data-recovery-fix1"' in py
     assert '15 independent modules including smallscale 5-route family and prior_negotiation' in py
 
 def check_scheme_family_separation() -> None:
@@ -1076,7 +1080,7 @@ def check_r8_boundary_map_smallscale_prior() -> None:
     assert "15 independent modules including smallscale 5-route family and prior_negotiation" in py
     assert '"engine": "site_fact_store_v2.5.0_r11"' in py
     assert "five user review routes: autonomous / block / small-scale reconstruction / small-scale redevelopment / Moa Town+Moa Housing policy route" in py
-    assert "v11-popup-spatial-progress-failsafe" in html and "v11-popup-spatial-progress-failsafe" in py
+    assert "v11-data-recovery-fix1" in html and "v11-data-recovery-fix1" in py
 
 
 def check_r9_refinement_placement() -> None:
@@ -1125,7 +1129,8 @@ def check_r10_scheme_fail_safe() -> None:
     ):
         assert marker in runall, marker
     review = html[html.index("async function runSiteReview()"):html.index("function resetMeasure()", html.index("async function runSiteReview()"))]
-    assert "나머지 사업추천은 계속 산정했습니다" in review
+    assert "현황 Fact Store 오류가 발생해 사업추천·시뮬레이션을 중단했습니다" in review
+    assert "오류가 없는 독립 사업모듈만 계속 판정했습니다" in review
     assert "safeSchemeUiStep('candidate-final'" in review
     assert "safeSchemeUiStep('priority-final'" in review
 
@@ -1133,7 +1138,7 @@ def check_r10_scheme_fail_safe() -> None:
     pdf = root / "도시계획변경 사전협상 운영지침(11차개정_2026.06.29).pdf"
     assert pdf.is_file() and pdf.stat().st_size > 500_000
     assert 'site_fact_store_v2.5.0_r11' in py
-    assert 'v11-popup-spatial-progress-failsafe' in html and 'v11-popup-spatial-progress-failsafe' in py
+    assert 'v11-data-recovery-fix1' in html and 'v11-data-recovery-fix1' in py
 
 
 def check_r11_popup_spatial_progress() -> None:
@@ -1172,7 +1177,44 @@ def check_r11_popup_spatial_progress() -> None:
     assert "analyzeRoadAccess,60000" in html
     assert "총 ${formatAnalysisElapsed" in html
     assert 'site_fact_store_v2.5.0_r11' in py
-    assert 'v11-popup-spatial-progress-failsafe' in html and 'v11-popup-spatial-progress-failsafe' in py
+    assert 'v11-data-recovery-fix1' in html and 'v11-data-recovery-fix1' in py
+
+
+
+def check_r11_data_recovery_fix1() -> None:
+    """R11 실제 화면에서 발견된 Fact Store 연쇄오류·도로 fallback·가짜추천을 방지한다."""
+    root = Path(app.BASE_DIR)
+    html = (root / "app.html").read_text(encoding="utf-8")
+    py = (root / "app.py").read_text(encoding="utf-8")
+
+    road_block = html[html.index("function schemeRoadEvidenceFacts"):html.index("function schemeRoadEvidenceStyle", html.index("function schemeRoadEvidenceFacts"))]
+    assert "const frontageFacts=schemeFrontageEvidenceFacts(c);" in road_block
+    assert "const residentialEnvironment=frontageFacts.residential_environment;" in road_block
+    assert "residential_environment:residentialEnvironment" in road_block
+
+    fetch_block = html[html.index("async function fetchRoadNetwork()"):html.index("async function analyzeRoadAccess()", html.index("async function fetchRoadNetwork()"))]
+    assert "/api/spatial/roads" in fetch_block
+    assert "TL_SPRD_RW" in fetch_block
+    assert "road_mode:meta.road_mode||'real_width_polygon'" in fetch_block
+    assert "approximation:meta.road_mode!=='real_width_polygon'" in fetch_block
+
+    annotate = html[html.index("function annotateRoadWidths"):html.index("function boundaryLines", html.index("function annotateRoadWidths"))]
+    assert "estimateRoadPolygonWidthMeters(f)" in annotate
+    assert "TL_SPRD_RW 공식 실폭도형 산정" in annotate
+
+    ranking = html[html.index("function autoRecommendationTop3()"):html.index("function numOrNull", html.index("function autoRecommendationTop3()"))]
+    assert "if(analysisState.fact_store_error)return [];" in ranking
+    runall = html[html.index("function runAllSchemeChecks()"):html.index("// ---------- Boundary input", html.index("function runAllSchemeChecks()"))]
+    assert "analysisState.fact_store_error=issue.message" in runall
+    assert "analysisState.recommendations=[];analysisState.planning_alternatives=[];" in runall
+
+    preview = html[html.index("function renderPriorityPreview()"):html.index("function schemeSheetFeasibility", html.index("function renderPriorityPreview()"))]
+    assert "const area=store?.site?.area_m2??null;" in preview
+    assert "numOrNull(document.getElementById('area_m2')?.value)" not in preview
+    assert "Fact Store 오류로 선순위 산정을 중단" in preview
+
+    assert '"road_access": "VWorld TL_SPRD_MANAGE + ROAD_BT first; bundled TL_SPRD_RW automatic fallback"' in py
+    assert '"scheme_module_api": "2026-08-31-v11-data-recovery-fix1"' in py
 
 def main() -> None:
     _run("measurement", check_measurement)
@@ -1183,6 +1225,8 @@ def main() -> None:
     _run("redevelopment area gate", check_area_gate)
     _run("redevelopment boolean gate", check_redevelopment_boolean_gate)
     _run("centerline width buffer", check_centerline_width_buffer)
+    _run("bundled road dataset", check_bundled_road_dataset)
+    _release_heavy_spatial_cache("road")
     _run("age annotation reference", check_age_annotation_reference_only)
     _run("feedback + UI", check_feedback_and_ui)
     _run("four independent modules", check_four_independent_scheme_modules)
@@ -1200,6 +1244,7 @@ def main() -> None:
     _run("r9 refinement placement", check_r9_refinement_placement)
     _run("r10 scheme fail-safe", check_r10_scheme_fail_safe)
     _run("r11 popup + spatial + progress", check_r11_popup_spatial_progress)
+    _run("r11 data recovery fix1", check_r11_data_recovery_fix1)
     _run("release files", check_release_files)
     print("v2.5.0 regression checks: PASS")
 

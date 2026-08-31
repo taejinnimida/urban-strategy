@@ -1,5 +1,14 @@
 # 서울 도시정비플랫폼 Web MVP v2.5.0
 
+## v2.5.0 R11 안정화 수정 (2026-08-31)
+
+- **기준본은 `urban-strategy-v2.5.0-r11-flat.zip`**이며, 이전 v2.4.3으로 롤백하지 않습니다.
+- `schemeRoadEvidenceFacts()`의 `residentialEnvironment is not defined` 런타임 오류를 수정해 도시계획 GIS 이후 정비구역·개발사업·의료시설·사업 Fact Store가 연쇄 중단되지 않도록 했습니다.
+- 전역 Fact Store 오류가 발생한 경우 부분자료로 선순위 사업을 임의 생성하지 않고 **추천·시뮬레이션을 중단**합니다.
+- 선순위 미리보기 대상면적은 그린 도형면적 fallback을 제거하고 **선택 지적필지 면적 합계**가 확보된 경우에만 표시합니다.
+- 도로는 VWorld `TL_SPRD_MANAGE + ROAD_BT`를 우선 사용하고, 미응답·무자료 시 배포본의 서울 공식 `road_seoul.zip` (`TL_SPRD_RW`)으로 자동 전환합니다. 실폭 폴리곤은 공식 도형에서 폭원을 산정합니다.
+- 배포 회귀검사에서 `road_seoul.zip` 존재·60,534건 로딩·실제 `/api/spatial/roads` 공간조회 및 위 오류의 재발 방지 조건을 확인합니다.
+
 ## v2.5.0 drawing 회귀복구
 
 - 공간현황 렌더러가 초기화되지 않은 Fact/cache를 drawing event 등록 전에 호출하던 시작 순서를 수정해 지도 구역계 그리기·편집·삭제 이벤트를 복구했습니다.
