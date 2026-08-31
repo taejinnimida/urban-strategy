@@ -1034,7 +1034,8 @@ def check_r8_boundary_map_smallscale_prior() -> None:
     review_start=html.index("async function runSiteReview()")
     review_end=html.index("function resetMeasure()", review_start)
     review=html[review_start:review_end]
-    assert "const steps=await runAllAutoAnalyses()" in review
+    assert "runAllAutoAnalyses({skipParcels:true})" in review
+    assert "safeAnalysisStep('연속지적',analyzeParcels" in review
     assert "finally{" in review and "siteReviewRunning=false" in review
     assert "safeAnalysisStep('연속지적'" in html
     assert "Promise.race" in html and "ANALYSIS_STEP_TIMEOUT_MS" in html
@@ -1433,6 +1434,45 @@ def check_r20_progress_truth_and_wide_scheme_facts() -> None:
     assert "const partial=steps.filter(x=>x.status==='partial')" in html
 
 
+
+def check_r21_single_boundary_sequential_diagnostics() -> None:
+    base=Path(__file__).resolve().parent
+    html=(base / "app.html").read_text(encoding="utf-8")
+    py=(base / "app.py").read_text(encoding="utf-8")
+    for marker in (
+        "let analysisGeometry=null",
+        "let boundaryReferenceGeometry=null",
+        "function finalizeAnalysisGeometryFromSelectedParcels()",
+        "source:'selected_parcel_union'",
+        "runAllAutoAnalyses({skipParcels:true})",
+        "분석경계 미확정 · 후속분석 중단",
+        "async function fetchBackendJson",
+        "JSON 아님",
+        "선행 ROAD_BT 미확보 · 분석 미실행",
+        "/api/spatial/road-data-status",
+        "TL_SPRD_RW가 있어도 지적/가로구역 계산에 대체 사용하지 않는다",
+    ):
+        assert marker in html, marker
+    # 대형 GIS는 같은 Promise.all 묶음에 넣지 않고 순차 await한다.
+    auto=html[html.index("async function runAllAutoAnalyses(options={})"):html.index("// 구역계 입력 직후", html.index("async function runAllAutoAnalyses(options={})"))]
+    assert "Promise.all([" in auto  # 토지대장/건축공간만 병렬
+    assert "safeAnalysisStep('정비사업 GIS'" in auto
+    assert "safeAnalysisStep('개발사업 GIS'" in auto
+    assert auto.index("safeAnalysisStep('정비사업 GIS'") < auto.index("safeAnalysisStep('개발사업 GIS'")
+    for marker in (
+        "def _prototype_low_memory_mode()",
+        "def _release_heavy_analysis_cache(kind: str)",
+        '_release_heavy_analysis_cache("renewal")',
+        '_release_heavy_analysis_cache("development")',
+        '@app.get("/api/spatial/road-data-status")',
+        '"fact_status"] = "REAL_WIDTH_ONLY"',
+    ):
+        assert marker in py, marker
+    # TL_SPRD_RW는 가로구역 지적연산에 사용하지 않는 원칙 유지.
+    block=py[py.index('def analyze_street_block('):py.index('@app.post("/api/spatial/street-block")')] if 'def analyze_street_block(' in py else py
+    assert "TL_SPRD_RW" not in block or "사용하지" in block
+
+
 def main() -> None:
     _run("measurement", check_measurement)
     _run("renewal spatial", check_renewal_server_intersection)
@@ -1452,6 +1492,7 @@ def main() -> None:
     _run("dedicated detail popups", check_dedicated_detail_popups)
     _run("startup drawing + legacy UI", check_startup_drawing_and_legacy_ui)
     _run("progress truth + wide scheme facts", check_r20_progress_truth_and_wide_scheme_facts)
+    _run("r21 single boundary + sequential diagnostics", check_r21_single_boundary_sequential_diagnostics)
     _run("spatial evidence maps", check_spatial_evidence_maps)
     _run("safe medical api adapter", check_safe_medical_api_adapter)
     _run("safe medical boundary resolution", check_safe_medical_boundary_resolution)

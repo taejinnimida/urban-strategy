@@ -1645,9 +1645,30 @@ def analyze_development_intersections(geometry: Dict[str, Any]) -> Dict[str, Any
 
 
 def _road_zip_path() -> Optional[str]:
-    """관리자가 한 번 배치하면 모든 사용자가 자동 조회하는 서울 실폭도로 원본."""
+    """관리자가 한 번 배치하면 모든 사용자가 자동 조회하는 서울 도로 전자지도 묶음."""
     path = _data_path("road_seoul.zip")
     return path if os.path.isfile(path) and os.path.getsize(path) > 0 else None
+
+
+@lru_cache(maxsize=1)
+def _road_dataset_inventory() -> Dict[str, Any]:
+    """도로 ZIP의 레이어 구성만 가볍게 확인한다. 도형은 읽지 않는다."""
+    path = _road_zip_path()
+    if not path:
+        return {"available": False, "file": None, "stems": [], "has_real_width": False, "has_manage": False}
+    try:
+        with zipfile.ZipFile(path) as zf:
+            stems = sorted({os.path.basename(os.path.splitext(n)[0]) for n in zf.namelist() if n.lower().endswith(".shp")})
+    except Exception as exc:
+        return {"available": False, "file": os.path.basename(path), "stems": [], "has_real_width": False, "has_manage": False, "error": str(exc)}
+    upper=[x.upper() for x in stems]
+    return {
+        "available": True,
+        "file": os.path.basename(path),
+        "stems": stems,
+        "has_real_width": any("SPRD_RW" in x for x in upper),
+        "has_manage": any("SPRD_MANAGE" in x for x in upper),
+    }
 
 
 def _json_property(value: Any) -> Any:
@@ -3197,6 +3218,26 @@ def health():
     }
 
 
+def _prototype_low_memory_mode() -> bool:
+    # R21 prototype: correctness over throughput. Render-class small instances should not
+    # keep multiple Seoul-wide SHP/STRtree caches resident at the same time.
+    return str(os.getenv("SPATIAL_LOW_MEMORY", "1")).strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _release_heavy_analysis_cache(kind: str) -> None:
+    if not _prototype_low_memory_mode():
+        return
+    try:
+        if kind == "renewal":
+            _renewal_spatial_index.cache_clear()
+            _renewal_reference_data.cache_clear()
+        elif kind == "development":
+            _development_spatial_index.cache_clear()
+            _development_reference_data.cache_clear()
+    except Exception:
+        logging.exception("failed to release %s spatial cache", kind)
+
+
 @app.post("/api/spatial/measure")
 def spatial_measure(inp: GeometryInput):
     try:
@@ -3215,6 +3256,8 @@ def renewal_intersections(inp: GeometryInput):
     except Exception as exc:
         logging.exception("renewal intersection failed")
         raise HTTPException(status_code=500, detail=f"정비구역 중첩분석 오류: {exc}") from exc
+    finally:
+        _release_heavy_analysis_cache("renewal")
 
 
 @app.post("/api/spatial/development-intersections")
@@ -3227,6 +3270,8 @@ def development_intersections(inp: GeometryInput):
     except Exception as exc:
         logging.exception("development intersection failed")
         raise HTTPException(status_code=500, detail=f"개발사업구역 중첩분석 오류: {exc}") from exc
+    finally:
+        _release_heavy_analysis_cache("development")
 
 
 @app.post("/api/reference/safe-medical-nearby")
@@ -3245,6 +3290,22 @@ def safe_medical_nearby(inp: GeometryInput):
     except Exception as exc:
         logging.exception("safe medical reference failed")
         return {"status": "error", "items": [], "errors": [str(exc)], "message": "의료시설 공식 위치자료 조회 실패 · 공식자료 확인 필요"}
+
+
+@app.get("/api/spatial/road-data-status")
+def road_data_status():
+    """R21 진단용: 내장 도로 ZIP에 ROAD_BT 도로구간이 실제 포함되어 있는지 확인한다."""
+    inv = dict(_road_dataset_inventory())
+    if inv.get("has_manage"):
+        inv["fact_status"] = "ROAD_MANAGE_READY"
+        inv["message"] = "내장 TL_SPRD_MANAGE 도로구간 사용 가능"
+    elif inv.get("has_real_width"):
+        inv["fact_status"] = "REAL_WIDTH_ONLY"
+        inv["message"] = "내장자료는 TL_SPRD_RW 실폭도로뿐 · 접도/가로구역용 TL_SPRD_MANAGE ROAD_BT 필요"
+    else:
+        inv["fact_status"] = "MISSING"
+        inv["message"] = "내장 도로구간 자료 없음 · TL_SPRD_MANAGE ROAD_BT 필요"
+    return inv
 
 
 @app.post("/api/spatial/roads")
