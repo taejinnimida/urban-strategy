@@ -492,7 +492,7 @@ def check_startup_drawing_and_legacy_ui() -> None:
     assert draw < created < edited < deleted
     assert "new L.Draw.Polygon(map" in html and "drawer.enable();" in html
     assert "function ccLabelOf(id)" in html
-    for marker in ("async function measureAndSync()", "async function lookupBoundaryAddresses()", "async function applyAddressPreviewAsBoundary()", "async function analyzeParcels()", "async function analyzeBuildings()", "async function analyzeBuildingHub()", "async function analyzeRoadAccess()"):
+    for marker in ("async function measureAndSync()", "async function lookupBoundaryAddresses()", "async function applyAddressPreviewAsBoundary()", "async function analyzeParcels()", "async function analyzeBuildings()", "async function analyzeBuildingHub(", "async function analyzeRoadAccess()"):
         assert marker in html, marker
     created_block=html[created:edited]
     assert "drawnItems.addLayer(e.layer)" in created_block
@@ -1195,7 +1195,7 @@ def check_r11_data_recovery_fix1() -> None:
     assert "const residentialEnvironment=frontageFacts.residential_environment;" in road_block
     assert "residential_environment:residentialEnvironment" in road_block
 
-    fetch_block = html[html.index("async function fetchRoadNetwork()"):html.index("async function analyzeRoadAccess()", html.index("async function fetchRoadNetwork()"))]
+    fetch_block = html[html.index("async function fetchRoadNetwork("):html.index("async function analyzeRoadAccess()", html.index("async function fetchRoadNetwork("))]
     assert "TL_SPRD_MANAGE" in fetch_block and "ROAD_BT" in fetch_block
     assert "/api/spatial/roads" not in fetch_block
     assert "TL_SPRD_RW 실폭도로를 사용하지 않는다" in fetch_block
@@ -1265,7 +1265,7 @@ def check_r14_street_block_auto() -> None:
     assert 'id="ccStreetBlockMiniMap"' in html
     for dom_id in ("spStreetBlockState","spStreetBlockArea","spStreetBlockIntersection","spStreetBlockSiteShare","spStreetBlockCoverage","spStreetBlockShare","spStreetBlockSiteStationShare","spStreetBlockRange","spStreetBlockPath"):
         assert f'id="{dom_id}"' in html
-    assert "function analyzeStreetBlock()" in html
+    assert "async function analyzeStreetBlock(" in html
     assert "/api/spatial/street-block" in html
     assert "road_features:roadFeatures" in html
     assert "TL_SPRD_RW 실폭도로는 공간연산 제외" in html
@@ -1406,19 +1406,31 @@ def check_r19_activation_arterial_linear_commercial() -> None:
         'function updateActivationArterialBlockLink()',
         'function activationLinearCommercialEvidence()',
         'activation_arterial:activationLinearCommercialEvidence()',
-        "safeAnalysisStep('노선형 상업지역',analyzeActivationArterial,60000)",
+        "safeAnalysisStep('노선형 상업지역',async()=>{await analyzeActivationArterial();",
         "서울시 공개 대상노선 + 용도지역 GIS 자동분석",
     ):
         assert marker in html, marker
     # 실폭도로로 노선형 상업지역이나 가로구역을 만들지 않는다.
-    block=html[html.index('async function analyzeActivationArterial()'):html.index('async function analyzeStreetBlock()')]
+    block=html[html.index('async function analyzeActivationArterial()'):html.index('async function analyzeStreetBlock(')]
     assert 'TL_SPRD_RW' not in block
     assert "fetchSpatialFeaturesBrowser('LT_C_UQ111'" in block
     assert "trySpatialLayerCandidates(['TL_SPRD_MANAGE','LT_C_SPRD_MANAGE']" in block
     for road in ('율곡로','한강대로','강남대로','테헤란로','사당로'):
         assert road in html
     changelog=(Path(__file__).resolve().parent / 'CHANGELOG_v2.5.0.txt').read_text(encoding='utf-8')
-    assert changelog.startswith('[v2.5.0-r19')
+    assert '[v2.5.0-r19' in changelog
+
+
+
+def check_r20_progress_truth_and_wide_scheme_facts() -> None:
+    html=(Path(__file__).resolve().parent / "app.html").read_text(encoding="utf-8")
+    assert "#siteDetail_schemeSpecific{grid-column:1/-1}" in html
+    assert "#siteDetail_schemeSpecific #spSchemeFactList{display:grid;grid-template-columns:repeat(3" in html
+    assert "가로구역 polygon/면적 미확보" in html
+    assert "사용승인일 0동" in html
+    assert "주변 도로 0건 · 후보 없음으로 확정하지 않음" in html
+    assert "도로명 속성 미확보 · 노선형 상업지역 판정 보류" in html
+    assert "const partial=steps.filter(x=>x.status==='partial')" in html
 
 
 def main() -> None:
@@ -1439,6 +1451,7 @@ def main() -> None:
     _run("legacy engine purge", test_migrated_scheme_legacy_engines_removed)
     _run("dedicated detail popups", check_dedicated_detail_popups)
     _run("startup drawing + legacy UI", check_startup_drawing_and_legacy_ui)
+    _run("progress truth + wide scheme facts", check_r20_progress_truth_and_wide_scheme_facts)
     _run("spatial evidence maps", check_spatial_evidence_maps)
     _run("safe medical api adapter", check_safe_medical_api_adapter)
     _run("safe medical boundary resolution", check_safe_medical_boundary_resolution)
