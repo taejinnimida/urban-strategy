@@ -1,0 +1,28 @@
+[v2.5.0-r16 · 기초단위구 seed 가로구역 보정 · 2026-08-31]
+
+기준본
+- urban-strategy-v2.5.0-r15-flat.zip
+- 앱 버전 2.5.0 유지
+
+이번 수정 범위
+- 역세권활성화 가로구역 자동추출 모듈만 보완. 다른 사업 Rule은 변경하지 않음.
+
+변경
+1. SGIS 2025 기초단위구 경계(시도) SHP를 가로구역 후보 seed로 우선 사용.
+2. 기초단위구를 법정 가로구역으로 직접 사용하지 않고, 인접 단위구 공통경계를 TL_SPRD_RW 4m+ 실폭도로·철도·하천과 대조하여 병합.
+3. 4m 미만 도로 경계로 갈린 기초단위구는 병합 가능하도록 설계.
+4. 지도에 SGIS 기초단위구 후보경계와 실제 병합대상을 별도 표시.
+5. 기초단위구 데이터 미설치/판독 실패 시 R15 4m+ 도로 polygonization으로 자동 fallback.
+6. /health에 street_block_basic_unit_configured 추가.
+
+데이터 주의
+- SGIS 공식 2025 기초단위구 SHP는 공개·무료 자료이나 SGIS 자료신청/다운로드 절차를 거친다. 이 배포본에는 원본 SHP를 임의 복제해 넣지 않았다.
+- basic_unit_seoul.zip을 설치하면 R16 우선경로가 활성화된다. 설치 방법은 BASIC_UNIT_DATA_SETUP.txt 참조.
+
+검증
+- Python py_compile PASS
+- inline JavaScript node --check PASS
+- 전체 regression PASS
+- 합성 기초단위구: 4m+ 도로 없음 -> 인접 seed 병합 PASS
+- 합성 기초단위구: 공통경계에 6m 도로 -> 병합 차단 PASS
+- SGIS ZIP 미설치 상태 -> 기존 R15 fallback 실도로 분석 PASS

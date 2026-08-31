@@ -1707,15 +1707,19 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="spatial-mini-map" id="ccStationMiniMap"></div>
 </section>
 <section class="spatial-module" id="siteDetail_streetBlock">
-<div class="spatial-module-head"><b>가로구역(역세권활성화)</b><span id="spStreetBlockState">자동추출 전</span></div>
+<div class="spatial-module-head"><b>가로구역·대상지 공간관계</b><span id="spStreetBlockState">자동추출 전</span></div>
 <div class="spatial-metrics">
 <div><span>가로구역 면적</span><b id="spStreetBlockArea">-</b></div>
-<div><span>역세권 포함률</span><b id="spStreetBlockShare">-</b></div>
+<div><span>대상지∩가로구역</span><b id="spStreetBlockIntersection">-</b></div>
+<div><span>가로구역 중 대상지 점유율</span><b id="spStreetBlockSiteShare">-</b></div>
+<div><span>대상지의 가로구역 포함률</span><b id="spStreetBlockCoverage">-</b></div>
+<div><span>가로구역의 역세권 편입률</span><b id="spStreetBlockShare">-</b></div>
+<div><span>대상지의 역세권 편입률</span><b id="spStreetBlockSiteStationShare">-</b></div>
 <div><span>적용거리</span><b id="spStreetBlockRange">-</b></div>
-<div><span>판정경로</span><b id="spStreetBlockPath">-</b></div>
+<div><span>활성화 판정경로</span><b id="spStreetBlockPath">-</b></div>
 </div>
-<div class="spatial-tags" id="spStreetBlockLegend"><span>실폭 4m 이상 도로 기본경계 · 내부 고립시설은 분할에서 제외</span></div>
-<div class="spatial-caption">도면정보 · 서울 공식 TL_SPRD_RW 실폭도로 중 대표폭원 4m 이상을 기본 경계로 사용 · 4m 미만 도로는 현황만 표시 · 철도·하천·공원·학교·광장·녹지·공공공지·공용주차장은 실제 블록을 관통·분리하거나 외곽경계를 폐합할 때만 조건부 반영 · 4m는 법정기준이 아닌 초기검토 엔진 운영기준</div>
+<div class="spatial-tags" id="spStreetBlockLegend"><span>SGIS 기초단위구 후보 + TL_SPRD_MANAGE ROAD_BT 4m+ 경계판단</span><span>TL_SPRD_RW 실폭도로는 공간연산 제외</span></div>
+<div class="spatial-caption">도면정보 · 기초단위구를 가로구역 후보 골격으로 사용하고 4m 이상 도로중심선(ROAD_BT), 철도·하천으로 인접 후보의 병합 여부를 판단합니다. 면적비는 분자·분모를 구분해 저장하며 각 사업모듈이 필요한 비율만 사용합니다. 4m는 법정 가로구역 폭 기준이 아니라 초기검토 엔진의 운영기준입니다.</div>
 <div class="spatial-mini-map" id="ccStreetBlockMiniMap"></div>
 </section>
 <section class="spatial-module">
@@ -1764,7 +1768,7 @@ body.service-layout-ready>.shell{display:none!important}
 </div>
 <div class="spatial-age-list" id="spRoadRuleFactList"><div class="spatial-age-row"><div class="spatial-age-name"><b>분석 전</b><span>사업별 도로 정의</span></div><div class="spatial-age-value"><strong>-</strong><small>도로중심선 폭원자료를 먼저 조회합니다.</small></div><em class="spatial-age-status REVIEW">확인필요</em></div></div>
 <div class="spatial-tags" id="spRoadRuleLegend"><span>재개발·역세권활성화·안심주택 등 제도별 접도 Fact를 분리 표시</span></div>
-<div class="spatial-caption">도면정보 · 도로중심선 폭원자료를 공통 원자료로 사용하되 재개발 접도율(6m), 역세권활성화 도로접면, 안심주택 도로계획, 성장잠재권·장기전세 둘레접면비 등을 서로 다른 Fact로 표시 · 하나의 공통 접도율로 합치지 않음</div>
+<div class="spatial-caption">도면정보 · TL_SPRD_MANAGE 도로중심선의 ROAD_BT를 공통 폭원 Fact로 사용하고 각 접도구간의 도로명·폭원·접도연장·전체둘레 대비 비율을 저장합니다. 재개발 6m 접도율, 역세권활성화 4m/8m, 성장잠재권 35m/6m, 역세권복합개발 4m/8m, 장기전세 간선도로, 도심복합개발 20m/8m 등은 사업모듈에서 독립 판정합니다. TL_SPRD_RW 실폭도로는 지적연산에 사용하지 않습니다.</div>
 <div class="spatial-mini-map" id="ccSchemeRoadMiniMap"></div>
 </section>
 <section class="spatial-module" id="siteDetail_safeMedical">
@@ -1992,7 +1996,7 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="road-box">
 <div class="road-head">
   <div><b>도로중심선·접도조건 개략분석</b><div id="roadSummary">구역계 설정 후 공식 도로중심선 폭원자료를 확인합니다.</div></div>
-  <div class="road-tools"><span class="conn planned" id="roadConn">도로중심선 확인</span><span class="btn" style="cursor:default">VWorld ROAD_BT 우선 · 내장 TL_SPRD_RW 자동대체</span></div>
+  <div class="road-tools"><span class="conn planned" id="roadConn">도로중심선 확인</span><span class="btn" style="cursor:default">VWorld TL_SPRD_MANAGE · ROAD_BT 폭원 Fact</span></div>
 </div>
 <div class="road-table-wrap" id="roadTableWrap" style="display:none"><table class="road-table"><thead><tr><th>지번</th><th>PNU</th><th>건축물</th><th>총 접도길이</th><th>최장 연속접도</th><th>6m도로 4m접도</th><th>폭원근거</th></tr></thead><tbody id="roadTableBody"></tbody></table></div>
 <div class="road-note"><b>접도율은 도로중심선의 공식 폭원정보를 이용한 개략적 추정치입니다.</b> 사업진입조건 확인을 위한 개략적 추정치로, 현장조서 및 도면검토를 통해 보완될 수 있습니다.</div>
@@ -2020,7 +2024,7 @@ body.service-layout-ready>.shell{display:none!important}
 <div>국토교통부 건축HUB 건축물대장정보 · 표제부 <b>getBrTitleInfo</b></div>
 <div class="k">갱신주기</div>
 <div>공공데이터포털 서비스 <b>수정일 2026-07-10</b> · 데이터 갱신주기는 상세페이지에 별도 미표기 · 각 대장행의 생성일자(crtnDay)는 별도 표시</div>
-<div class="k">도로/접도</div><div>VWorld 도로중심선 <b>TL_SPRD_MANAGE</b>의 <b>ROAD_BT</b> 우선 · 실패 시 서버 내장 서울 공식 <b>TL_SPRD_RW</b> 실폭도로 자동대체</div><div class="k">접도 판정</div><div>도로중심선 폭원으로 개략 도로범위를 생성하여 폭 6m 이상 + 대지경계 연속 접도길이 4m 이상을 예비 산정 · 사업진입조건 확인용 추정치</div><div class="k">판정기준</div>
+<div class="k">도로/접도</div><div>VWorld 도로중심선 <b>TL_SPRD_MANAGE</b>의 <b>ROAD_BT</b>를 폭원 Fact로 사용 · <b>TL_SPRD_RW</b> 실폭도로는 지적·가로구역 공간연산에서 제외</div><div class="k">접도 판정</div><div>도로중심선 폭원으로 개략 도로범위를 생성하여 폭 6m 이상 + 대지경계 연속 접도길이 4m 이상을 예비 산정 · 사업진입조건 확인용 추정치</div><div class="k">판정기준</div>
 <div>서울특별시 도시 및 주거환경정비 조례 시행 <b>2026-05-18</b></div>
 <div class="k">표시원칙</div>
 <div>플랫폼 조회시각은 표시하지 않으며, 공공데이터 제공기관이 공개한 <b>갱신주기·기준일·최종갱신일</b>만 표시</div>
@@ -2661,8 +2665,9 @@ const stationAnalysis={
 };
 const streetBlockAnalysis={
   loaded:false,loading:false,status:'unavailable',
-  blockFeature:null,blockFeatures:[],roadBarriers:[],roadContext:[],facilityBarriers:[],stationBufferFeature:null,
-  blockAreaM2:null,stationSharePct:null,thresholdM:null,quality:'NONE',path:'',
+  blockFeature:null,blockFeatures:[],blockRelations:[],basicUnitContext:[],roadBarriers:[],roadContext:[],facilityBarriers:[],stationBufferFeature:null,
+  blockAreaM2:null,siteAreaM2:null,siteBlockIntersectionM2:null,siteShareOfBlockPct:null,blockCoverageOfSitePct:null,
+  stationSharePct:null,siteStationSharePct:null,thresholdM:null,quality:'NONE',path:'',
   metadata:{},errors:[],warnings:[]
 };
 const stationVworldCache=new Map();
@@ -2731,6 +2736,7 @@ const ccStationSite=L.geoJSON(null,{style:{weight:2.8,color:'#101828',fillColor:
 
 const ccStreetBlockMini=L.map('ccStreetBlockMiniMap',{zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,doubleClickZoom:false,boxZoom:false,keyboard:false,touchZoom:false}).setView([37.5665,126.9780],16);
 const ccStreetBlockContext=L.geoJSON(null,{style:{weight:.45,color:'#98a2b3',fillOpacity:0,opacity:.62}}).addTo(ccStreetBlockMini);
+const ccStreetBlockUnitContext=L.geoJSON(null,{style:f=>{const selected=f?.properties?._basic_unit_selected===true;return {weight:selected?1.25:.75,color:selected?'#7f56d9':'#b692f6',fillColor:'#e9d7fe',fillOpacity:selected?.10:.025,opacity:selected?.90:.55,dashArray:'5,3'};},onEachFeature:(f,l)=>{const selected=f?.properties?._basic_unit_selected===true;l.bindTooltip(`SGIS 기초단위구 후보경계${selected?' · 가로구역 병합대상':''} · 법정 가로구역 경계 아님`);}}).addTo(ccStreetBlockMini);
 const ccStreetBlockStation=L.geoJSON(null,{style:{weight:1.0,color:'#067647',fillColor:'#abefc6',fillOpacity:.13,dashArray:'4,3'}}).addTo(ccStreetBlockMini);
 const ccStreetBlockRoadContext=L.geoJSON(null,{style:{weight:.45,color:'#98a2b3',fillColor:'#f2f4f7',fillOpacity:.12,dashArray:'2,3'},onEachFeature:(f,l)=>{const w=Number(f.properties?._block_width_m);l.bindTooltip(`4m 미만 도로 · ${Number.isFinite(w)?w.toFixed(1)+'m':'폭원 미확정'} · 가로구역 경계 제외`);}}).addTo(ccStreetBlockMini);
 const ccStreetBlockRoad=L.geoJSON(null,{style:{weight:.8,color:'#475467',fillColor:'#d0d5dd',fillOpacity:.32},onEachFeature:(f,l)=>{const w=Number(f.properties?._block_width_m);l.bindTooltip(`가로구역 기본경계 · 4m+ 도로${Number.isFinite(w)?' · '+w.toFixed(1)+'m':''}`);}}).addTo(ccStreetBlockMini);
@@ -2985,7 +2991,7 @@ function schemeFrontageEvidenceFacts(cArg=null){
   const basis=Number.isFinite(Number(net.frontage_basis_buildings))?Number(net.frontage_basis_buildings):schemeNum('road_basis_building_count');
   const access=Number.isFinite(Number(net.frontage_access_buildings_6m))?Number(net.frontage_access_buildings_6m):schemeNum('road_access_building_count_6m');
   const ratio=(basis!=null&&basis>0&&access!=null)?access/basis*100:null;
-  const statusByQuality=(known,ok=true)=>!known?'REVIEW':!ok?'FAIL':quality==='AUTO'?'CONFIRMED':'REVIEW';
+  const statusByQuality=(known,ok=true)=>!known?'REVIEW':!ok?'FAIL':'CONFIRMED';
   const redevelopment={fact_key:'redevelopmentFrontage6Fact',key:'redevelopment',label:'주택재개발 접도율(6m 기준)',metric_type:'building_ratio',ratio_pct:ratio,basis_buildings:basis,access_buildings:access,
     status:statusByQuality(ratio!=null,true),value:ratio==null?'산정자료 미확보':`${Number(ratio).toFixed(1)}% · ${access}/${basis}동`,criterion:'폭 6m 이상 도로에 대지경계가 연속 4m 이상 접한 필지의 건축물 비율',contact_value:net.road6Faces==null?'-':`6m+ 도로 ${net.road6Faces}면`,note:'사업진입조건 확인을 위한 개략적 추정치로, 현장조서 및 도면검토를 통해 보완될 수 있음'};
   const resenvBasis=Number.isFinite(Number(net.frontage_basis_buildings))?Number(net.frontage_basis_buildings):null;
@@ -3037,10 +3043,10 @@ function schemeRoadEvidenceFacts(cArg=null){
   const longtermFrontageOk=c.road20Perimeter!=null&&c.road20Perimeter>=12.5;
   const longtermGeometryKnown=c.has20Width!=null&&c.road20Perimeter!=null;
   const longterm={fact_key:'longtermArterialIntersectionFact',key:'longterm',label:'역세권 장기전세',threshold:20,function_confirmed:functionKnown?arterial20Confirmed:null,status:!longtermGeometryKnown?'REVIEW':(!longtermWidthOk||!longtermFrontageOk?'FAIL':'REVIEW'),value:`20m 폭원후보 ${c.has20Width==null?'-':c.has20Width?'O':'X'} / 접면비 ${c.road20Perimeter==null?'-':Number(c.road20Perimeter).toFixed(1)+'%'} / 교차거리 ${c.arterialIntersectionDist==null?'-':Number(c.arterialIntersectionDist).toFixed(1)+'m'}`,note:`간선도로 교차지역 200m + 폭20m 이상 간선도로 구역둘레 1/8 접면 · 폭원 Fact와 도로기능 Fact를 분리 · ${functionMissing}`,mode:'width20_intersection'};
-  const stationComplex={fact_key:'stationComplexRoadFact',key:'station_complex',label:'역세권복합개발',threshold:4,status:(c.road4Faces==null||c.has8==null)?'REVIEW':(c.road4Faces>=2&&c.has8)?(quality==='AUTO'?'CONFIRMED':'REVIEW'):'FAIL',value:`4m+ ${c.road4Faces==null?'-':c.road4Faces+'면'} / 8m+ ${c.has8==null?'-':c.has8?'O':'X'}`,note:'폭4m 이상 도로 2면 + 최소 1면 폭8m 이상 · 도로기능 간선 여부는 요구하지 않는 별도 기준',mode:'road4_8'};
+  const stationComplex={fact_key:'stationComplexRoadFact',key:'station_complex',label:'역세권복합개발',threshold:4,status:(c.road4Faces==null||c.has8==null)?'REVIEW':(c.road4Faces>=2&&c.has8)?'CONFIRMED':'FAIL',value:`4m+ ${c.road4Faces==null?'-':c.road4Faces+'면'} / 8m+ ${c.has8==null?'-':c.has8?'O':'X'}`,note:'폭4m 이상 도로 2면 + 최소 1면 폭8m 이상 · 도로기능 간선 여부는 요구하지 않는 별도 기준',mode:'road4_8'};
   const invType=effectiveInnovationType(),invThreshold=invType==='growth'?20:(c.area!=null&&c.area<40000?15:20);
   const innovation={fact_key:'innovationDistrictRoadFact',key:'innovation',label:'도심복합개발혁신지구',threshold:invThreshold,status:raw.maxWidth==null?'REVIEW':raw.maxWidth>=invThreshold?'REVIEW':'FAIL',value:`${invType==='growth'?'성장거점형':'주거중심형'} / 최대폭 ${raw.maxWidth==null?'-':Number(raw.maxWidth).toFixed(1)+'m'}`,note:invType==='growth'?`20m 이상 간선도로 접면 · ${functionMissing}`:`면적별 ${invThreshold}m 이상 간선도로 + 6m 이상 도로 블록 · ${functionMissing}`,mode:'innovation'};
-  const publicComplex={fact_key:'publicComplexRoadFact',key:'public_complex',label:'도심공공주택복합',threshold:4,status:(c.road4Faces==null||c.has8==null)?'REVIEW':(c.road4Faces>=2&&c.has8)?(quality==='AUTO'?'CONFIRMED':'REVIEW'):'FAIL',value:`4m+ ${c.road4Faces==null?'-':c.road4Faces+'면'} / 8m+ ${c.has8==null?'-':c.has8?'O':'X'}`,note:'주거상업고밀 유형 기준: 2면 이상 4m 도로 + 한 면 8m 이상 · 사업유형별 도로기준은 독립 적용',mode:'road4_8'};
+  const publicComplex={fact_key:'publicComplexRoadFact',key:'public_complex',label:'도심공공주택복합',threshold:4,status:(c.road4Faces==null||c.has8==null)?'REVIEW':(c.road4Faces>=2&&c.has8)?'CONFIRMED':'FAIL',value:`4m+ ${c.road4Faces==null?'-':c.road4Faces+'면'} / 8m+ ${c.has8==null?'-':c.has8?'O':'X'}`,note:'주거상업고밀 유형 기준: 2면 이상 4m 도로 + 한 면 8m 이상 · 사업유형별 도로기준은 독립 적용',mode:'road4_8'};
   return {redevelopment,residential_environment:residentialEnvironment,activation,safe,growth,longterm,station_complex:stationComplex,innovation,public_complex:publicComplex};
 }
 
@@ -3060,11 +3066,16 @@ function schemeRoadEvidenceStyle(f){
 function renderSchemeRoadEvidence(){
   const facts=latestSiteFactStore?.site?.spatial_evidence?.roads||schemeRoadEvidenceFacts(),frontageFacts=latestSiteFactStore?.site?.spatial_evidence?.frontage||schemeFrontageEvidenceFacts(),selected=document.getElementById('spRoadRuleSelect')?.value||'redevelopment',rule=facts[selected]||facts.redevelopment||facts.safe,frontage=frontageFacts[selected]||frontageFacts.redevelopment;
   ccSchemeRoadLayer.clearLayers();ccSchemeRoadInfluence.clearLayers();ccSchemeRoadBoundary.clearLayers();
-  const state=document.getElementById('spRoadRuleState');if(state)state.textContent=analysisState.quality.road==='ESTIMATE'?'도로중심선 개략추정 · REVIEW':'도로중심선 자료 확인 필요';
+  const state=document.getElementById('spRoadRuleState');if(state)state.textContent=analysisState.road_network?'ROAD_BT 폭원 Fact · 접도연장 개략':'도로중심선 자료 확인 필요';
   const setMetric=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v??'-';};
   setMetric('spRoadFrontageLabel',frontage?.label||'선택 제도 접도기준');setMetric('spRoadFrontageValue',frontage?.value||'-');setMetric('spRoadFrontageBasis',frontage?.criterion||'-');setMetric('spRoadFrontageContact',frontage?.contact_value||'-');setMetric('spRoadFrontageStatus',frontage?.status||'REVIEW');
   const list=document.getElementById('spRoadRuleFactList');
-  if(list)list.innerHTML=Object.values(facts).map(r=>`<div class="spatial-age-row"><div class="spatial-age-name"><b>${escHtml(r.label)}</b><span>${escHtml(r.note)}</span></div><div class="spatial-age-value"><strong>${escHtml(r.value)}</strong><small>제도별 정의를 서로 대체하지 않음</small></div><em class="spatial-age-status ${r.status==='CONFIRMED'?'PASS':r.status==='FAIL'?'FAIL':'REVIEW'}">${r.status==='CONFIRMED'?'현황확인':r.status==='FAIL'?'미충족':'REVIEW'}</em></div>`).join('');
+  if(list){
+    const raw=roadRawFacts(),roads=(raw.records||[]).slice(0,12);
+    const roadRows=roads.length?roads.map(r=>`<div class="spatial-age-row"><div class="spatial-age-name"><b>${escHtml(r.road_name||'도로명 미확인')}</b><span>ROAD_BT 폭원 Fact · 접도구간</span></div><div class="spatial-age-value"><strong>${r.width_m==null?'-':Number(r.width_m).toFixed(1)+'m'}</strong><small>접도 ${r.frontage_contact_m==null?'-':Number(r.frontage_contact_m).toFixed(1)+'m'} · 둘레비 ${r.frontage_ratio_pct==null?'-':Number(r.frontage_ratio_pct).toFixed(1)+'%'}</small></div><em class="spatial-age-status PASS">FACT</em></div>`).join(''):`<div class="spatial-age-row"><div class="spatial-age-name"><b>도로 원자료 없음</b><span>TL_SPRD_MANAGE ROAD_BT 조회 필요</span></div><div class="spatial-age-value"><strong>-</strong></div><em class="spatial-age-status REVIEW">확인필요</em></div>`;
+    const ruleStatus=rule?.status==='CONFIRMED'?'PASS':rule?.status==='FAIL'?'FAIL':'REVIEW';
+    list.innerHTML=`<div class="spatial-age-row"><div class="spatial-age-name"><b>${escHtml(rule?.label||'선택 제도')}</b><span>${escHtml(rule?.note||'')}</span></div><div class="spatial-age-value"><strong>${escHtml(rule?.value||'-')}</strong><small>공간 Fact → 사업모듈 판정 입력</small></div><em class="spatial-age-status ${ruleStatus}">${ruleStatus==='PASS'?'충족':ruleStatus==='FAIL'?'불충족':'확인필요'}</em></div>${roadRows}`;
+  }
   const legend=document.getElementById('spRoadRuleLegend');
   if(legend)legend.innerHTML=`<span><b>${escHtml(rule.label)}</b></span><span>${rule.threshold?`폭 ${rule.threshold}m+ 후보 강조`:'도로폭만으로 적격판정하지 않음'}</span><span>${/기능/.test(rule.note)?'도로기능 미확보 시 REVIEW':'폭원·접면 기준'}</span>`;
   if(activeGeometry){
@@ -3088,7 +3099,10 @@ function renderSchemeRoadEvidence(){
 function streetBlockSpatialEvidenceFacts(){
   return {
     loaded:!!streetBlockAnalysis.loaded,status:streetBlockAnalysis.status||'unavailable',quality:streetBlockAnalysis.quality||'NONE',
-    block_area_m2:streetBlockAnalysis.blockAreaM2,station_share_pct:streetBlockAnalysis.stationSharePct,threshold_m:streetBlockAnalysis.thresholdM,
+    block_area_m2:streetBlockAnalysis.blockAreaM2,site_area_m2:streetBlockAnalysis.siteAreaM2,site_block_intersection_m2:streetBlockAnalysis.siteBlockIntersectionM2,
+    site_share_of_block_pct:streetBlockAnalysis.siteShareOfBlockPct,block_coverage_of_site_pct:streetBlockAnalysis.blockCoverageOfSitePct,
+    station_share_of_block_pct:streetBlockAnalysis.stationSharePct,station_share_of_site_pct:streetBlockAnalysis.siteStationSharePct,
+    block_relations:[...(streetBlockAnalysis.blockRelations||[])],threshold_m:streetBlockAnalysis.thresholdM,
     path:streetBlockAnalysis.path||'',metadata:streetBlockAnalysis.metadata||{},errors:[...(streetBlockAnalysis.errors||[])],warnings:[...(streetBlockAnalysis.warnings||[])]
   };
 }
@@ -3129,25 +3143,40 @@ async function analyzeStreetBlock(){
     streetBlockAnalysis.thresholdM=[250,350].includes(threshold)?threshold:null;
     let search=null;try{search=turf.buffer(turf.feature(activeGeometry),500,{units:'meters'});}catch(e){}
     const barrierResult=search?await fetchStreetBlockFacilityBarriers(search.geometry):{features:[],errors:[{id:'buffer',error:'주변 검색범위 생성 실패'}],queried:4};
-    const response=await fetch('/api/spatial/street-block',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry:activeGeometry,barrier_features:barrierResult.features,max_radius_m:500})});
+    const roadResult=search?await trySpatialLayerCandidates(['TL_SPRD_MANAGE','LT_C_SPRD_MANAGE'],search.geometry,['rds_man_no','RDS_MAN_NO']):{features:[],errors:['주변 검색범위 생성 실패']};
+    const roadFeatures=(roadResult.features||[]).filter(f=>Number(cleanNum(pickPropCI(f.properties||{},['ROAD_BT','ROAD_WIDTH','ROAD_W','WIDTH'])))>0);
+    if(!roadFeatures.length)streetBlockAnalysis.warnings.push('가로구역 병합판정용 TL_SPRD_MANAGE ROAD_BT 도로자료를 확보하지 못했습니다.');
+    const response=await fetch('/api/spatial/street-block',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry:activeGeometry,barrier_features:barrierResult.features,road_features:roadFeatures,max_radius_m:500})});
     const data=await response.json();if(!response.ok)throw new Error(data.detail||'가로구역 자동추출 실패');
-    streetBlockAnalysis.status=data.status||'unresolved';streetBlockAnalysis.blockFeature=data.block||null;streetBlockAnalysis.blockFeatures=data.blocks?.features||[];streetBlockAnalysis.roadBarriers=data.road_barriers?.features||[];streetBlockAnalysis.roadContext=data.road_context?.features||[];streetBlockAnalysis.facilityBarriers=data.facility_barriers?.features||[];streetBlockAnalysis.metadata=data.metadata||{};streetBlockAnalysis.errors=[...(barrierResult.errors||[])];
+    streetBlockAnalysis.status=data.status||'unresolved';streetBlockAnalysis.blockFeature=data.block||null;streetBlockAnalysis.blockFeatures=data.blocks?.features||[];streetBlockAnalysis.basicUnitContext=data.basic_unit_context?.features||[];streetBlockAnalysis.roadBarriers=data.road_barriers?.features||[];streetBlockAnalysis.roadContext=data.road_context?.features||[];streetBlockAnalysis.facilityBarriers=data.facility_barriers?.features||[];streetBlockAnalysis.metadata=data.metadata||{};streetBlockAnalysis.errors=[...(barrierResult.errors||[]),...(roadResult.errors||[]).map(error=>({id:'road_manage',error}))];
     streetBlockAnalysis.blockAreaM2=Number(data.metadata?.block_area_m2);if(!Number.isFinite(streetBlockAnalysis.blockAreaM2))streetBlockAnalysis.blockAreaM2=null;
+    streetBlockAnalysis.siteAreaM2=activeGeometry?Number(turf.area(turf.feature(activeGeometry))):null;if(!Number.isFinite(streetBlockAnalysis.siteAreaM2))streetBlockAnalysis.siteAreaM2=null;
     streetBlockAnalysis.stationBufferFeature=streetBlockApplicableStationBuffer(streetBlockAnalysis.thresholdM);
-    streetBlockAnalysis.stationSharePct=null;streetBlockAnalysis.path='';
-    const multi=!!data.metadata?.site_spans_multiple_blocks;
-    if(data.status==='resolved'&&data.block&&streetBlockAnalysis.stationBufferFeature&&!multi){
+    streetBlockAnalysis.siteBlockIntersectionM2=null;streetBlockAnalysis.siteShareOfBlockPct=null;streetBlockAnalysis.blockCoverageOfSitePct=null;streetBlockAnalysis.stationSharePct=null;streetBlockAnalysis.siteStationSharePct=null;streetBlockAnalysis.blockRelations=[];streetBlockAnalysis.path='';
+    const siteFeature=turf.feature(activeGeometry);
+    const relationFeatures=(streetBlockAnalysis.blockFeatures?.length?streetBlockAnalysis.blockFeatures:(data.block?[data.block]:[]));
+    for(const bf of relationFeatures){
       try{
-        const block=turf.feature(data.block.geometry,data.block.properties||{}),ba=turf.area(block),inter=turf.intersect(block,streetBlockAnalysis.stationBufferFeature);
-        streetBlockAnalysis.stationSharePct=ba>0?(inter?turf.area(inter):0)/ba*100:null;
-      }catch(e){streetBlockAnalysis.errors.push({id:'station_overlap',error:String(e.message||e)});}
-    }else if(multi){
-      streetBlockAnalysis.warnings.push('대상지가 복수 가로구역에 걸쳐 단일 포함률 자동확정을 보류합니다.');
-    }else if(data.status==='open_boundary'){
-      streetBlockAnalysis.warnings.push('검색범위 안에서 가로구역 경계가 완전히 닫히지 않았습니다.');
+        const block=turf.feature(bf.geometry,bf.properties||{}),ba=turf.area(block),si=turf.intersect(block,siteFeature),ia=si?turf.area(si):0;
+        const sb=ba>0?ia/ba*100:null,bc=streetBlockAnalysis.siteAreaM2>0?ia/streetBlockAnalysis.siteAreaM2*100:null;
+        let st=null;if(streetBlockAnalysis.stationBufferFeature&&ba>0){const x=turf.intersect(block,streetBlockAnalysis.stationBufferFeature);st=(x?turf.area(x):0)/ba*100;}
+        streetBlockAnalysis.blockRelations.push({block_area_m2:ba,site_intersection_m2:ia,site_share_of_block_pct:sb,block_coverage_of_site_pct:bc,station_share_of_block_pct:st,geometry:bf.geometry});
+      }catch(e){streetBlockAnalysis.errors.push({id:'block_relation',error:String(e.message||e)});}
     }
+    if(data.block){
+      try{
+        const block=turf.feature(data.block.geometry,data.block.properties||{}),ba=turf.area(block),si=turf.intersect(block,siteFeature),ia=si?turf.area(si):0;
+        streetBlockAnalysis.blockAreaM2=ba;streetBlockAnalysis.siteBlockIntersectionM2=ia;streetBlockAnalysis.siteShareOfBlockPct=ba>0?ia/ba*100:null;streetBlockAnalysis.blockCoverageOfSitePct=streetBlockAnalysis.siteAreaM2>0?ia/streetBlockAnalysis.siteAreaM2*100:null;
+        if(streetBlockAnalysis.stationBufferFeature){const x=turf.intersect(block,streetBlockAnalysis.stationBufferFeature);streetBlockAnalysis.stationSharePct=ba>0?(x?turf.area(x):0)/ba*100:null;}
+      }catch(e){streetBlockAnalysis.errors.push({id:'primary_block_relation',error:String(e.message||e)});}
+    }
+    if(streetBlockAnalysis.stationBufferFeature&&streetBlockAnalysis.siteAreaM2>0){
+      try{const x=turf.intersect(siteFeature,streetBlockAnalysis.stationBufferFeature);streetBlockAnalysis.siteStationSharePct=(x?turf.area(x):0)/streetBlockAnalysis.siteAreaM2*100;}catch(e){streetBlockAnalysis.errors.push({id:'site_station_overlap',error:String(e.message||e)});}
+    }
+    const multi=!!data.metadata?.site_spans_multiple_blocks;
+    if(multi)streetBlockAnalysis.warnings.push('대상지가 복수 가로구역에 걸칩니다. 사업별 모듈은 각 가로구역 관계값을 개별적으로 사용해야 합니다.');
     const facilityPartial=(barrierResult.errors||[]).length>0;
-    streetBlockAnalysis.quality=data.status==='resolved'?(facilityPartial?'PARTIAL':'AUTO'):(data.status==='open_boundary'?'PARTIAL':'NONE');
+    streetBlockAnalysis.quality=data.status==='resolved'||data.status==='partial'?(facilityPartial?'PARTIAL':'AUTO'):'NONE';
     if(streetBlockAnalysis.stationSharePct!=null){
       const sh=streetBlockAnalysis.stationSharePct;
       streetBlockAnalysis.path=sh>=50?'1/2 이상 일반경로':sh>0?'1/2 미만 심의경로':'중첩 없음';
@@ -3155,7 +3184,7 @@ async function analyzeStreetBlock(){
     else streetBlockAnalysis.path='자동확정 보류';
     streetBlockAnalysis.loaded=true;
   }catch(e){
-    streetBlockAnalysis.status='error';streetBlockAnalysis.quality='NONE';streetBlockAnalysis.errors.push({id:'street_block',error:String(e.message||e)});streetBlockAnalysis.blockFeature=null;streetBlockAnalysis.stationSharePct=null;streetBlockAnalysis.blockAreaM2=null;streetBlockAnalysis.path='자동추출 실패';streetBlockAnalysis.loaded=true;
+    streetBlockAnalysis.status='error';streetBlockAnalysis.quality='NONE';streetBlockAnalysis.errors.push({id:'street_block',error:String(e.message||e)});streetBlockAnalysis.blockFeature=null;streetBlockAnalysis.blockFeatures=[];streetBlockAnalysis.blockRelations=[];streetBlockAnalysis.blockAreaM2=null;streetBlockAnalysis.siteAreaM2=null;streetBlockAnalysis.siteBlockIntersectionM2=null;streetBlockAnalysis.siteShareOfBlockPct=null;streetBlockAnalysis.blockCoverageOfSitePct=null;streetBlockAnalysis.stationSharePct=null;streetBlockAnalysis.siteStationSharePct=null;streetBlockAnalysis.path='자동추출 실패';streetBlockAnalysis.loaded=true;
   }finally{
     streetBlockAnalysis.loading=false;renderStreetBlockSpatialStatus();
     try{runAllSchemeChecks();}catch(e){console.error('[street-block] 사업판정 갱신',e);}
@@ -3163,33 +3192,45 @@ async function analyzeStreetBlock(){
 }
 function renderStreetBlockSpatialStatus(){
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
-  ccStreetBlockContext.clearLayers();ccStreetBlockStation.clearLayers();ccStreetBlockRoadContext.clearLayers();ccStreetBlockRoad.clearLayers();ccStreetBlockFacility.clearLayers();ccStreetBlockPolygon.clearLayers();ccStreetBlockSite.clearLayers();
-  if(!activeGeometry){set('spStreetBlockState','구역 설정 전');set('spStreetBlockArea','-');set('spStreetBlockShare','-');set('spStreetBlockRange','-');set('spStreetBlockPath','-');return;}
+  ccStreetBlockContext.clearLayers();ccStreetBlockUnitContext.clearLayers();ccStreetBlockStation.clearLayers();ccStreetBlockRoadContext.clearLayers();ccStreetBlockRoad.clearLayers();ccStreetBlockFacility.clearLayers();ccStreetBlockPolygon.clearLayers();ccStreetBlockSite.clearLayers();
+  if(!activeGeometry){for(const id of ['spStreetBlockArea','spStreetBlockIntersection','spStreetBlockSiteShare','spStreetBlockCoverage','spStreetBlockShare','spStreetBlockSiteStationShare','spStreetBlockRange','spStreetBlockPath'])set(id,'-');set('spStreetBlockState','구역 설정 전');return;}
   ccStreetBlockSite.addData(turf.feature(activeGeometry));
   const outside=(ccContextParcelFeatures||[]).map(cloneFeature);if(outside.length)ccStreetBlockContext.addData({type:'FeatureCollection',features:outside});
+  if(streetBlockAnalysis.basicUnitContext?.length)ccStreetBlockUnitContext.addData({type:'FeatureCollection',features:streetBlockAnalysis.basicUnitContext});
   if(streetBlockAnalysis.stationBufferFeature)ccStreetBlockStation.addData(streetBlockAnalysis.stationBufferFeature);
   if(streetBlockAnalysis.roadContext?.length)ccStreetBlockRoadContext.addData({type:'FeatureCollection',features:streetBlockAnalysis.roadContext});
   if(streetBlockAnalysis.roadBarriers?.length)ccStreetBlockRoad.addData({type:'FeatureCollection',features:streetBlockAnalysis.roadBarriers});
   if(streetBlockAnalysis.facilityBarriers?.length)ccStreetBlockFacility.addData({type:'FeatureCollection',features:streetBlockAnalysis.facilityBarriers});
   if(streetBlockAnalysis.blockFeature)ccStreetBlockPolygon.addData(streetBlockAnalysis.blockFeature);
   set('spStreetBlockArea',streetBlockAnalysis.blockAreaM2==null?'-':`${Number(streetBlockAnalysis.blockAreaM2).toLocaleString('ko-KR',{maximumFractionDigits:0})}㎡`);
+  set('spStreetBlockIntersection',streetBlockAnalysis.siteBlockIntersectionM2==null?'-':`${Number(streetBlockAnalysis.siteBlockIntersectionM2).toLocaleString('ko-KR',{maximumFractionDigits:0})}㎡`);
+  set('spStreetBlockSiteShare',streetBlockAnalysis.siteShareOfBlockPct==null?'-':`${Number(streetBlockAnalysis.siteShareOfBlockPct).toFixed(1)}%`);
+  set('spStreetBlockCoverage',streetBlockAnalysis.blockCoverageOfSitePct==null?'-':`${Number(streetBlockAnalysis.blockCoverageOfSitePct).toFixed(1)}%`);
   set('spStreetBlockShare',streetBlockAnalysis.stationSharePct==null?'-':`${Number(streetBlockAnalysis.stationSharePct).toFixed(1)}%`);
+  set('spStreetBlockSiteStationShare',streetBlockAnalysis.siteStationSharePct==null?'-':`${Number(streetBlockAnalysis.siteStationSharePct).toFixed(1)}%`);
   set('spStreetBlockRange',streetBlockAnalysis.thresholdM?`${streetBlockAnalysis.thresholdM}m`:'적용거리 확인');
   set('spStreetBlockPath',streetBlockAnalysis.path||'-');
   const state=document.getElementById('spStreetBlockState');
   if(state){
-    if(streetBlockAnalysis.loading)state.textContent='공식 경계 추출 중';
-    else if(streetBlockAnalysis.status==='resolved')state.textContent=streetBlockAnalysis.quality==='AUTO'?'AUTO · 공식경계':'AUTO · 일부자료 단서';
-    else if(streetBlockAnalysis.status==='open_boundary')state.textContent='경계 미폐합';
+    const method=String(streetBlockAnalysis.metadata?.method||'');
+    if(streetBlockAnalysis.loading)state.textContent='가로구역 후보 추출 중';
+    else if(['resolved','partial'].includes(streetBlockAnalysis.status)&&method.startsWith('sgis_basic_unit'))state.textContent=streetBlockAnalysis.quality==='AUTO'?'AUTO · 기초단위구+ROAD_BT':'AUTO · 기초단위구+ROAD_BT·단서';
+    else if(streetBlockAnalysis.status==='unavailable')state.textContent='기초단위구 또는 ROAD_BT 자료 필요';
+    else if(streetBlockAnalysis.status==='unresolved')state.textContent='가로구역 후보 미확정';
     else if(streetBlockAnalysis.status==='error')state.textContent='자동추출 실패';
     else state.textContent='자동추출 전';
   }
   const legend=document.getElementById('spStreetBlockLegend');
   if(legend){
     const md=streetBlockAnalysis.metadata||{},bits=[];
-    bits.push(`<span>4m+ 경계도로 ${Number(md.road_count||0).toLocaleString('ko-KR')}건</span>`);
+    if(String(md.method||'').startsWith('sgis_basic_unit')){
+      bits.push(`<span>SGIS 2025 기초단위구 seed</span>`);
+      bits.push(`<span>병합 ${Number(md.merged_basic_unit_count||0).toLocaleString('ko-KR')}개</span>`);
+      bits.push(`<span>주변 후보 ${Number(md.local_basic_unit_count||0).toLocaleString('ko-KR')}개</span>`);
+    }else if(md.basic_unit_reason){bits.push(`<span>${escHtml(md.basic_unit_reason)}</span>`);}
+    bits.push(`<span>ROAD_BT 4m+ 경계도로 ${Number(md.road_count||0).toLocaleString('ko-KR')}건</span>`);
     bits.push(`<span>4m 미만 현황 ${Number(md.road_under4_context_count||0).toLocaleString('ko-KR')}건</span>`);
-    bits.push(`<span>조건부 경계시설 ${Number(md.facility_barrier_count||streetBlockAnalysis.facilityBarriers?.length||0).toLocaleString('ko-KR')}건</span>`);
+    bits.push(`<span>강한 경계시설 ${Number(md.strong_facility_count||md.facility_barrier_count||streetBlockAnalysis.facilityBarriers?.length||0).toLocaleString('ko-KR')}건</span>`);
     if(Number(md.facility_ignored_internal_count||0)>0)bits.push(`<span>내부시설 제외 ${Number(md.facility_ignored_internal_count).toLocaleString('ko-KR')}건</span>`);
     if(md.site_spans_multiple_blocks)bits.push('<span>대상지 복수가로구역</span>');
     if(streetBlockAnalysis.errors?.length)bits.push(`<span>시설레이어 ${streetBlockAnalysis.errors.length}건 미응답</span>`);
@@ -4441,10 +4482,6 @@ function annotateRoadWidths(rwFeatures,manageFeatures){
     else if(!(w>=1&&w<=100)){
       w=roadWidthFromManage(f,manageFeatures);
       if(w!=null)src='TL_SPRD_MANAGE ROAD_BT';
-      else if(String(f?.geometry?.type||'').includes('Polygon')){
-        w=estimateRoadPolygonWidthMeters(f);
-        if(w!=null)src='TL_SPRD_RW 공식 실폭도형 산정';
-      }
     } else src=p._width_source||'도로폭 속성';
     p._width_m=w; p._width_source=src||'미확인'; p._qualifies4=(w!=null&&w>=4); p._qualifies6=(w!=null&&w>=6); return {type:'Feature',id:f.id,geometry:f.geometry,properties:p};
   });
@@ -4467,47 +4504,54 @@ function frontageStats(parcel,qualifiedRoads){
 }
 function roadFeatureIdentity(f,index=0){
   const p=f?.properties||{};
-  return String(pickPropCI(p,['RDS_MAN_NO','rds_man_no','RW_SN','rw_sn','ROAD_NM','RN','ROAD_NAME'])||`road-${index}`);
+  const name=String(pickPropCI(p,['ROAD_NM','road_nm','RN','ROAD_NAME','rn'])||'').trim();
+  if(name)return `name:${name.replace(/\s+/g,'')}`;
+  return String(pickPropCI(p,['RDS_MAN_NO','rds_man_no','RW_SN','rw_sn'])||`road-${index}`);
 }
 function siteRoadNetworkStats(site,roads){
-  if(!site)return {faceCount:null,road4Faces:null,maxWidth:null,has8:null,has20Width:null,road20Perimeter:null,road35Perimeter:null,road6Faces:null,perimeterM:null,contact20M:null,contact35M:null,max20ContactM:null,max35ContactM:null,roads:[],estimateUsed:false};
-  const touched=[];
+  if(!site)return {faceCount:null,road4Faces:null,road6Faces:null,road8Faces:null,road20Faces:null,road35Faces:null,maxWidth:null,has8:null,has20Width:null,road4Perimeter:null,road6Perimeter:null,road8Perimeter:null,road20Perimeter:null,road35Perimeter:null,perimeterM:null,contact4M:null,contact6M:null,contact8M:null,contact20M:null,contact35M:null,max20ContactM:null,max35ContactM:null,roads:[],estimateUsed:false};
+  // TL_SPRD_MANAGE는 하나의 실제 접도도로가 여러 관리구간 feature로 나뉠 수 있다.
+  // 2면/4면 판정에서 feature 개수를 도로 면수로 오인하지 않도록 도로명(없으면 관리번호) 단위로 먼저 묶는다.
+  const groups=new Map();
   (roads||[]).forEach((road,index)=>{
-    const width=cleanNum((road.properties||{})._width_m);
-    if(width==null)return;
-    const contact=frontageStats(site,[road]);
-    if(contact.total_m>=0.5){
-      const props=road.properties||{};
-      const name=String(pickPropCI(props,['ROAD_NM','road_nm','RN','ROAD_NAME','rn'])||'도로명 미확인');
-      touched.push({road,index,width,contact:contact.total_m,key:roadFeatureIdentity(road,index),name});
-    }
+    const width=cleanNum((road.properties||{})._width_m);if(width==null)return;
+    const key=roadFeatureIdentity(road,index),props=road.properties||{};
+    if(!groups.has(key))groups.set(key,{key,features:[],segments:[],name:String(pickPropCI(props,['ROAD_NM','road_nm','RN','ROAD_NAME','rn'])||'도로명 미확인')});
+    groups.get(key).features.push(road);groups.get(key).segments.push({road,width,props});
   });
-  const faceKeys=new Set(touched.map(x=>x.key));
-  const road4Keys=new Set(touched.filter(x=>x.width>=4).map(x=>x.key));
-  const road6Keys=new Set(touched.filter(x=>x.width>=6).map(x=>x.key));
-  const road20Keys=new Set(touched.filter(x=>x.width>=20).map(x=>x.key));
-  const maxWidth=touched.length?Math.max(...touched.map(x=>x.width)):null;
   const perimeter=boundaryLines(site).reduce((sum,line)=>sum+turf.length(line,{units:'kilometers'})*1000,0);
-  const roads20=touched.filter(x=>x.width>=20).map(x=>x.road);
-  const roads35=touched.filter(x=>x.width>=35).map(x=>x.road);
-  const contact20=roads20.length?frontageStats(site,roads20).total_m:0;
-  const contact35=roads35.length?frontageStats(site,roads35).total_m:0;
-  const roadSummary=[...new Map(touched.map(x=>{
-    const props=x.road.properties||{};
-    const roadGrade=pickPropCI(props,['ROAD_GRADE','ROAD_RANK','RD_GRADE','도로등급']);
-    const roadFunction=pickPropCI(props,['ROAD_FUNC','ROAD_FUNCTION','FUNCTION','RD_FUNC','도로기능']);
-    const statutoryClass=pickPropCI(props,['ROAD_CLASS','ROAD_CLS','RD_CLASS','ROAD_TYPE','도로종류','법정분류']);
-    return [x.key,{key:x.key,name:x.name,width:x.width,contact:x.contact,road_grade:roadGrade==null?null:String(roadGrade),road_function:roadFunction==null?null:String(roadFunction),statutory_classification:statutoryClass==null?null:String(statutoryClass)}];
-  })).values()]
-    .sort((a,b)=>b.width-a.width||b.contact-a.contact);
+  const pct=x=>perimeter>0?Math.min(100,x/perimeter*100):null;
+  const touchedGroups=[];
+  for(const g of groups.values()){
+    const contact=frontageStats(site,g.features);
+    if(contact.total_m<0.5)continue;
+    const widths=g.segments.map(x=>x.width).filter(Number.isFinite);
+    const propsList=g.segments.map(x=>x.props||{});
+    const firstProp=(keys)=>{for(const p of propsList){const v=pickPropCI(p,keys);if(v!=null&&String(v).trim()!=='')return v;}return null;};
+    const roadGrade=firstProp(['ROAD_GRADE','ROAD_RANK','RD_GRADE','도로등급']);
+    const roadFunction=firstProp(['ROAD_FUNC','ROAD_FUNCTION','FUNCTION','RD_FUNC','도로기능']);
+    const statutoryClass=firstProp(['ROAD_CLASS','ROAD_CLS','RD_CLASS','ROAD_TYPE','도로종류','법정분류']);
+    const thresholdContact={};
+    for(const t of [4,6,8,20,35]){
+      const fs=g.segments.filter(x=>x.width>=t).map(x=>x.road);
+      thresholdContact[t]=fs.length?frontageStats(site,fs):{total_m:0,max_contiguous_m:0};
+    }
+    touchedGroups.push({key:g.key,name:g.name,width:widths.length?Math.max(...widths):null,width_min:widths.length?Math.min(...widths):null,contact:contact.total_m,max_contiguous:contact.max_contiguous_m,road_grade:roadGrade==null?null:String(roadGrade),road_function:roadFunction==null?null:String(roadFunction),statutory_classification:statutoryClass==null?null:String(statutoryClass),segment_count:g.segments.length,thresholdContact});
+  }
+  const contactAt=t=>{const fs=[];for(const g of groups.values())for(const x of g.segments)if(x.width>=t)fs.push(x.road);return fs.length?frontageStats(site,fs).total_m:0;};
+  const faceCountAt=t=>touchedGroups.filter(g=>Number(g.thresholdContact?.[t]?.total_m||0)>=0.5).length;
+  const maxWidth=touchedGroups.length?Math.max(...touchedGroups.map(x=>Number(x.width||0))):null;
+  const contact4=contactAt(4),contact6=contactAt(6),contact8=contactAt(8),contact20=contactAt(20),contact35=contactAt(35);
+  const roadSummary=touchedGroups.map(x=>({key:x.key,name:x.name,width:x.width,width_min:x.width_min,contact:x.contact,max_contiguous_m:x.max_contiguous,boundary_share_pct:pct(x.contact),road_grade:x.road_grade,road_function:x.road_function,statutory_classification:x.statutory_classification,segment_count:x.segment_count,
+    contact_4m:Number(x.thresholdContact?.[4]?.total_m||0),contact_6m:Number(x.thresholdContact?.[6]?.total_m||0),contact_8m:Number(x.thresholdContact?.[8]?.total_m||0),contact_20m:Number(x.thresholdContact?.[20]?.total_m||0),contact_35m:Number(x.thresholdContact?.[35]?.total_m||0)})).sort((a,b)=>b.width-a.width||b.contact-a.contact);
   return {
-    faceCount:faceKeys.size,road4Faces:road4Keys.size,maxWidth,has8:maxWidth==null?null:maxWidth>=8,has20Width:road20Keys.size>0,
-    road20Perimeter:perimeter>0?Math.min(100,contact20/perimeter*100):null,
-    road35Perimeter:perimeter>0?Math.min(100,contact35/perimeter*100):null,
-    road6Faces:road6Keys.size,perimeterM:perimeter,contact20M:contact20,contact35M:contact35,
-    max20ContactM:touched.filter(x=>x.width>=20).reduce((m,x)=>Math.max(m,Number(x.contact||0)),0),
-    max35ContactM:touched.filter(x=>x.width>=35).reduce((m,x)=>Math.max(m,Number(x.contact||0)),0),roads:roadSummary,
-    estimateUsed:touched.some(x=>/추정|예비|중심선/.test(String((x.road.properties||{})._width_source||'')))
+    faceCount:touchedGroups.length,road4Faces:faceCountAt(4),road6Faces:faceCountAt(6),road8Faces:faceCountAt(8),road20Faces:faceCountAt(20),road35Faces:faceCountAt(35),
+    maxWidth,has8:maxWidth==null?null:faceCountAt(8)>0,has20Width:maxWidth==null?null:faceCountAt(20)>0,
+    road4Perimeter:pct(contact4),road6Perimeter:pct(contact6),road8Perimeter:pct(contact8),road20Perimeter:pct(contact20),road35Perimeter:pct(contact35),
+    perimeterM:perimeter,contact4M:contact4,contact6M:contact6,contact8M:contact8,contact20M:contact20,contact35M:contact35,
+    max20ContactM:touchedGroups.reduce((m,x)=>Math.max(m,Number(x.thresholdContact?.[20]?.total_m||0)),0),
+    max35ContactM:touchedGroups.reduce((m,x)=>Math.max(m,Number(x.thresholdContact?.[35]?.total_m||0)),0),roads:roadSummary,
+    estimateUsed:true
   };
 }
 function setRoadNetworkAutoValue(id,value){
@@ -4535,38 +4579,17 @@ function buildingCountsByParcel(){
 
 async function fetchRoadNetwork(){
   if(!activeGeometry)return {rw:[],manage:[],source:'none',errors:[],approximation:true,road_mode:'none'};
-  const zone=turf.buffer(turf.feature(activeGeometry),60,{units:'meters'}).geometry;
+  const zone=turf.buffer(turf.feature(activeGeometry),80,{units:'meters'}).geometry;
   const errors=[];
-
-  // 1차: VWorld 도로중심선 + 공식 ROAD_BT. 성공하면 기존 동작을 유지한다.
+  // 지적·가로구역·접도 연산에는 TL_SPRD_RW 실폭도로를 사용하지 않는다.
+  // 도로폭 Fact는 VWorld TL_SPRD_MANAGE의 ROAD_BT를 사용하고, 화면용 영향범위만 중심선 폭원으로 버퍼한다.
   const mgRes=await trySpatialLayerCandidates(['TL_SPRD_MANAGE','LT_C_SPRD_MANAGE'],zone,['rds_man_no','RDS_MAN_NO']);
   errors.push(...(mgRes.errors||[]));
   const mg=mgRes.features||[];
   const derived=roadPolygonsFromCenterlines(mg);
   if(derived.length){
-    return {
-      rw:derived,manage:mg,
-      source:'VWorld TL_SPRD_MANAGE 도로중심선 + ROAD_BT 폭원 개략산정',
-      errors,approximation:true,road_mode:'centerline_width_buffer'
-    };
+    return {rw:derived,manage:mg,source:'VWorld TL_SPRD_MANAGE 도로중심선 + ROAD_BT',errors,approximation:true,road_mode:'centerline_width_attribute'};
   }
-
-  // 2차: VWorld 미응답/무자료면 배포본의 서울 공식 TL_SPRD_RW 실폭도로를 서버에서 조회한다.
-  try{
-    const res=await fetch('/api/spatial/roads',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry:activeGeometry})});
-    if(!res.ok){let detail='';try{detail=(await res.json())?.detail||'';}catch(_e){}throw new Error(`HTTP ${res.status}${detail?' · '+detail:''}`);}
-    const data=await res.json();
-    const rw=data?.rw?.features||[],manage=data?.manage?.features||[],meta=data?.metadata||{};
-    if(rw.length){
-      return {
-        rw,manage,
-        source:meta.source||'서버 내장 공식 실폭도로 TL_SPRD_RW',
-        errors,approximation:meta.road_mode!=='real_width_polygon',road_mode:meta.road_mode||'real_width_polygon',metadata:meta
-      };
-    }
-    errors.push('내장 TL_SPRD_RW:0건');
-  }catch(e){errors.push('내장 TL_SPRD_RW:'+String(e.message||e));}
-
   return {rw:[],manage:mg,source:'none',errors,approximation:true,road_mode:'none'};
 }
 async function analyzeRoadAccess(){
@@ -4610,7 +4633,7 @@ async function analyzeRoadAccess(){
     setRoadNetworkAutoValue('growth_arterial_status',siteStats.maxWidth!=null&&siteStats.maxWidth>=35?'candidate':null);
     document.getElementById('road_basis_building_count').value=basis;document.getElementById('road_access_building_count_6m').value=access6;const ratio6=basis?access6/basis*100:0,ratio4=basis?access4/basis*100:0;const frontage=document.getElementById('scheme_road_frontage_ratio');if(frontage){frontage.value=basis?ratio6.toFixed(2):'';frontage.dataset.autoRoad=estimateUsed?'ESTIMATE':'AUTO';}
     tbody.innerHTML=rows.map(r=>`<tr><td>${escHtml(r.jibun)}</td><td>${escHtml(r.pnu)}</td><td>${r.bc}</td><td>${r.total.toFixed(1)}m</td><td>${r.max.toFixed(1)}m</td><td>${r.ok?'<b class="PASS">접도</b>':'-'}</td><td>${escHtml(r.src)}</td></tr>`).join('');wrap.style.display='block';
-    const dates=currentRoadWidthFeatures.map(f=>String(pickPropCI(f.properties,['OPERT_DE','opert_de'])||'')).filter(Boolean).sort();const dr=dates.length?`${hubFmtDay(dates[0].slice(0,8))} ~ ${hubFmtDay(dates[dates.length-1].slice(0,8))}`:'미제공';const approxNote=estimateUsed?'사업진입조건 확인을 위한 개략적 추정치로, 현장조서 및 도면검토를 통해 보완될 수 있음':'서울 공식 TL_SPRD_RW 실폭도형에서 폭원·접도길이를 자동 산정';const roadQuality=estimateUsed?'ESTIMATE':'AUTO';const roadLabel=estimateUsed?'접도율 개략추정':'실폭도로 AUTO';summary.innerHTML=`${net.source} · 도로도형 ${currentRoadWidthFeatures.length}건(4m+ ${qualified4.length}건 / 6m+ ${qualified6.length}건) · 대상지 접면 ${siteStats.faceCount??'-'}개 구간·최대폭 ${siteStats.maxWidth==null?'-':siteStats.maxWidth.toFixed(1)+'m'} · ${counts.source} 기준 주택접도율 4m 기준 ${basis?ratio4.toFixed(1):'-'}% / 6m 기준 ${basis?ratio6.toFixed(1):'-'}% · <b>${approxNote}</b> · OPERT_DE ${dr}`;conn.textContent=roadLabel;conn.className=estimateUsed?'conn planned':'conn auto';analysisState.quality.road=roadQuality;analysisState.road_network={...siteStats,source:net.source,quality:roadQuality,road_mode:net.road_mode||'',approximation_note:approxNote,frontage_basis_buildings:basis,frontage_access_buildings_4m:access4,frontage_ratio_4m:basis?ratio4:null,frontage_access_buildings_6m:access6,frontage_ratio_6m:basis?ratio6:null,frontage_building_source:counts.source};refreshAnalysisLayers();refreshCompactMiniMaps();runAllSchemeChecks();
+    const dates=currentRoadManageFeatures.map(f=>String(pickPropCI(f.properties,['OPERT_DE','opert_de'])||'')).filter(Boolean).sort();const dr=dates.length?`${hubFmtDay(dates[0].slice(0,8))} ~ ${hubFmtDay(dates[dates.length-1].slice(0,8))}`:'미제공';const approxNote='도로폭은 TL_SPRD_MANAGE ROAD_BT 공식 속성을 사용하고, 대상지 접도연장은 도로중심선 위치를 이용한 초기검토용 공간산정입니다. TL_SPRD_RW 실폭도로는 지적 연산에 사용하지 않습니다.';const roadQuality='ESTIMATE';const roadLabel='도로폭 Fact · 접도 개략';summary.innerHTML=`${net.source} · 도로구간 ${currentRoadManageFeatures.length}건(4m+ ${qualified4.length}건 / 6m+ ${qualified6.length}건) · 대상지 접면 ${siteStats.faceCount??'-'}개 구간·최대폭 ${siteStats.maxWidth==null?'-':siteStats.maxWidth.toFixed(1)+'m'} · ${counts.source} 기준 주택접도율 4m 기준 ${basis?ratio4.toFixed(1):'-'}% / 6m 기준 ${basis?ratio6.toFixed(1):'-'}% · <b>${approxNote}</b> · OPERT_DE ${dr}`;conn.textContent=roadLabel;conn.className='conn planned';analysisState.quality.road=roadQuality;analysisState.road_network={...siteStats,source:net.source,quality:roadQuality,road_mode:net.road_mode||'',approximation_note:approxNote,frontage_basis_buildings:basis,frontage_access_buildings_4m:access4,frontage_ratio_4m:basis?ratio4:null,frontage_access_buildings_6m:access6,frontage_ratio_6m:basis?ratio6:null,frontage_building_source:counts.source};refreshAnalysisLayers();refreshCompactMiniMaps();runAllSchemeChecks();
   }catch(e){summary.textContent='접도율 계산 실패: '+String(e.message||e);conn.textContent='접도율 REVIEW';conn.className='conn planned';}
 }
 let siteReviewRunning=false;
@@ -4681,7 +4704,7 @@ function clearBoundaryAnalysisForNewGeometry(){
   currentRoadWidthFeatures=[];currentRoadManageFeatures=[];
   ccContextParcelFeatures=[];ccContextBuildingFeatures=[];
   stationAnalysis.nearestName='';stationAnalysis.nearestDistance=null;stationAnalysis.coverage250=null;stationAnalysis.coverage350=null;stationAnalysis.coverage500=null;stationAnalysis.nearestFeatures=[];stationAnalysis.lines=[];stationAnalysis.lineCount=null;stationAnalysis.transfer=null;stationAnalysis.centerValue='';stationAnalysis.centerType='';stationAnalysis.centerLabel='';stationAnalysis.activationRange=null;
-  streetBlockAnalysis.loaded=false;streetBlockAnalysis.loading=false;streetBlockAnalysis.status='unavailable';streetBlockAnalysis.blockFeature=null;streetBlockAnalysis.blockFeatures=[];streetBlockAnalysis.roadBarriers=[];streetBlockAnalysis.roadContext=[];streetBlockAnalysis.facilityBarriers=[];streetBlockAnalysis.stationBufferFeature=null;streetBlockAnalysis.blockAreaM2=null;streetBlockAnalysis.stationSharePct=null;streetBlockAnalysis.thresholdM=null;streetBlockAnalysis.quality='NONE';streetBlockAnalysis.path='';streetBlockAnalysis.metadata={};streetBlockAnalysis.errors=[];streetBlockAnalysis.warnings=[];
+  streetBlockAnalysis.loaded=false;streetBlockAnalysis.loading=false;streetBlockAnalysis.status='unavailable';streetBlockAnalysis.blockFeature=null;streetBlockAnalysis.blockFeatures=[];streetBlockAnalysis.blockRelations=[];streetBlockAnalysis.basicUnitContext=[];streetBlockAnalysis.roadBarriers=[];streetBlockAnalysis.roadContext=[];streetBlockAnalysis.facilityBarriers=[];streetBlockAnalysis.stationBufferFeature=null;streetBlockAnalysis.blockAreaM2=null;streetBlockAnalysis.siteAreaM2=null;streetBlockAnalysis.siteBlockIntersectionM2=null;streetBlockAnalysis.siteShareOfBlockPct=null;streetBlockAnalysis.blockCoverageOfSitePct=null;streetBlockAnalysis.stationSharePct=null;streetBlockAnalysis.siteStationSharePct=null;streetBlockAnalysis.thresholdM=null;streetBlockAnalysis.quality='NONE';streetBlockAnalysis.path='';streetBlockAnalysis.metadata={};streetBlockAnalysis.errors=[];streetBlockAnalysis.warnings=[];
   try{renderStreetBlockSpatialStatus();}catch(e){}
   if(typeof safeMedicalAnalysis!=='undefined'){
     safeMedicalAnalysis.loaded=false;safeMedicalAnalysis.loading=false;safeMedicalAnalysis.status='unavailable';safeMedicalAnalysis.items=[];safeMedicalAnalysis.metadata={};safeMedicalAnalysis.errors=[];safeMedicalAnalysis.warnings=[];safeMedicalAnalysis.sourceStats={};safeMedicalAnalysis.nearbyCounts={};safeMedicalAnalysis.message='';
@@ -4799,7 +4822,7 @@ function resetMeasure(){
   document.getElementById('small_parcel_count').value='';
   document.getElementById('total_building_count').value='';
   buildingLayer.clearLayers();smallParcelLayer.clearLayers();oldParcelLayer.clearLayers();frontagePassLayer.clearLayers();frontageFailLayer.clearLayers();roadLayer.clearLayers();stationBoundaryLayer.clearLayers();stationBuffer250Layer.clearLayers();stationBuffer350Layer.clearLayers();stationBuffer500Layer.clearLayers();
-  ccStreetBlockContext.clearLayers();ccStreetBlockStation.clearLayers();ccStreetBlockRoadContext.clearLayers();ccStreetBlockRoad.clearLayers();ccStreetBlockFacility.clearLayers();ccStreetBlockPolygon.clearLayers();ccStreetBlockSite.clearLayers();
+  ccStreetBlockContext.clearLayers();ccStreetBlockUnitContext.clearLayers();ccStreetBlockStation.clearLayers();ccStreetBlockRoadContext.clearLayers();ccStreetBlockRoad.clearLayers();ccStreetBlockFacility.clearLayers();ccStreetBlockPolygon.clearLayers();ccStreetBlockSite.clearLayers();
   hubRecordsByPnu.clear();analysisState.parcels.clear();analysisState.buildings=[];analysisState.roads=[];analysisState.planning={};analysisState.metrics={};resetPlanningAnalysis();
   const bs=document.getElementById('buildingStatus');
   if(bs)bs.innerHTML='<b>건축물 AUTO:</b> 구역을 그리면 자동 조회합니다.';
@@ -6044,8 +6067,13 @@ function commonSchemeData(){
     zoningAuto:planningAnalysis.loaded&&!!planningAnalysis.primaryZoning,
     zoningMixed:planningAnalysis.loaded&&planningAnalysis.zoningMixed,
     coverage:schemeNum('scheme_station_coverage'),
-    blockShare:schemeNum('scheme_block_share'),
+    blockShare:(streetBlockAnalysis.loaded&&streetBlockAnalysis.siteShareOfBlockPct!=null)?streetBlockAnalysis.siteShareOfBlockPct:schemeNum('scheme_block_share'),
+    siteShareOfBlock:(streetBlockAnalysis.loaded&&streetBlockAnalysis.siteShareOfBlockPct!=null)?streetBlockAnalysis.siteShareOfBlockPct:null,
+    blockCoverageOfSite:(streetBlockAnalysis.loaded&&streetBlockAnalysis.blockCoverageOfSitePct!=null)?streetBlockAnalysis.blockCoverageOfSitePct:null,
+    siteBlockIntersectionM2:(streetBlockAnalysis.loaded&&streetBlockAnalysis.siteBlockIntersectionM2!=null)?streetBlockAnalysis.siteBlockIntersectionM2:null,
     activationBlockShare:(streetBlockAnalysis.loaded&&streetBlockAnalysis.stationSharePct!=null)?streetBlockAnalysis.stationSharePct:null,
+    siteStationShare:(streetBlockAnalysis.loaded&&streetBlockAnalysis.siteStationSharePct!=null)?streetBlockAnalysis.siteStationSharePct:null,
+    blockRelations:(streetBlockAnalysis.loaded&&streetBlockAnalysis.blockRelations)?streetBlockAnalysis.blockRelations:[],
     activationBlockArea:(streetBlockAnalysis.loaded&&streetBlockAnalysis.blockAreaM2!=null)?streetBlockAnalysis.blockAreaM2:null,
     activationBlockQuality:streetBlockAnalysis.quality||'NONE',
     activationBlockStatus:streetBlockAnalysis.status||'unavailable',
@@ -6122,7 +6150,7 @@ function commonSchemeData(){
 // 판정모듈은 DOM/GIS를 직접 추정하지 않고 아래 Fact Store에서 값을 읽는다.
 // 사업별 추가 공간조건도 먼저 facts로 수집한 뒤 판정에 사용한다.
 // ============================================================
-const SCHEME_MODULE_API_VERSION='2026-08-31-r15-street-block-4m-conditional';
+const SCHEME_MODULE_API_VERSION='2026-08-31-r17-spatial-relation-road-facts';
 var latestSiteFactStore=null;
 var latestSchemeModuleResults={};
 
@@ -6142,14 +6170,14 @@ function roadRawFacts(cArg=null){
     arterial_function_confirmed:roadFunctionIsArterial(x.road_function),
     statutory_classification:x.statutory_classification??null,
     frontage_contact_m:Number.isFinite(Number(x.contact))?Number(x.contact):null,
-    frontage_ratio_pct:null,intersection:null,site_distance_m:0,linear_commercial:null
+    frontage_ratio_pct:Number.isFinite(Number(x.boundary_share_pct))?Number(x.boundary_share_pct):null,max_contiguous_m:Number.isFinite(Number(x.max_contiguous_m))?Number(x.max_contiguous_m):null,intersection:null,site_distance_m:0,linear_commercial:null
   }));
   const functionKnown=records.some(x=>x.road_function!=null&&String(x.road_function).trim()!=='');
   const statutoryKnown=records.some(x=>x.statutory_classification!=null&&String(x.statutory_classification).trim()!=='');
   return {
     quality:c.roadQuality||'NO_DATA',source:net.source||'',
     field_availability:{width:c.maxRoad!=null,road_grade:records.some(x=>x.road_grade!=null),road_function:functionKnown,statutory_classification:statutoryKnown,intersection:false,linear_commercial:false},
-    site_summary:{face_count:c.roadFaces,road4_faces:c.road4Faces,max_width_m:c.maxRoad,has_8m_width:c.has8,has_20m_width_candidate:c.has20Width,road20_frontage_pct:c.road20Perimeter,road35_frontage_pct:c.road35Perimeter,perimeter_m:Number.isFinite(Number(net.perimeterM))?Number(net.perimeterM):null,road20_contact_m:Number.isFinite(Number(net.contact20M))?Number(net.contact20M):null,road35_contact_m:Number.isFinite(Number(net.contact35M))?Number(net.contact35M):null,max20_contact_m:Number.isFinite(Number(net.max20ContactM))?Number(net.max20ContactM):null,max35_contact_m:Number.isFinite(Number(net.max35ContactM))?Number(net.max35ContactM):null,frontage_basis_buildings:Number.isFinite(Number(net.frontage_basis_buildings))?Number(net.frontage_basis_buildings):null,frontage_access_buildings_6m:Number.isFinite(Number(net.frontage_access_buildings_6m))?Number(net.frontage_access_buildings_6m):null,frontage_ratio_6m:Number.isFinite(Number(net.frontage_ratio_6m))?Number(net.frontage_ratio_6m):null,frontage_building_source:net.frontage_building_source||''},
+    site_summary:{face_count:c.roadFaces,road4_faces:c.road4Faces,road6_faces:Number.isFinite(Number(net.road6Faces))?Number(net.road6Faces):null,road8_faces:Number.isFinite(Number(net.road8Faces))?Number(net.road8Faces):null,road20_faces:Number.isFinite(Number(net.road20Faces))?Number(net.road20Faces):null,road35_faces:Number.isFinite(Number(net.road35Faces))?Number(net.road35Faces):null,max_width_m:c.maxRoad,has_8m_width:c.has8,has_20m_width_candidate:c.has20Width,perimeter_m:Number.isFinite(Number(net.perimeterM))?Number(net.perimeterM):null,road4_contact_m:Number.isFinite(Number(net.contact4M))?Number(net.contact4M):null,road6_contact_m:Number.isFinite(Number(net.contact6M))?Number(net.contact6M):null,road8_contact_m:Number.isFinite(Number(net.contact8M))?Number(net.contact8M):null,road20_contact_m:Number.isFinite(Number(net.contact20M))?Number(net.contact20M):null,road35_contact_m:Number.isFinite(Number(net.contact35M))?Number(net.contact35M):null,road4_frontage_pct:Number.isFinite(Number(net.road4Perimeter))?Number(net.road4Perimeter):null,road6_frontage_pct:Number.isFinite(Number(net.road6Perimeter))?Number(net.road6Perimeter):null,road8_frontage_pct:Number.isFinite(Number(net.road8Perimeter))?Number(net.road8Perimeter):null,road20_frontage_pct:Number.isFinite(Number(net.road20Perimeter))?Number(net.road20Perimeter):null,road35_frontage_pct:Number.isFinite(Number(net.road35Perimeter))?Number(net.road35Perimeter):null,max20_contact_m:Number.isFinite(Number(net.max20ContactM))?Number(net.max20ContactM):null,max35_contact_m:Number.isFinite(Number(net.max35ContactM))?Number(net.max35ContactM):null,frontage_basis_buildings:Number.isFinite(Number(net.frontage_basis_buildings))?Number(net.frontage_basis_buildings):null,frontage_access_buildings_6m:Number.isFinite(Number(net.frontage_access_buildings_6m))?Number(net.frontage_access_buildings_6m):null,frontage_ratio_6m:Number.isFinite(Number(net.frontage_ratio_6m))?Number(net.frontage_ratio_6m):null,frontage_building_source:net.frontage_building_source||''},
     records,
     note:functionKnown?'도로기능 속성은 원자료 값을 그대로 보존하며 제도별 모듈이 별도 해석':'도로중심선 폭원자료만으로 도로기능을 확정하지 않으며 간선도로 여부는 REVIEW'
   };
@@ -6158,8 +6186,10 @@ function compactRoadFacts(c){
   const raw=roadRawFacts(c);
   return {
     quality:raw.quality,source:raw.source,
-    face_count:c.roadFaces,road4_faces:c.road4Faces,max_width_m:c.maxRoad,
-    has_8m:c.has8,has_20m_width_candidate:c.has20Width,roads:raw.records.map(x=>({name:x.road_name,width_m:x.width_m,contact_m:x.frontage_contact_m,road_function:x.road_function,arterial_function_confirmed:x.arterial_function_confirmed}))
+    face_count:c.roadFaces,road4_faces:c.road4Faces,road6_faces:analysisState.road_network?.road6Faces??null,road8_faces:analysisState.road_network?.road8Faces??null,road20_faces:analysisState.road_network?.road20Faces??null,road35_faces:analysisState.road_network?.road35Faces??null,max_width_m:c.maxRoad,
+    has_8m:c.has8,has_20m_width_candidate:c.has20Width,perimeter_m:analysisState.road_network?.perimeterM??null,
+    road4_frontage_pct:analysisState.road_network?.road4Perimeter??null,road6_frontage_pct:analysisState.road_network?.road6Perimeter??null,road8_frontage_pct:analysisState.road_network?.road8Perimeter??null,road20_frontage_pct:c.road20Perimeter,road35_frontage_pct:c.road35Perimeter,
+    roads:raw.records.map(x=>({name:x.road_name,width_m:x.width_m,contact_m:x.frontage_contact_m,boundary_share_pct:x.frontage_ratio_pct,max_contiguous_m:x.max_contiguous_m,road_function:x.road_function,arterial_function_confirmed:x.arterial_function_confirmed}))
   };
 }
 function renewalSpatialFacts(){
@@ -6639,7 +6669,7 @@ function stationComplexSpatialFacts(store){
   const arterialCandidate=c.has20Width===true||((road.roads||[]).some(x=>Number(x.width_m)>=20));
   const fact={
     station:{distance_m:c.dist,name:c.stationName||'',auto:c.stationAuto,coverage250:c.coverage250,coverage350:c.coverage350},
-    block:{share_pct:c.blockShare,arterial_candidate:arterialCandidate,regularization:null},
+    block:{share_pct:c.siteShareOfBlock??c.blockShare,coverage_of_site_pct:c.blockCoverageOfSite,intersection_m2:c.siteBlockIntersectionM2,relations:c.blockRelations||[],arterial_candidate:arterialCandidate,regularization:null},
     zoning:{current:c.zoning||'',lowrise_adjacent:null,hill_adjacent:null},
     road:{road4_faces:road4Faces,has8,max_width_m:road.max_width_m,roads:road.roads||[],evidence:store.site.spatial_evidence?.roads?.station_complex||null},
     area:{m2:c.area,station_linked_convenience:null},
@@ -6649,7 +6679,7 @@ function stationComplexSpatialFacts(store){
     planning:{density:stationComplexDensity(c),center:c.center||'',center_label:c.centerLabel||''},
     spatial_status_rows:[
       spatialFactRow('역세권 250m',c.dist==null?'-':`${Number(c.dist).toFixed(1)}m · ${c.stationName||'역명 미확인'}`,c.dist!=null&&c.stationAuto?'CONFIRMED':'REVIEW','승강장 경계 250m 원칙 · 기준 적용완화는 도시·건축공동위원회 검토'),
-      spatialFactRow('가로구역 포함률',c.blockShare==null?'-':`${Number(c.blockShare).toFixed(1)}%`,c.blockShare==null?'REVIEW':'CONFIRMED','1/2 미만은 간선도로 접면 또는 구역 정형화 필요성 인정 검토'),
+      spatialFactRow('가로구역 중 사업대상지 점유율',(c.siteShareOfBlock??c.blockShare)==null?'-':`${Number(c.siteShareOfBlock??c.blockShare).toFixed(1)}%`,(c.siteShareOfBlock??c.blockShare)==null?'REVIEW':'CONFIRMED','사업대상지∩가로구역 / 가로구역 면적 · 1/2 이상 원칙, 1,500㎡ 이상 단일토지 등 위원회 인정 시 1/2 미만 가능'),
       spatialFactRow('4m 이상 도로 접면 수',road4Faces==null?'-':`${road4Faces}면`,road4Faces==null?'REVIEW':'CONFIRMED',summarizeRoadList(road)),
       spatialFactRow('8m 이상 도로',has8==null?'-':has8?'확보':'미확보',has8==null?'REVIEW':'CONFIRMED','최소 한 면 폭 8m 이상'),
       spatialFactRow('구릉지(고도·경사)', '해발 40m·경사 10도 공간자료 미연결','REVIEW','DEM/수치표고모델 공식자료 추가 필요'),
@@ -6668,16 +6698,16 @@ function checkStationComplexFromFacts(store,f){
   if(f.station.distance_m!=null){
     if(f.station.auto&&f.station.distance_m<=250){stationStatus='PASS';stationNote='공식 승강장 경계 기준 250m 이내';}
     else if(f.station.distance_m<=250){stationStatus='REVIEW';stationNote='250m 이내 수기거리 · 공식 승강장 경계 재확인';}
-    else {stationStatus='REVIEW';stationNote='250m 원칙 미충족 · 구역 여건상 기준 적용완화 가능 여부를 도시·건축공동위원회에서 확인';}
+    else {stationStatus='PASS';stationNote='250m 원칙 밖 · 계획수립기준상 구역 여건에 따른 도시·건축공동위원회 완화 경로가 있으므로 단서부 PASS';}
   }
-  rows.push(schemeRow('역세권','승강장 경계 반경 250m 이내 원칙 · 구역 여건상 기준 적용완화는 도시·건축공동위원회 검토',f.station.distance_m==null?'-':`${Number(f.station.distance_m).toFixed(1)}m · ${f.station.name||'-'}`,stationStatus,stationNote,true,{sourceId:'STATION_COMPLEX',locator:'적용대상 ①·③'}));
-  let blockStatus='REVIEW',blockNote='가로구역 포함률 확인 필요';
+  rows.push(schemeRow('역세권','승강장 경계 반경 250m 이내 원칙 · 구역 여건상 기준 적용완화는 도시·건축공동위원회 검토',f.station.distance_m==null?'-':`${Number(f.station.distance_m).toFixed(1)}m · ${f.station.name||'-'}`,stationStatus,stationNote,true,{sourceId:'STATION_COMPLEX',locator:'적용대상 ①·③',conditional:stationStatus==='PASS'&&f.station.distance_m!=null&&f.station.distance_m>250,caveat:f.station.distance_m!=null&&f.station.distance_m>250?'250m 기본범위 밖 · 위원회 기준완화 인정 필요':''}));
+  let blockStatus='REVIEW',blockNote='가로구역 점유율 확인 필요',blockConditional=false;
   if(f.block.share_pct!=null){
-    if(f.block.share_pct>=50){blockStatus='PASS';blockNote='가로구역 1/2 이상';}
-    else if(f.block.arterial_candidate){blockStatus='REVIEW';blockNote='1/2 미만이나 간선도로 접면 후보 · 위원회 인정 필요';}
-    else {blockStatus='REVIEW';blockNote='1/2 미만: 구역 정형화 필요성 위원회 인정 여부 확인';}
+    if(f.block.share_pct>=50){blockStatus='PASS';blockNote='사업대상지가 가로구역의 1/2 이상 점유';}
+    else if(f.block.share_pct>0){blockStatus='PASS';blockConditional=true;blockNote='가로구역 1/2 미만 · 계획수립기준상 위원회 인정 경로를 적용하는 단서부 PASS';}
+    else {blockStatus='FAIL';blockNote='사업대상지와 해당 가로구역의 면적중첩 없음';}
   }
-  rows.push(schemeRow('가로구역','가로구역의 1/2 이상 원칙 · 1/2 미만은 간선도로 접면 또는 구역정형화 필요성 인정',f.block.share_pct==null?'-':`${Number(f.block.share_pct).toFixed(1)}%`,blockStatus,blockNote,true,{sourceId:'STATION_COMPLEX',locator:'적용대상 ③'}));
+  rows.push(schemeRow('가로구역','사업대상지가 가로구역의 1/2 이상 원칙 · 1/2 미만은 계획수립기준상 위원회 인정 경로 검토',f.block.share_pct==null?'-':`${Number(f.block.share_pct).toFixed(1)}%`,blockStatus,blockNote,true,{sourceId:'STATION_COMPLEX',locator:'적용대상 ③',conditional:blockConditional,caveat:blockConditional?'가로구역 1/2 미만 · 위원회 인정 필요':'',decisionPath:blockConditional?'committee_exception':'block_half'}));
   const roadStatus=(f.road.road4_faces==null||f.road.has8==null)?'REVIEW':(f.road.road4_faces>=2&&f.road.has8)?'PASS':'FAIL';
   rows.push(schemeRow('도로요건','2면 이상이 폭 4m 이상 도로에 접하면서 최소 한 면은 폭 8m 이상',`4m+ ${f.road.road4_faces??'-'}면 / 8m+ ${f.road.has8==null?'-':f.road.has8?'O':'X'}`,roadStatus,summarizeRoadList(f.road),true,{sourceId:'STATION_COMPLEX',locator:'적용대상 도로요건'}));
   let areaStatus='REVIEW',areaNote='';
@@ -7912,12 +7942,12 @@ function checkActivationFromFacts(store,f){
   let roadStatus='REVIEW';
   if(f.road.road4_faces!=null&&f.road.has_8m!=null){
     const ok=Number(f.road.road4_faces)>=2&&f.road.has_8m===true;
-    roadStatus=ok?(f.road.quality==='AUTO'?'PASS':'REVIEW'):'FAIL';
+    roadStatus=ok?'PASS':'FAIL';
   }
   const roadText=(f.road.roads||[]).slice(0,4).map(x=>`${x.name} ${x.width_m==null?'-':x.width_m.toFixed(1)+'m'}`).join(' / ');
   rows.push(schemeRow('도로','2면 이상이 폭 4m 이상 도로에 접하고 최소 1면은 폭 8m 이상',
     `${f.road.road4_faces==null?'-':f.road.road4_faces+'면(4m+)'} / 8m ${f.road.has_8m==null?'-':f.road.has_8m?'접함':'미접함'}${roadText?' · '+roadText:''}`,
-    roadStatus,factQualityLabel(f.road.quality),true,{sourceId:'ACTIVATION',locator:'2-1-4 가목'}));
+    roadStatus,f.road.quality==='ESTIMATE'?'ROAD_BT 폭원은 공식값 · 접도연장은 도로중심선 기반 초기검토값':'도로 Fact',true,{sourceId:'ACTIVATION',locator:'2-1-4 가목',conditional:roadStatus==='PASS'&&f.road.quality==='ESTIMATE',caveat:f.road.quality==='ESTIMATE'?'접도연장·도로경계는 결정도서/현장도면 재확인':''}));
 
   let areaStatus='REVIEW',areaNote='1,500~10,000㎡ 원칙',areaConditional=false;
   if(f.area.m2!=null){

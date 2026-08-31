@@ -251,7 +251,6 @@ def check_feedback_and_ui() -> None:
     assert "/api/spatial/development-intersections" in html
     assert "TL_SPRD_MANAGE" in html
     assert "TL_SPRD_RW" in html
-    assert "/api/spatial/roads" in html
     assert "st.areaGate==='FAIL'||st.structural==='FAIL'" in html
     assert "const disabled=st.state==='off'" in html
     assert "r.hardGate==='AREA'" in html
@@ -299,7 +298,7 @@ def check_feedback_and_ui() -> None:
     assert "schemeAgeFact(store,'growth_potential',route)" in decision
     assert "schemeAgeFact(store,'urban_redevelopment')" in decision
     assert "const SCHEME_MODULES=" in html
-    assert "SCHEME_MODULE_API_VERSION='2026-08-31-r15-street-block-4m-conditional'" in html
+    assert "SCHEME_MODULE_API_VERSION='2026-08-31-r17-spatial-relation-road-facts'" in html
     assert "const SHELL_SCHEMES=new Set(['urban_innovation_zone','facility_complex_zone','mixed_use_zone'])" in html
     assert "현재 자동 활성화·추천·우선순위 미반영" in html
     assert "collectFacts:activationSpatialFacts" in html
@@ -605,6 +604,8 @@ def check_release_files() -> None:
     assert "분석번호" in readme
     assert "SEOUL_OPEN_DATA_KEY" in readme
     assert (root / "RULE_AUDIT_v2.5.0.md").exists()
+    assert (root / "CHANGELOG_v2.5.0-r16.txt").exists()
+    assert (root / "BASIC_UNIT_DATA_SETUP.txt").exists()
     road_zip = root / "road_seoul.zip"
     assert road_zip.is_file() and road_zip.stat().st_size > 20_000_000
     # 기준본에 포함된 공식 근거 PDF 8종이 배포 ZIP에서 누락되지 않도록 고정한다.
@@ -835,7 +836,7 @@ def check_purpose_filter_and_frontage_facts() -> None:
     assert "trySpatialLayerCandidates(['TL_SPRD_MANAGE','LT_C_SPRD_MANAGE']" in html
     assert "trySpatialLayerCandidates(['TL_SPRD_RW'" not in html
     assert "사업진입조건 확인을 위한 개략적 추정치로, 현장조서 및 도면검토를 통해 보완될 수 있음" in html
-    assert "const roadQuality=estimateUsed?'ESTIMATE':'AUTO'" in html
+    assert "const roadQuality='ESTIMATE'" in html
     assert "analysisState.quality.road=roadQuality" in html
     assert 'function checkRedevelopment(' not in html
 
@@ -845,7 +846,7 @@ def check_remaining_four_independent_modules_and_sources() -> None:
     html = (root / "app.html").read_text(encoding="utf-8")
     py = (root / "app.py").read_text(encoding="utf-8")
 
-    assert "SCHEME_MODULE_API_VERSION='2026-08-31-r15-street-block-4m-conditional'" in html
+    assert "SCHEME_MODULE_API_VERSION='2026-08-31-r17-spatial-relation-road-facts'" in html
     assert "const SHELL_SCHEMES=new Set(['urban_innovation_zone','facility_complex_zone','mixed_use_zone'])" in html
     required = (
         "function redevelopmentSpatialFacts(store)", "function checkRedevelopmentFromFacts(store,f)",
@@ -927,7 +928,7 @@ def check_remaining_four_independent_modules_and_sources() -> None:
     # 서버측 구형 재개발 판정엔진/중복 API는 제거한다.
     assert "def evaluate_redevelopment(" not in py
     assert '/api/redevelopment/evaluate' not in py
-    assert '"scheme_module_api": "2026-08-31-r15-street-block-4m-conditional"' in py
+    assert '"scheme_module_api": "2026-08-31-r17-spatial-relation-road-facts"' in py
     assert '15 independent modules including smallscale 5-route family and prior_negotiation' in py
 
 def check_scheme_family_separation() -> None:
@@ -1081,7 +1082,7 @@ def check_r8_boundary_map_smallscale_prior() -> None:
     assert "15 independent modules including smallscale 5-route family and prior_negotiation" in py
     assert '"engine": "site_fact_store_v2.5.0_r11"' in py
     assert "five user review routes: autonomous / block / small-scale reconstruction / small-scale redevelopment / Moa Town+Moa Housing policy route" in py
-    assert "r15-street-block-4m-conditional" in html and "r15-street-block-4m-conditional" in py
+    assert "r17-spatial-relation-road-facts" in html and "r17-spatial-relation-road-facts" in py
 
 
 def check_r9_refinement_placement() -> None:
@@ -1139,7 +1140,7 @@ def check_r10_scheme_fail_safe() -> None:
     pdf = root / "도시계획변경 사전협상 운영지침(11차개정_2026.06.29).pdf"
     assert pdf.is_file() and pdf.stat().st_size > 500_000
     assert 'site_fact_store_v2.5.0_r11' in py
-    assert 'r15-street-block-4m-conditional' in html and 'r15-street-block-4m-conditional' in py
+    assert 'r17-spatial-relation-road-facts' in html and 'r17-spatial-relation-road-facts' in py
 
 
 def check_r11_popup_spatial_progress() -> None:
@@ -1178,7 +1179,7 @@ def check_r11_popup_spatial_progress() -> None:
     assert "analyzeRoadAccess,60000" in html
     assert "총 ${formatAnalysisElapsed" in html
     assert 'site_fact_store_v2.5.0_r11' in py
-    assert 'r15-street-block-4m-conditional' in html and 'r15-street-block-4m-conditional' in py
+    assert 'r17-spatial-relation-road-facts' in html and 'r17-spatial-relation-road-facts' in py
 
 
 
@@ -1194,14 +1195,13 @@ def check_r11_data_recovery_fix1() -> None:
     assert "residential_environment:residentialEnvironment" in road_block
 
     fetch_block = html[html.index("async function fetchRoadNetwork()"):html.index("async function analyzeRoadAccess()", html.index("async function fetchRoadNetwork()"))]
-    assert "/api/spatial/roads" in fetch_block
-    assert "TL_SPRD_RW" in fetch_block
-    assert "road_mode:meta.road_mode||'real_width_polygon'" in fetch_block
-    assert "approximation:meta.road_mode!=='real_width_polygon'" in fetch_block
+    assert "TL_SPRD_MANAGE" in fetch_block and "ROAD_BT" in fetch_block
+    assert "/api/spatial/roads" not in fetch_block
+    assert "TL_SPRD_RW 실폭도로를 사용하지 않는다" in fetch_block
 
     annotate = html[html.index("function annotateRoadWidths"):html.index("function boundaryLines", html.index("function annotateRoadWidths"))]
-    assert "estimateRoadPolygonWidthMeters(f)" in annotate
-    assert "TL_SPRD_RW 공식 실폭도형 산정" in annotate
+    assert "estimateRoadPolygonWidthMeters(f)" not in annotate
+    assert "TL_SPRD_RW 공식 실폭도형 산정" not in annotate
 
     ranking = html[html.index("function autoRecommendationTop3()"):html.index("function numOrNull", html.index("function autoRecommendationTop3()"))]
     assert "if(analysisState.fact_store_error)return [];" in ranking
@@ -1214,8 +1214,8 @@ def check_r11_data_recovery_fix1() -> None:
     assert "numOrNull(document.getElementById('area_m2')?.value)" not in preview
     assert "Fact Store 오류로 선순위 산정을 중단" in preview
 
-    assert '"road_access": "VWorld TL_SPRD_MANAGE + ROAD_BT first; bundled TL_SPRD_RW automatic fallback"' in py
-    assert '"scheme_module_api": "2026-08-31-r15-street-block-4m-conditional"' in py
+    assert 'TL_SPRD_RW excluded from cadastral arithmetic' in py
+    assert '"scheme_module_api": "2026-08-31-r17-spatial-relation-road-facts"' in py
 
 
 
@@ -1253,93 +1253,111 @@ def check_r13_criterion_layer1() -> None:
     assert "criterionStatus:age?.status||'REVIEW'" in redevelopment
     assert "conditional:f.area.conditional===true" in redevelopment
 
-    assert "SCHEME_MODULE_API_VERSION='2026-08-31-r15-street-block-4m-conditional'" in html
-    assert '"scheme_module_api": "2026-08-31-r15-street-block-4m-conditional"' in py
+    assert "SCHEME_MODULE_API_VERSION='2026-08-31-r17-spatial-relation-road-facts'" in html
+    assert '"scheme_module_api": "2026-08-31-r17-spatial-relation-road-facts"' in py
 
 def check_r14_street_block_auto() -> None:
-    """R14: 역세권활성화 가로구역을 공식 도로·시설경계로 자동 추출하고 판정 Fact에 연결한다."""
+    """Current invariant: street-block UI exposes area relations and never treats TL_SPRD_RW as the block engine."""
     root = Path(app.BASE_DIR)
     html = (root / "app.html").read_text(encoding="utf-8")
     py = (root / "app.py").read_text(encoding="utf-8")
-
     assert 'id="ccStreetBlockMiniMap"' in html
-    for dom_id in ("spStreetBlockState","spStreetBlockArea","spStreetBlockShare","spStreetBlockRange","spStreetBlockPath"):
+    for dom_id in ("spStreetBlockState","spStreetBlockArea","spStreetBlockIntersection","spStreetBlockSiteShare","spStreetBlockCoverage","spStreetBlockShare","spStreetBlockSiteStationShare","spStreetBlockRange","spStreetBlockPath"):
         assert f'id="{dom_id}"' in html
     assert "function analyzeStreetBlock()" in html
-    assert "function fetchStreetBlockFacilityBarriers" in html
-    for layer in ("LT_C_UPISUQ152","LT_C_UPISUQ153","LT_C_UPISUQ155","LT_C_UPISUQ156"):
-        assert layer in html, layer
-    for keyword in ("주차장|철도|궤도","광장|공원|녹지|공공공지","학교","하천"):
-        assert keyword in html, keyword
     assert "/api/spatial/street-block" in html
-    assert "activationBlockShare" in html
-    assert "block_quality:stationBlockQuality" in html
-    assert "street_block:streetBlockSpatialEvidenceFacts()" in html
-    assert "safeAnalysisStep('가로구역',analyzeStreetBlock,90000)" in html
-
-    assert "class StreetBlockInput(BaseModel):" in py
-    assert "def analyze_street_block(" in py
-    assert '@app.post("/api/spatial/street-block")' in py
-    assert "road4m_conditional_facility_polygonization" in py
-    assert "topology_tolerance_m" in py
-    assert '"street_block_gis": "TL_SPRD_RW 4m+ road barriers + conditional VWorld UPIS facility barriers -> automatic street-block polygonization"' in py
-
-    # 실제 서울 공식 TL_SPRD_RW에서 닫힌 블록을 하나 자동 추출한다.
-    lon, lat, d = 127.0152, 37.5586, 0.00008
-    geom = {"type":"Polygon","coordinates":[[[lon-d,lat-d],[lon+d,lat-d],[lon+d,lat+d],[lon-d,lat+d],[lon-d,lat-d]]]}
-    result = app.analyze_street_block(geom, [], 500)
-    assert result["status"] == "resolved", result
-    assert result.get("block") and float(result["metadata"].get("block_area_m2") or 0) > 100
-    assert result["metadata"].get("road_mode") == "real_width_polygon"
-    assert result["metadata"].get("site_spans_multiple_blocks") is False
+    assert "road_features:roadFeatures" in html
+    assert "TL_SPRD_RW 실폭도로는 공간연산 제외" in html
+    assert "_analyze_street_block_road_fallback" not in py
+    assert "no TL_SPRD_RW fallback" in py
 
 
 def check_r15_street_block_4m_conditional() -> None:
-    """R15: 4m+ 도로만 기본경계로 쓰고 내부 고립시설은 가로구역을 자르지 않는다."""
+    """Current invariant: 4m is an engine merge threshold applied to ROAD_BT, not a legal width rule."""
     root = Path(app.BASE_DIR)
     html = (root / "app.html").read_text(encoding="utf-8")
     py = (root / "app.py").read_text(encoding="utf-8")
-
     assert "road_min_width_m = 4.0" in py
-    assert "def _street_block_road_width_m" in py
-    assert "def _street_block_facility_effect" in py
-    assert "isolated_internal" in py and "traverse_split" in py and "outer_boundary_closure" in py
-    assert "legal_width_rule" in py and "법정 도로폭 기준이 아님" in py
+    assert "TL_SPRD_MANAGE ROAD_BT" in py
+    assert "uses_real_width_polygon':False" in py
+    assert "4m는 법정 가로구역 폭 기준이 아니라" in html
+    assert "철도|하천" in py
     assert "LT_C_UPISUQ151" not in html[html.index("function streetBlockBarrierSpec"):html.index("async function fetchStreetBlockFacilityBarriers")]
-    assert "ccStreetBlockRoadContext" in html
-    assert "4m 미만 도로" in html and "가로구역 경계 제외" in html
-    assert "내부 고립시설은 분할에서 제외" in html
-    assert "data.road_context?.features||[]" in html
-    assert "data.facility_barriers?.features||[]" in html
 
-    # 합성 블록: 내부 공원은 hole만 만들기 때문에 경계에서 제외된다.
-    primary = box(0, 0, 100, 100)
-    frame = box(-50, -50, 150, 150)
-    site = box(10, 10, 20, 20)
-    empty_barrier = box(-1000, -1000, -999, -999)
-    internal = box(40, 40, 60, 60)
-    use, reason = app._street_block_facility_effect(primary, internal, frame, empty_barrier, site)
-    assert use is False and reason == "isolated_internal", (use, reason)
+    from shapely.geometry import box, GeometryCollection
+    from shapely.strtree import STRtree
+    units = [box(0, 0, 50, 50), box(50, 0, 100, 50)]
+    tree = STRtree(units)
+    comp, limited = app._basic_unit_component(0, units, tree, GeometryCollection(), GeometryCollection(), max_units=20)
+    assert limited is False and comp == {0, 1}
+    road_corridor = box(48.5, -5, 51.5, 55)
+    comp, limited = app._basic_unit_component(0, units, tree, road_corridor, GeometryCollection(), max_units=20)
+    assert limited is False and comp == {0}
 
-    # 블록을 완전히 관통하는 시설은 실제 분할경계로 채택된다.
-    crossing = box(48, 0, 52, 100)
-    use, reason = app._street_block_facility_effect(primary, crossing, frame, empty_barrier, site)
-    assert use is True and reason == "traverse_split", (use, reason)
 
-    # 실제 서울 도로 분석에서도 4m 기준과 4m 미만 현황레이어가 분리된다.
+def check_r16_basic_unit_street_block() -> None:
+    """Current invariant: SGIS basic units are the candidate geometry; no real-width-road polygonization fallback."""
+    root = Path(app.BASE_DIR)
+    html = (root / "app.html").read_text(encoding="utf-8")
+    py = (root / "app.py").read_text(encoding="utf-8")
+    for token in (
+        "def _basic_unit_zip_path()", "def _basic_unit_spatial_layers()",
+        "def _shared_edge_barrier", "def _basic_unit_component",
+        "def _street_block_from_basic_units", "sgis_basic_unit_roadbt_merge",
+        "basic_unit_is_legal_street_block", "street_block_basic_unit_configured",
+    ):
+        assert token in py, token
+    assert "basicUnitContext" in html and "ccStreetBlockUnitContext" in html
+    assert "SGIS 기초단위구 후보경계" in html
+    assert "AUTO · 기초단위구+ROAD_BT" in html
+    assert "도로 fallback" not in html[html.index("function renderStreetBlockSpatialStatus"):html.index("async function refreshMiniContextFeatures", html.index("function renderStreetBlockSpatialStatus"))]
+    assert "SCHEME_MODULE_API_VERSION='2026-08-31-r17-spatial-relation-road-facts'" in html
+    assert '"scheme_module_api": "2026-08-31-r17-spatial-relation-road-facts"' in py
+
     lon, lat, d = 127.0152, 37.5586, 0.00008
     geom = {"type":"Polygon","coordinates":[[[lon-d,lat-d],[lon+d,lat-d],[lon+d,lat+d],[lon-d,lat+d],[lon-d,lat-d]]]}
-    result = app.analyze_street_block(geom, [], 500)
-    assert result["status"] == "resolved", result
-    md = result["metadata"]
-    assert md.get("road_min_width_m") == 4.0
-    assert md.get("method") == "road4m_conditional_facility_polygonization"
-    assert md.get("legal_width_rule") is False
-    assert len(result.get("road_barriers", {}).get("features", [])) > 0
-    assert len(result.get("road_context", {}).get("features", [])) > 0
-    assert all(float((f.get("properties") or {}).get("_block_width_m") or 0) >= 4.0 for f in result["road_barriers"]["features"])
-    assert all(((f.get("properties") or {}).get("_block_width_m") is None) or float((f.get("properties") or {}).get("_block_width_m")) < 4.0 for f in result["road_context"]["features"])
+    result = app.analyze_street_block(geom, [], [], 500)
+    md = result.get("metadata") or {}
+    if not app._basic_unit_spatial_layers().get("available"):
+        assert result["status"] == "unavailable", result
+        assert md.get("fallback_used") is False
+        assert md.get("uses_real_width_polygon") is False
 
+
+def check_r17_spatial_relation_road_facts() -> None:
+    """R17: spatial facts are separated from scheme rules; block/site/station ratios have explicit denominators."""
+    root = Path(app.BASE_DIR)
+    html = (root / "app.html").read_text(encoding="utf-8")
+    py = (root / "app.py").read_text(encoding="utf-8")
+    for token in (
+        "siteShareOfBlockPct","blockCoverageOfSitePct","siteStationSharePct","blockRelations",
+        "site_share_of_block_pct","block_coverage_of_site_pct","station_share_of_block_pct","station_share_of_site_pct",
+    ):
+        assert token in html, token
+    for label in (
+        "가로구역 중 대상지 점유율","대상지의 가로구역 포함률","가로구역의 역세권 편입률","대상지의 역세권 편입률",
+    ):
+        assert label in html, label
+    assert "frontage_ratio_pct:Number.isFinite(Number(x.boundary_share_pct))" in html
+    assert "boundary_share_pct:pct(x.contact)" in html
+    assert "도로명(없으면 관리번호) 단위로 먼저 묶는다" in html
+    assert "faceCountAt(4)" in html and "faceCountAt(35)" in html
+    assert "road4Perimeter" in html and "road6Perimeter" in html and "road8Perimeter" in html
+    assert "ROAD_BT 폭원 Fact · 접도구간" in html
+    assert "공간 Fact → 사업모듈 판정 입력" in html
+    # station-complex uses site/block occupancy, while activation uses station/block coverage.
+    station_block = html[html.index("function stationComplexSpatialFacts"):html.index("function checkStationComplexFromFacts")]
+    assert "c.siteShareOfBlock??c.blockShare" in station_block
+    activation_block = html[html.index("function activationSpatialFacts"):html.index("function spatialFactRow", html.index("function activationSpatialFacts"))]
+    assert "activationBlockShare" in activation_block
+    assert "stationBlock" in activation_block
+    # explicit committee path is PASS + caveat, not data-unknown REVIEW.
+    station_check = html[html.index("function checkStationComplexFromFacts"):html.index("function longtermSpatialFacts", html.index("function checkStationComplexFromFacts"))]
+    assert "blockStatus='PASS';blockConditional=true" in station_check
+    # street-block API accepts centerline features and excludes real-width polygons.
+    assert "road_features: List[Dict[str, Any]]" in py
+    assert "TL_SPRD_RW 실폭도로는 지적/기초단위구 경계와 위상정합을 전제할 수 없으므로" in py
+    assert "_road_spatial_layers()" not in py[py.index("def _street_block_from_basic_units"):py.index("def analyze_street_block")]
 
 def main() -> None:
     _run("measurement", check_measurement)
@@ -1373,6 +1391,8 @@ def main() -> None:
     _run("r13 criterion layer1", check_r13_criterion_layer1)
     _run("r14 street block auto", check_r14_street_block_auto)
     _run("r15 street block 4m conditional", check_r15_street_block_4m_conditional)
+    _run("r16 basic unit street block", check_r16_basic_unit_street_block)
+    _run("r17 spatial relation road facts", check_r17_spatial_relation_road_facts)
     _run("release files", check_release_files)
     print("v2.5.0 regression checks: PASS")
 

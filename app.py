@@ -34,7 +34,7 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel, Field
 from pyproj import CRS, Geod, Transformer
 import shapefile
-from shapely.geometry import GeometryCollection, MultiPolygon, Polygon, shape, mapping
+from shapely.geometry import GeometryCollection, MultiPolygon, Polygon, shape, mapping, box
 from shapely.ops import transform as geometry_transform, unary_union
 from shapely.strtree import STRtree
 from shapely.validation import explain_validity
@@ -1935,232 +1935,414 @@ def _street_block_facility_effect(primary: Any, facility: Any, frame_metric: Any
     return False, "isolated_internal"
 
 
-def analyze_street_block(
+
+
+def _basic_unit_zip_path() -> Optional[str]:
+    """SGIS 2025 기초단위구 경계 ZIP을 찾는다.
+
+    권장 파일명은 ``basic_unit_seoul.zip``이다. SGIS 원본 파일명을 유지해도
+    파일명에 '기초단위구' 또는 'basic_unit'이 있으면 자동 인식한다.
+    """
+    preferred = [
+        _data_path("basic_unit_seoul.zip"),
+        _data_path("sgis_basic_unit_seoul.zip"),
+        _data_path("basic_unit_2025_seoul.zip"),
+    ]
+    for path in preferred:
+        if os.path.isfile(path):
+            return path
+    try:
+        for name in os.listdir(DATA_DIR):
+            low = name.lower()
+            if not low.endswith('.zip'):
+                continue
+            if '기초단위구' in name or ('basic' in low and 'unit' in low):
+                return os.path.join(DATA_DIR, name)
+    except Exception:
+        pass
+    return None
+
+
+@lru_cache(maxsize=1)
+def _basic_unit_spatial_layers() -> Dict[str, Any]:
+    """SGIS 기초단위구 SHP를 WGS84로 읽고 서울 영역만 공간색인한다.
+
+    SGIS 자료제공 기준 좌표계는 EPSG:5179이며, ZIP 안 PRJ가 있으면 그 값을
+    우선한다. 기초단위구는 가로구역 그 자체가 아니라 자동추정의 seed이다.
+    """
+    zip_path = _basic_unit_zip_path()
+    if not zip_path:
+        return {"available": False, "reason": "SGIS 기초단위구 ZIP 미설치"}
+    rows: List[Dict[str, Any]] = []
+    seoul_bbox = box(126.70, 37.40, 127.30, 37.75)
+    try:
+        with zipfile.ZipFile(zip_path) as zf:
+            names = zf.namelist()
+            stems = sorted({os.path.splitext(n)[0] for n in names if n.lower().endswith('.shp')})
+            # 서울(11)로 보이는 stem을 먼저 읽는다. 원본명 규칙이 달라도 bbox 필터가 최종 검증한다.
+            stems.sort(key=lambda x: (0 if re.search(r'(^|[_\\/])11([_\\/.]|$)|seoul|서울', x, re.I) else 1, x))
+            for stem in stems:
+                shp_name = next((n for n in names if os.path.splitext(n)[0] == stem and n.lower().endswith('.shp')), None)
+                shx_name = next((n for n in names if os.path.splitext(n)[0] == stem and n.lower().endswith('.shx')), None)
+                dbf_name = next((n for n in names if os.path.splitext(n)[0] == stem and n.lower().endswith('.dbf')), None)
+                if not (shp_name and shx_name and dbf_name):
+                    continue
+                prj_name = next((n for n in names if os.path.splitext(n)[0] == stem and n.lower().endswith('.prj')), None)
+                source_crs = CRS.from_epsg(5179)
+                if prj_name:
+                    try:
+                        source_crs = CRS.from_wkt(zf.read(prj_name).decode('utf-8', errors='ignore'))
+                    except Exception:
+                        pass
+                to_wgs = Transformer.from_crs(source_crs, 4326, always_xy=True).transform
+                reader = shapefile.Reader(
+                    shp=io.BytesIO(zf.read(shp_name)),
+                    shx=io.BytesIO(zf.read(shx_name)),
+                    dbf=io.BytesIO(zf.read(dbf_name)),
+                    encoding='cp949', encodingErrors='replace'
+                )
+                fields = [f[0] for f in reader.fields[1:]]
+                stem_added = 0
+                for sr in reader.iterShapeRecords():
+                    try:
+                        geom = _polygonal_only(shape(sr.shape.__geo_interface__))
+                        if geom is None or geom.is_empty:
+                            continue
+                        if not geom.is_valid:
+                            geom = _polygonal_only(geom.buffer(0))
+                        if geom is None or geom.is_empty:
+                            continue
+                        geom = geometry_transform(to_wgs, geom)
+                        if geom.is_empty or not geom.intersects(seoul_bbox):
+                            continue
+                        props = {k: _json_property(v) for k, v in zip(fields, list(sr.record))}
+                        props['_basic_unit_stem'] = os.path.basename(stem)
+                        rows.append({'geometry': geom, 'properties': props})
+                        stem_added += 1
+                    except Exception:
+                        continue
+                # 시도단위 파일에서 서울 stem을 찾은 경우 다른 시도 stem 전체를 불필요하게 읽지 않는다.
+                if stem_added > 100 and re.search(r'(^|[_\\/])11([_\\/.]|$)|seoul|서울', stem, re.I):
+                    break
+    except Exception as exc:
+        return {"available": False, "reason": f"기초단위구 ZIP 읽기 실패: {exc}", "file": os.path.basename(zip_path)}
+    if not rows:
+        return {"available": False, "reason": "기초단위구 ZIP에서 서울 Polygon을 찾지 못함", "file": os.path.basename(zip_path)}
+    geoms = [r['geometry'] for r in rows]
+    return {
+        'available': True,
+        'rows': rows,
+        'tree': STRtree(geoms),
+        'source': '국가데이터처 SGIS 2025 기초단위구 경계(시도)',
+        'file': os.path.basename(zip_path),
+        'feature_count': len(rows),
+        'source_crs_note': 'SGIS 제공기준 EPSG:5179 · PRJ 우선',
+    }
+
+
+def _shared_edge_barrier(shared: Any, road_union: Any, strong_union: Any = None) -> tuple[bool, str, float]:
+    """두 기초단위구의 공통경계가 4m+ 도로/철도/하천에 의해 실제로 막히는지 판정한다."""
+    try:
+        length = float(shared.length)
+        if length < 1.0:
+            return False, 'point_or_short_touch', 0.0
+        corridor = shared.buffer(1.25, cap_style=2, join_style=2)
+        if corridor.is_empty or corridor.area <= 0:
+            return False, 'empty_corridor', 0.0
+        road_ratio = 0.0
+        if road_union is not None and not road_union.is_empty and corridor.intersects(road_union):
+            road_ratio = float(corridor.intersection(road_union).area) / float(corridor.area)
+            if road_ratio >= 0.22:
+                return True, 'road4m', road_ratio
+        if strong_union is not None and not strong_union.is_empty and corridor.intersects(strong_union):
+            strong_ratio = float(corridor.intersection(strong_union).area) / float(corridor.area)
+            if strong_ratio >= 0.12:
+                return True, 'rail_or_river', strong_ratio
+        return False, 'mergeable', road_ratio
+    except Exception:
+        return False, 'geometry_error', 0.0
+
+
+def _basic_unit_component(start_idx: int, geoms: List[Any], tree: Any, road_union: Any, strong_union: Any, max_units: int = 240) -> tuple[set[int], bool]:
+    selected = {int(start_idx)}
+    queue = [int(start_idx)]
+    hit_limit = False
+    while queue:
+        idx = queue.pop(0)
+        geom = geoms[idx]
+        try:
+            candidates = tree.query(geom.buffer(0.8), predicate='intersects')
+        except Exception:
+            candidates = []
+        for raw in candidates:
+            j = int(raw)
+            if j == idx or j in selected:
+                continue
+            other = geoms[j]
+            try:
+                shared = geom.boundary.intersection(other.boundary)
+                if shared.is_empty or float(shared.length) < 1.0:
+                    continue
+            except Exception:
+                continue
+            blocked, _, _ = _shared_edge_barrier(shared, road_union, strong_union)
+            if blocked:
+                continue
+            selected.add(j)
+            queue.append(j)
+            if len(selected) >= max_units:
+                hit_limit = True
+                return selected, hit_limit
+    return selected, hit_limit
+
+
+def _street_block_from_basic_units(
     geometry: Dict[str, Any],
     barrier_features: Optional[List[Dict[str, Any]]] = None,
+    road_features: Optional[List[Dict[str, Any]]] = None,
     max_radius_m: float = 500.0,
-) -> Dict[str, Any]:
-    """역세권활성화용 가로구역을 대상지 주변에서 자동 추출한다.
+) -> Optional[Dict[str, Any]]:
+    """SGIS 기초단위구를 seed로 삼고 VWorld 도로중심선 ROAD_BT로 병합여부를 판단한다.
 
-    엔진 운영기준(법정 도로폭 기준이 아님):
-      1) TL_SPRD_RW 실폭도로 중 대표 폭원 4m 이상을 기본 barrier로 사용
-      2) 4m 미만 도로는 도면 현황에는 남기되 가로구역 분할에는 사용하지 않음
-      3) 철도·하천·공원·학교·광장·녹지·공공공지·공용주차장은 무조건 빼지 않고,
-         실제 블록을 관통·분리하거나 도로 사이 외곽경계를 폐합할 때만 조건부 barrier로 사용
-
-    서울 전역의 별도 법정 가로구역 SHP를 만들지 않고 대상지 주변에서만 계산한다.
+    중요: TL_SPRD_RW 실폭도로는 지적/기초단위구 경계와 위상정합을 전제할 수 없으므로
+    이 모듈의 공간연산에 사용하지 않는다. 도로폭은 TL_SPRD_MANAGE의 ROAD_BT 등
+    공식 폭원 속성만 읽고, 4m 이상 도로중심선이 기초단위구 공통경계를 가르는지를
+    병합/분리 판단의 보조 Fact로 사용한다.
     """
-    layers = _road_spatial_layers()
-    if not layers.get("available"):
-        raise FileNotFoundError(str(layers.get("reason") or "서울 실폭도로 원본 미설치"))
-
+    units = _basic_unit_spatial_layers()
+    if not units.get('available'):
+        return None
     try:
         site_wgs = _polygonal_only(shape(geometry))
     except Exception as exc:
-        raise ValueError(f"구역계 GeoJSON을 읽을 수 없습니다: {exc}") from exc
+        raise ValueError(f'구역계 GeoJSON을 읽을 수 없습니다: {exc}') from exc
     if site_wgs is None or site_wgs.is_empty:
-        raise ValueError("구역계는 Polygon 또는 MultiPolygon이어야 합니다.")
+        raise ValueError('구역계는 Polygon 또는 MultiPolygon이어야 합니다.')
     if not site_wgs.is_valid:
         site_wgs = _polygonal_only(site_wgs.buffer(0))
-    if site_wgs is None or site_wgs.is_empty or not site_wgs.is_valid:
-        raise ValueError("유효하지 않은 구역계입니다.")
+    if site_wgs is None or site_wgs.is_empty:
+        raise ValueError('유효하지 않은 구역계입니다.')
 
     to_metric = Transformer.from_crs(4326, 5174, always_xy=True).transform
     to_wgs = Transformer.from_crs(5174, 4326, always_xy=True).transform
     site_metric = geometry_transform(to_metric, site_wgs)
-    site_area = float(site_metric.area)
-    if site_area <= 0:
-        raise ValueError("구역계 면적이 0입니다.")
+    site_area = max(1.0, float(site_metric.area))
+    frame_metric = site_metric.buffer(float(max_radius_m), cap_style=3, join_style=2).envelope
+    frame_wgs = geometry_transform(to_wgs, frame_metric)
 
-    facility_entries: List[Dict[str, Any]] = []
-    for feat in barrier_features or []:
+    local_rows: List[Dict[str, Any]] = []
+    unit_tree = units['tree']
+    for raw in unit_tree.query(frame_wgs, predicate='intersects'):
+        row = units['rows'][int(raw)]
         try:
-            geom = _polygonal_only(shape((feat or {}).get("geometry") or {}))
-            if geom is None or geom.is_empty:
+            gm = geometry_transform(to_metric, row['geometry'])
+            if gm.is_empty or not gm.intersects(frame_metric):
                 continue
-            if not geom.is_valid:
-                geom = _polygonal_only(geom.buffer(0))
-            if geom is None or geom.is_empty:
-                continue
-            facility_entries.append({
-                "metric": geometry_transform(to_metric, geom),
-                "feature": feat,
-                "type": str(((feat or {}).get("properties") or {}).get("_block_barrier_type") or "시설"),
-            })
+            local_rows.append({'metric': gm, 'row': row})
         except Exception:
             continue
-
-    road_rows = layers.get("rw") or []
-    road_tree = layers.get("rw_tree")
-    if road_tree is None:
-        raise FileNotFoundError("서울 실폭도로 공간색인이 없습니다.")
+    if not local_rows:
+        return {
+            'status':'unresolved','block':None,'blocks':{'type':'FeatureCollection','features':[]},
+            'road_barriers':{'type':'FeatureCollection','features':[]},'road_context':{'type':'FeatureCollection','features':[]},
+            'facility_barriers':{'type':'FeatureCollection','features':[]},'basic_unit_context':{'type':'FeatureCollection','features':[]},
+            'metadata':{'method':'sgis_basic_unit_roadbt_merge','reason':'대상지 주변 기초단위구 없음','basic_unit_file':units.get('file')}
+        }
 
     road_min_width_m = 4.0
-    radius_steps = [90.0, 140.0, 210.0, 300.0, 400.0, float(max_radius_m)]
-    radius_steps = sorted({r for r in radius_steps if r <= float(max_radius_m)} | {float(max_radius_m)})
-    resolved = None
-
-    for radius in radius_steps:
-        frame_metric = site_metric.buffer(radius, cap_style=3, join_style=2).envelope
-        frame_wgs = geometry_transform(to_wgs, frame_metric)
-        selected_items: List[Dict[str, Any]] = []
-        road_metric: List[Any] = []
-        under4_count = 0
-        unknown_width_count = 0
-        for idx in road_tree.query(frame_wgs, predicate="intersects"):
-            row = road_rows[int(idx)]
-            try:
-                gm = geometry_transform(to_metric, row["geometry"])
-                if gm.is_empty or not gm.intersects(frame_metric):
-                    continue
-                width = row.get("_street_block_width_m")
-                if width is None:
-                    width = _street_block_road_width_m(gm, row.get("properties") or {})
-                    row["_street_block_width_m"] = width
-                item = {"row": row, "metric": gm, "width": width}
-                selected_items.append(item)
-                if width is None:
-                    unknown_width_count += 1
-                    continue
-                if width >= road_min_width_m:
-                    road_metric.append(gm)
-                else:
-                    under4_count += 1
-            except Exception:
+    if not road_features:
+        return {
+            'status':'unavailable','block':None,'blocks':{'type':'FeatureCollection','features':[]},
+            'road_barriers':{'type':'FeatureCollection','features':[]},'road_context':{'type':'FeatureCollection','features':[]},
+            'facility_barriers':{'type':'FeatureCollection','features':[]},'basic_unit_context':{'type':'FeatureCollection','features':[]},
+            'metadata':{'method':'sgis_basic_unit_roadbt_merge','reason':'TL_SPRD_MANAGE ROAD_BT 도로자료 미확보','basic_unit_file':units.get('file'),'uses_real_width_polygon':False}
+        }
+    selected_items: List[Dict[str, Any]] = []
+    road_metric: List[Any] = []
+    under4_count = 0
+    unknown_width_count = 0
+    for feat in road_features or []:
+        props = (feat or {}).get('properties') or {}
+        width = _road_width_m(props)
+        try:
+            geom = shape((feat or {}).get('geometry') or {})
+            if geom is None or geom.is_empty:
                 continue
-            if len(selected_items) >= 6000:
-                break
+            gm = geometry_transform(to_metric, geom)
+            if gm.is_empty or not gm.intersects(frame_metric):
+                continue
+            selected_items.append({'feature':feat,'metric':gm,'width':width})
+            if width is None:
+                unknown_width_count += 1
+            elif width >= road_min_width_m:
+                # 폭 자체를 면도형으로 재현하려는 것이 아니라 공통경계와 도로중심선의
+                # 위치관계를 확인하기 위한 작은 위상 허용폭만 사용한다.
+                road_metric.append(gm.buffer(1.0, cap_style=2, join_style=2))
+            else:
+                under4_count += 1
+        except Exception:
+            continue
+    road_union = unary_union(road_metric).buffer(0) if road_metric else GeometryCollection()
 
-        if not road_metric:
+    strong_features: List[Dict[str, Any]] = []
+    strong_metric: List[Any] = []
+    for feat in barrier_features or []:
+        p = (feat or {}).get('properties') or {}
+        typ = str(p.get('_block_barrier_type') or '')
+        if not re.search(r'철도|하천', typ):
             continue
         try:
-            barrier_union = unary_union(road_metric).buffer(0.20, join_style=2)
+            gm = _polygonal_only(shape((feat or {}).get('geometry') or {}))
+            if gm is None or gm.is_empty:
+                continue
+            mm = geometry_transform(to_metric, gm)
+            if mm.intersects(frame_metric):
+                strong_metric.append(mm)
+                strong_features.append(feat)
+        except Exception:
+            continue
+    strong_union = unary_union(strong_metric).buffer(0.10, join_style=2) if strong_metric else GeometryCollection()
+
+    geoms = [x['metric'] for x in local_rows]
+    tree = STRtree(geoms)
+    initial: List[int] = []
+    for i, gm in enumerate(geoms):
+        try:
+            ia = float(gm.intersection(site_metric).area)
+        except Exception:
+            ia = 0.0
+        if ia >= max(1.0, site_area * 0.002):
+            initial.append(i)
+    if not initial:
+        return {
+            'status':'unresolved','block':None,'blocks':{'type':'FeatureCollection','features':[]},
+            'road_barriers':{'type':'FeatureCollection','features':[]},'road_context':{'type':'FeatureCollection','features':[]},
+            'facility_barriers':{'type':'FeatureCollection','features':strong_features},
+            'basic_unit_context':{'type':'FeatureCollection','features':[]},
+            'metadata':{'method':'sgis_basic_unit_roadbt_merge','reason':'대상지와 중첩되는 기초단위구 없음','basic_unit_file':units.get('file')}
+        }
+
+    components: List[tuple[set[int], Any, float, bool]] = []
+    seen_keys = set()
+    for start in initial:
+        comp, hit_limit = _basic_unit_component(start, geoms, tree, road_union, strong_union)
+        key = tuple(sorted(comp))
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        merged = unary_union([geoms[i] for i in comp]).buffer(0)
+        try:
+            ia = float(merged.intersection(site_metric).area)
+        except Exception:
+            ia = 0.0
+        if ia > max(1.0, site_area * 0.002):
+            components.append((comp, merged, ia, hit_limit))
+    components.sort(key=lambda x: x[2], reverse=True)
+    if not components:
+        return None
+
+    significant = [x for x in components if x[2] >= max(5.0, site_area * 0.05)]
+    primary_comp, primary, primary_site_area, primary_limit = components[0]
+    block_area = float(primary.area)
+    multi = len(significant) > 1
+
+    context_idxs = set()
+    for comp, _, _, _ in components[:6]:
+        context_idxs.update(comp)
+    for i in list(context_idxs):
+        try:
+            for raw in tree.query(geoms[i].buffer(1.0), predicate='intersects'):
+                context_idxs.add(int(raw))
+        except Exception:
+            pass
+        if len(context_idxs) > 160:
+            break
+    unit_context = []
+    for i in list(context_idxs)[:160]:
+        row = local_rows[i]['row']
+        props = dict(row.get('properties') or {})
+        props.update({'_basic_unit_selected': i in primary_comp, '_basic_unit_seed': True})
+        unit_context.append({'type':'Feature','geometry':mapping(row['geometry']),'properties':props})
+
+    map_margin = primary.buffer(35)
+    road_barriers, road_context = [], []
+    for item in selected_items:
+        feat, gm, width = item['feature'], item['metric'], item['width']
+        try:
+            if not gm.intersects(map_margin):
+                continue
+            props = dict((feat or {}).get('properties') or {})
+            props.update({'_block_width_m':width,'_block_barrier_used':bool(width is not None and width >= road_min_width_m),
+                          '_block_width_basis':'TL_SPRD_MANAGE ROAD_BT'})
+            out = {'type':'Feature','geometry':(feat or {}).get('geometry'),'properties':props}
+            (road_barriers if width is not None and width >= road_min_width_m else road_context).append(out)
         except Exception:
             continue
 
-        base_parts = _street_block_site_parts(frame_metric, barrier_union, site_metric)
-        if not base_parts:
-            continue
-        current_primary = base_parts[0][0]
-
-        relevant_facilities = [x for x in facility_entries if x["metric"].intersects(frame_metric)]
-        # 철도·하천을 먼저 검토하고, 나머지 시설은 실제 분리/폐합 효과가 있을 때만 이어 붙인다.
-        relevant_facilities.sort(key=lambda x: 0 if re.search(r"철도|하천", x["type"]) else 1)
-        used_facilities: List[Dict[str, Any]] = []
-        ignored_facilities = 0
-        for entry in relevant_facilities[:300]:
-            use, reason = _street_block_facility_effect(current_primary, entry["metric"], frame_metric, barrier_union, site_metric)
-            if not use:
-                ignored_facilities += 1
-                continue
-            try:
-                barrier_union = unary_union([barrier_union, entry["metric"]]).buffer(0.20, join_style=2)
-                now_parts = _street_block_site_parts(frame_metric, barrier_union, site_metric)
-                if not now_parts:
-                    ignored_facilities += 1
-                    continue
-                current_primary = now_parts[0][0]
-                feat = dict(entry["feature"])
-                feat["properties"] = dict((entry["feature"].get("properties") or {}))
-                feat["properties"].update({"_block_barrier_role": reason, "_block_barrier_used": True})
-                used_facilities.append(feat)
-            except Exception:
-                ignored_facilities += 1
-
-        intersecting = _street_block_site_parts(frame_metric, barrier_union, site_metric)
-        if not intersecting:
-            continue
-        primary, primary_site_area = intersecting[0]
-        touches_frame = primary.boundary.distance(frame_metric.boundary) <= 0.75
-        significant = [(g, ia) for g, ia in intersecting if ia >= max(5.0, site_area * 0.05)]
-        if touches_frame and radius < float(max_radius_m):
-            continue
-
-        map_margin = primary.buffer(30)
-        road_features = []
-        road_context = []
-        for item in selected_items:
-            row, gm, width = item["row"], item["metric"], item["width"]
-            try:
-                if not gm.intersects(map_margin):
-                    continue
-                props = dict(row.get("properties") or {})
-                props.update({
-                    "_block_width_m": width,
-                    "_block_barrier_used": bool(width is not None and width >= road_min_width_m),
-                    "_block_width_basis": "official_width" if _road_width_m(row.get("properties") or {}) is not None else "TL_SPRD_RW 실폭도형 대표폭원 추정",
-                })
-                feature = {"type": "Feature", "geometry": mapping(row["geometry"]), "properties": props}
-                if width is not None and width >= road_min_width_m:
-                    road_features.append(feature)
-                else:
-                    road_context.append(feature)
-            except Exception:
-                continue
-            if len(road_features) >= 800 and len(road_context) >= 800:
-                break
-
-        block_wgs = geometry_transform(to_wgs, primary)
-        block_area = float(primary.area)
-        site_land_area = float(site_metric.difference(barrier_union).area)
-        primary_site_pct = (primary_site_area / site_land_area * 100.0) if site_land_area > 0 else None
-        resolved = {
-            "status": "resolved" if not touches_frame else "open_boundary",
-            "block": {"type": "Feature", "geometry": mapping(block_wgs), "properties": {"block_area_m2": block_area, "road_min_width_m": road_min_width_m}},
-            "blocks": {
-                "type": "FeatureCollection",
-                "features": [
-                    {"type": "Feature", "geometry": mapping(geometry_transform(to_wgs, g)), "properties": {"site_intersection_m2": ia}}
-                    for g, ia in significant[:12]
-                ],
-            },
-            "road_barriers": {"type": "FeatureCollection", "features": road_features},
-            "road_context": {"type": "FeatureCollection", "features": road_context},
-            "facility_barriers": {"type": "FeatureCollection", "features": used_facilities},
-            "metadata": {
-                "method": "road4m_conditional_facility_polygonization",
-                "radius_m": radius,
-                "road_source": layers.get("source"),
-                "road_mode": layers.get("road_mode"),
-                "road_min_width_m": road_min_width_m,
-                "road_count": len(road_features),
-                "road_under4_context_count": len(road_context),
-                "road_under4_total_count": under4_count,
-                "road_width_unknown_count": unknown_width_count,
-                "facility_barrier_count": len(used_facilities),
-                "facility_ignored_internal_count": ignored_facilities,
-                "facility_input_count": len(facility_entries),
-                "facility_rule": "내부 고립시설 제외 · 블록 관통분리 또는 외곽경계 폐합 시만 조건부 barrier",
-                "block_area_m2": block_area,
-                "site_primary_block_pct": primary_site_pct,
-                "site_spans_multiple_blocks": len(significant) > 1,
-                "touches_search_frame": touches_frame,
-                "topology_tolerance_m": 0.20,
-                "legal_width_rule": False,
-                "engine_note": "4m 이상 도로는 자동분석 운영기준이며 역세권활성화 운영기준의 법정 도로폭 기준이 아님",
-            },
-        }
-        break
-
-    if resolved is not None:
-        return resolved
+    primary_wgs = geometry_transform(to_wgs, primary)
+    primary_site_pct = primary_site_area / site_area * 100.0 if site_area > 0 else None
+    primary_block_occupancy_pct = primary_site_area / block_area * 100.0 if block_area > 0 else None
+    status = 'resolved' if not primary_limit else 'partial'
+    block_features=[]
+    for comp,g,ia,_ in significant[:12]:
+        ba=float(g.area)
+        block_features.append({'type':'Feature','geometry':mapping(geometry_transform(to_wgs,g)),'properties':{
+            'site_intersection_m2':ia,'block_area_m2':ba,'site_share_of_block_pct':(ia/ba*100.0 if ba>0 else None),
+            'block_coverage_of_site_pct':(ia/site_area*100.0 if site_area>0 else None),'merged_basic_units':len(comp)}})
     return {
-        "status": "unresolved",
-        "block": None,
-        "blocks": {"type": "FeatureCollection", "features": []},
-        "road_barriers": {"type": "FeatureCollection", "features": []},
-        "road_context": {"type": "FeatureCollection", "features": []},
-        "facility_barriers": {"type": "FeatureCollection", "features": []},
-        "metadata": {
-            "method": "road4m_conditional_facility_polygonization",
-            "road_source": layers.get("source"),
-            "road_mode": layers.get("road_mode"),
-            "road_min_width_m": road_min_width_m,
-            "facility_input_count": len(facility_entries),
-            "max_radius_m": float(max_radius_m),
-            "legal_width_rule": False,
-            "reason": "4m 이상 도로와 조건부 시설경계로 대상지를 둘러싼 닫힌 가로구역을 자동 확정하지 못했습니다.",
-        },
+        'status': status,
+        'block': {'type':'Feature','geometry':mapping(primary_wgs),'properties':{
+            'block_area_m2':block_area,'site_intersection_m2':primary_site_area,
+            'site_share_of_block_pct':primary_block_occupancy_pct,'block_coverage_of_site_pct':primary_site_pct,
+            'road_min_width_m':road_min_width_m,'source_method':'sgis_basic_unit_roadbt_merge',
+            'merged_basic_units':len(primary_comp)}},
+        'blocks': {'type':'FeatureCollection','features':block_features},
+        'basic_unit_context': {'type':'FeatureCollection','features':unit_context},
+        'road_barriers': {'type':'FeatureCollection','features':road_barriers},
+        'road_context': {'type':'FeatureCollection','features':road_context},
+        'facility_barriers': {'type':'FeatureCollection','features':strong_features},
+        'metadata': {
+            'method':'sgis_basic_unit_roadbt_merge',
+            'basic_unit_source':units.get('source'),'basic_unit_file':units.get('file'),'basic_unit_feature_count':units.get('feature_count'),
+            'local_basic_unit_count':len(local_rows),'merged_basic_unit_count':len(primary_comp),
+            'road_source':'VWorld TL_SPRD_MANAGE ROAD_BT','road_mode':'centerline_width_attribute','road_min_width_m':road_min_width_m,
+            'road_count':len(road_barriers),'road_under4_context_count':len(road_context),'road_under4_total_count':under4_count,
+            'road_width_unknown_count':unknown_width_count,'strong_facility_count':len(strong_features),
+            'block_area_m2':block_area,'site_intersection_m2':primary_site_area,
+            'site_primary_block_pct':primary_site_pct,'site_share_of_primary_block_pct':primary_block_occupancy_pct,
+            'site_spans_multiple_blocks':multi,'merge_limit_reached':primary_limit,'legal_width_rule':False,
+            'basic_unit_is_legal_street_block':False,'uses_real_width_polygon':False,
+            'engine_note':'SGIS 기초단위구를 가로구역 후보 골격으로 사용하고 VWorld TL_SPRD_MANAGE ROAD_BT(4m 이상)와 철도·하천으로 인접 기초단위구 병합 여부를 판단. TL_SPRD_RW 실폭도로는 공간연산에 사용하지 않음',
+        }
+    }
+
+
+def analyze_street_block(
+    geometry: Dict[str, Any],
+    barrier_features: Optional[List[Dict[str, Any]]] = None,
+    road_features: Optional[List[Dict[str, Any]]] = None,
+    max_radius_m: float = 500.0,
+) -> Dict[str, Any]:
+    """기초단위구 seed + 도로중심선 ROAD_BT 방식만 사용한다.
+
+    기초단위구가 없거나 자동확정에 실패해도 TL_SPRD_RW polygonization으로
+    fallback하지 않는다. 잘못된 가로구역을 만드는 것보다 자료부족을 명시한다.
+    """
+    basic = _street_block_from_basic_units(geometry, barrier_features, road_features, max_radius_m)
+    if basic is not None:
+        return basic
+    unit_layers = _basic_unit_spatial_layers()
+    return {
+        'status':'unavailable','block':None,'blocks':{'type':'FeatureCollection','features':[]},
+        'road_barriers':{'type':'FeatureCollection','features':[]},'road_context':{'type':'FeatureCollection','features':[]},
+        'facility_barriers':{'type':'FeatureCollection','features':[]},'basic_unit_context':{'type':'FeatureCollection','features':[]},
+        'metadata':{
+            'method':'sgis_basic_unit_roadbt_merge','preferred_method':'sgis_basic_unit_roadbt_merge',
+            'basic_unit_available':bool(unit_layers.get('available')),
+            'basic_unit_reason':None if unit_layers.get('available') else unit_layers.get('reason'),
+            'road_feature_count':len(road_features or []),'fallback_used':False,'uses_real_width_polygon':False,
+            'reason':'기초단위구 자료가 없거나 가로구역 후보를 자동확정하지 못했습니다. TL_SPRD_RW 실폭도로 fallback은 사용하지 않습니다.'
+        }
     }
 
 
@@ -2747,6 +2929,7 @@ class GeometryInput(BaseModel):
 class StreetBlockInput(BaseModel):
     geometry: Dict[str, Any]
     barrier_features: List[Dict[str, Any]] = Field(default_factory=list, max_length=3000)
+    road_features: List[Dict[str, Any]] = Field(default_factory=list, max_length=5000)
     max_radius_m: float = Field(500.0, ge=120.0, le=1000.0)
 
 
@@ -2970,7 +3153,7 @@ def health():
         "building_spatial_auto": "LT_C_SPBD_browser_direct_ready" if vworld_ready() else "needs_VWORLD_API_KEY",
         "building_hub": "ready" if building_hub_ready() else "needs_BUILDING_HUB_API_KEY",
         "land_ledger": "ladfrlList + getLandCharacteristics + geometry provisional",
-        "road_access": "VWorld TL_SPRD_MANAGE + ROAD_BT first; bundled TL_SPRD_RW automatic fallback",
+        "road_access": "VWorld TL_SPRD_MANAGE + ROAD_BT for cadastral/frontage calculations; TL_SPRD_RW excluded from cadastral arithmetic",
         "road_bundled_configured": bool(_road_zip_path()),
         "analysis_object_model": "parcel/building common ledger retained for station-area/zoning/mixed-use expansion",
         "redevelopment_strategy": "scheme-specific legal aging facts + area/aging/additional-entry AND-OR gates",
@@ -2989,8 +3172,9 @@ def health():
         "safe_housing_location_paths": "station / arterial-road-side / medical-facility-center evaluated separately; OR combined",
         "safe_medical_reference": "Seoul medical points + site-boundary resolver (planning medical facility > building-register site parcels; health-center cadastral parcel)" if _seoul_open_data_key() else "needs Seoul Open Data key; no automatic medical PASS",
         "safe_medical_key_env": _seoul_open_data_key_info()[1] or None,
-        "road_width_gis": "VWorld TL_SPRD_MANAGE ROAD_BT first; bundled Seoul TL_SPRD_RW real-width polygon fallback",
-        "street_block_gis": "TL_SPRD_RW 4m+ road barriers + conditional VWorld UPIS facility barriers -> automatic street-block polygonization",
+        "road_width_gis": "VWorld TL_SPRD_MANAGE ROAD_BT is the road-width Fact source; TL_SPRD_RW is visualization/reference only",
+        "street_block_gis": "SGIS 2025 basic-unit seed + VWorld TL_SPRD_MANAGE ROAD_BT 4m+ merge verification; no TL_SPRD_RW fallback",
+        "street_block_basic_unit_configured": bool(_basic_unit_zip_path()),
         "responsive_ui": "desktop/tablet/mobile responsive layout with mobile workflow and selected-scheme cards",
         "smallscale_group": "five user review routes: autonomous / block / small-scale reconstruction / small-scale redevelopment / Moa Town+Moa Housing policy route; Moa is not a fifth statutory project",
         "workspace_ui": "three-column location/spatial evidence/integrated status layout; all decision facts surface in spatial-status boxes",
@@ -2999,7 +3183,7 @@ def health():
         "house_density": "shared factual calculation; redevelopment uses >=60/ha as one additional entry criterion and residential-environment uses >=80/ha as a mandatory non-management criterion",
         "parcel_boundary_editor": "pnu_list_click_include_exclude_nearby_union",
         "scheme_architecture": "site facts -> scheme-specific facts -> independent scheme evaluation -> review sheet -> priority comparison",
-        "scheme_module_api": "2026-08-31-r15-street-block-4m-conditional",
+        "scheme_module_api": "2026-08-31-r17-spatial-relation-road-facts",
         "independent_scheme_modules": "15 independent modules including smallscale 5-route family and prior_negotiation; urban_innovation_zone / facility_complex_zone / mixed_use_zone remain future shells",
         "scheme_specific_spatial_checks": "scheme module may request additional official spatial facts; missing facts remain REVIEW, never inferred PASS",
         "spatial_evidence_maps": "common cadastral base + colored zoning + scheme-specific road/frontage facts + safe-housing medical reference; map facts and scheme facts share one Fact Store",
@@ -3074,9 +3258,13 @@ def road_intersections(inp: GeometryInput):
 
 @app.post("/api/spatial/street-block")
 def street_block(inp: StreetBlockInput):
-    """4m 이상 실폭도로를 기본경계로 하고 실제 분리·폐합하는 시설만 조건부 반영해 가로구역을 자동 추출합니다."""
+    """SGIS 기초단위구 seed를 TL_SPRD_MANAGE ROAD_BT 4m+ 도로중심선으로 병합 검증합니다.
+
+    TL_SPRD_RW 실폭도로는 지적·기초단위구 공간연산에 사용하지 않으며,
+    기초단위구/ROAD_BT 자료가 없으면 잘못된 도형으로 fallback하지 않습니다.
+    """
     try:
-        return analyze_street_block(inp.geometry, inp.barrier_features, inp.max_radius_m)
+        return analyze_street_block(inp.geometry, inp.barrier_features, inp.road_features, inp.max_radius_m)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
