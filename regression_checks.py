@@ -527,7 +527,7 @@ def check_spatial_evidence_maps() -> None:
         assert layer in html, layer
     # Fact Store가 도면과 사업엔진의 단일 근거가 된다. 공통 도로는 판정값이 아니라 raw fact로 보존한다.
     assert 'road_raw:roadRawFacts(c)' in html
-    assert 'spatial_evidence:{zoning:zoningSpatialEvidenceFacts(),roads:schemeRoadEvidenceFacts(c),frontage:schemeFrontageEvidenceFacts(c),street_block:streetBlockSpatialEvidenceFacts(),safe_medical:safeMedicalSpatialEvidenceFacts()}' in html
+    assert 'spatial_evidence:{zoning:zoningSpatialEvidenceFacts(),roads:schemeRoadEvidenceFacts(c),frontage:schemeFrontageEvidenceFacts(c),street_block:streetBlockSpatialEvidenceFacts(),activation_arterial:activationLinearCommercialEvidence(),safe_medical:safeMedicalSpatialEvidenceFacts()}' in html
     assert 'function roadRawFacts(cArg=null)' in html
     assert 'has_20m_width_candidate' in html
     assert 'has_20m:c.has20' not in html
@@ -1393,8 +1393,33 @@ def check_r18_bundled_basic_unit_and_frontage_caveat() -> None:
     assert "analysis_caveat" in html
     assert "TL_SPRD_RW 실폭도로는 지적 연산에 사용하지 않습니다" in html
     changelog = (root / "CHANGELOG_v2.5.0.txt").read_text(encoding="utf-8")
-    assert changelog.startswith("[v2.5.0-r18")
+    assert "[v2.5.0-r18" in changelog
     assert not list(root.glob("CHANGELOG_v2.5.0-r*.txt"))
+
+def check_r19_activation_arterial_linear_commercial() -> None:
+    html=(Path(__file__).resolve().parent / "app.html").read_text(encoding="utf-8")
+    for marker in (
+        'id="ccActivationArterialMiniMap"',
+        '역세권활성화(간선가로형)',
+        'ACTIVATION_LINEAR_COMMERCIAL_ROADS',
+        'function analyzeActivationArterial()',
+        'function updateActivationArterialBlockLink()',
+        'function activationLinearCommercialEvidence()',
+        'activation_arterial:activationLinearCommercialEvidence()',
+        "safeAnalysisStep('노선형 상업지역',analyzeActivationArterial,60000)",
+        "서울시 공개 대상노선 + 용도지역 GIS 자동분석",
+    ):
+        assert marker in html, marker
+    # 실폭도로로 노선형 상업지역이나 가로구역을 만들지 않는다.
+    block=html[html.index('async function analyzeActivationArterial()'):html.index('async function analyzeStreetBlock()')]
+    assert 'TL_SPRD_RW' not in block
+    assert "fetchSpatialFeaturesBrowser('LT_C_UQ111'" in block
+    assert "trySpatialLayerCandidates(['TL_SPRD_MANAGE','LT_C_SPRD_MANAGE']" in block
+    for road in ('율곡로','한강대로','강남대로','테헤란로','사당로'):
+        assert road in html
+    changelog=(Path(__file__).resolve().parent / 'CHANGELOG_v2.5.0.txt').read_text(encoding='utf-8')
+    assert changelog.startswith('[v2.5.0-r19')
+
 
 def main() -> None:
     _run("measurement", check_measurement)
@@ -1431,6 +1456,7 @@ def main() -> None:
     _run("r16 basic unit street block", check_r16_basic_unit_street_block)
     _run("r17 spatial relation road facts", check_r17_spatial_relation_road_facts)
     _run("r18 bundled basic unit + frontage caveat", check_r18_bundled_basic_unit_and_frontage_caveat)
+    _run("r19 activation arterial linear commercial", check_r19_activation_arterial_linear_commercial)
     _run("release files", check_release_files)
     print("v2.5.0 regression checks: PASS")
 

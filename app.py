@@ -3177,6 +3177,7 @@ def health():
         "safe_medical_key_env": _seoul_open_data_key_info()[1] or None,
         "road_width_gis": "VWorld TL_SPRD_MANAGE ROAD_BT is the road-width Fact source; TL_SPRD_RW is visualization/reference only",
         "street_block_gis": "SGIS 2025 basic-unit seed + VWorld TL_SPRD_MANAGE ROAD_BT 4m+ merge verification; no TL_SPRD_RW fallback",
+        "activation_arterial_gis": "Seoul published linear-commercial road list + VWorld LT_C_UQ111 zoning + TL_SPRD_MANAGE road centerlines; dedicated station-activation arterial map; TL_SPRD_RW excluded",
         "street_block_basic_unit_configured": bool(_basic_unit_zip_path()),
         "street_block_basic_unit_file": os.path.basename(_basic_unit_zip_path()) if _basic_unit_zip_path() else None,
         "responsive_ui": "desktop/tablet/mobile responsive layout with mobile workflow and selected-scheme cards",
