@@ -6058,6 +6058,7 @@ function buildingRawFacts(){
     pnu:String(r.pnu||''),approval_date:String(r.useAprDay||''),
     structure:String(r.strctCdNm||''),main_use:String(r.mainPurpsCdNm||''),other_use:String(r.etcPurps||''),
     total_floor_area_m2:Number.isFinite(Number(r.totArea))?Number(r.totArea):null,
+    plat_area_m2:Number.isFinite(Number(r.platArea))?Number(r.platArea):null,
     ground_floors:Number.isFinite(Number(r.grndFlrCnt))?Number(r.grndFlrCnt):null,
     household_count:Number.isFinite(Number(r.hhldCnt))?Number(r.hhldCnt):null,
     family_count:Number.isFinite(Number(r.fmlyCnt))?Number(r.fmlyCnt):null,
@@ -7495,34 +7496,61 @@ function checkPublicComplexFromFacts(store,f){
   return rows;
 }
 
+function innovationFactoryBuildingRatio(records,manualPct=null){
+  const rows=Array.isArray(records)?records:[];
+  const total=rows.length;
+  const factoryCount=rows.filter(r=>/공장/.test(`${r.main_use||''} ${r.other_use||''}`)).length;
+  const autoPct=total?factoryCount/total*100:null;
+  if(manualPct!=null)return {pct:Number(manualPct),factory_count:factoryCount,total_count:total,source:'MANUAL',note:'전문가 입력 공장비율 사용'};
+  return {pct:autoPct,factory_count:factoryCount,total_count:total,source:total?'BUILDING_COUNT_PROXY':'NONE',note:total?'초기검토 산식: 건축HUB 표제부상 공장용도 건축물 수 ÷ 전체 건축물 수 × 100':'건축물대장 자료 없음'};
+}
+function innovationApartmentPrecheck(records,siteArea,manualArea=null,manualRatio=null){
+  const rows=Array.isArray(records)?records:[];
+  const aptRows=rows.filter(r=>/공동주택|아파트|연립주택|다세대주택/.test(`${r.main_use||''} ${r.other_use||''}`));
+  if(rows.length&&aptRows.length===0)return {known:true,has_apartment:false,max_area_m2:0,max_ratio_pct:0,status:'PASS',source:'BUILDING_REGISTER',note:'건축HUB 표제부상 공동주택 용도 건축물 없음'};
+  let maxArea=manualArea!=null?Number(manualArea):null;
+  let source=manualArea!=null?'MANUAL':'NONE';
+  if(maxArea==null&&aptRows.length){
+    const areas=aptRows.map(r=>Number(r.plat_area_m2)).filter(x=>Number.isFinite(x)&&x>0);
+    if(areas.length){maxArea=Math.max(...areas);source='BUILDING_REGISTER_PLOT_AREA';}
+  }
+  let ratio=manualRatio!=null?Number(manualRatio):null;
+  if(ratio==null&&maxArea!=null&&Number(siteArea)>0)ratio=maxArea/Number(siteArea)*100;
+  if(maxArea==null||ratio==null)return {known:false,has_apartment:aptRows.length>0,max_area_m2:maxArea,max_ratio_pct:ratio,status:'REVIEW',source,note:aptRows.length?'공동주택 용도는 확인되나 단지면적 확정 필요':'공동주택단지 자료 미확인'};
+  const ok=maxArea<=10000&&ratio<=30;
+  // 건축물대장 대지면적은 여러 필지로 구성된 하나의 단지를 완전히 묶지 못할 수 있으므로 자동 충족은 REVIEW로 둔다.
+  const status=ok?(source==='MANUAL'?'PASS':'REVIEW'):'FAIL';
+  const note=source==='MANUAL'?'전문가 입력 단지면적 기준':source==='BUILDING_REGISTER_PLOT_AREA'?'건축HUB 표제부 대지면적 기준 잠정치 · 다필지 단지 여부 확인 후 확정':'공동주택단지 면적 확인 필요';
+  return {known:true,has_apartment:true,max_area_m2:maxArea,max_ratio_pct:ratio,status,source,note};
+}
+
 function innovationSpatialFacts(store,typ){
   const c=store.common;
   if(!['growth','housing'].includes(typ))throw new Error('도심복합개발 유형이 지정되지 않았습니다.');
   const schemeKey=typ==='growth'?'innovation_growth':'innovation_housing';
   const age=typ==='housing'?schemeAgeFact(store,'innovation_housing'):null;
   const cov350=c.stationAuto?c.coverage350:c.coverage,cov500=c.stationAuto?c.coverage500:c.coverage;
-  // 서울시 조례 제2조: 생활권의 중심지역 = 도시기본계획상 도심·광역중심.
   const isCore=['downtown','metro'].includes(c.center);
   const roadEvidence=store.site.spatial_evidence?.roads?.[schemeKey]||null;
-  const fact={scheme_key:schemeKey,type:typ,type_label:typ==='growth'?'성장거점형':'주거중심형',area:{m2:c.area},center:{value:c.center,label:c.centerLabel||'',is_core:isCore},station:{distance_m:c.dist,line_count:c.lines,coverage350_pct:cov350,coverage500_pct:cov500,name:c.stationName||''},zoning:{current:c.zoning||'',factory_pct:c.factory},road:{...store.site.road,evidence:roadEvidence},apartment:{max_area_m2:c.aptMaxArea,max_ratio_pct:c.aptMaxRatio},aging:{assessment:age},housing:{planned_floor_pct:c.plannedHousingFloor,enclosed6:c.enclosed6},consent:{owner_pct:c.ownerConsent,land_pct:c.landConsent},operator:{landowner_count:c.landownerCount},exclusions:{known:false,value:c.excluded==null?'서울시 별도 운영기준 제외지역 원문·공간자료 확인 필요':c.excluded?'제외지역 가능성 입력됨':'비해당 입력'},planning:{density:innovationDensity(c,typ)},spatial_status_rows:[]};
+  const records=store.site.building.records||[];
+  const factory=innovationFactoryBuildingRatio(records,c.factory);
+  const apartment=innovationApartmentPrecheck(records,c.area,c.aptMaxArea,c.aptMaxRatio);
+  const fact={scheme_key:schemeKey,type:typ,type_label:typ==='growth'?'성장거점형':'주거중심형',area:{m2:c.area},center:{value:c.center,label:c.centerLabel||'',is_core:isCore,known:!!c.center},station:{distance_m:c.dist,line_count:c.lines,coverage350_pct:cov350,coverage500_pct:cov500,name:c.stationName||''},zoning:{current:c.zoning||'',factory_pct:factory.pct,factory:factory},road:{...store.site.road,evidence:roadEvidence},apartment,aging:{assessment:age},housing:{planned_floor_pct:c.plannedHousingFloor,enclosed6:c.enclosed6},consent:{owner_pct:c.ownerConsent,land_pct:c.landConsent},operator:{landowner_count:c.landownerCount},exclusions:{known:false,value:c.excluded==null?'서울시 세부 제외지역 자료 확인 필요':c.excluded?'제외지역 가능성 입력됨':'비해당 입력'},planning:{density:innovationDensity(c,typ)},spatial_status_rows:[]};
   if(typ==='growth'){
     fact.spatial_status_rows=[
-      spatialFactRow('사업유형','성장거점형','CONFIRMED','서울시 조례 제4조 별도 진입요건'),
-      spatialFactRow('생활권 중심지역',isCore?`${c.centerLabel||c.center} 포함`:`${c.centerLabel||c.center||'비중심/미확인'}`,c.center?'CONFIRMED':'REVIEW','조례 제2조: 도심·광역중심만 해당'),
-      spatialFactRow('대중교통 결절지',`${c.lines??'-'}개 노선 / ${c.dist==null?'-':Number(c.dist).toFixed(1)+'m'}`,c.lines!=null&&c.dist!=null?'CONFIRMED':'REVIEW','2개 이상 철도노선 교차 환승역 500m'),
-      spatialFactRow('20m 간선도로·8m 도로',summarizeRoadList(fact.road),fact.road.max_width_m!=null?'CONFIRMED':'REVIEW','간선도로는 특별시도 중 주간선·보조간선 공식 기능확인 필요'),
-      spatialFactRow('공동주택단지 규모',`최대 ${fmtSchemeArea(c.aptMaxArea)} / ${fmtSchemePct(c.aptMaxRatio)}`,c.aptMaxArea!=null&&c.aptMaxRatio!=null?'CONFIRMED':'REVIEW','각 단지 1만㎡ 이하·사업면적 30% 이하'),
-      spatialFactRow('서울시 제외지역',fact.exclusions.value,'REVIEW','운영기준·공간경계 확인 전 자동 PASS 금지')
+      spatialFactRow('사업유형','성장거점형','CONFIRMED','서울시 조례 제4조 핵심 사업추진조건'),
+      spatialFactRow('생활권 중심지역',isCore?`${c.centerLabel||c.center} 포함`:`${c.centerLabel||c.center||'미확인'}`,c.center?'CONFIRMED':'REVIEW','도심·광역중심 여부 자동분석'),
+      spatialFactRow('비중심지 대중교통 결절지',`${c.lines??'-'}개 노선 / ${c.dist==null?'-':Number(c.dist).toFixed(1)+'m'}`,c.lines!=null&&c.dist!=null?'CONFIRMED':'REVIEW','2개 이상 철도노선 교차 환승역 500m'),
+      spatialFactRow('20m 간선도로','행안부 도로 기능자료 연계 전 확인필요','REVIEW','중심지 경로는 폭 20m 이상 간선도로 접면을 별도 확인'),
+      spatialFactRow('공동주택단지 제한',apartment.has_apartment===false?'공동주택 없음':`최대 ${fmtSchemeArea(apartment.max_area_m2)} / ${fmtSchemePct(apartment.max_ratio_pct)}`,apartment.status==='PASS'?'CONFIRMED':'REVIEW','각 단지 1만㎡ 이하 + 사업구역 면적의 30% 이하')
     ];
   }else{
     fact.spatial_status_rows=[
-      spatialFactRow('사업유형','주거중심형','CONFIRMED','서울시 조례 제5조 별도 진입요건'),
-      spatialFactRow('역세권 350m/500m 포함률',`350m ${fmtSchemePct(cov350)} / 500m ${fmtSchemePct(cov500)}`,cov350!=null||cov500!=null?'CONFIRMED':'REVIEW','조례 제2조·제5조: 일반은 과반, 준공업은 전체 역세권'),
-      spatialFactRow('공장비율',c.factory==null?'-':`${Number(c.factory).toFixed(1)}%`,c.zoning==='준공업'?(c.factory==null?'REVIEW':'CONFIRMED'):'INFO','준공업지역은 공장비율 10% 미만'),
+      spatialFactRow('사업유형','주거중심형','CONFIRMED','서울시 조례 제5조 핵심 사업추진조건'),
+      spatialFactRow('역세권 350m/500m 포함률',`350m ${fmtSchemePct(cov350)} / 500m ${fmtSchemePct(cov500)}`,cov350!=null||cov500!=null?'CONFIRMED':'REVIEW','일반지역 과반 / 준공업 전체'),
+      spatialFactRow('공장건축물 비율(초기검토)',factory.pct==null?'-':`${Number(factory.pct).toFixed(1)}% (${factory.factory_count}/${factory.total_count}동)`,c.zoning==='준공업'?(factory.pct==null?'REVIEW':'CONFIRMED'):'INFO','공장용도 건축물 수 ÷ 전체 건축물 수 ×100'),
       spatialFactRow('20년 이상 노후도',ageFactValue(age),age?'CONFIRMED':'REVIEW','전체 건축물 중 20년 이상 60%'),
-      spatialFactRow('15m/20m 간선도로·6m 블록',summarizeRoadList(fact.road),fact.road.max_width_m!=null?'CONFIRMED':'REVIEW','2~3만㎡: 15m, 3~6만㎡: 20m 간선도로 + 6m 이상 도로로 둘러싸인 일단의 지구'),
-      spatialFactRow('공동주택단지 규모',`최대 ${fmtSchemeArea(c.aptMaxArea)} / ${fmtSchemePct(c.aptMaxRatio)}`,c.aptMaxArea!=null&&c.aptMaxRatio!=null?'CONFIRMED':'REVIEW','각 단지 1만㎡ 이하·사업면적 30% 이하'),
-      spatialFactRow('서울시 제외지역',fact.exclusions.value,'REVIEW','운영기준·공간경계 확인 전 자동 PASS 금지')
+      spatialFactRow('공동주택단지 제한',apartment.has_apartment===false?'공동주택 없음':`최대 ${fmtSchemeArea(apartment.max_area_m2)} / ${fmtSchemePct(apartment.max_ratio_pct)}`,apartment.status==='PASS'?'CONFIRMED':'REVIEW','각 단지 1만㎡ 이하 + 사업구역 면적의 30% 이하')
     ];
   }
   store.scheme_specific[schemeKey]=fact;return fact;
@@ -7531,45 +7559,52 @@ function checkInnovationFromFacts(store,f){
   const rows=[];
   rows.push(schemeRow('사업유형',f.type==='growth'?'성장거점형 도심복합개발':'주거중심형 도심복합개발',f.type_label,'INFO','두 유형을 별도 사업모듈로 독립 판정',false,{sourceId:'INNOVATION',locator:'법 제2조제3호'}));
   if(f.type==='growth'){
-    let loc='REVIEW',locVal='-';
+    let loc='REVIEW',locVal='-',note='';
     if(f.center.is_core){
-      locVal=`${f.center.label||'도심·광역중심'} / 20m 도로 ${f.road.has_20m_width_candidate==null?'-':f.road.has_20m_width_candidate?'폭원후보':'미접함'}`;
-      if(f.road.has_20m_width_candidate===false)loc='FAIL'; else if(f.road.has_20m_width_candidate===true)loc='REVIEW';
-    }else if(f.station.line_count!=null&&f.station.distance_m!=null){loc=f.station.line_count>=2&&f.station.distance_m<=500?'PASS':'FAIL';locVal=`${f.station.line_count}개 노선 / ${Number(f.station.distance_m).toFixed(1)}m`;}
-    rows.push(schemeRow('입지','도심·광역중심 + 20m 이상 간선도로 접면 OR 비중심 대중교통결절지 500m',locVal,loc,f.center.is_core?'도로폭은 확인되더라도 특별시도 주·보조간선 기능구분 확인 전 REVIEW':'',true,{sourceId:'INNOVATION_ORD',locator:'제2조·제4조'}));
-    rows.push(schemeRow('면적','5,000㎡ 이상',fmtSchemeArea(f.area.m2),f.area.m2==null?'REVIEW':f.area.m2>=5000?'PASS':'FAIL','',true,{sourceId:'INNOVATION_ORD',locator:'제4조'}));
+      locVal=`${f.center.label||'도심·광역중심'} 포함 / 20m 간선도로 확인필요`;
+      loc='REVIEW';note='중심지역 조건은 충족 · 폭 20m 이상 간선도로 접면은 행안부 도로 기능자료 연계 후 확정';
+    }else if(!f.center.known){
+      locVal='중심지역 여부 미확인';loc='REVIEW';note='비중심지 경로 적용 전 중심지역 여부 확인 필요';
+    }else if(f.station.line_count!=null&&f.station.distance_m!=null){
+      loc=f.station.line_count>=2&&f.station.distance_m<=500?'PASS':'FAIL';
+      locVal=`비중심지 / ${f.station.line_count}개 노선 / ${Number(f.station.distance_m).toFixed(1)}m`;
+      note='비중심지는 2개 이상 철도노선 교차 환승역 500m 이내';
+    }
+    rows.push(schemeRow('입지','[중심지 + 폭20m 이상 간선도로] OR [비중심지 + 2개 이상 철도노선 환승역 500m 이내]',locVal,loc,note,true,{sourceId:'INNOVATION_ORD',locator:'제4조제1호'}));
+    rows.push(schemeRow('면적','5,000㎡ 이상',fmtSchemeArea(f.area.m2),f.area.m2==null?'REVIEW':f.area.m2>=5000?'PASS':'FAIL','',true,{sourceId:'INNOVATION_ORD',locator:'제4조제2호'}));
+    // 시행규칙상 용도지역·접도·제외지역은 핵심 사업추진조건과 분리하여 후속 적정성 검토로 관리한다.
     const allowed=['제2종일반주거(7층)','제2종일반주거','제3종일반주거','준주거','중심상업','근린상업','일반상업'];
-    rows.push(schemeRow('용도지역','2·3종 일반주거·준주거·중심/근린/일반상업',f.zoning.current||'-',f.zoning.current?(allowed.includes(f.zoning.current)?'PASS':'FAIL'):'REVIEW','',true,{sourceId:'INNOVATION_RULE',locator:'제3조'}));
-    const roadVals=[f.road.face_count,f.road.has_20m_width_candidate,f.road.has_8m]; const geom=!roadVals.some(x=>x==null)&&f.road.face_count>=2&&f.road.has_20m_width_candidate&&f.road.has_8m;
-    rows.push(schemeRow('접도','2면 이상 도로 + 한 면 20m 이상 간선도로 + 다른 한 면 8m 이상',summarizeRoadList(f.road),roadVals.some(x=>x==null)?'REVIEW':geom?'REVIEW':'FAIL',geom?'20m 도로가 특별시도 주·보조간선인지 기능구분 확인 필요':'도로 기하요건 미충족',true,{sourceId:'INNOVATION_RULE',locator:'제2조·제3조'}));
+    rows.push(schemeRow('용도지역','서울시 시행규칙상 제안 가능 용도지역',f.zoning.current||'-',f.zoning.current?(allowed.includes(f.zoning.current)?'PASS':'FAIL'):'REVIEW','핵심 사업추진조건 결과에는 미반영',false,{sourceId:'INNOVATION_RULE',locator:'제3조'}));
+    rows.push(schemeRow('추가 접도 적정성','서울시 시행규칙상 접도요건',summarizeRoadList(f.road),'REVIEW','행안부 도로 기능자료 연계 후 후속검토',false,{sourceId:'INNOVATION_RULE',locator:'제2조·제3조'}));
   }else{
     let loc='REVIEW',note='';
+    const factory=f.zoning.factory;
     if(f.zoning.current==='준공업'){
       if(f.zoning.factory_pct==null)loc='REVIEW';
       else if(f.station.coverage350_pct!=null&&f.station.coverage350_pct>=99.999&&f.zoning.factory_pct<10)loc='PASS';
-      else if(f.station.coverage500_pct!=null&&f.station.coverage500_pct>=99.999&&f.zoning.factory_pct<10){loc='REVIEW';note='350~500m는 시장 인정 필요';}
+      else if(f.station.coverage500_pct!=null&&f.station.coverage500_pct>=99.999&&f.zoning.factory_pct<10){loc='REVIEW';note='350~500m 구간은 시장 인정 필요';}
       else loc='FAIL';
+      note=[note,`공장건축물 비율 ${f.zoning.factory_pct==null?'-':Number(f.zoning.factory_pct).toFixed(1)+'%'} (${factory?.factory_count??'-'}/${factory?.total_count??'-'}동) · ${factory?.note||''}`].filter(Boolean).join(' · ');
     }else{
       if(f.station.coverage350_pct!=null&&f.station.coverage350_pct>50)loc='PASS';
-      else if(f.station.coverage500_pct!=null&&f.station.coverage500_pct>50){loc='REVIEW';note='350~500m는 시장 인정 필요';}
+      else if(f.station.coverage500_pct!=null&&f.station.coverage500_pct>50){loc='REVIEW';note='350~500m 구간은 시장 인정 필요';}
       else if(f.station.coverage350_pct!=null||f.station.coverage500_pct!=null)loc='FAIL';
     }
-    rows.push(schemeRow('입지','사업면적 과반 역세권 / 준공업은 사업면적 전체가 역세권 + 공장비율 10% 미만',`350m ${fmtSchemePct(f.station.coverage350_pct)} / 500m ${fmtSchemePct(f.station.coverage500_pct)}${f.zoning.current==='준공업'?` / 공장 ${fmtSchemePct(f.zoning.factory_pct)}`:''}`,loc,note,true,{sourceId:'INNOVATION_ORD',locator:'제2조제5호·제5조제1항제1호'}));
+    rows.push(schemeRow('입지','일반지역: 사업면적 과반 역세권 / 준공업: 사업면적 전체 역세권 + 공장건축물 비율 10% 미만',`350m ${fmtSchemePct(f.station.coverage350_pct)} / 500m ${fmtSchemePct(f.station.coverage500_pct)}${f.zoning.current==='준공업'?` / 공장 ${fmtSchemePct(f.zoning.factory_pct)}`:''}`,loc,note,true,{sourceId:'INNOVATION_ORD',locator:'제5조제1항제1호'}));
     rows.push(schemeRow('노후도','20년 이상 건축물 60% 이상',ageFactValue(f.aging.assessment),f.aging.assessment?.status||'REVIEW',ageFactNote(f.aging.assessment),true,{sourceId:'INNOVATION_ORD',locator:'제5조제1항제2호'}));
-    rows.push(schemeRow('면적','20,000~60,000㎡',fmtSchemeArea(f.area.m2),f.area.m2==null?'REVIEW':f.area.m2>=20000&&f.area.m2<=60000?'PASS':'FAIL','',true,{sourceId:'INNOVATION_ORD',locator:'제5조제1항제3호'}));
+    rows.push(schemeRow('면적','20,000㎡ 이상 60,000㎡ 이하',fmtSchemeArea(f.area.m2),f.area.m2==null?'REVIEW':f.area.m2>=20000&&f.area.m2<=60000?'PASS':'FAIL','',true,{sourceId:'INNOVATION_ORD',locator:'제5조제1항제3호'}));
     const allowed=['제2종일반주거(7층)','제2종일반주거','제3종일반주거','준주거','준공업'];
-    rows.push(schemeRow('용도지역','2종(7층 포함)·3종·준주거·준공업',f.zoning.current||'-',f.zoning.current?(allowed.includes(f.zoning.current)?'PASS':'FAIL'):'REVIEW','',true,{sourceId:'INNOVATION_RULE',locator:'제4조'}));
-    let req=null;if(f.area.m2!=null){if(f.area.m2>=20000&&f.area.m2<=30000)req=15;else if(f.area.m2>30000&&f.area.m2<=60000)req=20;}
-    const rok=req!=null&&f.road.max_width_m!=null&&f.housing.enclosed6!=null&&f.road.max_width_m>=req&&f.housing.enclosed6;
-    rows.push(schemeRow('도로',req?`${req}m 이상 간선도로 접면 + 6m 이상 도로로 둘러싸인 1개 블록`:'면적별 15m/20m 간선도로 + 6m 이상 도로 블록',`최대 ${f.road.max_width_m==null?'-':f.road.max_width_m+'m'} / 6m블록 ${f.housing.enclosed6==null?'-':f.housing.enclosed6?'O':'X'}`,req==null||f.road.max_width_m==null||f.housing.enclosed6==null?'REVIEW':rok?'REVIEW':'FAIL',rok?'간선도로 기능구분 확인 후 확정':'',true,{sourceId:'INNOVATION_RULE',locator:'제2조·제4조'}));
-    rows.push(schemeRow('주택 연면적','사업 후 전체 건축물 연면적 중 주택 50% 이상',fmtSchemePct(f.housing.planned_floor_pct),f.housing.planned_floor_pct==null?'REVIEW':f.housing.planned_floor_pct>=50?'PASS':'FAIL','',true,{sourceId:'INNOVATION',locator:'시행령 제2조'}));
+    rows.push(schemeRow('용도지역','서울시 시행규칙상 제안 가능 용도지역',f.zoning.current||'-',f.zoning.current?(allowed.includes(f.zoning.current)?'PASS':'FAIL'):'REVIEW','핵심 사업추진조건 결과에는 미반영',false,{sourceId:'INNOVATION_RULE',locator:'제4조'}));
+    rows.push(schemeRow('추가 접도 적정성','서울시 시행규칙상 접도요건',summarizeRoadList(f.road),'REVIEW','핵심 사업추진조건 결과와 분리 · 도로 기능자료 보강 후 후속검토',false,{sourceId:'INNOVATION_RULE',locator:'제2조·제4조'}));
+    rows.push(schemeRow('주택 연면적','사업 후 주택 연면적 비율 등 세부 사업계획 조건',fmtSchemePct(f.housing.planned_floor_pct),f.housing.planned_floor_pct==null?'REVIEW':f.housing.planned_floor_pct>=50?'PASS':'FAIL','핵심 사업추진조건 결과에는 미반영',false,{sourceId:'INNOVATION',locator:'시행령 제2조'}));
   }
-  const aptVals=[f.apartment.max_area_m2,f.apartment.max_ratio_pct],aptOk=!aptVals.some(x=>x==null)&&f.apartment.max_area_m2<=10000&&f.apartment.max_ratio_pct<=30;
-  rows.push(schemeRow('공동주택단지','각 공동주택단지 10,000㎡ 이하 + 사업면적의 30% 이하',`최대 ${fmtSchemeArea(f.apartment.max_area_m2)} / ${fmtSchemePct(f.apartment.max_ratio_pct)}`,aptVals.some(x=>x==null)?'REVIEW':aptOk?'PASS':'FAIL','',true,{sourceId:'INNOVATION_ORD',locator:f.type==='growth'?'제4조':'제5조'}));
+  const a=f.apartment||{};
+  const aptValue=a.has_apartment===false?'공동주택단지 없음':`최대 ${fmtSchemeArea(a.max_area_m2)} / 사업구역 대비 ${fmtSchemePct(a.max_ratio_pct)}`;
+  rows.push(schemeRow('공동주택단지','각 공동주택단지 10,000㎡ 이하 AND 해당 단지면적이 사업구역 면적의 30% 이하',aptValue,a.status||'REVIEW',a.note||'',true,{sourceId:'INNOVATION_ORD',locator:f.type==='growth'?'제4조제3호':'제5조제1항제4호'}));
   const cv=[f.consent.owner_pct,f.consent.land_pct],cok=!cv.some(x=>x==null)&&f.consent.owner_pct>=66.6667&&f.consent.land_pct>=50;
-  rows.push(schemeRow('지정신청 동의','토지등소유자 2/3 이상 + 토지면적 1/2 이상',`소유자 ${fmtSchemePct(f.consent.owner_pct)} / 면적 ${fmtSchemePct(f.consent.land_pct)}`,cv.some(x=>x==null)?'REVIEW':cok?'PASS':'REVIEW','지정 신청 전 확보하는 절차요건',false,{sourceId:'INNOVATION',locator:'법 제8조제2항'}));
-  rows.push(schemeRow('사업시행자','공공기관·지방공기업·20명 이하 토지등소유자·요건 충족 신탁업자·위탁관리 REITs 등',f.operator.landowner_count==null?'토지등소유자 수 미확인':`${f.operator.landowner_count}명`,f.operator.landowner_count==null?'INFO':'INFO',f.operator.landowner_count!=null&&f.operator.landowner_count>20?'토지등소유자 직접시행은 불가하나 신탁·REITs 등 다른 시행방식 검토':'사업시행 방식 선택사항',false,{sourceId:'INNOVATION',locator:'법 제14조'}));
-  rows.push(schemeRow('제외지역','서울시 세부 운영기준상 제외지역 여부',f.exclusions.value,'REVIEW','공식 운영기준·공간경계 확보 전 자동 PASS 금지',true,{sourceId:'INNOVATION_ORD',locator:'제4조·제5조 위임사항'}));
+  rows.push(schemeRow('지정신청 동의','토지등소유자 2/3 이상 + 토지면적 1/2 이상',`소유자 ${fmtSchemePct(f.consent.owner_pct)} / 면적 ${fmtSchemePct(f.consent.land_pct)}`,cv.some(x=>x==null)?'REVIEW':cok?'PASS':'REVIEW','지정 신청 전 절차요건 · 핵심 사업추진조건 결과에는 미반영',false,{sourceId:'INNOVATION',locator:'법 제8조제2항'}));
+  rows.push(schemeRow('사업시행자','법상 적격 시행자 구조 확인',f.operator.landowner_count==null?'토지등소유자 수 미확인':`${f.operator.landowner_count}명`,'INFO','사업방식 선택 단계의 후속검토',false,{sourceId:'INNOVATION',locator:'법 제14조'}));
+  rows.push(schemeRow('제외지역','서울시 세부 제외지역 여부',f.exclusions.value,'REVIEW','핵심 사업추진조건 결과에는 미반영 · 공식 공간자료 확보 후 별도 차단조건으로 연결',false,{sourceId:'INNOVATION_ORD',locator:'제4조제4호·제5조제2항'}));
   rows.push(schemeRow('용적률·공공기여','도심복합개발 규제특례 및 공공기여',f.planning.density.far,'INFO',f.planning.density.contribution,false,{sourceId:'INNOVATION',locator:'법 제37조·제38조'}));
   return rows;
 }
@@ -11886,34 +11921,22 @@ function renderPublicComplexDetailPopup(){
 function renderInnovationDetailPopup(name){
   const title=document.getElementById('schemeDetailPopupTitle'),body=document.getElementById('schemeDetailPopupBody');if(!body)return;
   const res=schemeResults[name]||latestSchemeModuleResults[name],store=latestSiteFactStore,f=res?.facts||store?.scheme_specific?.[name];
-  if(title)title.textContent=`도심복합개발 ${f?.type_label||''} 기초검토서`;
-  if(!f||!store){body.innerHTML='<div class="scheme-modal-note"><b>현황분석 필요</b> 먼저 검토하기를 실행해 공간현황 Fact를 생성해 주세요. 팝업에서는 새 현황을 계산하지 않습니다.</div>';return;}
-  const resultRows=schemeSpecificResultRows(res,[
-    {label:'유형·입지',items:['사업유형','입지']},
-    {label:'대상지 요건',items:['면적','용도지역','접도','도로','노후도','주택 연면적','공동주택단지']},
-    {label:'추진조건',items:['지정신청 동의','사업시행자']},
-    {label:'배제조건',items:['제외지역']}
-  ],['용적률·공공기여']);
-  const density=f.planning?.density||{};
-  const planRows=[
-    `<tr><td><b>혁신지구 계획방향</b></td><td>${escHtml(density.zone||'-')}</td><td>${escHtml(f.type==='growth'?'성장거점형은 중심지·대중교통 결절지와 복합기능 중심으로 검토':'주거중심형은 역세권·노후도·주거비율 및 기반시설 조건을 검토')}</td><td>${schemeSheetSourceFor(name,'혁신지구 계획방향','INNOVATION_ORD',f.type==='growth'?'제2조·제4조':'제2조·제5조')}</td></tr>`,
-    schemeSpecificPlanRow(res,'용적률·공공기여','용적률·공공기여',`${density.far||'-'} / ${density.contribution||'-'}`,'규제특례와 기반시설·생활인프라·공공시설 부담을 함께 검토'),
-    schemeSpecificPlanRow(res,'지정신청 동의','지정신청 동의',null,'지정신청 전 법정 동의요건 확보 여부를 후속조건으로 관리'),
-    schemeSpecificPlanRow(res,'사업시행자','사업시행자',null,'법상 시행자 자격은 향후 추진주체 메타필터와 별도 적격성 검증에 연결')
-  ].join('');
-  const steps=schemeSheetSteps([['복합개발계획 입안·제안',`${f.type_label} 진입요건에 맞는 계획안 작성`],['토지등소유자 동의','지정신청 전 법정 동의요건 확보'],['혁신지구 지정 신청','자치구 → 서울시'],['도시계획위원회 심의·지정','복합개발계획 결정 및 혁신지구 지정'],['사업시행자 지정·사업계획','시행자 적격성·공공기여·사업계획 구체화'],['인허가·착공','특례 및 기반시설 조건 반영 후 시행']]);
-  body.innerHTML=`<div class="activation-sheet"><div class="activation-sheet-title"><div><h3>도심복합개발 ${escHtml(f.type_label||'')}</h3><p>도심복합개발법 2026.07.01 · 서울시 조례 2026.01.05 · 시행규칙 2026.06.01</p></div><div class="activation-feasibility"><span>지정 가능성</span><b class="${escHtml(res?.overall||'REVIEW')}">${escHtml(schemeSheetFeasibility(res?.overall||'REVIEW'))}</b></div></div>
-  <section class="activation-section"><h4>1. 현황</h4><table class="activation-table"><tbody>
-    <tr><th>위치</th><td>${escHtml(store.site.address||'-')}</td><th>면적</th><td>${escHtml(fmtSchemeArea(f.area?.m2))}</td></tr>
-    <tr><th>사업유형</th><td>${escHtml(f.type_label||'-')}</td><th>용도지역</th><td>${escHtml(f.zoning?.current||'-')}</td></tr>
-    <tr><th>중심지</th><td>${escHtml(f.center?.label||f.center?.value||'-')}</td><th>대중교통 결절</th><td>${escHtml(`${f.station?.line_count??'-'}개 노선 / ${f.station?.distance_m==null?'-':Number(f.station.distance_m).toFixed(1)+'m'}`)}</td></tr>
-    <tr><th>역세권 포함률</th><td>${escHtml(`350m ${fmtSchemePct(f.station?.coverage350_pct)} / 500m ${fmtSchemePct(f.station?.coverage500_pct)}`)}</td><th>도로</th><td>${escHtml(summarizeRoadList(f.road))}</td></tr>
-    <tr><th>노후도</th><td>${f.type==='housing'?escHtml(ageFactValue(f.aging?.assessment)):'비적용'}</td><th>공동주택단지</th><td>${escHtml(`최대 ${fmtSchemeArea(f.apartment?.max_area_m2)} / ${fmtSchemePct(f.apartment?.max_ratio_pct)}`)}</td></tr>
+  if(title)title.textContent=`도심복합개발 ${f?.type_label||''} 사업추진조건 검토서`;
+  if(!f||!store){body.innerHTML='<div class="scheme-modal-note"><b>현황분석 필요</b> 먼저 검토하기를 실행해 공간현황 Fact를 생성해 주세요.</div>';return;}
+  const coreItems=f.type==='growth'?['입지','면적','공동주택단지']:['입지','노후도','면적','공동주택단지'];
+  const resultRows=schemeSpecificResultRows(res,[{label:'핵심 사업추진조건',items:coreItems}],[]);
+  const factory=f.zoning?.factory||{};
+  const apt=f.apartment||{};
+  body.innerHTML=`<div class="activation-sheet"><div class="activation-sheet-title"><div><h3>도심복합개발 ${escHtml(f.type_label||'')}</h3><p>서울특별시 도심 복합개발 지원에 관한 조례 ${f.type==='growth'?'제4조':'제5조'} 핵심 사업추진조건</p></div><div class="activation-feasibility"><span>핵심 추진조건</span><b class="${escHtml(res?.overall||'REVIEW')}">${escHtml(schemeSheetFeasibility(res?.overall||'REVIEW'))}</b></div></div>
+  <section class="activation-section"><h4>1. 자동분석 현황</h4><table class="activation-table"><tbody>
+    <tr><th>위치</th><td>${escHtml(store.site.address||'-')}</td><th>사업면적</th><td>${escHtml(fmtSchemeArea(f.area?.m2))}</td></tr>
+    <tr><th>사업유형</th><td>${escHtml(f.type_label||'-')}</td><th>중심지</th><td>${escHtml(f.center?.label||f.center?.value||'-')}</td></tr>
+    <tr><th>환승결절</th><td>${escHtml(`${f.station?.line_count??'-'}개 노선 / ${f.station?.distance_m==null?'-':Number(f.station.distance_m).toFixed(1)+'m'}`)}</td><th>역세권 포함률</th><td>${escHtml(`350m ${fmtSchemePct(f.station?.coverage350_pct)} / 500m ${fmtSchemePct(f.station?.coverage500_pct)}`)}</td></tr>
+    ${f.type==='housing'?`<tr><th>노후도</th><td>${escHtml(ageFactValue(f.aging?.assessment))}</td><th>공장건축물 비율</th><td>${escHtml(factory.pct==null?'-':`${Number(factory.pct).toFixed(1)}% (${factory.factory_count}/${factory.total_count}동)`)}</td></tr>`:''}
+    <tr><th>공동주택단지</th><td colspan="3">${escHtml(apt.has_apartment===false?'건축물대장상 공동주택 용도 없음':`최대단지 ${fmtSchemeArea(apt.max_area_m2)} / 사업구역 대비 ${fmtSchemePct(apt.max_ratio_pct)} · ${apt.note||''}`)}</td></tr>
   </tbody></table></section>
-  <section class="activation-section"><h4>2. 검토결과</h4><table class="activation-table"><thead><tr><th>구분</th><th>검토항목</th><th>기준</th><th>대상지 현황</th><th>판정·후속</th><th>근거</th></tr></thead><tbody>${resultRows}</tbody></table>${schemeDetailSummary(res)}</section>
-  <section class="activation-section"><h4>3. 계획기준·추진조건</h4><table class="activation-table"><thead><tr><th>검토항목</th><th>적용가능 범위</th><th>적용조건·해석</th><th>근거</th></tr></thead><tbody>${planRows}</tbody></table></section>
-  <section class="activation-section"><h4>4. 추진일정</h4><div class="activation-procedure">${steps}</div></section>
-  <div class="scheme-modal-note"><b>판정구조</b> ${f.type==='growth'?'성장거점형은 도심·광역중심/환승결절·5천㎡·공동주택단지·20m+8m 접도요건':'주거중심형은 역세권·20년 60% 노후도·2만~6만㎡·공동주택단지·면적별 15m/20m 간선도로+6m 블록요건'}을 독립 판정합니다.</div></div>`;
+  <section class="activation-section"><h4>2. 사업추진조건 판정</h4><table class="activation-table"><thead><tr><th>구분</th><th>검토항목</th><th>기준</th><th>대상지 현황</th><th>판정·후속</th><th>근거</th></tr></thead><tbody>${resultRows}</tbody></table>${schemeDetailSummary(res)}</section>
+  <div class="scheme-modal-note"><b>판정범위</b> ${f.type==='growth'?'성장거점형은 입지·5,000㎡ 이상·공동주택단지 제한을 핵심 추진조건으로 판정합니다. 중심지 경로의 20m 간선도로는 행안부 도로 기능자료 연계 전까지 확인필요로 둡니다.':'주거중심형은 역세권 입지·20년 이상 노후도 60%·2만~6만㎡·공동주택단지 제한을 핵심 추진조건으로 판정합니다. 준공업지역 공장비율은 현재 건축물대장상 공장용도 건축물 수/전체 건축물 수로 초기검토합니다.'}<br/>시행규칙상 용도지역·추가 접도·제외지역, 지정신청 동의·시행자 조건은 핵심 결과와 분리한 후속검토입니다.</div></div>`;
 }
 
 function renderUrbanRedevelopmentDetailPopup(){

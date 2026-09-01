@@ -432,6 +432,9 @@ def check_next_four_independent_modules() -> None:
     assert "coverage350_pct" in innov and "coverage500_pct" in innov
     assert "owner_pct>=66.6667" in innov and "land_pct>=50" in innov
     assert "INNOVATION_RULE" in innov and "INNOVATION_ORD" in innov
+    assert "innovationFactoryBuildingRatio" in html and "공장용도 건축물 수 ÷ 전체 건축물 수" in innov
+    assert "innovationApartmentPrecheck" in html and "제4조제3호" in innov and "제5조제1항제4호" in innov
+    assert "행안부 도로 기능자료 연계 후 확정" in innov
     # 도시정비형: 정책사업 의제는 독립 추천에 중복집계하지 않는다.
     urban_start=html.index("function urbanRedevelopmentSpatialFacts(store)")
     urban_end=html.index("const SCHEME_MODULES=", urban_start)
@@ -474,10 +477,14 @@ def check_dedicated_detail_popups() -> None:
         start=html.index(sig)
         end=html.find("\nfunction ", start+20)
         block=html[start:end if end >= 0 else None]
-        assert "1. 현황" in block and "2. 검토결과" in block and "4. 추진일정" in block, name
+        if name=="renderInnovationDetailPopup":
+            assert "1. 자동분석 현황" in block and "2. 사업추진조건 판정" in block, name
+            assert "핵심 추진조건" in block and "판정범위" in block, name
+        else:
+            assert "1. 현황" in block and "2. 검토결과" in block and "4. 추진일정" in block, name
+            assert "판정구조" in block or "중복추천 배제" in block, name
         assert "schemeSpecificResultRows" in block, name
         assert "schemeSheetResultRows" not in block, name
-        assert "판정구조" in block or "중복추천 배제" in block, name
 
 
 
@@ -1562,7 +1569,7 @@ def check_r22_verified_cultural_layers_and_hill_disabled() -> None:
 def check_r22_downtown_complex_type_split() -> None:
     base=Path(__file__).resolve().parent
     html=(base / "app.html").read_text(encoding="utf-8")
-    # One generic innovation card/selector must not survive: the two statutory types are independent modules.
+    # The two statutory types remain independent modules.
     assert 'data-scheme="innovation_growth"' in html
     assert 'data-scheme="innovation_housing"' in html
     assert 'data-scheme="innovation"' not in html
@@ -1570,33 +1577,33 @@ def check_r22_downtown_complex_type_split() -> None:
     assert "innovation_growth:{id:'innovation_growth'" in html
     assert "innovation_housing:{id:'innovation_housing'" in html
     assert "SCHEME_MODULES.innovation" not in html
-    # Growth-anchor rules: Seoul ordinance art. 4 + enforcement rule art. 3.
+    # Growth core gates: location + 5,000m2 + apartment-complex limitation.
     for text in (
-        '도심·광역중심 + 20m 이상 간선도로 접면 OR 비중심 대중교통결절지 500m',
-        '5,000㎡ 이상',
-        '2·3종 일반주거·준주거·중심/근린/일반상업',
-        '2면 이상 도로 + 한 면 20m 이상 간선도로 + 다른 한 면 8m 이상',
+        '[중심지 + 폭20m 이상 간선도로] OR [비중심지 + 2개 이상 철도노선 환승역 500m 이내]',
+        '제4조제1호', '제4조제2호', '제4조제3호',
+        '행안부 도로 기능자료 연계 후 확정',
     ):
         assert text in html, text
-    # Housing-anchor rules: Seoul ordinance art. 5 + enforcement rule art. 4.
+    # Housing core gates: station coverage + age + area + apartment-complex limitation.
     for text in (
-        '사업면적 과반 역세권 / 준공업은 사업면적 전체가 역세권 + 공장비율 10% 미만',
+        '일반지역: 사업면적 과반 역세권 / 준공업: 사업면적 전체 역세권 + 공장건축물 비율 10% 미만',
         '20년 이상 건축물 60% 이상',
-        '20,000~60,000㎡',
-        '2종(7층 포함)·3종·준주거·준공업',
-        "if(f.area.m2>=20000&&f.area.m2<=30000)req=15;else if(f.area.m2>30000&&f.area.m2<=60000)req=20;",
-        '6m 이상 도로로 둘러싸인 1개 블록',
-        '사업 후 전체 건축물 연면적 중 주택 50% 이상',
+        '20,000㎡ 이상 60,000㎡ 이하',
+        '제5조제1항제1호', '제5조제1항제2호', '제5조제1항제3호', '제5조제1항제4호',
     ):
         assert text in html, text
+    # Factory ratio is an explicit platform precheck from building-register counts.
+    assert 'function innovationFactoryBuildingRatio' in html
+    assert '공장용도 건축물 수 ÷ 전체 건축물 수 × 100' in html
+    assert '공장건축물 비율(초기검토)' in html
     # 350~500m is not an automatic pass in Seoul; mayoral recognition is still required.
-    assert "350~500m는 시장 인정 필요" in html
-    # Road width alone must never be promoted to an official arterial-road PASS.
-    assert '특별시도 주·보조간선' in html
-    assert "geom?'REVIEW':'FAIL'" in html
-    assert "rok?'REVIEW':'FAIL'" in html
-    # Common apartment-complex condition applies to both independent types.
-    assert '각 공동주택단지 10,000㎡ 이하 + 사업면적의 30% 이하' in html
+    assert '350~500m 구간은 시장 인정 필요' in html
+    # Common apartment-complex limitation is a mandatory core gate for both types.
+    assert '각 공동주택단지 10,000㎡ 이하 AND 해당 단지면적이 사업구역 면적의 30% 이하' in html
+    assert 'function innovationApartmentPrecheck' in html
+    # Additional enforcement-rule suitability checks are separated from the core result.
+    assert '핵심 사업추진조건 결과에는 미반영' in html
+    assert '핵심 추진조건' in html and '사업추진조건 판정' in html
 
 def main() -> None:
     _run("measurement", check_measurement)
