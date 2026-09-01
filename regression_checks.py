@@ -1439,13 +1439,16 @@ def check_r21_single_boundary_sequential_diagnostics() -> None:
     base=Path(__file__).resolve().parent
     html=(base / "app.html").read_text(encoding="utf-8")
     py=(base / "app.py").read_text(encoding="utf-8")
+    # R22 correction: user-confirmed geometry is authoritative. Parcel union is reference-only.
     for marker in (
         "let analysisGeometry=null",
         "let boundaryReferenceGeometry=null",
         "function finalizeAnalysisGeometryFromSelectedParcels()",
-        "source:'selected_parcel_union'",
+        "function currentSpatialGeometry(){return activeGeometry;}",
+        "source:'user_boundary'",
+        "parcel_union_area_m2",
+        "사용자 구역계는 변경하지 않습니다",
         "runAllAutoAnalyses({skipParcels:true})",
-        "분석경계 미확정 · 후속분석 중단",
         "async function fetchBackendJson",
         "JSON 아님",
         "선행 ROAD_BT 미확보 · 분석 미실행",
@@ -1453,6 +1456,12 @@ def check_r21_single_boundary_sequential_diagnostics() -> None:
         "TL_SPRD_RW가 있어도 지적/가로구역 계산에 대체 사용하지 않는다",
     ):
         assert marker in html, marker
+    finalize=html[html.index("function finalizeAnalysisGeometryFromSelectedParcels()"):html.index("const parcelFeatureMap", html.index("function finalizeAnalysisGeometryFromSelectedParcels()"))]
+    assert "activeGeometry=analysisGeometry" not in finalize
+    assert "drawnItems.clearLayers()" not in finalize
+    # Explicit user action remains the only parcel-union boundary replacement path.
+    manual=html[html.index("function applySelectedParcelsAsBoundary()") : html.index("function ", html.index("function applySelectedParcelsAsBoundary()")+20)]
+    assert "activeGeometry=merged.geometry" in manual
     # 대형 GIS는 같은 Promise.all 묶음에 넣지 않고 순차 await한다.
     auto=html[html.index("async function runAllAutoAnalyses(options={})"):html.index("// 구역계 입력 직후", html.index("async function runAllAutoAnalyses(options={})"))]
     assert "Promise.all([" in auto  # 토지대장/건축공간만 병렬
@@ -1509,24 +1518,22 @@ def check_r22_shared_conservation_and_collapsible_ui() -> None:
 
 
 
-def check_r22_hill_official_source_bridge() -> None:
+def check_r22_verified_cultural_layers_and_hill_disabled() -> None:
     base=Path(__file__).resolve().parent
     html=(base / "app.html").read_text(encoding="utf-8")
     py=(base / "app.py").read_text(encoding="utf-8")
+    # Only verified public/current spatial sources participate in automatic long-term-jeonse checks.
     for marker in (
-        'id="siteDetail_hill"', 'id="ccHillMiniMap"', 'async function analyzeHillZones()',
-        "공식 구릉지 원도형 미연결 · 자동 PASS 금지", "구릉지(공식 원도형)",
-        "구릉지 비중첩 · 최근접", "구릉지 원도형",
+        "LT_C_UQ111", "LT_C_UQ121", "LT_C_UO301",
+        "제1종전용주거", "제2종전용주거", "제1종일반주거",
+        "역사문화특화경관지구", "국가유산보호구역",
+        "구릉지 공개 SHP는 미확보이므로 자동판정하지 않음",
     ):
         assert marker in html, marker
-    for marker in (
-        'HILL_SOURCE_ENV = "SEOUL_HILL_SHP_PATH"', 'def _hill_reference_data()',
-        'def analyze_hill_intersections(', '@app.post("/api/spatial/hill-intersections")',
-        '@app.get("/api/reference/hill-status")', '@app.get("/api/reference/seoul-space-catalog")',
-        "OFFICIAL_SHP_NOT_BUNDLED", "임의 DEM 복원도형으로 자동 PASS/FAIL하지 않습니다",
-    ):
-        assert marker in py, marker
-    # 공식 원도형이 없을 때는 확정 비해당으로 만들지 않는다.
+    # Hill legacy adapter may remain for compatibility but must be disabled/not presented as a found source.
+    assert '"hill_official_gis": "disabled_public_shp_not_found"' in py
+    assert '"hill_official_file": None' in py
+    assert "구릉지 원도형','정비사업 GIS" not in html
     import app
     app._hill_reference_data.cache_clear(); app._hill_spatial_index.cache_clear()
     status=app._hill_reference_data()['metadata']
@@ -1558,7 +1565,7 @@ def main() -> None:
     _run("progress truth + wide scheme facts", check_r20_progress_truth_and_wide_scheme_facts)
     _run("r21 single boundary + sequential diagnostics", check_r21_single_boundary_sequential_diagnostics)
     _run("r22 shared conservation + collapsible ui", check_r22_shared_conservation_and_collapsible_ui)
-    _run("r22 hill official source bridge", check_r22_hill_official_source_bridge)
+    _run("r22 verified cultural layers + hill disabled", check_r22_verified_cultural_layers_and_hill_disabled)
     _run("spatial evidence maps", check_spatial_evidence_maps)
     _run("safe medical api adapter", check_safe_medical_api_adapter)
     _run("safe medical boundary resolution", check_safe_medical_boundary_resolution)
