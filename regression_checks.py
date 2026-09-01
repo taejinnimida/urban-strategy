@@ -1429,7 +1429,7 @@ def check_r19_activation_arterial_linear_commercial() -> None:
         'function activationLinearCommercialEvidence()',
         'activation_arterial:activationLinearCommercialEvidence()',
         "safeAnalysisStep('노선형 상업지역',async()=>{await analyzeActivationArterial();",
-        "서울시 공개 대상노선 + 용도지역 GIS 자동분석",
+        "서울시 공개 대상노선 + 용도지역 + 공식 가로구역 결합",
     ):
         assert marker in html, marker
     # 실폭도로로 노선형 상업지역이나 가로구역을 만들지 않는다.
@@ -1605,6 +1605,40 @@ def check_r22_downtown_complex_type_split() -> None:
     assert '핵심 사업추진조건 결과에는 미반영' in html
     assert '핵심 추진조건' in html and '사업추진조건 판정' in html
 
+def check_r22_multi_station_fact_engine():
+    html = Path(app.BASE_DIR, "app.html").read_text(encoding="utf-8")
+    py = Path(app.BASE_DIR, "app.py").read_text(encoding="utf-8")
+    for token in (
+        "const STATION_SEARCH_RADIUS_M=1000",
+        "const STATION_SAME_NAME_CLUSTER_M=400",
+        "nearbyStations:[]",
+        "function clusterStationFeatures(features,maxGapM=STATION_SAME_NAME_CLUSTER_M)",
+        "same_name_cluster_count",
+        "line_data_complete:lineSource==='STATION_DATA'",
+        "function activationStationCandidates()",
+        "function stationBlockRelation(station,threshold)",
+        "function streetBlockIsAuthoritative()",
+        "function bestLongtermStationFact(c)",
+        "bestStationByCoverage(350)",
+        "transferCandidate=stationAnalysis.loaded?bestStationByDistance(x=>Number(x.line_count)>=2):null",
+        "역세권활성화 공간대상에 포함되면 성장잠재권 활성화구역은 비활성화",
+        "공식 가로구역/행안부 데이터 연결 전 자동 PASS 금지",
+        "현재 내장 기초단위구/ROAD_BT 형상은 법정 가로구역이 아니므로 행안부/공식 가로구역 데이터 연결 전 자동 PASS·FAIL 금지",
+        "future_function_interface:{field:'road_function'",
+    ):
+        assert token in html, token
+    # 후보검색 1km는 판정기준이 아니라 수집범위이며, 개별 역의 250/350/500m 면적관계를 보존한다.
+    assert "coverage250:m250.coverage_pct" in html and "coverage350:m350.coverage_pct" in html and "coverage500:m500.coverage_pct" in html
+    assert "overlap250M2:m250.overlap_m2" in html and "full500:m500.full_containment" in html
+    # 현 SGIS 기초단위구 자동추정은 법정 가로구역으로 승격하지 않는다. 향후 공식 데이터 인터페이스만 열어둔다.
+    assert "'authoritative_street_block':False" in py
+    assert "'future_street_block_interface':'MOIS_BASIC_UNIT_OR_VERIFIED_PLANNING_ROAD_BLOCK'" in py
+    # 추정 가로구역은 역세권활성화·성장잠재권 배타 Gate에서 PASS/FAIL 확정근거가 될 수 없다.
+    assert "shareKnown&&!blockAuthoritative" in html
+    assert "arterial.block_authoritative===true&&arterial.block_includes===true" in html
+    # 동명 이격역을 단순 역명으로 합쳐 거짓 환승역을 만들지 않는다.
+    assert "group.same_name_cluster_count>1" in html
+
 def main() -> None:
     _run("measurement", check_measurement)
     _run("renewal spatial", check_renewal_server_intersection)
@@ -1646,6 +1680,7 @@ def main() -> None:
     _run("r17 spatial relation road facts", check_r17_spatial_relation_road_facts)
     _run("r18 bundled basic unit + frontage caveat", check_r18_bundled_basic_unit_and_frontage_caveat)
     _run("r19 activation arterial linear commercial", check_r19_activation_arterial_linear_commercial)
+    _run("r22 multi-station fact engine", check_r22_multi_station_fact_engine)
     _run("release files", check_release_files)
     print("v2.5.0 regression checks: PASS")
 
