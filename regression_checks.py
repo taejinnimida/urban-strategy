@@ -306,7 +306,8 @@ def check_feedback_and_ui() -> None:
     assert "역세권활성화사업 기초검토서" in html
     assert "선순위 사업 미리보기" in html
     assert "위치기반 매스 이미지" in html
-    assert "collectFacts:innovationSpatialFacts" in html
+    assert "innovation_growth:{id:'innovation_growth'" in html
+    assert "innovation_housing:{id:'innovation_housing'" in html
 
 
 def check_four_independent_scheme_modules() -> None:
@@ -389,14 +390,14 @@ def check_next_four_independent_modules() -> None:
     required = (
         "function longtermSpatialFacts(store)", "function checkLongtermFromFacts(store,f)",
         "function publicComplexSpatialFacts(store)", "function checkPublicComplexFromFacts(store,f)",
-        "function innovationSpatialFacts(store)", "function checkInnovationFromFacts(store,f)",
+        "function innovationSpatialFacts(store,typ)", "function checkInnovationFromFacts(store,f)",
         "function urbanRedevelopmentSpatialFacts(store)", "function checkUrbanRedevelopmentFromFacts(store,f)",
         "collectFacts:longtermSpatialFacts", "collectFacts:publicComplexSpatialFacts",
-        "collectFacts:innovationSpatialFacts", "collectFacts:urbanRedevelopmentSpatialFacts",
+        "collectFacts(store){return innovationSpatialFacts(store,'growth');}", "collectFacts(store){return innovationSpatialFacts(store,'housing');}", "collectFacts:urbanRedevelopmentSpatialFacts",
         "store.scheme_specific.longterm=fact", "store.scheme_specific.public_complex=fact",
-        "store.scheme_specific.innovation=fact", "store.scheme_specific.urban_redevelopment=fact",
+        "store.scheme_specific[schemeKey]=fact", "store.scheme_specific.urban_redevelopment=fact",
         "function renderLongtermDetailPopup()", "function renderPublicComplexDetailPopup()",
-        "function renderInnovationDetailPopup()", "function renderUrbanRedevelopmentDetailPopup()",
+        "function renderInnovationDetailPopup(name)", "function renderUrbanRedevelopmentDetailPopup()",
     )
     for text in required:
         assert text in html, text
@@ -404,7 +405,7 @@ def check_next_four_independent_modules() -> None:
     assert "public_complex:chronologicalAgeAssessment(records,20,60" in html
     assert "승강장 경계 350m 이내" in html
     public_start=html.index("function publicComplexSpatialFacts(store)")
-    public_end=html.index("function innovationSpatialFacts(store)", public_start)
+    public_end=html.index("function innovationSpatialFacts(store,typ)", public_start)
     public=html[public_start:public_end]
     assert "coverage350" in public and "coverage500" not in public
     assert "정비구역·도시개발구역 중첩" in public
@@ -425,7 +426,7 @@ def check_next_four_independent_modules() -> None:
     assert "const first=c.dist!=null && c.dist<=350" not in density
     assert "2100000282274" in html
     # 도심복합개발: 2026 서울 조례·규칙, 유형별 Fact와 동의요건.
-    innov_start=html.index("function innovationSpatialFacts(store)")
+    innov_start=html.index("function innovationSpatialFacts(store,typ)")
     innov_end=html.index("function urbanRedevelopmentSpatialFacts(store)", innov_start)
     innov=html[innov_start:innov_end]
     assert "coverage350_pct" in innov and "coverage500_pct" in innov
@@ -457,7 +458,7 @@ def check_next_four_independent_modules() -> None:
     popup_start=html.index("function renderLongtermDetailPopup()")
     popup_end=html.index("function renderSchemeDetailPopup(name)", popup_start)
     pop=html[popup_start:popup_end]
-    for forbidden in ("longtermSpatialFacts(store)", "publicComplexSpatialFacts(store)", "innovationSpatialFacts(store)", "urbanRedevelopmentSpatialFacts(store)"):
+    for forbidden in ("longtermSpatialFacts(store)", "publicComplexSpatialFacts(store)", "innovationSpatialFacts(store,typ)", "urbanRedevelopmentSpatialFacts(store)"):
         assert forbidden not in pop
 
 
@@ -469,7 +470,8 @@ def check_dedicated_detail_popups() -> None:
         "renderInnovationDetailPopup","renderUrbanRedevelopmentDetailPopup",
     ]
     for name in funcs:
-        start=html.index(f"function {name}()")
+        sig=f"function {name}(name)" if name=="renderInnovationDetailPopup" else f"function {name}()"
+        start=html.index(sig)
         end=html.find("\nfunction ", start+20)
         block=html[start:end if end >= 0 else None]
         assert "1. 현황" in block and "2. 검토결과" in block and "4. 추진일정" in block, name
@@ -535,9 +537,9 @@ def check_spatial_evidence_maps() -> None:
     assert 'store.site.spatial_evidence?.roads?.safe' in html
     assert 'store.site.spatial_evidence?.safe_medical' in html
     # 도로기준은 제도별로 분리한다. 하나의 generic arterial PASS를 쓰면 안 된다.
-    for key in ("key:'activation'", "key:'safe'", "key:'growth'", "key:'longterm'", "key:'station_complex'", "key:'innovation'", "key:'public_complex'"):
+    for key in ("key:'activation'", "key:'safe'", "key:'growth'", "key:'longterm'", "key:'station_complex'", "key:'innovation_growth'", "key:'innovation_housing'", "key:'public_complex'"):
         assert key in html, key
-    for fact_key in ('activationRoadFact','safeHousingRoadFact','growthPotential35mRoadFact','longtermArterialIntersectionFact','stationComplexRoadFact','innovationDistrictRoadFact','publicComplexRoadFact'):
+    for fact_key in ('activationRoadFact','safeHousingRoadFact','growthPotential35mRoadFact','longtermArterialIntersectionFact','stationComplexRoadFact','innovationGrowthRoadFact','innovationHousingRoadFact','publicComplexRoadFact'):
         assert fact_key in html, fact_key
     assert "mode:'width6_frontage'" in html
     assert "threshold:20" in html and "threshold:35" in html
@@ -547,7 +549,7 @@ def check_spatial_evidence_maps() -> None:
 
     # 접도율/접면기준은 제도별 Fact로 분리하며 공통 frontage Boolean/ratio로 대체하지 않는다.
     assert 'function schemeFrontageEvidenceFacts(cArg=null)' in html
-    for fact_key in ('redevelopmentFrontage6Fact','residentialEnvironmentFrontage4Fact','activationFrontageFact','safeHousingFrontageFact','growthPotentialFrontage35Fact','longtermFrontage20Fact','stationComplexFrontageFact','innovationFrontageFact','publicComplexFrontageFact'):
+    for fact_key in ('redevelopmentFrontage6Fact','residentialEnvironmentFrontage4Fact','activationFrontageFact','safeHousingFrontageFact','growthPotentialFrontage35Fact','longtermFrontage20Fact','stationComplexFrontageFact','innovationGrowthFrontageFact','innovationHousingFrontageFact','publicComplexFrontageFact'):
         assert fact_key in html, fact_key
     for dom_id in ('spRoadFrontageLabel','spRoadFrontageValue','spRoadFrontageBasis','spRoadFrontageContact','spRoadFrontageStatus'):
         assert f'id="{dom_id}"' in html, dom_id
@@ -930,7 +932,7 @@ def check_remaining_four_independent_modules_and_sources() -> None:
     assert "def evaluate_redevelopment(" not in py
     assert '/api/redevelopment/evaluate' not in py
     assert '"scheme_module_api": "2026-08-31-r17-spatial-relation-road-facts"' in py
-    assert '15 independent modules including smallscale 5-route family and prior_negotiation' in py
+    assert '16 independent modules including smallscale 5-route family and prior_negotiation' in py
 
 def check_scheme_family_separation() -> None:
     """주택정비 3종은 raw Fact만 공유하고 주택개발사업은 독립 family로 분리한다."""
@@ -1081,7 +1083,7 @@ def check_r8_boundary_map_smallscale_prior() -> None:
     for shell in ('urban_innovation_zone','facility_complex_zone','mixed_use_zone'):
         assert f"{shell}:{{" not in module_block and f"{shell}: {{" not in module_block
     assert "현재 자동 활성화·추천·우선순위 미반영" in html
-    assert "15 independent modules including smallscale 5-route family and prior_negotiation" in py
+    assert "16 independent modules including smallscale 5-route family and prior_negotiation" in py
     assert '"engine": "site_fact_store_v2.5.0_r11"' in py
     assert "five user review routes: autonomous / block / small-scale reconstruction / small-scale redevelopment / Moa Town+Moa Housing policy route" in py
     assert "r17-spatial-relation-road-facts" in html and "r17-spatial-relation-road-facts" in py
@@ -1544,6 +1546,46 @@ def check_r22_verified_cultural_layers_and_hill_disabled() -> None:
         assert out['status']=='unavailable' and out['intersects'] is None
 
 
+
+def check_r22_downtown_complex_type_split() -> None:
+    base=Path(__file__).resolve().parent
+    html=(base / "app.html").read_text(encoding="utf-8")
+    # One generic innovation card/selector must not survive: the two statutory types are independent modules.
+    assert 'data-scheme="innovation_growth"' in html
+    assert 'data-scheme="innovation_housing"' in html
+    assert 'data-scheme="innovation"' not in html
+    assert 'innovation_type' not in html
+    assert "innovation_growth:{id:'innovation_growth'" in html
+    assert "innovation_housing:{id:'innovation_housing'" in html
+    assert "SCHEME_MODULES.innovation" not in html
+    # Growth-anchor rules: Seoul ordinance art. 4 + enforcement rule art. 3.
+    for text in (
+        '도심·광역중심 + 20m 이상 간선도로 접면 OR 비중심 대중교통결절지 500m',
+        '5,000㎡ 이상',
+        '2·3종 일반주거·준주거·중심/근린/일반상업',
+        '2면 이상 도로 + 한 면 20m 이상 간선도로 + 다른 한 면 8m 이상',
+    ):
+        assert text in html, text
+    # Housing-anchor rules: Seoul ordinance art. 5 + enforcement rule art. 4.
+    for text in (
+        '사업면적 과반 역세권 / 준공업은 사업면적 전체가 역세권 + 공장비율 10% 미만',
+        '20년 이상 건축물 60% 이상',
+        '20,000~60,000㎡',
+        '2종(7층 포함)·3종·준주거·준공업',
+        "if(f.area.m2>=20000&&f.area.m2<=30000)req=15;else if(f.area.m2>30000&&f.area.m2<=60000)req=20;",
+        '6m 이상 도로로 둘러싸인 1개 블록',
+        '사업 후 전체 건축물 연면적 중 주택 50% 이상',
+    ):
+        assert text in html, text
+    # 350~500m is not an automatic pass in Seoul; mayoral recognition is still required.
+    assert "350~500m는 시장 인정 필요" in html
+    # Road width alone must never be promoted to an official arterial-road PASS.
+    assert '특별시도 주·보조간선' in html
+    assert "geom?'REVIEW':'FAIL'" in html
+    assert "rok?'REVIEW':'FAIL'" in html
+    # Common apartment-complex condition applies to both independent types.
+    assert '각 공동주택단지 10,000㎡ 이하 + 사업면적의 30% 이하' in html
+
 def main() -> None:
     _run("measurement", check_measurement)
     _run("renewal spatial", check_renewal_server_intersection)
@@ -1566,6 +1608,7 @@ def main() -> None:
     _run("r21 single boundary + sequential diagnostics", check_r21_single_boundary_sequential_diagnostics)
     _run("r22 shared conservation + collapsible ui", check_r22_shared_conservation_and_collapsible_ui)
     _run("r22 verified cultural layers + hill disabled", check_r22_verified_cultural_layers_and_hill_disabled)
+    _run("r22 downtown complex type split", check_r22_downtown_complex_type_split)
     _run("spatial evidence maps", check_spatial_evidence_maps)
     _run("safe medical api adapter", check_safe_medical_api_adapter)
     _run("safe medical boundary resolution", check_safe_medical_boundary_resolution)
@@ -1591,7 +1634,7 @@ def main() -> None:
 
 def test_migrated_scheme_legacy_engines_removed():
     html = Path(app.BASE_DIR, "app.html").read_text(encoding="utf-8")
-    # 모든 구형 사업 판정엔진은 삭제한다. 15개는 독립모듈, 공간혁신 3종만 shell-only다.
+    # 모든 구형 사업 판정엔진은 삭제한다. 16개는 독립모듈, 공간혁신 3종만 shell-only다.
     deprecated_functions = [
         "checkActivation", "checkSafe", "checkStationComplex", "checkLongterm", "checkPublicComplex",
         "checkInnovation", "checkGrowthPotential", "checkSharedHousing", "checkUrbanRedevelopment",
@@ -1607,8 +1650,8 @@ def test_migrated_scheme_legacy_engines_removed():
     assert "if(SHELL_SCHEMES.has(name))" in html
     assert "state:'neutral',label:'추후보완예정',rank:0,stage:'SHELL'" in html
     assert "현재 자동 활성화·추천·우선순위 미반영" in html
-    assert "독립모듈 15개를 실제 판정한다. 소규모주택정비는 5개 사용자 검토경로를 1개 Family 모듈에서 비교하고, 공간혁신 3종은 shell로 유지한다." in html
-    for key in ["redevelopment", "reconstruction", "residential_environment", "general_housing", "smallscale", "prior_negotiation", "activation", "growth_potential", "safe", "shared_housing", "station_complex", "longterm", "public_complex", "innovation", "urban_redevelopment"]:
+    assert "독립모듈 16개를 실제 판정한다. 소규모주택정비는 5개 사용자 검토경로를 1개 Family 모듈에서 비교하고, 공간혁신 3종은 shell로 유지한다." in html
+    for key in ["redevelopment", "reconstruction", "residential_environment", "general_housing", "smallscale", "prior_negotiation", "activation", "growth_potential", "safe", "shared_housing", "station_complex", "longterm", "public_complex", "innovation_growth", "innovation_housing", "urban_redevelopment"]:
         assert f"{key}:{{" in html or f"{key}: {{" in html, f"independent module {key} missing"
 
 if __name__ == "__main__":
