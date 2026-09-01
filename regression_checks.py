@@ -1266,12 +1266,14 @@ def check_r14_street_block_auto() -> None:
     html = (root / "app.html").read_text(encoding="utf-8")
     py = (root / "app.py").read_text(encoding="utf-8")
     assert 'id="ccStreetBlockMiniMap"' in html
-    for dom_id in ("spStreetBlockState","spStreetBlockArea","spStreetBlockIntersection","spStreetBlockSiteShare","spStreetBlockCoverage","spStreetBlockShare","spStreetBlockSiteStationShare","spStreetBlockRange","spStreetBlockPath"):
+    for dom_id in ("spStreetBlockState","spStreetBlockArea","spStreetBlockIntersection","spStreetBlockSiteShare","spStreetBlockCoverage","spStreetBlockRetainedRoad","spStreetBlockThroughRoad","spStreetBlockShare","spStreetBlockSiteStationShare","spStreetBlockRange","spStreetBlockPath"):
         assert f'id="{dom_id}"' in html
     assert "async function analyzeStreetBlock(" in html
     assert "/api/spatial/street-block" in html
     assert "road_features:roadFeatures" in html
-    assert "TL_SPRD_RW 실폭도로는 공간연산 제외" in html
+    assert "경계생성에는 사용하지 않고 내부도로 면적·표시 보조에만 사용" in html
+    assert "deriveStreetBlockAnalysisScope" in html
+    assert "retainedRoadFeatures" in html and "throughRoadCandidates" in html
     assert "_analyze_street_block_road_fallback" not in py
     assert "no TL_SPRD_RW fallback" in py
 
@@ -1284,7 +1286,7 @@ def check_r15_street_block_4m_conditional() -> None:
     assert "road_min_width_m = 4.0" in py
     assert "TL_SPRD_MANAGE ROAD_BT" in py
     assert "uses_real_width_polygon':False" in py
-    assert "4m는 법정 가로구역 폭 기준이 아니라" in html
+    assert "ROAD_BT의 4m는 자동후보 병합을 위한 엔진 운영기준일 뿐 법정 가로구역 도로요건과 별개" in html
     assert "철도|하천" in py
     assert "LT_C_UPISUQ151" not in html[html.index("function streetBlockBarrierSpec"):html.index("async function fetchStreetBlockFacilityBarriers")]
 
@@ -1339,7 +1341,7 @@ def check_r17_spatial_relation_road_facts() -> None:
     ):
         assert token in html, token
     for label in (
-        "가로구역 중 대상지 점유율","대상지의 가로구역 포함률","가로구역의 역세권 편입률","대상지의 역세권 편입률",
+        "분석범위 중 대상지 점유율","대상지의 분석범위 포함률","가로구역의 역세권 편입률","대상지의 역세권 편입률",
     ):
         assert label in html, label
     assert "frontage_ratio_pct:Number.isFinite(Number(x.boundary_share_pct))" in html
@@ -1362,6 +1364,16 @@ def check_r17_spatial_relation_road_facts() -> None:
     assert "road_features: List[Dict[str, Any]]" in py
     assert "TL_SPRD_RW 실폭도로는 지적/기초단위구 경계와 위상정합을 전제할 수 없으므로" in py
     assert "_road_spatial_layers()" not in py[py.index("def _street_block_from_basic_units"):py.index("def analyze_street_block")]
+    smallscale = html[html.index("function smallscaleSpatialFacts(store)"):html.index("function checkSmallscaleFromFacts")]
+    assert "analysis_scope_m2" in smallscale and "retained_road_area_m2" in smallscale
+    assert "through_road_candidate_count" in smallscale and "blockThroughRoadStatus" in smallscale
+    assert "사용자 구역계는 고정" in html and "존치기반시설" in html
+    assert "사업방식의 '대상면적'은 사용자가 확정한 구역계 면적" in html
+    assert "area:Number.isFinite(Number(businessBoundaryArea))" in html
+    assert "retained_facility_area_m2" in smallscale and "analysis_scope_connected" in smallscale
+    derive = html[html.index("function deriveStreetBlockAnalysisScope"):html.index("function streetBlockApplicableStationBuffer")]
+    assert "planningAnalysis.facilities" in derive and "_retained_kind:'facility'" in derive
+    assert "activeGeometry=" not in derive, "analysis-scope derivation must not mutate user boundary"
 
 
 def check_r18_bundled_basic_unit_and_frontage_caveat() -> None:
