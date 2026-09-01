@@ -1508,6 +1508,35 @@ def check_r22_shared_conservation_and_collapsible_ui() -> None:
         assert marker in py, marker
 
 
+
+def check_r22_hill_official_source_bridge() -> None:
+    base=Path(__file__).resolve().parent
+    html=(base / "app.html").read_text(encoding="utf-8")
+    py=(base / "app.py").read_text(encoding="utf-8")
+    for marker in (
+        'id="siteDetail_hill"', 'id="ccHillMiniMap"', 'async function analyzeHillZones()',
+        "공식 구릉지 원도형 미연결 · 자동 PASS 금지", "구릉지(공식 원도형)",
+        "구릉지 비중첩 · 최근접", "구릉지 원도형",
+    ):
+        assert marker in html, marker
+    for marker in (
+        'HILL_SOURCE_ENV = "SEOUL_HILL_SHP_PATH"', 'def _hill_reference_data()',
+        'def analyze_hill_intersections(', '@app.post("/api/spatial/hill-intersections")',
+        '@app.get("/api/reference/hill-status")', '@app.get("/api/reference/seoul-space-catalog")',
+        "OFFICIAL_SHP_NOT_BUNDLED", "임의 DEM 복원도형으로 자동 PASS/FAIL하지 않습니다",
+    ):
+        assert marker in py, marker
+    # 공식 원도형이 없을 때는 확정 비해당으로 만들지 않는다.
+    import app
+    app._hill_reference_data.cache_clear(); app._hill_spatial_index.cache_clear()
+    status=app._hill_reference_data()['metadata']
+    if not app._hill_zip_path():
+        assert status['available'] is False
+        sample={"type":"Polygon","coordinates":[[[126.97,37.56],[126.971,37.56],[126.971,37.561],[126.97,37.561],[126.97,37.56]]]}
+        out=app.analyze_hill_intersections(sample)
+        assert out['status']=='unavailable' and out['intersects'] is None
+
+
 def main() -> None:
     _run("measurement", check_measurement)
     _run("renewal spatial", check_renewal_server_intersection)
@@ -1529,6 +1558,7 @@ def main() -> None:
     _run("progress truth + wide scheme facts", check_r20_progress_truth_and_wide_scheme_facts)
     _run("r21 single boundary + sequential diagnostics", check_r21_single_boundary_sequential_diagnostics)
     _run("r22 shared conservation + collapsible ui", check_r22_shared_conservation_and_collapsible_ui)
+    _run("r22 hill official source bridge", check_r22_hill_official_source_bridge)
     _run("spatial evidence maps", check_spatial_evidence_maps)
     _run("safe medical api adapter", check_safe_medical_api_adapter)
     _run("safe medical boundary resolution", check_safe_medical_boundary_resolution)

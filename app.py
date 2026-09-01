@@ -2631,6 +2631,208 @@ def _admin_auth(credentials: Optional[HTTPBasicCredentials] = Depends(ADMIN_SECU
     return True
 
 
+
+# ============================================================
+# 서울 구릉지 공식 원도형 (도시·주거환경정비기본계획/생활권계획)
+# - 공식 계획의 구릉지 기준: 해발고도 40m 이상 + 경사도 10도 이상
+# - 운영 플랫폼에서는 임의 DEM 재생성 도형을 확정값으로 사용하지 않는다.
+# - 서울시 원 SHP/ZIP을 SEOUL_HILL_SHP_PATH 또는 아래 파일명으로 배치하면
+#   대상구역 중첩·최근접 거리를 서버에서 계산한다.
+# ============================================================
+HILL_SOURCE_CANDIDATES = (
+    "hill_seoul.zip", "seoul_hill.zip", "seoul_hillside.zip", "hillside_seoul.zip",
+    "구릉지.zip", "서울시_구릉지.zip", "서울시구릉지.zip",
+)
+HILL_SOURCE_ENV = "SEOUL_HILL_SHP_PATH"
+HILL_SOURCE_TITLE = "서울시 도시·주거환경정비기본계획/생활권계획 구릉지 원도형"
+HILL_CRITERION = "해발고도 40m 이상 AND 경사도 10도 이상"
+
+
+def _hill_zip_path() -> Optional[str]:
+    env = os.getenv(HILL_SOURCE_ENV, "").strip()
+    candidates = []
+    if env:
+        candidates.append(env if os.path.isabs(env) else os.path.join(DATA_DIR, env))
+    candidates.extend(_data_path(name) for name in HILL_SOURCE_CANDIDATES)
+    for path in candidates:
+        if path and os.path.isfile(path):
+            return path
+    return None
+
+
+def _decode_zip_prj(raw: bytes) -> str:
+    for enc in ("utf-8", "cp949", "euc-kr", "latin1"):
+        try:
+            return raw.decode(enc).strip()
+        except Exception:
+            pass
+    return ""
+
+
+def _hill_source_crs(zf: zipfile.ZipFile, shp_name: str) -> CRS:
+    stem = shp_name.rsplit(".", 1)[0]
+    prj_name = next((n for n in zf.namelist() if n.rsplit(".",1)[0].lower() == stem.lower() and n.lower().endswith('.prj')), None)
+    if prj_name:
+        try:
+            txt = _decode_zip_prj(zf.read(prj_name))
+            if txt:
+                return CRS.from_wkt(txt)
+        except Exception:
+            logging.exception("failed to parse hill SHP PRJ")
+    # 서울시 생활권/UPIS 공간자료의 공개 SHP 기본좌표계와 동일한 fallback.
+    return CRS.from_epsg(5174)
+
+
+def _hill_category_from_row(row: Dict[str, Any]) -> str:
+    texts = [str(v or '').strip() for v in row.values()]
+    merged = ' '.join(texts)
+    if re.search(r"훼손\s*\(?우려\)?|훼손우려", merged):
+        return "훼손(우려) 구릉지"
+    if "양호" in merged and "구릉" in merged:
+        return "양호한 구릉지"
+    if "양호" in merged:
+        return "양호한 구릉지"
+    if "구릉" in merged:
+        return next((t for t in texts if "구릉" in t), "구릉지")
+    return "구릉지"
+
+
+@lru_cache(maxsize=1)
+def _hill_reference_data() -> Dict[str, Any]:
+    zip_path = _hill_zip_path()
+    if not zip_path:
+        return {
+            "type":"FeatureCollection", "features":[],
+            "metadata":{
+                "available":False, "source_title":HILL_SOURCE_TITLE,
+                "criterion":HILL_CRITERION, "source_path":None,
+                "status":"OFFICIAL_SHP_NOT_BUNDLED",
+                "note":"공식 구릉지 원도형 SHP를 찾지 못했습니다. 임의 DEM 복원도형으로 자동 PASS/FAIL하지 않습니다.",
+            },
+        }
+    with zipfile.ZipFile(zip_path) as zf:
+        shp_names = [n for n in zf.namelist() if n.lower().endswith('.shp') and not n.endswith('/')]
+        if not shp_names:
+            raise RuntimeError(f"구릉지 ZIP에 SHP가 없습니다: {os.path.basename(zip_path)}")
+        # 원본 ZIP에 여러 SHP가 있을 때 파일명에 구릉/hill이 있는 것을 우선한다.
+        shp_name = next((n for n in shp_names if re.search(r"구릉|hill|slope", n, re.I)), shp_names[0])
+        stem = shp_name.rsplit('.',1)[0]
+        dbf_name = next((n for n in zf.namelist() if n.rsplit('.',1)[0].lower()==stem.lower() and n.lower().endswith('.dbf')), None)
+        shx_name = next((n for n in zf.namelist() if n.rsplit('.',1)[0].lower()==stem.lower() and n.lower().endswith('.shx')), None)
+        if not dbf_name:
+            raise RuntimeError(f"구릉지 SHP의 DBF가 없습니다: {shp_name}")
+        kwargs={"shp":io.BytesIO(zf.read(shp_name)),"dbf":io.BytesIO(zf.read(dbf_name)),"encoding":"cp949"}
+        if shx_name: kwargs["shx"]=io.BytesIO(zf.read(shx_name))
+        try:
+            reader=shapefile.Reader(**kwargs)
+        except UnicodeDecodeError:
+            kwargs["encoding"]="utf-8"
+            reader=shapefile.Reader(**kwargs)
+        fields=[f[0] for f in reader.fields[1:]]
+        src_crs=_hill_source_crs(zf, shp_name)
+        to_wgs=Transformer.from_crs(src_crs,4326,always_xy=True).transform
+        features=[]
+        for sr in reader.iterShapeRecords():
+            row=dict(zip(fields,sr.record))
+            try:
+                geom=_polygonal_only(shape(sr.shape.__geo_interface__))
+                if geom is None or geom.is_empty: continue
+                if not geom.is_valid: geom=_polygonal_only(geom.buffer(0))
+                if geom is None or geom.is_empty: continue
+                # 0.25m 단순화는 원자료 정밀도를 해치지 않으면서 웹 payload를 줄인다.
+                geom=geom.simplify(0.25,preserve_topology=True)
+                geom=geometry_transform(to_wgs,geom)
+            except Exception:
+                continue
+            name=str(row.get('DGM_NM') or row.get('NAME') or row.get('NM') or '').strip()
+            features.append({
+                "type":"Feature","geometry":mapping(geom),
+                "properties":{
+                    "category":_hill_category_from_row(row),
+                    "name":name,
+                    "source_title":HILL_SOURCE_TITLE,
+                    "source_file":os.path.basename(zip_path),
+                    "source_layer":shp_name,
+                    "criterion":HILL_CRITERION,
+                }
+            })
+    return {
+        "type":"FeatureCollection","features":features,
+        "metadata":{
+            "available":True,"source_title":HILL_SOURCE_TITLE,"criterion":HILL_CRITERION,
+            "source_file":os.path.basename(zip_path),"source_layer":shp_name,
+            "source_crs":src_crs.to_string(),"feature_count":len(features),
+            "status":"OFFICIAL_SHP_READY",
+            "note":"서울시 공식 원도형으로만 확정 중첩을 계산합니다.",
+        }
+    }
+
+
+@lru_cache(maxsize=1)
+def _hill_spatial_index():
+    fc=_hill_reference_data(); features=fc.get('features') or []
+    geoms=[shape(f['geometry']) for f in features]
+    return features, geoms, STRtree(geoms) if geoms else None
+
+
+def analyze_hill_intersections(geometry: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        site_wgs=_polygonal_only(shape(geometry))
+    except Exception as exc:
+        raise ValueError(f"구역계 GeoJSON을 읽을 수 없습니다: {exc}") from exc
+    if site_wgs is None or site_wgs.is_empty:
+        raise ValueError("구역계는 Polygon 또는 MultiPolygon이어야 합니다.")
+    if not site_wgs.is_valid:
+        site_wgs=_polygonal_only(site_wgs.buffer(0))
+    if site_wgs is None or site_wgs.is_empty:
+        raise ValueError("유효하지 않은 구역계입니다.")
+    fc=_hill_reference_data(); meta=dict(fc.get('metadata') or {})
+    if not meta.get('available'):
+        return {
+            "status":"unavailable","source_status":"OFFICIAL_SHP_NOT_BUNDLED",
+            "intersects":None,"overlap_area_m2":None,"overlap_pct":None,"distance_m":None,
+            "overlaps":[],"context_features":[],"metadata":meta,
+        }
+    features,geoms,tree=_hill_spatial_index()
+    to_metric=Transformer.from_crs(4326,5174,always_xy=True).transform
+    site_metric=geometry_transform(to_metric,site_wgs); site_area=float(site_metric.area)
+    overlaps=[]; context=[]; union_parts=[]
+    for idx in tree.query(site_wgs,predicate='intersects'):
+        i=int(idx); src=geoms[i]
+        try:
+            inter=_polygonal_only(site_wgs.intersection(src))
+            if inter is None or inter.is_empty: continue
+            inter_m=_polygonal_only(geometry_transform(to_metric,inter))
+            if inter_m is None or inter_m.is_empty or inter_m.area<0.5: continue
+        except Exception:
+            continue
+        union_parts.append(inter_m)
+        props=dict(features[i].get('properties') or {})
+        props['overlap_area_m2']=round(float(inter_m.area),2)
+        overlaps.append({"type":"Feature","geometry":mapping(inter),"properties":props})
+        context.append(features[i])
+    union=unary_union(union_parts) if union_parts else None
+    overlap_area=float(union.area) if union is not None and not union.is_empty else 0.0
+    distance_m=0.0 if overlap_area>0 else None
+    nearest_feature=None
+    if overlap_area<=0 and tree is not None and geoms:
+        try:
+            nearest_idx=int(tree.nearest(site_wgs)); nearest=geoms[nearest_idx]
+            nearest_feature=features[nearest_idx]
+            distance_m=float(site_metric.distance(geometry_transform(to_metric,nearest)))
+            # 연접 판단을 사용자가 검증할 수 있도록 최근접 공식 도형도 반환한다.
+            context=[nearest_feature]
+        except Exception:
+            distance_m=None
+    return {
+        "status":"confirmed","source_status":"OFFICIAL_SHP_READY",
+        "intersects":overlap_area>0.5,
+        "overlap_area_m2":round(overlap_area,2),
+        "overlap_pct":round(overlap_area/site_area*100,4) if site_area>0 else None,
+        "distance_m":round(distance_m,2) if distance_m is not None else None,
+        "overlaps":overlaps,"context_features":context,"metadata":meta,
+    }
+
 SEOUL_OPEN_DATA_BASE = "http://openapi.seoul.go.kr:8088"
 # 서울시 공공의료 공식 페이지(시립병원 건강돌봄 네트워크, 2024-03-18)에
 # 열거된 서울 소재 시립병원 명칭.  병원 인허가 API의 업태가 '병원'인 경우에만
@@ -2719,6 +2921,32 @@ def _seoul_open_data_rows(service: str, limit: int = 10000) -> List[Dict[str, An
             break
         start = end + 1
     return rows
+
+@lru_cache(maxsize=8)
+def _seoul_space_catalog_keyword(keyword: str) -> Dict[str, Any]:
+    """Search Seoul's spatial-information inventory for a legacy/original layer.
+
+    This is metadata discovery only. A catalogue hit never becomes a spatial PASS;
+    the actual official polygon ZIP must still be bundled/connected.
+    """
+    key=(keyword or '').strip()[:40]
+    if not key:
+        return {"status":"invalid","keyword":key,"matches":[]}
+    if not _seoul_open_data_key():
+        return {"status":"unavailable","keyword":key,"matches":[],"message":"서울 열린데이터 API 키 미설정"}
+    try:
+        rows=_seoul_open_data_rows('spaceInfoList', limit=30000)
+    except Exception as exc:
+        return {"status":"error","keyword":key,"matches":[],"message":str(exc)}
+    needle=_name_key(key)
+    search_fields=('KORN_NM','ENG_NM','DATA_INFO','BIZ_NM','SPC_DATA_CRT_ORGNL_DATA','SYS_NM','LYR_ID')
+    out=[]
+    for row in rows:
+        blob=' '.join(str(row.get(f) or '') for f in search_fields)
+        if needle and needle not in _name_key(blob):
+            continue
+        out.append({f:row.get(f) for f in ('LYR_ID','KORN_NM','ENG_NM','DATA_INFO','BIZ_NM','SPC_DATA_CRT_ORGNL_DATA','VCTR','RST','CRD','ETBL_SCP','FRST_CRT_YMD','LAST_UPDT_YMD','RLS_YN','RLS_LMT_BSS') if f in row})
+    return {"status":"ok","keyword":key,"matches":out,"scanned":len(rows),"service":"spaceInfoList"}
 
 def _name_key(value: Any) -> str:
     return re.sub(r"[^가-힣A-Za-z0-9]", "", str(value or "")).lower()
@@ -3280,6 +3508,8 @@ def health():
         "scheme_module_api": "2026-08-31-r17-spatial-relation-road-facts",
         "independent_scheme_modules": "15 independent modules including smallscale 5-route family and prior_negotiation; urban_innovation_zone / facility_complex_zone / mixed_use_zone remain future shells",
         "scheme_specific_spatial_checks": "scheme module may request additional official spatial facts; missing facts remain REVIEW, never inferred PASS",
+        "hill_official_gis": "ready" if _hill_zip_path() else "needs official Seoul hill SHP; no synthetic DEM PASS/FAIL",
+        "hill_official_file": os.path.basename(_hill_zip_path()) if _hill_zip_path() else None,
         "spatial_evidence_maps": "common cadastral base + colored zoning + scheme-specific road/frontage facts + safe-housing medical reference; map facts and scheme facts share one Fact Store",
         "purpose_filter": "safe-housing rule module runs only when purpose=housing_rental; other schemes keep existing purpose/candidate logic",
         "provenance_ui": True,
@@ -3312,6 +3542,36 @@ def spatial_measure(inp: GeometryInput):
         return measure_geojson(inp.geometry)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/api/reference/seoul-space-catalog")
+def seoul_space_catalog(keyword: str = "구릉지"):
+    """서울시 공간정보 목록에서 구릉지/특성주거지 원 레이어 메타데이터를 탐색합니다."""
+    return _seoul_space_catalog_keyword(keyword)
+
+
+@app.get("/api/reference/hill-status")
+def hill_status():
+    fc=_hill_reference_data()
+    return fc.get('metadata') or {}
+
+
+@app.post("/api/spatial/hill-intersections")
+def hill_intersections(inp: GeometryInput):
+    """서울시 공식 구릉지 원도형과 대상구역의 중첩/최근접 거리를 계산합니다."""
+    try:
+        return analyze_hill_intersections(inp.geometry)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logging.exception("hill intersection failed")
+        raise HTTPException(status_code=500, detail=f"구릉지 중첩분석 오류: {exc}") from exc
+    finally:
+        if _prototype_low_memory_mode():
+            try:
+                _hill_spatial_index.cache_clear(); _hill_reference_data.cache_clear()
+            except Exception:
+                pass
 
 
 @app.post("/api/spatial/renewal-intersections")
