@@ -370,8 +370,8 @@ def check_four_independent_scheme_modules() -> None:
     station = html[station_start:station_end]
     assert "250~350m" not in station
     assert "distance_m<=350" not in station
-    assert "승강장 경계 반경 250m 이내 원칙" in station
-    assert "도시·건축공동위원회" in station
+    assert "승강장 250m 이내에 가로구역의 1/2 이상" in station
+    assert "위원회 인정경로" in station
     assert "STATION_COMPLEX" in html and "verified:false" in html
 
     # 성장잠재권: 35m 간선도로·둘레 1/8·6m 접면과 시행방식별 노후도 Fact를 사용한다.
@@ -1614,7 +1614,7 @@ def check_r22_multi_station_fact_engine():
         "nearbyStations:[]",
         "function clusterStationFeatures(features,maxGapM=STATION_SAME_NAME_CLUSTER_M)",
         "same_name_cluster_count",
-        "line_data_complete:lineSource==='STATION_DATA'",
+        "line_data_complete:lineDataComplete",
         "function activationStationCandidates()",
         "function stationBlockRelation(station,threshold)",
         "function streetBlockIsAuthoritative()",
@@ -1622,7 +1622,7 @@ def check_r22_multi_station_fact_engine():
         "bestStationByCoverage(350)",
         "transferCandidate=stationAnalysis.loaded?bestStationByDistance(x=>Number(x.line_count)>=2):null",
         "역세권활성화 공간대상에 포함되면 성장잠재권 활성화구역은 비활성화",
-        "공식 가로구역/행안부 데이터 연결 전 자동 PASS 금지",
+        "공식 가로구역 데이터 연결 전 자동 PASS 금지",
         "현재 내장 기초단위구/ROAD_BT 형상은 법정 가로구역이 아니므로 행안부/공식 가로구역 데이터 연결 전 자동 PASS·FAIL 금지",
         "future_function_interface:{field:'road_function'",
     ):
@@ -1638,6 +1638,83 @@ def check_r22_multi_station_fact_engine():
     assert "arterial.block_authoritative===true&&arterial.block_includes===true" in html
     # 동명 이격역을 단순 역명으로 합쳐 거짓 환승역을 만들지 않는다.
     assert "group.same_name_cluster_count>1" in html
+
+
+def check_r22_station_rule_engine_v4():
+    html = Path(app.BASE_DIR, "app.html").read_text(encoding="utf-8")
+    py = Path(app.BASE_DIR, "app.py").read_text(encoding="utf-8")
+
+    # 공통 후보역 엔진: 대상지 중심 1km 내 전 역 + 역별 거리/250/350/500 면적관계.
+    for token in (
+        "const STATION_SEARCH_RADIUS_M=1000",
+        "stationCandidateRowsHtml",
+        "판정역",
+        "coverage250:m250.coverage_pct",
+        "coverage350:m350.coverage_pct",
+        "coverage500:m500.coverage_pct",
+    ):
+        assert token in html, token
+
+    # 노선/환승 Fact: 서울 열린데이터광장 통합 참조 + 부역명 정규화.
+    assert '/api/reference/station-lines' in py
+    assert 'CardSubwayStatsNew' in py and 'SearchSTNBySubwayLineInfo' in py
+    assert '왕십리(성동구청)' in py
+    assert "const lineDataComplete=transferConfirmed || !!official" in html
+
+    # 역세권활성화: 거리 하나가 아니라 역별 적용반경 + 가로구역. 비공식 블록은 자동 PASS 금지.
+    a0=html.index('function activationSpatialFacts(store)')
+    a1=html.index('function growthPotentialSpatialFacts(store)',a0)
+    activation=html[a0:a1]
+    assert 'activationStationCandidates()' in activation
+    assert 'block_authoritative' in activation
+    assert '가로구역' in activation
+
+    # 성장잠재권: 역세권활성화 공간대상 선행 배타 Gate.
+    g0=html.index('function checkGrowthPotentialFromFacts(store,f)')
+    g1=html.index('function safeHousingSpatialFacts(store)',g0)
+    growth=html[g0:g1]
+    assert '역세권활성화 공간대상에 포함되면 성장잠재권 활성화구역은 비활성화' in growth
+
+    # 안심주택: 최근접 거리만으로 PASS 금지. 역별 대상지 면적 50% + 250/350 경로.
+    s0=html.index('function safeStationPath(c)')
+    s1=html.index('function safeArterialPath',s0)
+    safe=html[s0:s1]
+    assert 'Number(x.coverage250)>=50' in safe
+    assert 'Number(x.coverage350)>=50' in safe
+    assert '50% 미만' in safe
+    assert "distance_m<=250" not in safe
+
+    # 역세권복합: 250m가 '가로구역'을 얼마나 포함하는지와 대상지의 가로구역 점유율을 별도 판정.
+    c0=html.index('function stationComplexSpatialFacts(store)')
+    c1=html.index('function moduleStrengthRisk',c0)
+    complex_text=html[c0:c1]
+    assert 'catchment_block_share_pct' in complex_text
+    assert '사업대상지 가로구역 점유' in complex_text
+    assert 'catchment_block_authoritative' in complex_text
+
+    # 장기전세/도심공공주택복합/도심복합 주거중심형: 단일역별 포함률 사용.
+    assert 'function bestLongtermStationFact(c)' in html
+    assert 'bestStationByCoverage(350)' in html
+    assert 'coverage350_pct>=50' in html
+    assert 'coverage500_pct>=50' in html
+    assert 'coverage350_pct>50' not in html
+    assert 'coverage500_pct>50' not in html
+
+    # 성장거점형: 1km 전 역에서 2개 이상 철도노선 환승역을 골라 500m 판정.
+    assert 'bestStationByDistance(x=>Number(x.line_count)>=2)' in html
+    assert 'transfer_candidate' in html
+    assert '환승결절 판정역' in html
+
+    # 소규모재개발/정비사업 역세권 특례도 다중역 Fact를 사용하고, c.dist는 fallback에만 남긴다.
+    sm0=html.index('function smallscaleSpatialFacts(store)')
+    sm1=html.index('function checkSmallscaleFromFacts',sm0)
+    small=html[sm0:sm1]
+    assert 'smallRedevelopmentStation=stationAnalysis.loaded?bestStationByDistance' in small
+    up0=html.index('function stationRenewalUpzone(c,name)')
+    up1=html.index('function activationContribution',up0)
+    up=html[up0:up1]
+    assert 'candidate=stationAnalysis.loaded?bestStationByDistance()' in up
+
 
 def main() -> None:
     _run("measurement", check_measurement)
@@ -1681,6 +1758,7 @@ def main() -> None:
     _run("r18 bundled basic unit + frontage caveat", check_r18_bundled_basic_unit_and_frontage_caveat)
     _run("r19 activation arterial linear commercial", check_r19_activation_arterial_linear_commercial)
     _run("r22 multi-station fact engine", check_r22_multi_station_fact_engine)
+    _run("r22 station rule engine v4", check_r22_station_rule_engine_v4)
     _run("release files", check_release_files)
     print("v2.5.0 regression checks: PASS")
 

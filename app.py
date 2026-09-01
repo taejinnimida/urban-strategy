@@ -2399,8 +2399,9 @@ def _street_block_from_basic_units(
             'block_area_m2':block_area,'site_intersection_m2':primary_site_area,
             'site_primary_block_pct':primary_site_pct,'site_share_of_primary_block_pct':primary_block_occupancy_pct,
             'site_spans_multiple_blocks':multi,'merge_limit_reached':primary_limit,'legal_width_rule':False,
-            'basic_unit_is_legal_street_block':False,'uses_real_width_polygon':False,
-            'engine_note':'SGIS 기초단위구를 가로구역 후보 골격으로 사용하고 VWorld TL_SPRD_MANAGE ROAD_BT(4m 이상)와 철도·하천으로 인접 기초단위구 병합 여부를 판단. TL_SPRD_RW 실폭도로는 공간연산에 사용하지 않음',
+            'basic_unit_is_legal_street_block':False,'authoritative_street_block':False,'uses_real_width_polygon':False,
+            'future_street_block_interface':'MOIS_BASIC_UNIT_OR_VERIFIED_PLANNING_ROAD_BLOCK',
+            'engine_note':'현재 내장 기초단위구는 가로구역 후보 골격(ESTIMATE)이다. VWorld TL_SPRD_MANAGE ROAD_BT(4m 이상)와 철도·하천으로 인접 기초단위구 병합 여부를 판단하며 법정 가로구역으로 자동확정하지 않는다. 향후 행안부 기초단위구/공식 가로구역 또는 검증된 도시계획시설도로 블록 자료가 연결되면 authoritative_street_block=true로 승격한다.',
         }
     }
 
@@ -3446,10 +3447,97 @@ def reference_stations():
     return _station_reference_data()
 
 
+@lru_cache(maxsize=1)
+def _seoul_station_line_reference() -> Dict[str, Any]:
+    """Return official Seoul subway station-line facts used only to classify stations.
+
+    Primary source is CardSubwayStatsNew because it contains Seoul Metro, Korail,
+    Airport Railroad and Line 9 rows in one daily table.  SearchSTNBySubwayLineInfo
+    is merged as a secondary source.  This endpoint never supplies station geometry;
+    geometry remains the MOIS TL_SPSB_STATN reference.
+    """
+    key, key_env = _seoul_open_data_key_info()
+    meta = {
+        "geometry_source": "MOIS TL_SPSB_STATN",
+        "line_primary_source": "서울 열린데이터광장 CardSubwayStatsNew",
+        "line_secondary_source": "서울교통공사 SearchSTNBySubwayLineInfo",
+        "credential_env": key_env or None,
+    }
+    if not key:
+        return {"status":"unavailable","stations":[],"metadata":meta,"message":"서울 열린데이터광장 인증키 미설정"}
+
+    grouped: Dict[str, Dict[str, Any]] = {}
+    errors: List[str] = []
+    used_date: Optional[str] = None
+
+    def add_row(name: Any, line: Any, source: str) -> None:
+        # 공공데이터 역명은 "왕십리(성동구청)"처럼 부역명이 붙을 수 있다.
+        # 역사경계 SHP의 "왕십리역"과 결합할 때 부역명은 제거한다.
+        nm = re.sub(r"\s+", "", str(name or "").strip())
+        nm = re.sub(r"\([^)]*\)|（[^）]*）|\[[^]]*\]", "", nm)
+        if not nm:
+            return
+        if nm.endswith("역"):
+            nm = nm[:-1]
+        ln = re.sub(r"\s+", "", str(line or "").strip())
+        if not ln:
+            return
+        # 01호선/1호선처럼 표기만 다른 동일 노선은 하나로 묶는다.
+        ln = re.sub(r"^0+([1-9])호선$", r"\1호선", ln)
+        key_name = _name_key(nm)
+        rec = grouped.setdefault(key_name, {"name": nm + "역", "lines": [], "sources": []})
+        if ln not in rec["lines"]:
+            rec["lines"].append(ln)
+        if source not in rec["sources"]:
+            rec["sources"].append(source)
+
+    # Daily ridership table: includes Korail / Airport Railroad / Line 9 and therefore
+    # is better suited to transfer-station classification than Seoul-Metro-only rows.
+    now = datetime.now(ZoneInfo("Asia/Seoul")).date()
+    for days_back in range(3, 11):
+        d = date.fromordinal(now.toordinal() - days_back).strftime("%Y%m%d")
+        try:
+            url = f"{SEOUL_OPEN_DATA_BASE}/{quote(key, safe='')}/json/CardSubwayStatsNew/1/1000/{d}"
+            resp = requests.get(url, timeout=20)
+            resp.raise_for_status()
+            payload = resp.json()
+            body = payload.get("CardSubwayStatsNew") if isinstance(payload, dict) else None
+            rows = body.get("row") if isinstance(body, dict) else None
+            if isinstance(rows, list) and rows:
+                for row in rows:
+                    if isinstance(row, dict):
+                        add_row(row.get("SUB_STA_NM"), row.get("LINE_NUM"), "CardSubwayStatsNew")
+                used_date = d
+                break
+        except Exception as exc:
+            errors.append(f"CardSubwayStatsNew {d}: {exc}")
+
+    # Secondary Seoul Metro station-line table.  It fills rows that may have no
+    # ridership record on the selected day, while CardSubwayStatsNew remains primary.
+    try:
+        for row in _seoul_open_data_rows("SearchSTNBySubwayLineInfo", 3000):
+            add_row(row.get("STATION_NM"), row.get("LINE_NUM"), "SearchSTNBySubwayLineInfo")
+    except Exception as exc:
+        errors.append(f"SearchSTNBySubwayLineInfo: {exc}")
+
+    stations = sorted(grouped.values(), key=lambda x: x["name"])
+    for rec in stations:
+        rec["line_count"] = len(rec["lines"])
+        rec["transfer"] = len(rec["lines"]) >= 2
+    meta.update({"ridership_date": used_date, "station_count": len(stations), "errors": errors[:5]})
+    return {"status":"ok" if stations else "partial", "stations":stations, "metadata":meta}
+
+
 @app.get("/api/reference/centers")
 def reference_centers():
     """서울시 중심지체계 도형 기준자료."""
     return _center_reference_data()
+
+
+@app.get("/api/reference/station-lines")
+def reference_station_lines():
+    """공식 노선별 역명 자료를 역사경계 Fact에 결합하기 위한 노선 참조표."""
+    return _seoul_station_line_reference()
 
 
 @app.get("/api/reference/renewal-zones")
@@ -3481,7 +3569,8 @@ def health():
         "scheme_age_stats": "BuildingHUB raw facts -> urban-planning / urban-renewal / policy-specific derived aging facts; unknowns remain bounded REVIEW",
         "density_public_contribution": "16 independent scheme modules + three future shells; zoning/FAR/public-contribution review remains scheme-specific",
         "scheme_ui": "six-family UI; 16 independent modules including smallscale 5-route family and prior negotiation + three future shells",
-        "station_boundary_gis": "embedded MOIS 2026-08 TL_SPSB_STATN + entrc station-name matching + Seoul center hierarchy + VWorld line fallback",
+        "station_boundary_gis": "embedded MOIS 2026-08 TL_SPSB_STATN + site-centroid 1km multi-station candidates + physical same-name clustering + per-station 250/350/500m facts + spatially filtered VWorld line fallback",
+        "station_fact_engine": "R22_MULTI_STATION_V2; nearest station is display/legacy only, scheme rules select their own qualifying station",
         "first_screen": "boundary-first manual review trigger + six scheme families + 16 independent modules + three future shells",
         "location_map": "boundary-only main map; parcel/building diagrams rendered in compact side mini maps",
         "reconstruction_gate": "requires apartment-complex evidence or explicit reconstruction target confirmation",
@@ -3493,7 +3582,9 @@ def health():
         "safe_medical_reference": "Seoul medical points + site-boundary resolver (planning medical facility > building-register site parcels; health-center cadastral parcel)" if _seoul_open_data_key() else "needs Seoul Open Data key; no automatic medical PASS",
         "safe_medical_key_env": _seoul_open_data_key_info()[1] or None,
         "road_width_gis": "VWorld TL_SPRD_MANAGE ROAD_BT is the road-width Fact source; TL_SPRD_RW is visualization/reference only",
-        "street_block_gis": "SGIS 2025 basic-unit seed + VWorld TL_SPRD_MANAGE ROAD_BT 4m+ merge verification; no TL_SPRD_RW fallback",
+        "street_block_gis": "SGIS 2025 basic-unit seed + VWorld TL_SPRD_MANAGE ROAD_BT 4m+ merge verification; no TL_SPRD_RW fallback; ESTIMATE only and never authoritative PASS/FAIL until official street-block data is connected",
+        "street_block_future_interface": "MOIS basic-unit / official street-block or verified planning-road block -> authoritative_street_block=true",
+        "arterial_road_future_interface": "official address-based road function/classification -> road_function / statutory_classification fields; width-only candidates remain REVIEW",
         "activation_arterial_gis": "Seoul published linear-commercial road list + VWorld LT_C_UQ111 zoning + TL_SPRD_MANAGE road centerlines; dedicated station-activation arterial map; TL_SPRD_RW excluded",
         "street_block_basic_unit_configured": bool(_basic_unit_zip_path()),
         "street_block_basic_unit_file": os.path.basename(_basic_unit_zip_path()) if _basic_unit_zip_path() else None,

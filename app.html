@@ -226,6 +226,11 @@
 .station-gis-stats span{display:block;font-size:9px;color:#667085;margin-bottom:3px}
 .station-gis-stats b{display:block;font-size:12px;color:#101828}
 .station-gis-note{padding:8px 11px;font-size:9px;color:#475467;border-top:1px solid #eaecf0;background:#fcfcfd}
+.station-candidate-list{border-top:1px solid #eaecf0;background:#fff;max-height:210px;overflow:auto}
+.station-candidate-row{display:grid;grid-template-columns:minmax(82px,1.15fr) 64px minmax(120px,1.5fr) 64px 64px 64px;gap:6px;align-items:center;padding:6px 9px;border-bottom:1px solid #f2f4f7;font-size:8px;color:#475467}
+.station-candidate-row.head{position:sticky;top:0;z-index:1;background:#f9fafb;font-weight:700;color:#344054}
+.station-candidate-row b{font-size:9px;color:#101828;overflow-wrap:anywhere}.station-candidate-row .transfer{font-weight:700;color:#175cd3}
+@media(max-width:760px){.station-candidate-row{grid-template-columns:minmax(80px,1.2fr) 58px minmax(100px,1.4fr) 54px 54px 54px}}
 @media(max-width:1100px){.station-gis-stats{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:640px){.station-gis-head{align-items:flex-start;flex-direction:column}.station-gis-stats{grid-template-columns:repeat(2,1fr)}}
 
@@ -1757,12 +1762,13 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="spatial-module-head"><b>역세권</b><span>행안부 역사경계</span></div>
 <div class="spatial-metrics">
 <div><span>최근접역</span><b id="spStationName">-</b></div>
-<div><span>경계거리</span><b id="spStationDistance">-</b></div>
-<div><span>노선·환승</span><b id="spStationLines">-</b></div>
-<div><span>적용범위</span><b id="spStationRange">-</b></div>
+<div><span>최근접 경계거리</span><b id="spStationDistance">-</b></div>
+<div><span>검토역 수</span><b id="spStationLines">-</b></div>
+<div><span>후보검색범위</span><b id="spStationRange">중심 1km</b></div>
 </div>
-<div class="spatial-tags" id="spStationCoverage"><span>250·350·500m 자동분석</span></div>
-<div class="spatial-caption">도면정보 · 전체 역세권은 옅게 / 대상지와 겹치는 범위 진하게</div>
+<div class="spatial-tags" id="spStationCoverage"><span>역별 250·350·500m 포함률 자동분석</span></div>
+<div class="station-candidate-list" id="spStationCandidates"><div class="station-candidate-row head"><b>역</b><b>거리</b><b>노선·환승</b><b>250m</b><b>350m</b><b>500m</b></div><div class="station-candidate-row"><b>분석 전</b><span>-</span><span>-</span><span>-</span><span>-</span><span>-</span></div></div>
+<div class="spatial-caption">도면정보 · 대상지 중심 1km 안의 모든 역사를 후보로 수집하고, 역별 거리·노선·환승·250/350/500m 대상지 포함률을 각각 계산합니다. 최근접역은 현황 참고값일 뿐 사업 판정역을 고정하지 않습니다.</div>
 <div class="spatial-mini-map" id="ccStationMiniMap"></div>
 </section>
 <section class="spatial-module" id="siteDetail_streetBlock">
@@ -2149,6 +2155,7 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="station-gis-note" id="stationGisNote">
         행안부 2026.08 지하철역사 폴리곤과 위치정보요약DB, 서울시 중심지 SHP를 서버 기본자료로 사용합니다.
       </div>
+<div class="station-candidate-list" id="stationGisCandidateList"><div class="station-candidate-row head"><b>역</b><b>거리</b><b>노선·환승</b><b>250m</b><b>350m</b><b>500m</b></div><div class="station-candidate-row"><b>분석 전</b><span>-</span><span>-</span><span>-</span><span>-</span><span>-</span></div></div>
 </div>
 <details class="scheme-input-details" open="">
 <summary>공통 입력값 — 향후 GIS 자동화 대상</summary>
@@ -2765,21 +2772,33 @@ let currentRoadManageFeatures=[];
 
 let stationFeatures=[];
 let stationSourceName='';
+let stationOfficialLineMap=new Map();
+let stationOfficialLineMeta={status:'not_loaded'};
+const STATION_SEARCH_RADIUS_M=1000;
+const STATION_SAME_NAME_CLUSTER_M=400; // 동명이지만 물리적으로 떨어진 역(예: 신촌)을 환승역으로 오인하지 않기 위한 분리 기준
 const stationAnalysis={
   loaded:false,
+  searchRadiusM:STATION_SEARCH_RADIUS_M,
+  nearbyStations:[],
+  candidateCount:0,
   nearestName:'',
   nearestDistance:null,
   coverage250:null,
   coverage350:null,
   coverage500:null,
+  unionCoverage250:null,
+  unionCoverage350:null,
+  unionCoverage500:null,
   nearestFeatures:[],
   sourceDate:'',
   lines:[],
   lineCount:null,
   transfer:null,
+  // centerValue 계열은 대상지 중심지 Fact. 역 자체 중심지 속성은 nearbyStations[].center_*에 보존한다.
   centerValue:'',
   centerType:'',
   centerLabel:'',
+  centerCoveragePct:null,
   activationRange:null,
   metadata:{}
 };
@@ -2998,33 +3017,31 @@ function refreshStationCenterMiniMaps(){
   ccCenterPolygon.clearLayers();ccCenterInside.clearLayers();ccCenterSite.clearLayers();ccCenterStation.clearLayers();
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
   if(!activeGeometry){
-    for(const id of ['spStationName','spStationDistance','spStationLines','spStationRange','spCenterType','spCenterName','spCenterStation','spCenterEffect'])set(id,'-');
-    const cv=document.getElementById('spStationCoverage');if(cv)cv.innerHTML='<span>250·350·500m 자동분석</span>';return;
+    for(const id of ['spStationName','spStationDistance','spStationLines','spCenterType','spCenterName','spCenterStation','spCenterEffect'])set(id,'-');
+    set('spStationRange','중심 1km');
+    const cv=document.getElementById('spStationCoverage');if(cv)cv.innerHTML='<span>역별 250·350·500m 자동분석</span><span>최근접역은 참고값</span>';renderStationCandidateLists();return;
   }
   const site={type:'Feature',geometry:activeGeometry,properties:{}};
   ccStationSite.addData(site);ccCenterSite.addData(site);
 
-  if(stationAnalysis.nearestFeatures?.length){
-    ccStationHistory.addData({type:'FeatureCollection',features:stationAnalysis.nearestFeatures});
-    ccCenterStation.addData({type:'FeatureCollection',features:stationAnalysis.nearestFeatures});
-    const b250=safeUnionPolygons(stationAnalysis.nearestFeatures.map(f=>{try{return turf.buffer(f,250,{units:'meters'});}catch(e){return null;}}).filter(Boolean));
-    const b350=safeUnionPolygons(stationAnalysis.nearestFeatures.map(f=>{try{return turf.buffer(f,350,{units:'meters'});}catch(e){return null;}}).filter(Boolean));
-    if(b250){
-      ccStation250.addData(b250);
-      try{const x=turf.intersect(site,b250);if(x)ccStation250Inside.addData(x);}catch(e){}
-    }
-    if(b350){
-      ccStation350.addData(b350);
-      try{const x=turf.intersect(site,b350);if(x)ccStation350Inside.addData(x);}catch(e){}
-    }
+  const stationFs=stationFacts(),allStationFeatures=stationFs.flatMap(x=>x.features||[]);
+  if(allStationFeatures.length){
+    ccStationHistory.addData({type:'FeatureCollection',features:allStationFeatures});
+    ccCenterStation.addData({type:'FeatureCollection',features:allStationFeatures});
+    const b250=safeUnionPolygons(stationFs.map(x=>x.buffers?.[250]).filter(Boolean));
+    const b350=safeUnionPolygons(stationFs.map(x=>x.buffers?.[350]).filter(Boolean));
+    if(b250){ccStation250.addData(b250);try{const x=turf.intersect(site,b250);if(x)ccStation250Inside.addData(x);}catch(e){}}
+    if(b350){ccStation350.addData(b350);try{const x=turf.intersect(site,b350);if(x)ccStation350Inside.addData(x);}catch(e){}}
   }
 
+  const transfers=stationFs.filter(x=>x.transfer===true);
   set('spStationName',stationAnalysis.nearestName||'확인 중');
   set('spStationDistance',stationAnalysis.nearestDistance==null?'-':`${Number(stationAnalysis.nearestDistance).toFixed(1)}m`);
-  set('spStationLines',stationAnalysis.lines?.length?`${stationAnalysis.lines.join('·')}${stationAnalysis.transfer?' · 환승':''}`:'확인 필요');
-  set('spStationRange',stationAnalysis.activationRange?`${stationAnalysis.activationRange}m`:'확인 필요');
+  set('spStationLines',`${stationFs.length}개${transfers.length?' · 환승 '+transfers.length+'개':''}`);
+  set('spStationRange','중심 1km');
   const cv=document.getElementById('spStationCoverage');
-  if(cv)cv.innerHTML=`<span>250m <b>${stationAnalysis.coverage250==null?'-':Number(stationAnalysis.coverage250).toFixed(1)+'%'}</b></span><span>350m <b>${stationAnalysis.coverage350==null?'-':Number(stationAnalysis.coverage350).toFixed(1)+'%'}</b></span><span>500m <b>${stationAnalysis.coverage500==null?'-':Number(stationAnalysis.coverage500).toFixed(1)+'%'}</b></span>`;
+  if(cv)cv.innerHTML=`<span>역별 개별판정</span><span>후보 ${stationFs.length}개</span><span>환승확정 ${transfers.length}개</span><span>복수역 합집합은 참고값만 사용</span>`;
+  renderStationCandidateLists();
 
   set('spCenterType',stationAnalysis.centerType||'비중심지');
   set('spCenterName',stationAnalysis.centerLabel?stationAnalysis.centerLabel.replace(/\([^)]*\)$/,''):'-');
@@ -3392,9 +3409,19 @@ function deriveStreetBlockAnalysisScope(siteFeature,blockFeatures){
   return {scope,scope_area_m2:scopeArea,scope_connected:connected,retained_roads:retainedRoads,retained_road_area_m2:retainedRoadArea,retained_facilities:retainedFacilities,retained_facility_area_m2:retainedFacilityArea,retained_infrastructure_area_m2:retainedArea,through_roads:through,through_road_max_width_m:maxW||null,component_count:parts.length};
 }
 function streetBlockApplicableStationBuffer(threshold){
+  // 역세권활성화 도면도 최근접역 하나가 아니라 1km 후보역 각각의 적용반경(250/350m)을 사용한다.
+  const facts=stationFacts();
+  if(facts.length){
+    const siteCenter={value:stationAnalysis.centerValue,label:stationAnalysis.centerLabel};
+    const buffs=facts.map(st=>st?.buffers?.[activationThresholdForStation(st,siteCenter)]).filter(Boolean);
+    if(buffs.length)return safeUnionPolygons(buffs);
+  }
   const t=Number(threshold);
   if(![250,350].includes(t)||!stationAnalysis.nearestFeatures?.length)return null;
   return safeUnionPolygons(stationAnalysis.nearestFeatures.map(f=>{try{return turf.buffer(f,t,{units:'meters'});}catch(e){return null;}}).filter(Boolean));
+}
+function streetBlockIsAuthoritative(){
+  return streetBlockAnalysis.metadata?.authoritative_street_block===true||streetBlockAnalysis.metadata?.basic_unit_is_legal_street_block===true;
 }
 function streetBlockBarrierSpec(){
   // 기초단위구가 폐합 골격이므로 여기서는 병합을 막는 강한 경계인 철도·하천만 추가 조회한다.
@@ -3478,16 +3505,17 @@ async function analyzeActivationArterial(){
       for(const zf of candidates){try{const x=turf.intersect(bf,zf);if(x)blockOverlap+=turf.area(x);}catch(e){}}
       blockIncludes=blockOverlap>=0.5;
     }
-    const siteIncludes=overlapArea>=0.5;
+    const siteIncludes=overlapArea>=0.5,blockAuthoritative=streetBlockIsAuthoritative();
     let routeStatus='REVIEW',conditional=false,path='가로구역 연계 확인 필요';
-    if(blockIncludes===true){routeStatus='PASS';path='가로구역 내 노선형 상업지역 확인';}
-    else if(blockIncludes===false){routeStatus='FAIL';path='가로구역 내 노선형 상업지역 미확인';}
-    else if(siteIncludes){routeStatus='PASS';conditional=true;path='대상지 자체 노선형 상업지역 편입 · 가로구역 형상 재확인';}
+    if(blockIncludes===true&&blockAuthoritative){routeStatus='PASS';path='공식 가로구역 내 노선형 상업지역 확인';}
+    else if(blockIncludes===false&&blockAuthoritative){routeStatus='FAIL';path='공식 가로구역 내 노선형 상업지역 미확인';}
+    else if(blockIncludes!=null&&!blockAuthoritative){routeStatus='REVIEW';conditional=true;path=`추정 가로구역 내 노선형 상업지역 ${blockIncludes?'후보 확인':'미확인'} · 공식 가로구역 데이터 연결 전 자동판정 금지`;}
+    else if(siteIncludes){routeStatus='REVIEW';conditional=true;path='대상지 자체 노선형 상업지역 편입 확인 · 가로구역 자료 미확보로 자동 PASS 금지';}
     else if(candidates.length){routeStatus='REVIEW';path='인접 노선형 상업지역 후보 존재 · 가로구역 연계 필요';}
     else if(roads.length===0){routeStatus='REVIEW';path='주변 도로자료 0건 · 노선형 상업지역 판정 보류';activationArterialAnalysis.warnings.push('TL_SPRD_MANAGE 주변 도로자료 미확보 · 후보 없음으로 확정하지 않음');}
     else if(namedRoadFeatures===0){routeStatus='REVIEW';path='도로자료는 확보했으나 도로명 속성을 확인하지 못해 노선형 상업지역 판정 보류';activationArterialAnalysis.warnings.push('TL_SPRD_MANAGE 도로명 속성 미확보 · 대상노선 21개와 자동대조 불가');}
     else if(!activationArterialAnalysis.errors.length){routeStatus='FAIL';path='주변 도로명 대조 결과 노선형 상업지역 후보 없음';}
-    activationArterialAnalysis.roads=targets;activationArterialAnalysis.commercialZones=candidates;activationArterialAnalysis.siteOverlapFeatures=overlaps;activationArterialAnalysis.siteOverlapM2=overlapArea;activationArterialAnalysis.siteOverlapPct=overlapArea/siteArea*100;activationArterialAnalysis.siteIncludes=siteIncludes;activationArterialAnalysis.blockIncludes=blockIncludes;activationArterialAnalysis.blockOverlapM2=blockIncludes==null?null:blockOverlap;activationArterialAnalysis.blockFeature=blockFeature;activationArterialAnalysis.stationBufferFeature=streetBlockApplicableStationBuffer(Number(stationAnalysis.activationRange));activationArterialAnalysis.routeStatus=routeStatus;activationArterialAnalysis.routeConditional=conditional;activationArterialAnalysis.path=path;activationArterialAnalysis.status=activationArterialAnalysis.errors.length?'partial':'resolved';activationArterialAnalysis.metadata={search_radius_m:220,official_target_road_count:ACTIVATION_LINEAR_COMMERCIAL_ROADS.length,source_road_features:roads.length,named_road_features:namedRoadFeatures,matched_road_features:targets.length,commercial_candidate_features:candidates.length,site_overlap_features:overlaps.length,method:'official_linear_commercial_roads_plus_uq111'};activationArterialAnalysis.loaded=true;
+    activationArterialAnalysis.roads=targets;activationArterialAnalysis.commercialZones=candidates;activationArterialAnalysis.siteOverlapFeatures=overlaps;activationArterialAnalysis.siteOverlapM2=overlapArea;activationArterialAnalysis.siteOverlapPct=overlapArea/siteArea*100;activationArterialAnalysis.siteIncludes=siteIncludes;activationArterialAnalysis.blockIncludes=blockIncludes;activationArterialAnalysis.blockOverlapM2=blockIncludes==null?null:blockOverlap;activationArterialAnalysis.blockFeature=blockFeature;activationArterialAnalysis.stationBufferFeature=streetBlockApplicableStationBuffer(Number(stationAnalysis.activationRange));activationArterialAnalysis.routeStatus=routeStatus;activationArterialAnalysis.routeConditional=conditional;activationArterialAnalysis.path=path;activationArterialAnalysis.status=activationArterialAnalysis.errors.length?'partial':'resolved';activationArterialAnalysis.metadata={search_radius_m:220,official_target_road_count:ACTIVATION_LINEAR_COMMERCIAL_ROADS.length,source_road_features:roads.length,named_road_features:namedRoadFeatures,matched_road_features:targets.length,commercial_candidate_features:candidates.length,site_overlap_features:overlaps.length,block_authoritative:blockAuthoritative,future_street_block_interface:'MOIS_BASIC_UNIT_OR_VERIFIED_PLANNING_ROAD_BLOCK',method:'official_linear_commercial_roads_plus_uq111'};activationArterialAnalysis.loaded=true;
   }catch(e){activationArterialAnalysis.status='error';activationArterialAnalysis.errors.push({id:'activation_arterial',error:String(e.message||e)});activationArterialAnalysis.routeStatus='REVIEW';activationArterialAnalysis.path='자동분석 오류';activationArterialAnalysis.loaded=true;}
   finally{activationArterialAnalysis.loading=false;renderActivationArterialSpatialStatus();try{runAllSchemeChecks();}catch(e){console.error('[activation-arterial] 사업판정 갱신',e);}}
 }
@@ -3502,9 +3530,12 @@ function updateActivationArterialBlockLink(){
     }catch(e){activationArterialAnalysis.warnings.push('가로구역-노선형 상업지역 연계 재계산 실패');}
   }
   activationArterialAnalysis.blockFeature=blockFeature;activationArterialAnalysis.blockIncludes=blockIncludes;activationArterialAnalysis.blockOverlapM2=blockIncludes==null?null:blockOverlap;
-  if(blockIncludes===true){activationArterialAnalysis.routeStatus='PASS';activationArterialAnalysis.routeConditional=false;activationArterialAnalysis.path='가로구역 내 노선형 상업지역 확인';}
-  else if(blockIncludes===false){activationArterialAnalysis.routeStatus='FAIL';activationArterialAnalysis.routeConditional=false;activationArterialAnalysis.path='가로구역 내 노선형 상업지역 미확인';}
-  else if(activationArterialAnalysis.siteIncludes===true){activationArterialAnalysis.routeStatus='PASS';activationArterialAnalysis.routeConditional=true;activationArterialAnalysis.path='대상지 자체 노선형 상업지역 편입 · 가로구역 형상 재확인';}
+  const blockAuthoritative=streetBlockIsAuthoritative();
+  activationArterialAnalysis.metadata=Object.assign({},activationArterialAnalysis.metadata||{},{block_authoritative:blockAuthoritative,future_street_block_interface:'MOIS_BASIC_UNIT_OR_VERIFIED_PLANNING_ROAD_BLOCK'});
+  if(blockIncludes===true&&blockAuthoritative){activationArterialAnalysis.routeStatus='PASS';activationArterialAnalysis.routeConditional=false;activationArterialAnalysis.path='공식 가로구역 내 노선형 상업지역 확인';}
+  else if(blockIncludes===false&&blockAuthoritative){activationArterialAnalysis.routeStatus='FAIL';activationArterialAnalysis.routeConditional=false;activationArterialAnalysis.path='공식 가로구역 내 노선형 상업지역 미확인';}
+  else if(blockIncludes!=null&&!blockAuthoritative){activationArterialAnalysis.routeStatus='REVIEW';activationArterialAnalysis.routeConditional=true;activationArterialAnalysis.path=`추정 가로구역 내 노선형 상업지역 ${blockIncludes?'후보 확인':'미확인'} · 공식 가로구역 데이터 연결 전 자동판정 금지`;}
+  else if(activationArterialAnalysis.siteIncludes===true){activationArterialAnalysis.routeStatus='REVIEW';activationArterialAnalysis.routeConditional=true;activationArterialAnalysis.path='대상지 자체 노선형 상업지역 편입 확인 · 가로구역 자료 미확보로 자동 PASS 금지';}
   else if((activationArterialAnalysis.commercialZones||[]).length){activationArterialAnalysis.routeStatus='REVIEW';activationArterialAnalysis.routeConditional=false;activationArterialAnalysis.path='인접 노선형 상업지역 후보 존재 · 가로구역 연계 필요';}
   else if(Number(activationArterialAnalysis.metadata?.source_road_features||0)===0){activationArterialAnalysis.routeStatus='REVIEW';activationArterialAnalysis.routeConditional=false;activationArterialAnalysis.path='주변 도로자료 0건 · 노선형 상업지역 판정 보류';}
   else if(Number(activationArterialAnalysis.metadata?.named_road_features||0)===0){activationArterialAnalysis.routeStatus='REVIEW';activationArterialAnalysis.routeConditional=false;activationArterialAnalysis.path='도로명 속성 미확보 · 노선형 상업지역 판정 보류';}
@@ -5466,6 +5497,17 @@ function isResidentialPurpose(name){
 
 
 // ---------- Built-in JUSO subway-station boundary GIS ----------
+function stationNameKey(v){return String(v||'').replace(/\([^)]*\)|（[^）]*）|\[[^\]]*\]/g,'').replace(/\s+/g,'').replace(/역$/,'').replace(/[^가-힣A-Za-z0-9]/g,'').toLowerCase();}
+async function loadOfficialStationLineMap(force=false){
+  if(stationOfficialLineMap.size&&!force)return;
+  try{
+    const r=await fetch('/api/reference/station-lines',{cache:force?'reload':'default'});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const data=await r.json(),m=new Map();
+    for(const row of (data.stations||[])){const k=stationNameKey(row.name);if(k)m.set(k,{lines:[...(row.lines||[])],transfer:row.transfer===true,line_count:Number(row.line_count||0),sources:[...(row.sources||[])]});}
+    stationOfficialLineMap=m;stationOfficialLineMeta={status:data.status||'unknown',...(data.metadata||{})};
+  }catch(e){stationOfficialLineMap=new Map();stationOfficialLineMeta={status:'error',message:String(e.message||e)};}
+}
 async function loadBuiltInStationDataset(force=false){
   const status=document.getElementById('stationDataStatus');
   const note=document.getElementById('stationGisNote');
@@ -5484,6 +5526,7 @@ async function loadBuiltInStationDataset(force=false){
     stationAnalysis.loaded=stationFeatures.length>0;
     stationAnalysis.metadata=fc.metadata||{};
     stationAnalysis.sourceDate='2026-08-01';
+    await loadOfficialStationLineMap(force);
     updateStationDataStatus();
     if(activeGeometry)await analyzeStationBoundary();
   }catch(e){
@@ -5561,15 +5604,18 @@ function coverageWithinStationBuffers(zoneFeature,features,meters){
     return za>0?Math.min(100,turf.area(inter)/za*100):null;
   }catch(e){return null;}
 }
-function candidateStationFeatures(zoneFeature,maxDistance=1200){
-  let search=null;
-  try{search=turf.buffer(zoneFeature,maxDistance,{units:'meters'});}catch(e){}
+function candidateStationFeatures(zoneFeature,maxDistance=STATION_SEARCH_RADIUS_M){
+  // 검색범위는 법정 판정거리가 아니라 누락방지용 후보수집 범위이다.
+  // 사용자가 정한 원칙에 따라 대상지 중심점 기준 1km 안의 모든 역사를 수집한다.
+  let center=null,search=null;
+  try{center=turf.centroid(zoneFeature);search=turf.buffer(center,maxDistance,{units:'meters'});}catch(e){}
   if(!search)return stationFeatures;
   const bb=turf.bbox(search);
   return stationFeatures.filter(f=>{
     try{
       const fb=turf.bbox(f);
-      return !(fb[2]<bb[0]||fb[0]>bb[2]||fb[3]<bb[1]||fb[1]>bb[3]);
+      if(fb[2]<bb[0]||fb[0]>bb[2]||fb[3]<bb[1]||fb[1]>bb[3])return false;
+      return turf.booleanIntersects(search,f);
     }catch(e){return false;}
   });
 }
@@ -5586,148 +5632,262 @@ function extractLinesFromText(text){
   }
   return out;
 }
-async function enrichNearestStationFromVworld(stationName){
+function stationFeatureAnchor(features){
+  const pts=[];
+  for(const f of features||[]){try{const c=turf.centroid(f)?.geometry?.coordinates;if(Array.isArray(c)&&Number.isFinite(Number(c[0]))&&Number.isFinite(Number(c[1])))pts.push([Number(c[0]),Number(c[1])]);}catch(e){}}
+  if(!pts.length)return null;
+  return turf.point([pts.reduce((a,c)=>a+c[0],0)/pts.length,pts.reduce((a,c)=>a+c[1],0)/pts.length]);
+}
+function clusterStationFeatures(features,maxGapM=STATION_SAME_NAME_CLUSTER_M){
+  // 동일 역명이라도 물리적으로 떨어져 있으면 별개 역으로 유지한다.
+  // 단순 역명 groupBy는 신촌역처럼 서로 환승되지 않는 동명역을 거짓 환승역으로 만들 수 있다.
+  const byName=new Map();
+  for(const f of features||[]){const n=stationFeatureName(f);if(!byName.has(n))byName.set(n,[]);byName.get(n).push(f);}
+  const out=[];
+  for(const [name,items] of byName.entries()){
+    const clusters=[];
+    for(const f of items){
+      let best=null,bestGap=Infinity;
+      for(const g of clusters){
+        let gap=Infinity;
+        for(const gf of g.features){const d=geometryBoundaryDistanceMeters(f,gf);if(d!=null&&d<gap)gap=d;}
+        if(gap<bestGap){bestGap=gap;best=g;}
+      }
+      if(best&&bestGap<=maxGapM)best.features.push(f);else clusters.push({name,features:[f]});
+    }
+    clusters.forEach((g,i)=>out.push({...g,cluster_index:i+1,same_name_cluster_count:clusters.length}));
+  }
+  return out;
+}
+async function enrichStationFromVworld(stationName,anchor=null,strictSpatial=false){
   if(!VWORLD_CLIENT_KEY||!stationName||stationName.startsWith('역명 미확인'))return [];
-  if(stationVworldCache.has(stationName))return stationVworldCache.get(stationName);
+  const ac=anchor?.geometry?.coordinates||null;
+  const cacheKey=`${stationName}|${ac?Number(ac[0]).toFixed(4)+','+Number(ac[1]).toFixed(4):'na'}|${strictSpatial?'strict':'loose'}`;
+  if(stationVworldCache.has(cacheKey))return stationVworldCache.get(cacheKey);
   try{
     const data=await vworldJsonp('https://api.vworld.kr/req/search',{
       key:VWORLD_CLIENT_KEY,
       domain:VWORLD_CLIENT_DOMAIN,
-      service:'search',
-      version:'2.0',
-      request:'search',
-      format:'json',
-      size:'50',
-      page:'1',
-      query:stationName,
-      type:'PLACE',
-      crs:'EPSG:4326'
+      service:'search',version:'2.0',request:'search',format:'json',size:'50',page:'1',query:stationName,type:'PLACE',crs:'EPSG:4326'
     },15000);
     const items=((((data||{}).response||{}).result||{}).items)||[];
     const lines=[];
     for(const item of items){
+      let spatialKnown=false,spatialOk=true;
+      const x=Number(item?.point?.x),y=Number(item?.point?.y);
+      if(anchor&&Number.isFinite(x)&&Number.isFinite(y)){
+        spatialKnown=true;
+        try{spatialOk=turf.distance(anchor,turf.point([x,y]),{units:'meters'})<=500;}catch(e){spatialOk=false;}
+      }
+      if((spatialKnown&&!spatialOk)||(strictSpatial&&!spatialKnown))continue;
       const txt=[item.title,item.address?.road,item.address?.parcel,item.category].filter(Boolean).join(' ');
       for(const l of extractLinesFromText(txt))if(!lines.includes(l))lines.push(l);
     }
-    stationVworldCache.set(stationName,lines);
-    return lines;
-  }catch(e){
-    stationVworldCache.set(stationName,[]);
-    return [];
+    stationVworldCache.set(cacheKey,lines);return lines;
+  }catch(e){stationVworldCache.set(cacheKey,[]);return [];}
+}
+// 구버전 호출부 호환용. 실제로는 주변 모든 역에 동일한 보강함수를 사용한다.
+async function enrichNearestStationFromVworld(stationName){return enrichStationFromVworld(stationName);}
+function stationCenterMeta(features){
+  const centerRank={noncenter:0,district:1,regional:2,metro:3,downtown:4};
+  let value='noncenter',type='비중심지',label='';
+  for(const f of features||[]){
+    const p=f.properties||{},v=p.center_value||'noncenter';
+    if((centerRank[v]??0)>(centerRank[value]??0)){value=v;type=p.center_type||'비중심지';label=p.center_label||'';}
   }
+  return {value,type,label};
+}
+function siteCenterMeta(zoneFeature){
+  const rank={noncenter:0,district:1,regional:2,metro:3,downtown:4};
+  const za=Math.max(1,turf.area(zoneFeature));
+  let centroid=null;try{centroid=turf.centroid(zoneFeature);}catch(e){}
+  const hits=[];
+  for(const f of centerReferenceFeatures||[]){
+    try{
+      const cf=turf.feature(f.geometry,f.properties||{}),x=turf.intersect(zoneFeature,cf),ia=x?turf.area(x):0;
+      if(ia<=0)continue;
+      const p=f.properties||{},inside=centroid?!!turf.booleanPointInPolygon(centroid,cf):false;
+      hits.push({value:p.center_value||'noncenter',type:p.center_type||'비중심지',label:p.center_label||'',coverage_pct:ia/za*100,centroid_inside:inside});
+    }catch(e){}
+  }
+  if(!hits.length)return {value:'noncenter',type:'비중심지',label:'',coverage_pct:0,hits:[]};
+  hits.sort((a,b)=>(Number(b.centroid_inside)-Number(a.centroid_inside))||((rank[b.value]??0)-(rank[a.value]??0))||(b.coverage_pct-a.coverage_pct));
+  return {...hits[0],hits};
+}
+function stationBufferMetrics(zoneFeature,features,meters){
+  const buffs=[];
+  for(const f of features||[]){try{const b=turf.buffer(f,meters,{units:'meters'});if(b)buffs.push(b);}catch(e){}}
+  const union=safeUnionPolygons(buffs);if(!union)return {coverage_pct:null,overlap_m2:null,full_containment:null,buffer:null};
+  try{
+    const za=turf.area(zoneFeature),x=turf.intersect(zoneFeature,union),ia=x?turf.area(x):0,cov=za>0?Math.min(100,ia/za*100):null;
+    return {coverage_pct:cov,overlap_m2:ia,full_containment:cov==null?null:cov>=99.999,buffer:union};
+  }catch(e){return {coverage_pct:null,overlap_m2:null,full_containment:null,buffer:union};}
+}
+function stationFacts(){return Array.isArray(stationAnalysis.nearbyStations)?stationAnalysis.nearbyStations:[];}
+function stationCandidateRowsHtml(){
+  const facts=stationFacts();
+  if(!facts.length)return '<div class="station-candidate-row"><b>후보역 없음</b><span>-</span><span>-</span><span>-</span><span>-</span><span>-</span></div>';
+  return facts.map(st=>{
+    const lineTxt=st.lines?.length?st.lines.join('·'):(st.line_data_complete?'노선 없음':'노선 확인중');
+    const transferTxt=st.transfer===true?' · 환승':st.transfer===false?' · 비환승':' · 환승여부 확인';
+    const pct=v=>v==null?'-':`${Number(v).toFixed(1)}%`;
+    return `<div class="station-candidate-row"><b>${escHtml(st.name||'-')}</b><span>${st.distance_m==null?'-':Number(st.distance_m).toFixed(1)+'m'}</span><span class="${st.transfer===true?'transfer':''}">${escHtml(lineTxt+transferTxt)}</span><span>${pct(st.coverage250)}</span><span>${pct(st.coverage350)}</span><span>${pct(st.coverage500)}</span></div>`;
+  }).join('');
+}
+function renderStationCandidateLists(){
+  const head='<div class="station-candidate-row head"><b>역</b><b>거리</b><b>노선·환승</b><b>250m</b><b>350m</b><b>500m</b></div>';
+  const html=head+stationCandidateRowsHtml();
+  for(const id of ['spStationCandidates','stationGisCandidateList']){const el=document.getElementById(id);if(el)el.innerHTML=html;}
+}
+function stationCoverageValue(st,meters){return st?.[`coverage${Number(meters)}`]??null;}
+function stationOverlapValue(st,meters){return st?.[`overlap${Number(meters)}M2`]??null;}
+function bestStationByDistance(predicate=()=>true){return stationFacts().filter(predicate).sort((a,b)=>Number(a.distance_m??Infinity)-Number(b.distance_m??Infinity))[0]||null;}
+function bestStationByCoverage(meters,predicate=()=>true){return stationFacts().filter(predicate).filter(x=>stationCoverageValue(x,meters)!=null).sort((a,b)=>Number(stationCoverageValue(b,meters))-Number(stationCoverageValue(a,meters))||Number(a.distance_m??Infinity)-Number(b.distance_m??Infinity))[0]||null;}
+function stationBlockRelation(station,threshold){
+  const t=Number(threshold),buf=station?.buffers?.[t];
+  const blockFeatures=[];
+  if(streetBlockAnalysis.analysisScopeFeature)blockFeatures.push(streetBlockAnalysis.analysisScopeFeature);
+  else if(streetBlockAnalysis.blockFeatures?.length)blockFeatures.push(...streetBlockAnalysis.blockFeatures.map(f=>turf.feature(f.geometry,f.properties||{})));
+  else if(streetBlockAnalysis.blockFeature)blockFeatures.push(turf.feature(streetBlockAnalysis.blockFeature.geometry,streetBlockAnalysis.blockFeature.properties||{}));
+  if(!buf||!blockFeatures.length||!['AUTO','PARTIAL'].includes(String(streetBlockAnalysis.quality||'').toUpperCase()))return {known:false,authoritative:false,quality:streetBlockAnalysis.quality||'NONE',max_share_pct:null,relations:[]};
+  // 현재 내장 기초단위구 엔진은 후보형상(ESTIMATE)이며 법정 가로구역 데이터가 아니다.
+  // 향후 행안부 기초단위구/공식 가로구역 또는 검증된 도시계획시설도로 블록 데이터가 연결되면
+  // metadata.authoritative_street_block=true 로 바꾸는 것만으로 자동 PASS가 열리도록 인터페이스를 고정한다.
+  const authoritative=streetBlockIsAuthoritative(); 
+  const relations=[];
+  for(const bf of blockFeatures){
+    try{const ba=turf.area(bf),x=turf.intersect(bf,buf),ia=x?turf.area(x):0;relations.push({block_area_m2:ba,station_overlap_m2:ia,station_share_of_block_pct:ba>0?ia/ba*100:null});}catch(e){}
+  }
+  const vals=relations.map(x=>x.station_share_of_block_pct).filter(Number.isFinite);
+  return {known:vals.length>0,authoritative,quality:streetBlockAnalysis.quality||'NONE',max_share_pct:vals.length?Math.max(...vals):null,relations,source:streetBlockAnalysis.metadata?.basic_unit_source||streetBlockAnalysis.metadata?.method||''};
+}
+function activationThresholdInfoForStation(station,siteCenter=null){
+  const sc=siteCenter||{value:stationAnalysis.centerValue,label:stationAnalysis.centerLabel};
+  const stationCore=['downtown','metro','regional'].includes(station?.center_value);
+  const siteCore=['downtown','metro','regional'].includes(sc?.value);
+  const sameCenter=stationCore&&siteCore&&station?.center_label&&sc?.label&&String(station.center_label)===String(sc.label);
+  if(station?.transfer===true||Number(station?.line_count)>=2){
+    return {threshold_m:350,status:'CONFIRMED',reason:'2개 이상 철도노선 환승역'};
+  }
+  if(sameCenter){
+    return {threshold_m:350,status:'CONFIRMED',reason:`역과 대상지가 동일 ${station.center_label} 중심지 범역`};
+  }
+  if(station?.line_data_complete===true){
+    return {threshold_m:250,status:'CONFIRMED',reason:'비환승역·중심지 350m 경로 비해당'};
+  }
+  // 노선자료가 덜 들어온 역은 250m로 잘라내면 실제 환승역을 누락할 수 있다.
+  // 최대 350m를 후보검색 envelope로 유지하되, 공식 노선자료가 들어오기 전에는 자동 PASS하지 않는다.
+  return {threshold_m:350,status:'REVIEW',reason:'환승노선 정보 미확정 · 350m 잠재범위로 후보 유지 후 공식 노선자료로 250/350m 확정'};
+}
+function activationThresholdForStation(station,siteCenter=null){return activationThresholdInfoForStation(station,siteCenter).threshold_m;}
+function activationStationCandidates(){
+  const siteCenter={value:stationAnalysis.centerValue,label:stationAnalysis.centerLabel};
+  return stationFacts().map(st=>{
+    const thresholdInfo=activationThresholdInfoForStation(st,siteCenter);
+    const threshold=thresholdInfo.threshold_m;
+    const block=stationBlockRelation(st,threshold);
+    const direct=st.distance_m==null?null:Number(st.distance_m)<=threshold;
+    let status='REVIEW',conditional=false,note='가로구역 공간자료 확인 필요';
+    if(direct===false&&block.known&&block.authoritative&&Number(block.max_share_pct||0)<=0){
+      status='FAIL';note='최대 적용 역세권과 공식 가로구역 중첩 없음';
+    }else if(block.known){
+      if(Number(block.max_share_pct)>=50){
+        if(block.authoritative&&thresholdInfo.status==='CONFIRMED'){
+          status='PASS';note=`${st.name} ${threshold}m 역세권이 공식 가로구역 ${Number(block.max_share_pct).toFixed(1)}% 포함`;
+        }else{
+          status='REVIEW';conditional=true;
+          note=`${st.name} ${threshold}m ${thresholdInfo.status==='REVIEW'?'잠재':''}역세권이 ${block.authoritative?'공식':'추정'} 가로구역 ${Number(block.max_share_pct).toFixed(1)}% 포함 · ${thresholdInfo.status==='REVIEW'?thresholdInfo.reason+' · ':''}${block.authoritative?'적용거리 확정 후 판정':'공식 가로구역 데이터 연결 전 자동 PASS 금지'}`;
+        }
+      }else if(Number(block.max_share_pct)>0){
+        status='REVIEW';conditional=true;note=`${st.name} ${threshold}m 역세권이 ${block.authoritative?'공식':'추정'} 가로구역 ${Number(block.max_share_pct).toFixed(1)}% 포함 · 1/2 미만 위원회 인정경로 검토`;
+      }else{
+        status=(block.authoritative&&thresholdInfo.status==='CONFIRMED')?'FAIL':'REVIEW';
+        note=status==='FAIL'?'공식 가로구역 중첩 없음':'가로구역 중첩/적용거리 확정 필요';
+      }
+    }else if(direct===true){
+      status='REVIEW';note=`${st.name} 대상지 경계거리 ${Number(st.distance_m).toFixed(1)}m는 ${threshold}m ${thresholdInfo.status==='REVIEW'?'잠재':''}범위 이내이나 가로구역 Fact 미확보${thresholdInfo.status==='REVIEW'?' · '+thresholdInfo.reason:''}`;
+    }else if(direct===false){
+      status='REVIEW';note=`${st.name} 직접거리는 ${threshold}m 밖이나 동일 가로구역 포함여부 미확보`;
+    }
+    if(status==='PASS'&&thresholdInfo.status!=='CONFIRMED'){
+      status='REVIEW';conditional=true;note=`${note} · ${thresholdInfo.reason}`;
+    }
+    return {...st,activation_threshold_m:threshold,activation_threshold_status:thresholdInfo.status,activation_threshold_reason:thresholdInfo.reason,activation_block:block,activation_status:status,activation_conditional:conditional,activation_note:note};
+  }).sort((a,b)=>({PASS:0,REVIEW:1,FAIL:2}[a.activation_status]-({PASS:0,REVIEW:1,FAIL:2}[b.activation_status]))||Number(b.activation_block?.max_share_pct??-1)-Number(a.activation_block?.max_share_pct??-1)||Number(a.distance_m??Infinity)-Number(b.distance_m??Infinity));
+}
+function stationSchemeFactSummary(){
+  return {
+    search_radius_m:stationAnalysis.searchRadiusM||STATION_SEARCH_RADIUS_M,
+    candidate_count:stationFacts().length,
+    nearest:stationFacts()[0]||null,
+    stations:stationFacts().map(st=>({name:st.name,station_instance_id:st.station_instance_id,distance_m:st.distance_m,search_distance_m:st.search_distance_m,lines:[...(st.lines||[])],line_count:st.line_count,transfer:st.transfer,line_source:st.line_source,line_data_complete:st.line_data_complete===true,center_value:st.center_value,center_type:st.center_type,center_label:st.center_label,coverage250:st.coverage250,coverage350:st.coverage350,coverage500:st.coverage500,overlap250_m2:st.overlap250M2,overlap350_m2:st.overlap350M2,overlap500_m2:st.overlap500M2,full250:st.full250,full350:st.full350,full500:st.full500})),
+    union:{coverage250:stationAnalysis.unionCoverage250,coverage350:stationAnalysis.unionCoverage350,coverage500:stationAnalysis.unionCoverage500},
+    site_center:{value:stationAnalysis.centerValue,type:stationAnalysis.centerType,label:stationAnalysis.centerLabel,coverage_pct:stationAnalysis.centerCoveragePct}
+  };
 }
 function applyStationMetaToSchemeInputs(meta){
   const lineSel=document.getElementById('scheme_station_lines');
   const centerSel=document.getElementById('scheme_center');
-  if(lineSel){
-    if(meta.lineCount>=2)lineSel.value='2';
-    else if(meta.lineCount===1)lineSel.value='1';
-    else lineSel.value='';
-  }
+  if(lineSel){if(meta.lineCount>=2)lineSel.value='2';else if(meta.lineCount===1)lineSel.value='1';else lineSel.value='';}
   if(centerSel)centerSel.value=meta.centerValue||'';
 }
 async function analyzeStationBoundary(){
   updateStationDataStatus();
-  if(!stationAnalysis.loaded||!stationFeatures.length||!activeGeometry){
-    runAllSchemeChecks();return;
+  if(!stationAnalysis.loaded||!stationFeatures.length||!activeGeometry){runAllSchemeChecks();return;}
+  const zone=turf.feature(activeGeometry),candidates=candidateStationFeatures(zone,STATION_SEARCH_RADIUS_M);
+  const groups=clusterStationFeatures(candidates,STATION_SAME_NAME_CLUSTER_M);
+  if(!groups.length){
+    stationAnalysis.nearbyStations=[];stationAnalysis.candidateCount=0;stationAnalysis.nearestName='';stationAnalysis.nearestDistance=null;
+    document.getElementById('stationGisNote').textContent=`대상지 중심 ${STATION_SEARCH_RADIUS_M.toLocaleString()}m 안에서 지하철역사를 찾지 못했습니다.`;runAllSchemeChecks();return;
   }
-  const zone=turf.feature(activeGeometry);
-  const candidates=candidateStationFeatures(zone,1200);
-  let best=null,bestDist=Infinity;
-  for(const f of candidates){
-    const d=geometryBoundaryDistanceMeters(zone,f);
-    if(d!=null && d<bestDist){bestDist=d;best=f;}
-  }
-  if(!best){
-    stationAnalysis.nearestName='';stationAnalysis.nearestDistance=null;
-    document.getElementById('stationGisNote').textContent='대상지 주변에서 지하철역사 도형을 찾지 못했습니다.';
-    runAllSchemeChecks();return;
-  }
+  const siteCenter=siteCenterMeta(zone);
+  const facts=await Promise.all(groups.map(async group=>{
+    const {name,features}=group;
+    let dist=Infinity;
+    for(const f of features){const d=geometryBoundaryDistanceMeters(zone,f);if(d!=null&&d<dist)dist=d;}
+    const anchor=stationFeatureAnchor(features);
+    let searchDist=null;try{const zc=turf.centroid(zone);if(anchor)searchDist=turf.distance(zc,anchor,{units:'meters'});}catch(e){}
+    let lines=[];
+    for(const f of features)for(const l of ((f.properties||{}).station_lines||[]))if(l&&!lines.includes(l))lines.push(l);
+    const official=stationOfficialLineMap.get(stationNameKey(name))||null;
+    if(official)for(const l of (official.lines||[]))if(l&&!lines.includes(l))lines.push(l);
+    let lineSource=official?'SEOUL_OPEN_DATA':(lines.length?'STATION_DATA':'UNKNOWN');
+    // VWorld는 공식 노선표가 비어 있을 때만 보조한다. 공식표와 기존 내장값은 서로 합산한다.
+    if(!official&&lines.length<2){const vw=await enrichStationFromVworld(name,anchor,group.same_name_cluster_count>1);for(const l of vw)if(!lines.includes(l))lines.push(l);if(vw.length)lineSource=lines.length?'STATION_DATA+VWORLD':'VWORLD_PLACE';}
+    const transferConfirmed=lines.length>=2;
+    const lineDataComplete=transferConfirmed || !!official; // 서울 열린데이터광장 종합 노선표에서 해당 역이 확인되면 1개 노선도 비환승으로 확정한다.
+    const cm=stationCenterMeta(features),m250=stationBufferMetrics(zone,features,250),m350=stationBufferMetrics(zone,features,350),m500=stationBufferMetrics(zone,features,500);
+    return {name,station_instance_id:`${name}#${group.cluster_index}`,same_name_cluster_count:group.same_name_cluster_count,features,distance_m:Number.isFinite(dist)?dist:null,search_distance_m:searchDist,lines,line_count:lines.length||null,transfer:transferConfirmed?true:(lineDataComplete?false:null),line_source:lineSource,line_data_complete:lineDataComplete,center_value:cm.value,center_type:cm.type,center_label:cm.label,
+      coverage250:m250.coverage_pct,coverage350:m350.coverage_pct,coverage500:m500.coverage_pct,overlap250M2:m250.overlap_m2,overlap350M2:m350.overlap_m2,overlap500M2:m500.overlap_m2,full250:m250.full_containment,full350:m350.full_containment,full500:m500.full_containment,buffers:{250:m250.buffer,350:m350.buffer,500:m500.buffer}};
+  }));
+  facts.sort((a,b)=>Number(a.distance_m??Infinity)-Number(b.distance_m??Infinity));
+  const best=facts[0],allFeatures=facts.flatMap(x=>x.features||[]);
+  stationAnalysis.nearbyStations=facts;stationAnalysis.candidateCount=facts.length;stationAnalysis.searchRadiusM=STATION_SEARCH_RADIUS_M;
+  stationAnalysis.nearestName=best.name;stationAnalysis.nearestDistance=best.distance_m;stationAnalysis.coverage250=best.coverage250;stationAnalysis.coverage350=best.coverage350;stationAnalysis.coverage500=best.coverage500;stationAnalysis.nearestFeatures=best.features;
+  stationAnalysis.lines=[...(best.lines||[])];stationAnalysis.lineCount=best.line_count;stationAnalysis.transfer=best.transfer;
+  stationAnalysis.centerValue=siteCenter.value;stationAnalysis.centerType=siteCenter.type;stationAnalysis.centerLabel=siteCenter.label;stationAnalysis.centerCoveragePct=siteCenter.coverage_pct;
+  stationAnalysis.activationRange=activationThresholdForStation(best,siteCenter);
+  stationAnalysis.unionCoverage250=coverageWithinStationBuffers(zone,allFeatures,250);stationAnalysis.unionCoverage350=coverageWithinStationBuffers(zone,allFeatures,350);stationAnalysis.unionCoverage500=coverageWithinStationBuffers(zone,allFeatures,500);
+  stationAnalysis.metadata=Object.assign({},stationAnalysis.metadata||{},{search_radius_m:STATION_SEARCH_RADIUS_M,candidate_station_count:facts.length,station_fact_engine:'R22_MULTI_STATION_RULE_ENGINE_V3',station_line_reference:stationOfficialLineMeta,site_center_hits:siteCenter.hits||[]});
 
-  const nearestName=stationFeatureName(best);
-  const sameStation=candidates.filter(f=>stationFeatureName(f)===nearestName);
-  const relevantForBuffers=candidates;
-  const cov250=coverageWithinStationBuffers(zone,relevantForBuffers,250);
-  const cov350=coverageWithinStationBuffers(zone,relevantForBuffers,350);
-  const cov500=coverageWithinStationBuffers(zone,relevantForBuffers,500);
+  document.getElementById('stationNearestName').textContent=best.name||'-';
+  document.getElementById('stationNearestDistance').textContent=best.distance_m==null?'-':`${best.distance_m.toFixed(1)}m`;
+  document.getElementById('stationCoverage250').textContent=best.coverage250==null?'-':`${best.coverage250.toFixed(1)}%`;
+  document.getElementById('stationCoverage350').textContent=best.coverage350==null?'-':`${best.coverage350.toFixed(1)}%`;
+  document.getElementById('stationCoverage500').textContent=best.coverage500==null?'-':`${best.coverage500.toFixed(1)}%`;
+  document.getElementById('stationLineInfo').textContent=best.lines?.length?`${best.lines.join('·')}${best.transfer?' · 환승':''}`:'호선 확인 필요';
+  document.getElementById('stationCenterInfo').textContent=siteCenter.label?`${siteCenter.type} · ${siteCenter.label.replace(/\([^)]*\)$/,'')}`:siteCenter.type;
+  document.getElementById('stationActivationRange').textContent='제도별 판정';
+  const dist=document.getElementById('scheme_station_distance');if(dist){dist.value=best.distance_m==null?'':best.distance_m.toFixed(1);dist.readOnly=true;dist.dataset.auto='station';}
+  const note=document.getElementById('stationDistanceInputNote');if(note)note.textContent=`AUTO · 최근접 ${best.name} 역사 경계 / 후보역 ${facts.length}개(중심 1km)`;
+  applyStationMetaToSchemeInputs({lineCount:best.line_count,centerValue:siteCenter.value});
 
-  const props=best.properties||{};
-  let lines=[];
-  for(const f of sameStation){
-    for(const l of ((f.properties||{}).station_lines||[]))if(!lines.includes(l))lines.push(l);
-  }
-  if(!lines.length){
-    const vw=await enrichNearestStationFromVworld(nearestName);
-    for(const l of vw)if(!lines.includes(l))lines.push(l);
-  }
-  const lineCount=lines.length||null;
-  const transfer=lineCount==null?null:lineCount>=2;
-
-  let centerValue=props.center_value||'noncenter';
-  let centerType=props.center_type||'비중심지';
-  let centerLabel=props.center_label||'';
-  const centerRank={noncenter:0,district:1,regional:2,metro:3,downtown:4};
-  for(const f of sameStation){
-    const p=f.properties||{};
-    if((centerRank[p.center_value]??0)>(centerRank[centerValue]??0)){
-      centerValue=p.center_value;centerType=p.center_type;centerLabel=p.center_label||'';
-    }
-  }
-
-  let activationRange=null;
-  if(['downtown','metro','regional'].includes(centerValue))activationRange=350;
-  else if(lineCount>=2)activationRange=350;
-  else if(lineCount===1)activationRange=250;
-
-  stationAnalysis.nearestName=nearestName;
-  stationAnalysis.nearestDistance=bestDist;
-  stationAnalysis.coverage250=cov250;
-  stationAnalysis.coverage350=cov350;
-  stationAnalysis.coverage500=cov500;
-  stationAnalysis.nearestFeatures=sameStation;
-  stationAnalysis.lines=lines;
-  stationAnalysis.lineCount=lineCount;
-  stationAnalysis.transfer=transfer;
-  stationAnalysis.centerValue=centerValue;
-  stationAnalysis.centerType=centerType;
-  stationAnalysis.centerLabel=centerLabel;
-  stationAnalysis.activationRange=activationRange;
-
-  document.getElementById('stationNearestName').textContent=nearestName||'-';
-  document.getElementById('stationNearestDistance').textContent=`${bestDist.toFixed(1)}m`;
-  document.getElementById('stationCoverage250').textContent=cov250==null?'-':`${cov250.toFixed(1)}%`;
-  document.getElementById('stationCoverage350').textContent=cov350==null?'-':`${cov350.toFixed(1)}%`;
-  document.getElementById('stationCoverage500').textContent=cov500==null?'-':`${cov500.toFixed(1)}%`;
-  document.getElementById('stationLineInfo').textContent=
-    lines.length?`${lines.join('·')}${lineCount>=2?' · 환승':''}`:'호선 확인 필요';
-  document.getElementById('stationCenterInfo').textContent=
-    centerLabel?`${centerType} · ${centerLabel.replace(/\([^)]*\)$/,'')}`:centerType;
-  document.getElementById('stationActivationRange').textContent=
-    activationRange?`${activationRange}m`:'환승여부 확인';
-
-  const dist=document.getElementById('scheme_station_distance');
-  if(dist){dist.value=bestDist.toFixed(1);dist.readOnly=true;dist.dataset.auto='station';}
-  const note=document.getElementById('stationDistanceInputNote');
-  if(note)note.textContent=`AUTO · ${nearestName} 역사 경계 기준`;
-
-  applyStationMetaToSchemeInputs({lineCount,centerValue});
-
-  stationBoundaryLayer.clearLayers();stationBoundaryLayer.addData(sameStation);
+  stationBoundaryLayer.clearLayers();stationBoundaryLayer.addData({type:'FeatureCollection',features:allFeatures});
   stationBuffer250Layer.clearLayers();stationBuffer350Layer.clearLayers();stationBuffer500Layer.clearLayers();
-  const b250=safeUnionPolygons(sameStation.map(f=>{try{return turf.buffer(f,250,{units:'meters'});}catch(e){return null;}}).filter(Boolean));
-  const b350=safeUnionPolygons(sameStation.map(f=>{try{return turf.buffer(f,350,{units:'meters'});}catch(e){return null;}}).filter(Boolean));
-  const b500=safeUnionPolygons(sameStation.map(f=>{try{return turf.buffer(f,500,{units:'meters'});}catch(e){return null;}}).filter(Boolean));
-  if(b250)stationBuffer250Layer.addData(b250);
-  if(b350)stationBuffer350Layer.addData(b350);
-  if(b500)stationBuffer500Layer.addData(b500);
-
-  const lineNote=lines.length?` · ${lines.join('·')}`:' · 호선 미확인';
-  const centerNote=centerLabel?` · ${centerType}(${centerLabel.replace(/\([^)]*\)$/,'')})`:` · ${centerType}`;
-  document.getElementById('stationGisNote').textContent=
-    `${nearestName}${lineNote}${centerNote} · 경계 ${bestDist.toFixed(1)}m · 250m ${cov250==null?'-':cov250.toFixed(1)+'%'} / 350m ${cov350==null?'-':cov350.toFixed(1)+'%'} / 500m ${cov500==null?'-':cov500.toFixed(1)+'%'}`;
-  refreshStationCenterMiniMaps();
-  renderStreetBlockSpatialStatus();
-  runAllSchemeChecks();
+  for(const st of facts){if(st.buffers?.[250])stationBuffer250Layer.addData(st.buffers[250]);if(st.buffers?.[350])stationBuffer350Layer.addData(st.buffers[350]);if(st.buffers?.[500])stationBuffer500Layer.addData(st.buffers[500]);}
+  const transferCandidates=facts.filter(x=>x.transfer).map(x=>`${x.name} ${x.distance_m==null?'-':x.distance_m.toFixed(0)+'m'}(${x.line_count}개 노선)`).join(' / ');
+  document.getElementById('stationGisNote').textContent=`중심 1km 후보 ${facts.length}개 전수분석 · 최근접 ${best.name} ${best.distance_m==null?'-':best.distance_m.toFixed(1)+'m'}${transferCandidates?' · 환승확정 '+transferCandidates:''} · 사업별 Rule은 최근접역이 아니라 이 후보목록 전체에서 판정역을 선택`;
+  renderStationCandidateLists();refreshStationCenterMiniMaps();renderStreetBlockSpatialStatus();runAllSchemeChecks();
 }
 
 
@@ -6601,14 +6761,22 @@ function commonSchemeData(){
     dist:(stationAnalysis.loaded && stationAnalysis.nearestDistance!=null)?stationAnalysis.nearestDistance:schemeNum('scheme_station_distance'),
     stationAuto:stationAnalysis.loaded && stationAnalysis.nearestDistance!=null,
     stationName:stationAnalysis.nearestName||'',
+    // legacy 최근접역 값은 화면·수기호환용. 사업판정은 nearbyStations를 우선 사용한다.
     coverage250:stationAnalysis.loaded?stationAnalysis.coverage250:null,
     coverage350:stationAnalysis.loaded?stationAnalysis.coverage350:null,
     coverage500:stationAnalysis.loaded?stationAnalysis.coverage500:null,
+    unionCoverage250:stationAnalysis.loaded?stationAnalysis.unionCoverage250:null,
+    unionCoverage350:stationAnalysis.loaded?stationAnalysis.unionCoverage350:null,
+    unionCoverage500:stationAnalysis.loaded?stationAnalysis.unionCoverage500:null,
+    nearbyStations:stationAnalysis.loaded?stationFacts():[],
+    stationSearchRadiusM:stationAnalysis.searchRadiusM||STATION_SEARCH_RADIUS_M,
     lines:(stationAnalysis.loaded&&stationAnalysis.lineCount!=null)?stationAnalysis.lineCount:schemeNum('scheme_station_lines'),
     linesAuto:stationAnalysis.loaded&&stationAnalysis.lineCount!=null,
+    // center는 이제 최근접역의 중심지 속성이 아니라 대상지 자체의 중심지 공간 Fact이다.
     center:(stationAnalysis.loaded&&stationAnalysis.centerValue)?stationAnalysis.centerValue:schemeVal('scheme_center'),
     centerType:stationAnalysis.centerType||'',
     centerLabel:stationAnalysis.centerLabel||'',
+    centerCoveragePct:stationAnalysis.centerCoveragePct,
     centerAuto:stationAnalysis.loaded&&!!stationAnalysis.centerValue,
     zoning:(planningAnalysis.loaded&&planningAnalysis.primaryZoning)?planningAnalysis.primaryZoning:schemeVal('scheme_zoning'),
     zoningAuto:planningAnalysis.loaded&&!!planningAnalysis.primaryZoning,
@@ -6732,7 +6900,8 @@ function roadRawFacts(cArg=null){
     field_availability:{width:c.maxRoad!=null,road_grade:records.some(x=>x.road_grade!=null),road_function:functionKnown,statutory_classification:statutoryKnown,intersection:false,linear_commercial:false},
     site_summary:{face_count:c.roadFaces,road4_faces:c.road4Faces,road6_faces:Number.isFinite(Number(net.road6Faces))?Number(net.road6Faces):null,road8_faces:Number.isFinite(Number(net.road8Faces))?Number(net.road8Faces):null,road20_faces:Number.isFinite(Number(net.road20Faces))?Number(net.road20Faces):null,road35_faces:Number.isFinite(Number(net.road35Faces))?Number(net.road35Faces):null,max_width_m:c.maxRoad,has_8m_width:c.has8,has_20m_width_candidate:c.has20Width,perimeter_m:Number.isFinite(Number(net.perimeterM))?Number(net.perimeterM):null,road4_contact_m:Number.isFinite(Number(net.contact4M))?Number(net.contact4M):null,road6_contact_m:Number.isFinite(Number(net.contact6M))?Number(net.contact6M):null,road8_contact_m:Number.isFinite(Number(net.contact8M))?Number(net.contact8M):null,road20_contact_m:Number.isFinite(Number(net.contact20M))?Number(net.contact20M):null,road35_contact_m:Number.isFinite(Number(net.contact35M))?Number(net.contact35M):null,road4_frontage_pct:Number.isFinite(Number(net.road4Perimeter))?Number(net.road4Perimeter):null,road6_frontage_pct:Number.isFinite(Number(net.road6Perimeter))?Number(net.road6Perimeter):null,road8_frontage_pct:Number.isFinite(Number(net.road8Perimeter))?Number(net.road8Perimeter):null,road20_frontage_pct:Number.isFinite(Number(net.road20Perimeter))?Number(net.road20Perimeter):null,road35_frontage_pct:Number.isFinite(Number(net.road35Perimeter))?Number(net.road35Perimeter):null,max20_contact_m:Number.isFinite(Number(net.max20ContactM))?Number(net.max20ContactM):null,max35_contact_m:Number.isFinite(Number(net.max35ContactM))?Number(net.max35ContactM):null,frontage_basis_buildings:Number.isFinite(Number(net.frontage_basis_buildings))?Number(net.frontage_basis_buildings):null,frontage_access_buildings_6m:Number.isFinite(Number(net.frontage_access_buildings_6m))?Number(net.frontage_access_buildings_6m):null,frontage_ratio_6m:Number.isFinite(Number(net.frontage_ratio_6m))?Number(net.frontage_ratio_6m):null,frontage_building_source:net.frontage_building_source||''},
     records,
-    note:functionKnown?'도로기능 속성은 원자료 값을 그대로 보존하며 제도별 모듈이 별도 해석':'도로중심선 폭원자료만으로 도로기능을 확정하지 않으며 간선도로 여부는 REVIEW'
+    future_function_interface:{field:'road_function',status:functionKnown?'CONNECTED':'WAITING',expected_source:'행안부 주소기반 도로 기능/등급 또는 동등한 공식 도로기능 자료'},
+    note:functionKnown?'도로기능 속성은 원자료 값을 그대로 보존하며 제도별 모듈이 별도 해석':'도로중심선 폭원자료만으로 도로기능을 확정하지 않으며 간선도로 여부는 REVIEW · 향후 road_function 공식 속성이 들어오면 동일 Rule에서 자동 재판정'
   };
 }
 function compactRoadFacts(c){
@@ -6803,9 +6972,11 @@ function buildSiteFactStore(){
       address:(typeof analyticsAddressText==='function'?analyticsAddressText():'')||'',
       area_m2:c.area,boundary_area_m2:base.boundaryArea||null,parcel_count:base.parcelCount||0,
       zoning:c.zoning||'',zoning_auto:!!c.zoningAuto,zoning_mixed:!!c.zoningMixed,
-      center:{value:c.center||'',type:c.centerType||'',label:c.centerLabel||'',auto:!!c.centerAuto},
+      center:{value:c.center||'',type:c.centerType||'',label:c.centerLabel||'',coverage_pct:c.centerCoveragePct,auto:!!c.centerAuto},
       station:{name:c.stationName||'',distance_m:c.dist,line_count:c.lines,auto:!!c.stationAuto,
-        coverage_250:c.coverage250,coverage_350:c.coverage350,coverage_500:c.coverage500},
+        coverage_250:c.coverage250,coverage_350:c.coverage350,coverage_500:c.coverage500,
+        search_radius_m:c.stationSearchRadiusM,candidate_count:(c.nearbyStations||[]).length,
+        nearby:stationSchemeFactSummary().stations,union_coverage:stationSchemeFactSummary().union},
       road_raw:roadRawFacts(c),
       road:compactRoadFacts(c),
       spatial_evidence:{zoning:zoningSpatialEvidenceFacts(),roads:schemeRoadEvidenceFacts(c),frontage:schemeFrontageEvidenceFacts(c),street_block:streetBlockSpatialEvidenceFacts(),activation_arterial:activationLinearCommercialEvidence(),safe_medical:safeMedicalSpatialEvidenceFacts()},
@@ -6823,13 +6994,17 @@ function buildSiteFactStore(){
 
 function activationSpatialFacts(store){
   const c=store.common,renewal=store.site.renewal,development=store.site.development;
-  const center350=['downtown','metro','regional'].includes(c.center);
-  const threshold=(center350||Number(c.lines)>=2)?350:(Number(c.lines)===1?250:null);
-  const stationWithin=(c.dist==null||threshold==null)?null:Number(c.dist)<=threshold;
-  const activationBlockAuto=c.activationBlockShare!=null;
-  const stationBlock=activationBlockAuto?Number(c.activationBlockShare):(c.blockShare==null?null:Number(c.blockShare));
+  // 역세권활성화는 최근접역 1개가 아니라 대상지 중심 1km 내 모든 역을 독립 검사한다.
+  // 적용반경(250/350m), 거리, 가로구역 포함률을 역별로 산정한 뒤 가장 유리한 적격경로를 선택한다.
+  const stationCandidates=activationStationCandidates();
+  const chosenStation=stationCandidates[0]||null;
+  const threshold=chosenStation?.activation_threshold_m??null;
+  const stationWithin=chosenStation?.distance_m==null||threshold==null?null:Number(chosenStation.distance_m)<=threshold;
+  const stationBlock=chosenStation?.activation_block?.max_share_pct??null;
+  const activationBlockShareLegacy=c.activationBlockShare; // regression/legacy field retained; 판정은 역별 stationBlock을 사용
   const stationBlockPass=stationBlock==null?null:stationBlock>=50;
-  const stationBlockQuality=activationBlockAuto?(c.activationBlockQuality||'AUTO'):(stationBlock==null?'NONE':'MANUAL');
+  const stationBlockQuality=chosenStation?.activation_block?.quality||'NONE';
+  const activationBlockAuto=chosenStation?.activation_block?.known===true;
   const renewalType=renewal.renewal_area_type||'auto';
   const renewalException=renewalType==='urban_planned';
   const renewalExcluded=['housing_district','housing_planned','urban_district','reconstruction'].includes(renewalType);
@@ -6839,12 +7014,13 @@ function activationSpatialFacts(store){
   const fact={
     route,
     location:{
-      station:{threshold_m:threshold,distance_m:c.dist,name:c.stationName||'',line_count:c.lines,
-        within:stationWithin,block_share_pct:stationBlock,block_half_or_more:stationBlockPass,block_quality:stationBlockQuality,
-        block_area_m2:activationBlockAuto?c.activationBlockArea:null,block_source:activationBlockAuto?'자동추출 가로구역':'수기 보완',
-        coverage_pct:threshold===350?c.coverage350:threshold===250?c.coverage250:null},
+      station:{threshold_m:threshold,threshold_status:chosenStation?.activation_threshold_status||'REVIEW',threshold_reason:chosenStation?.activation_threshold_reason||'',candidate_status:chosenStation?.activation_status||'REVIEW',distance_m:chosenStation?.distance_m??null,name:chosenStation?.name||'',line_count:chosenStation?.line_count??null,
+        within:stationWithin,block_share_pct:stationBlock,block_half_or_more:stationBlockPass,block_quality:stationBlockQuality,block_authoritative:chosenStation?.activation_block?.authoritative===true,
+        block_area_m2:activationBlockAuto?c.activationBlockArea:null,block_source:activationBlockAuto?(chosenStation?.activation_block?.authoritative===true?'공식 가로구역 Fact':'추정 가로구역 Fact · 자동 PASS 금지'):'가로구역 데이터 대기',
+        coverage_pct:chosenStation?(stationCoverageValue(chosenStation,threshold)):null,
+        candidate_count:stationCandidates.length,candidates:stationCandidates.map(x=>({name:x.name,distance_m:x.distance_m,line_count:x.line_count,transfer:x.transfer,threshold_m:x.activation_threshold_m,coverage_pct:stationCoverageValue(x,x.activation_threshold_m),block_share_pct:x.activation_block?.max_share_pct??null,block_known:x.activation_block?.known===true,block_authoritative:x.activation_block?.authoritative===true,status:x.activation_status,note:x.activation_note}))},
       arterial:{linear_commercial:c.activationLinearCommercial,evidence:store.site.spatial_evidence?.roads?.activation||null,spatial:store.site.spatial_evidence?.activation_arterial||null,
-        block_includes:c.activationLinearCommercialBlockIncludes,site_includes:c.activationLinearCommercialSiteIncludes,site_overlap_m2:c.activationLinearCommercialOverlapM2,site_overlap_pct:c.activationLinearCommercialOverlapPct,auto:!!c.activationLinearCommercialAuto,path:c.activationLinearCommercialPath||'',
+        block_includes:c.activationLinearCommercialBlockIncludes,block_authoritative:streetBlockIsAuthoritative(),site_includes:c.activationLinearCommercialSiteIncludes,site_overlap_m2:c.activationLinearCommercialOverlapM2,site_overlap_pct:c.activationLinearCommercialOverlapPct,auto:!!c.activationLinearCommercialAuto,path:c.activationLinearCommercialPath||'',
         note:c.activationLinearCommercial===true?`${c.activationLinearCommercialAuto?'AUTO · ':''}노선형 상업지역 포함${c.activationLinearCommercialOverlapPct!=null?' · 대상지 '+Number(c.activationLinearCommercialOverlapPct).toFixed(1)+'%':''}${c.activationLinearCommercialPath?' · '+c.activationLinearCommercialPath:''}`:c.activationLinearCommercial===false?`${c.activationLinearCommercialAuto?'AUTO · ':''}노선형 상업지역 미포함`:'노선형 상업지역 자동도면은 생성되었으나 가로구역 연계가 미확정'}
     },
     zoning:{current:c.zoning||'',allowed:['제2종일반주거(7층)','제2종일반주거','제3종일반주거','준주거','근린상업','일반상업'].includes(c.zoning||'')},
@@ -6866,14 +7042,14 @@ function activationSpatialFacts(store){
   const priorStatus=c.priorNegotiation===true?'FAIL':c.priorNegotiation===false?'PASS':(c.area!=null&&c.area<5000?'PASS':'REVIEW');
   const renewalStatus=fact.exclusions.renewal_error?'REVIEW':fact.exclusions.renewal_excluded?'FAIL':(fact.exclusions.renewal_exception||fact.exclusions.renewal_loaded)?'PASS':'REVIEW';
   fact.spatial_status_rows=[
-    spatialFactRow('역세권 기준거리',threshold==null?'기준 미확인':`${threshold}m / 최근접 ${c.dist==null?'-':Number(c.dist).toFixed(1)+'m'}`,stationDecision.direct.status==='REVIEW'?'REVIEW':'CONFIRMED','승강장 경계·중심지위계·환승여부를 반영한 직접거리 판정',
+    spatialFactRow('역세권 기준거리',threshold==null?'기준 미확인':`${threshold}m / 판정역 ${chosenStation?.name||'-'} ${chosenStation?.distance_m==null?'-':Number(chosenStation.distance_m).toFixed(1)+'m'}`,stationDecision.direct.status==='REVIEW'?'REVIEW':'CONFIRMED','승강장 경계·중심지위계·환승여부를 반영한 직접거리 판정',
       {criterionStatus:stationDecision.direct.status,criterionRule:threshold==null?'250/350m 적용거리 결정 필요':`승강장 경계 ${threshold}m 이내`,criterionNote:stationDecision.direct.note,criterionItem:'승강장 거리'}),
-    spatialFactRow('가로구역 포함률',stationBlock==null?'-':`${Number(stationBlock).toFixed(1)}%${activationBlockAuto&&c.activationBlockArea!=null?` · 가로구역 ${Number(c.activationBlockArea).toLocaleString('ko-KR',{maximumFractionDigits:0})}㎡`:''}`,stationBlock==null?'REVIEW':'CONFIRMED',activationBlockAuto?`자동추출 · ${stationBlockQuality} · 1/2 이상 일반경로 · 1/2 미만 일부 걸침은 심의경로`:'수기보완 · 1/2 이상 일반경로 · 1/2 미만 일부 걸침은 심의경로',
+    spatialFactRow('가로구역 포함률',stationBlock==null?'-':`${Number(stationBlock).toFixed(1)}%${activationBlockAuto&&c.activationBlockArea!=null?` · 가로구역 ${Number(c.activationBlockArea).toLocaleString('ko-KR',{maximumFractionDigits:0})}㎡`:''}`,stationBlock==null||chosenStation?.activation_block?.authoritative!==true?'REVIEW':'CONFIRMED',activationBlockAuto?(chosenStation?.activation_block?.authoritative===true?`공식 가로구역 · ${stationBlockQuality} · 1/2 이상 일반경로 · 1/2 미만 일부 걸침은 심의경로`:`추정 가로구역 · ${stationBlockQuality} · 행안부/공식 데이터 연결 전 자동 PASS 금지`):'가로구역 데이터 대기',
       {criterionStatus:stationDecision.block.status,criterionRule:'가로구역 1/2 이상 일반경로 / 1/2 미만 일부 걸침은 간선가로 접면 또는 정형화 필요성 인정 시 위원회 심의',criterionNote:stationDecision.block.note,conditional:stationDecision.block.conditional,caveat:stationDecision.block.conditional?stationDecision.block.note:'',criterionItem:'가로구역 포함'}),
     spatialFactRow('역세권 입지 종합',`${stationDecision.overall.path}${stationBlock==null?' · 가로구역 포함률 미산정':''}`,stationDecision.overall.status==='REVIEW'?'REVIEW':'CONFIRMED','직접거리와 가로구역 일반·심의경로를 종합',
       {criterionStatus:stationDecision.overall.status,criterionRule:'직접거리 + 가로구역 적용경로 종합',criterionNote:stationDecision.overall.note,conditional:stationDecision.overall.conditional,caveat:stationDecision.overall.conditional?stationDecision.overall.note:'',criterionItem:'역세권',decisionPath:stationDecision.overall.path}),
     spatialFactRow('노선형 상업지역 포함',c.activationLinearCommercial==null?(activationArterialAnalysis.loaded?activationArterialAnalysis.path:'-'):`${c.activationLinearCommercial?'포함':'미포함'}${c.activationLinearCommercialOverlapPct!=null?' · 대상지 '+Number(c.activationLinearCommercialOverlapPct).toFixed(1)+'%':''}`,c.activationLinearCommercial==null?'REVIEW':'CONFIRMED',c.activationLinearCommercialAuto?'서울시 공개 대상노선 + LT_C_UQ111 자동분석':'간선도로변 유형 전용 현황',
-      {criterionStatus:c.activationLinearCommercial==null?'REVIEW':c.activationLinearCommercial?'PASS':'FAIL',criterionRule:'역세권 외 노선형 상업지역을 포함한 가로구역',criterionNote:c.activationLinearCommercialPath||'',conditional:c.activationLinearCommercial===true&&c.activationLinearCommercialBlockIncludes==null,caveat:c.activationLinearCommercial===true&&c.activationLinearCommercialBlockIncludes==null?'대상지 자체 편입은 확인되었으나 가로구역 자동형상 재확인 필요':'',criterionItem:'간선도로변'}),
+      {criterionStatus:c.activationLinearCommercial==null?'REVIEW':(c.activationLinearCommercial===true&&streetBlockIsAuthoritative()&&c.activationLinearCommercialBlockIncludes===true)?'PASS':c.activationLinearCommercial===false?'FAIL':'REVIEW',criterionRule:'역세권 외 노선형 상업지역을 포함한 가로구역',criterionNote:c.activationLinearCommercialPath||'',conditional:c.activationLinearCommercial===true&&(!streetBlockIsAuthoritative()||c.activationLinearCommercialBlockIncludes==null),caveat:c.activationLinearCommercial===true&&(!streetBlockIsAuthoritative()||c.activationLinearCommercialBlockIncludes==null)?'노선형 상업지역 후보는 확인되었으나 공식 가로구역 자료 연결 전 자동 PASS 금지':'',criterionItem:'간선도로변'}),
     spatialFactRow('사전협상 대상요건',c.priorNegotiation==null?'-':c.priorNegotiation?'해당':'비해당',c.priorNegotiation==null?'REVIEW':'CONFIRMED','5,000㎡ 이상 대상지는 협상대상지요건 별도 확인',
       {criterionStatus:priorStatus,criterionRule:'사전협상 협상대상지요건 해당 시 역세권활성화 제외',criterionItem:'사전협상 대상여부'}),
     spatialFactRow('정비구역 현황',renewalType==='auto'?(renewal.loaded?(renewal.overlaps.length?`${renewal.overlaps.length}건 중첩`:'중첩 없음'):'자료 미확인'):renewalType,renewal.loaded||renewalType!=='auto'?'CONFIRMED':'REVIEW','정비구역·정비예정구역·재정비촉진 배제/예외 검토에 사용',
@@ -6948,6 +7124,7 @@ function growthPotentialSpatialFacts(store){
   const c=store.common,road=store.site.road,renewal=store.site.renewal;
   const sc=growthPotentialStationCoverage(c);
   const nonstation=sc.nonstation;
+  const activationGate=activationLocationGateForGrowth(store);
   const routeManual=c.growthType||'auto';
   const area=Number(c.area);
   let route=routeManual;
@@ -6984,7 +7161,7 @@ function growthPotentialSpatialFacts(store){
   const age=schemeAgeFact(store,'growth_potential',route);
   const fact={
     route:{selected:route,manual:routeManual,candidates:Number.isFinite(area)&&area<=5000?['district','redevelopment']:['redevelopment']},
-    station_mix:{threshold_m:sc.threshold,coverage_station_pct:sc.coverage,coverage_nonstation_pct:nonstation,advisory_exception:c.growthAdvisory},
+    station_mix:{threshold_m:sc.threshold,coverage_station_pct:sc.coverage,coverage_nonstation_pct:nonstation,advisory_exception:c.growthAdvisory,activation_gate:activationGate},
     arterial:{manual:arterialManual,state:arterialState,value:arterialValue,note:arterialNote,max_width_m:maxRoad,road6_faces:road6Faces,perimeter35_pct:perimeter35,roads:road.roads||[],evidence:store.site.spatial_evidence?.roads?.growth||null},
     zoning:{current:c.zoning||'',allowed:['제2종일반주거(7층)','제2종일반주거','제3종일반주거','준주거'].includes(c.zoning||'')},
     area:{m2:c.area,route,base_ok:c.area==null?null:(route==='district'?(c.area>=1500&&c.area<=5000):(c.area>=1500&&c.area<=10000)),advisory_exception:c.growthAdvisory},
@@ -6996,7 +7173,8 @@ function growthPotentialSpatialFacts(store){
     consent:{owner_pct:c.ownerConsent,land_pct:c.landConsent},
     planning:{target_zoning:growthPotentialTarget(c),density:growthPotentialDensity(c)},
     spatial_status_rows:[
-      spatialFactRow('비역세권 면적비율',nonstation==null?'-':`${Number(nonstation).toFixed(1)}%`,nonstation==null?'REVIEW':'CONFIRMED',`역세권활성화 기준 ${sc.threshold}m와 동일한 승강장 경계 분석값`),
+      spatialFactRow('역세권활성화 배타관계',activationGate.value,activationGate.status==='REVIEW'?'REVIEW':'CONFIRMED',activationGate.note),
+      spatialFactRow('비역세권 면적비율(참고)',nonstation==null?'-':`${Number(nonstation).toFixed(1)}%`,nonstation==null?'REVIEW':'CONFIRMED',`주변 모든 역의 역세권활성화 적용반경(250/350m) 합집합에 대한 참고값 · 가로구역 판정을 대체하지 않음`),
       spatialFactRow('35m 이상 간선도로',arterialValue,arterialState,arterialNote),
       spatialFactRow('35m 간선도로 접면/전체둘레',perimeter35==null?'-':`${Number(perimeter35).toFixed(1)}%`,perimeter35==null?'REVIEW':'CONFIRMED','기준 1/8(12.5%) · 도로중심선 ROAD_BT 기반 개략산정'),
       spatialFactRow('6m 이상 도로 접면 수',road6Faces==null?'-':`${road6Faces}면`,road6Faces==null?'REVIEW':'CONFIRMED',summarizeRoadList(road)),
@@ -7013,13 +7191,11 @@ function growthPotentialSpatialFacts(store){
 
 function checkGrowthPotentialFromFacts(store,f){
   const c=store.common,rows=[];
-  let st='REVIEW',note=`역세권 기준 ${f.station_mix.threshold_m}m`;
-  if(f.station_mix.coverage_nonstation_pct!=null){
-    if(f.station_mix.coverage_nonstation_pct>=50)st='PASS';
-    else if(f.station_mix.advisory_exception===true){st='REVIEW';note+=' · 비역세권 50% 미만이지만 지원자문단 인정 가능';}
-    else st='FAIL';
-  }
-  rows.push(schemeRow('비역세권 입지','비역세권 면적 50% 이상 원칙 · 역세권 50% 이상은 역세권활성화 우선, 지원자문단 인정 예외',f.station_mix.coverage_nonstation_pct==null?'-':`${f.station_mix.coverage_nonstation_pct.toFixed(1)}%`,st,note,true,{sourceId:'GROWTH',locator:'2-1-3'}));
+  const ag=f.station_mix.activation_gate||{status:'REVIEW',value:'선행판정 미완료',note:''};
+  const gateStatus=ag.status==='PASS'?'FAIL':ag.status==='FAIL'?'PASS':'REVIEW';
+  rows.push(schemeRow('역세권활성화 배타관계','역세권활성화 공간대상에 포함되면 성장잠재권 활성화구역은 비활성화',ag.value,gateStatus,
+    ag.status==='PASS'?'역세권활성화 우선 · 성장잠재권 검토 중단':ag.status==='FAIL'?'역세권활성화 공간대상 아님 · 성장잠재권 간선도로축 검토 진행':ag.note,true,{sourceId:'GROWTH',locator:'2-1-3'}));
+  rows.push(schemeRow('비역세권 면적비율(참고)','역세권활성화 250/350m 공간의 비포함 면적 참고값 · 가로구역 배타판정을 대체하지 않음',f.station_mix.coverage_nonstation_pct==null?'-':`${f.station_mix.coverage_nonstation_pct.toFixed(1)}%`,'INFO','복수역 반경 합집합 참고값',false,{sourceId:'GROWTH',locator:'2-1-3'}));
   rows.push(schemeRow('용도지역','제2종일반주거(7층 포함)·제3종일반주거·준주거',f.zoning.current||'-',f.zoning.current?(f.zoning.allowed?'PASS':'FAIL'):'REVIEW','',true,{sourceId:'GROWTH',locator:'2-1-4 가목'}));
 
   let arterial=f.arterial.manual==='no'?'FAIL':f.arterial.state==='CONFIRMED'?'PASS':'REVIEW';
@@ -7223,9 +7399,21 @@ function stationComplexSpatialFacts(store){
   const road4Faces=c.road4Faces!=null?Number(c.road4Faces):(road.roads||[]).filter(x=>Number(x.width_m)>=4).length||null;
   const has8=c.has8!=null?c.has8:(road.max_width_m==null?null:road.max_width_m>=8);
   const arterialCandidate=c.has20Width===true||((road.roads||[]).some(x=>Number(x.width_m)>=20));
+  const stationCandidates=stationFacts().map(st=>({st,block:stationBlockRelation(st,250)})).sort((a,b)=>{
+    const aa=a.block?.authoritative===true?1:0,ba=b.block?.authoritative===true?1:0;
+    if(aa!==ba)return ba-aa;
+    const as=Number(a.block?.max_share_pct??-1),bs=Number(b.block?.max_share_pct??-1);
+    if(as!==bs)return bs-as;
+    return Number(a.st?.distance_m??Infinity)-Number(b.st?.distance_m??Infinity);
+  });
+  const chosenPair=stationCandidates[0]||null,chosenStation=chosenPair?.st||bestStationByDistance(),stationCatchmentBlock=chosenPair?.block||{known:false,authoritative:false,max_share_pct:null,quality:'NONE'};
+  const siteShare=c.siteShareOfBlock??c.blockShare;
+  const blockAuthoritative=streetBlockIsAuthoritative();
   const fact={
-    station:{distance_m:c.dist,name:c.stationName||'',auto:c.stationAuto,coverage250:c.coverage250,coverage350:c.coverage350},
-    block:{share_pct:c.siteShareOfBlock??c.blockShare,coverage_of_site_pct:c.blockCoverageOfSite,intersection_m2:c.siteBlockIntersectionM2,relations:c.blockRelations||[],arterial_candidate:arterialCandidate,regularization:null},
+    station:{distance_m:chosenStation?.distance_m??null,name:chosenStation?.name||'',auto:stationAnalysis.loaded,coverage250:chosenStation?.coverage250??null,coverage350:chosenStation?.coverage350??null,
+      catchment_block_share_pct:stationCatchmentBlock.max_share_pct??null,catchment_block_known:stationCatchmentBlock.known===true,catchment_block_authoritative:stationCatchmentBlock.authoritative===true,catchment_block_quality:stationCatchmentBlock.quality||'NONE',candidate_count:stationFacts().length,
+      candidates:stationCandidates.map(x=>({name:x.st?.name||'',distance_m:x.st?.distance_m??null,coverage250:x.st?.coverage250??null,block_share_pct:x.block?.max_share_pct??null,block_authoritative:x.block?.authoritative===true}))},
+    block:{share_pct:siteShare,share_authoritative:blockAuthoritative,coverage_of_site_pct:c.blockCoverageOfSite,intersection_m2:c.siteBlockIntersectionM2,relations:c.blockRelations||[],arterial_candidate:arterialCandidate,regularization:null},
     zoning:{current:c.zoning||'',lowrise_adjacent:null,hill_adjacent:null},
     road:{road4_faces:road4Faces,has8,max_width_m:road.max_width_m,roads:road.roads||[],evidence:store.site.spatial_evidence?.roads?.station_complex||null},
     area:{m2:c.area,station_linked_convenience:null},
@@ -7234,45 +7422,50 @@ function stationComplexSpatialFacts(store){
     consent:{land_pct:c.landConsent},
     planning:{density:stationComplexDensity(c),center:c.center||'',center_label:c.centerLabel||''},
     spatial_status_rows:[
-      spatialFactRow('역세권 250m',c.dist==null?'-':`${Number(c.dist).toFixed(1)}m · ${c.stationName||'역명 미확인'}`,c.dist!=null&&c.stationAuto?'CONFIRMED':'REVIEW','승강장 경계 250m 원칙 · 기준 적용완화는 도시·건축공동위원회 검토'),
-      spatialFactRow('가로구역 중 사업대상지 점유율',(c.siteShareOfBlock??c.blockShare)==null?'-':`${Number(c.siteShareOfBlock??c.blockShare).toFixed(1)}%`,(c.siteShareOfBlock??c.blockShare)==null?'REVIEW':'CONFIRMED','사업대상지∩가로구역 / 가로구역 면적 · 1/2 이상 원칙, 1,500㎡ 이상 단일토지 등 위원회 인정 시 1/2 미만 가능'),
+      spatialFactRow('역세권 250m 가로구역',chosenStation?`${chosenStation.name} · 대상지 최단거리 ${chosenStation.distance_m==null?'-':Number(chosenStation.distance_m).toFixed(1)+'m'} · 250m가 가로구역 ${stationCatchmentBlock.max_share_pct==null?'-':Number(stationCatchmentBlock.max_share_pct).toFixed(1)+'%'} 포함`:'판정역 미확인',stationCatchmentBlock.known&&stationCatchmentBlock.authoritative?'CONFIRMED':'REVIEW','가로구역의 1/2 이상이 승강장 250m 안에 걸리면 사업가능 가로구역 · 1/2 미만은 간선도로 접면/구역정형화 등 위원회 인정경로'),
+      spatialFactRow('사업대상지/가로구역 점유율',siteShare==null?'-':`${Number(siteShare).toFixed(1)}%`,siteShare!=null&&blockAuthoritative?'CONFIRMED':'REVIEW','사업대상지가 가로구역의 1/2 이상이면서 1,500~5,000㎡ 원칙 · 단일토지 등 위원회 인정 시 1/2 미만 가능'),
       spatialFactRow('4m 이상 도로 접면 수',road4Faces==null?'-':`${road4Faces}면`,road4Faces==null?'REVIEW':'CONFIRMED',summarizeRoadList(road)),
       spatialFactRow('8m 이상 도로',has8==null?'-':has8?'확보':'미확보',has8==null?'REVIEW':'CONFIRMED','최소 한 면 폭 8m 이상'),
       spatialFactRow('구릉지','공개 SHP 미확보','REVIEW','자동판정 제외 · 수동검토'),
-      spatialFactRow('저층주거지 인접', '인접 용도지역 공간분석 미구현','REVIEW','제1·2종전용, 제1종일반 인접 여부 및 도로 이격 확인 필요'),
+      spatialFactRow('저층주거지 인접','인접 용도지역 공간분석 미구현','REVIEW','제1·2종전용, 제1종일반 인접 여부 및 도로 이격 확인 필요'),
       spatialFactRow('특성관리지구',characteristic.length?characteristic.map(x=>x.name).join(' / '):'전용 경계 미연결','REVIEW','역사도심 기본계획 특성관리지구 여부'),
       spatialFactRow('정비구역·예정구역',renewal.value,renewal.status==='REVIEW'?'REVIEW':'CONFIRMED',renewal.note),
-      spatialFactRow('역사연결 편의시설 특례', '계획 미확인','REVIEW','역사와 직접 연결되는 광장·보행편의시설 등을 위원회가 인정하는 경우 최대 10,000㎡ 검토')
+      spatialFactRow('역사연결 편의시설 특례','계획 미확인','REVIEW','역사와 직접 연결되는 광장·보행편의시설 등을 위원회가 인정하는 경우 최대 10,000㎡ 검토')
     ]
   };
   store.scheme_specific.station_complex=fact;return fact;
 }
-
 function checkStationComplexFromFacts(store,f){
   const rows=[];
-  let stationStatus='REVIEW',stationNote='승강장 경계 거리 확인 필요';
-  if(f.station.distance_m!=null){
-    if(f.station.auto&&f.station.distance_m<=250){stationStatus='PASS';stationNote='공식 승강장 경계 기준 250m 이내';}
-    else if(f.station.distance_m<=250){stationStatus='REVIEW';stationNote='250m 이내 수기거리 · 공식 승강장 경계 재확인';}
-    else {stationStatus='PASS';stationNote='250m 원칙 밖 · 계획수립기준상 구역 여건에 따른 도시·건축공동위원회 완화 경로가 있으므로 단서부 PASS';}
+  // ① 역세권 판정단위는 '대상지의 최근접 거리'가 아니라, 각 역의 250m 범위가 해당 가로구역을 얼마나 포함하는지다.
+  let stationStatus='REVIEW',stationNote='공식 가로구역 데이터 연결 후 250m 가로구역 포함률 확정',stationConditional=false;
+  const stationShare=f.station.catchment_block_share_pct;
+  if(stationShare!=null&&f.station.catchment_block_authoritative===true){
+    if(stationShare>=50){stationStatus='PASS';stationNote=`${f.station.name} 250m 범위가 공식 가로구역의 ${Number(stationShare).toFixed(1)}% 포함 · 1/2 이상 일반경로`;}
+    else if(stationShare>0){stationStatus='PASS';stationConditional=true;stationNote=`${f.station.name} 250m 범위가 공식 가로구역의 ${Number(stationShare).toFixed(1)}% 포함 · 1/2 미만은 간선도로 접면/구역정형화 필요성 위원회 인정 필요`;}
+    else {stationStatus='FAIL';stationNote=`${f.station.name} 250m 범위와 공식 가로구역 중첩 없음`;}
+  }else if(stationShare!=null){
+    stationStatus='REVIEW';stationNote=`${f.station.name} 250m 범위가 추정 가로구역의 ${Number(stationShare).toFixed(1)}% 포함 · 현재 가로구역은 비공식 추정이라 자동 PASS 금지`;
+  }else if(f.station.distance_m!=null&&f.station.distance_m<=250){
+    stationStatus='REVIEW';stationNote=`${f.station.name} 대상지 경계거리는 ${Number(f.station.distance_m).toFixed(1)}m이나 가로구역 판정단위 미확보`;
   }
-  rows.push(schemeRow('역세권','승강장 경계 반경 250m 이내 원칙 · 구역 여건상 기준 적용완화는 도시·건축공동위원회 검토',f.station.distance_m==null?'-':`${Number(f.station.distance_m).toFixed(1)}m · ${f.station.name||'-'}`,stationStatus,stationNote,true,{sourceId:'STATION_COMPLEX',locator:'적용대상 ①·③',conditional:stationStatus==='PASS'&&f.station.distance_m!=null&&f.station.distance_m>250,caveat:f.station.distance_m!=null&&f.station.distance_m>250?'250m 기본범위 밖 · 위원회 기준완화 인정 필요':''}));
-  let blockStatus='REVIEW',blockNote='가로구역 점유율 확인 필요',blockConditional=false;
-  if(f.block.share_pct!=null){
-    if(f.block.share_pct>=50){blockStatus='PASS';blockNote='사업대상지가 가로구역의 1/2 이상 점유';}
-    else if(f.block.share_pct>0){blockStatus='PASS';blockConditional=true;blockNote='가로구역 1/2 미만 · 계획수립기준상 위원회 인정 경로를 적용하는 단서부 PASS';}
-    else {blockStatus='FAIL';blockNote='사업대상지와 해당 가로구역의 면적중첩 없음';}
+  rows.push(schemeRow('역세권 가로구역','승강장 250m 이내에 가로구역의 1/2 이상이 걸리면 사업가능 가로구역 · 1/2 미만은 위원회 인정경로',f.station.name?`${f.station.name} / 가로구역 포함 ${stationShare==null?'-':Number(stationShare).toFixed(1)+'%'} / 대상지거리 ${f.station.distance_m==null?'-':Number(f.station.distance_m).toFixed(1)+'m'}`:'-',stationStatus,stationNote,true,{sourceId:'STATION_COMPLEX',locator:'적용대상 ①·③',conditional:stationConditional,caveat:stationConditional?'가로구역 1/2 미만 · 간선도로 접면 또는 구역정형화 필요성 위원회 인정':''}));
+
+  // ② 위와 별개로 실제 사업대상지도 가로구역의 1/2 이상을 차지하는 것이 원칙이다.
+  let blockStatus='REVIEW',blockNote='공식 가로구역과 사업대상지 점유율 확인 필요',blockConditional=false;
+  if(f.block.share_pct!=null&&f.block.share_authoritative===true){
+    if(f.block.share_pct>=50){blockStatus='PASS';blockNote='사업대상지가 공식 가로구역의 1/2 이상 점유';}
+    else if(f.block.share_pct>0){blockStatus='PASS';blockConditional=true;blockNote='사업대상지의 가로구역 점유율 1/2 미만 · 1,500㎡ 이상 단일토지 등 위원회 인정 경로 필요';}
+    else {blockStatus='FAIL';blockNote='사업대상지와 공식 가로구역의 면적중첩 없음';}
+  }else if(f.block.share_pct!=null){
+    blockStatus='REVIEW';blockNote=`추정 가로구역 점유율 ${Number(f.block.share_pct).toFixed(1)}% · 공식 가로구역 데이터 연결 전 자동 PASS 금지`;
   }
-  rows.push(schemeRow('가로구역','사업대상지가 가로구역의 1/2 이상 원칙 · 1/2 미만은 계획수립기준상 위원회 인정 경로 검토',f.block.share_pct==null?'-':`${Number(f.block.share_pct).toFixed(1)}%`,blockStatus,blockNote,true,{sourceId:'STATION_COMPLEX',locator:'적용대상 ③',conditional:blockConditional,caveat:blockConditional?'가로구역 1/2 미만 · 위원회 인정 필요':'',decisionPath:blockConditional?'committee_exception':'block_half'}));
+  rows.push(schemeRow('사업대상지 가로구역 점유','사업대상지는 가로구역의 1/2 이상 원칙 · 1,500㎡ 이상 단일토지 등 위원회 인정 시 1/2 미만 가능',f.block.share_pct==null?'-':`${Number(f.block.share_pct).toFixed(1)}%`,blockStatus,blockNote,true,{sourceId:'STATION_COMPLEX',locator:'적용대상 ⑤ 면적요건',conditional:blockConditional,caveat:blockConditional?'가로구역 1/2 미만 · 위원회 인정 필요':'',decisionPath:blockConditional?'committee_exception':'block_half'}));
+
   const roadStatus=(f.road.road4_faces==null||f.road.has8==null)?'REVIEW':(f.road.road4_faces>=2&&f.road.has8)?'PASS':'FAIL';
-  rows.push(schemeRow('도로요건','2면 이상이 폭 4m 이상 도로에 접하면서 최소 한 면은 폭 8m 이상',`4m+ ${f.road.road4_faces??'-'}면 / 8m+ ${f.road.has8==null?'-':f.road.has8?'O':'X'}`,roadStatus,summarizeRoadList(f.road),true,{sourceId:'STATION_COMPLEX',locator:'적용대상 도로요건'}));
-  let areaStatus='REVIEW',areaNote='';
-  if(f.area.m2!=null){
-    if(f.area.m2>=1500&&f.area.m2<=5000)areaStatus='PASS';
-    else if(f.area.m2>5000&&f.area.m2<=10000){areaStatus='REVIEW';areaNote='역사 직접연결 광장·보행편의시설 등 위원회 인정 특례 필요';}
-    else areaStatus='FAIL';
-  }
-  rows.push(schemeRow('사업대상지 면적','가로구역 1/2 이상 1,500~5,000㎡ 원칙 · 역사연결 편의시설 인정 시 최대 10,000㎡',fmtSchemeArea(f.area.m2),areaStatus,areaNote,true,{sourceId:'STATION_COMPLEX',locator:'적용대상 면적요건'}));
+  rows.push(schemeRow('도로요건','2면 이상이 폭 4m 이상 도로에 접하면서 최소 한 면은 폭 8m 이상',`4m+ ${f.road.road4_faces??'-'}면 / 8m+ ${f.road.has8==null?'-':f.road.has8?'O':'X'}`,roadStatus,summarizeRoadList(f.road),true,{sourceId:'STATION_COMPLEX',locator:'적용대상 ⑤ 도로요건'}));
+  const areaStatus=f.area.m2==null?'REVIEW':(f.area.m2>=1500&&f.area.m2<=5000)?'PASS':'REVIEW';
+  rows.push(schemeRow('면적','1,500㎡ 이상 5,000㎡ 이하 원칙 · 역사연결 보행편의시설 등 위원회 인정 시 최대 10,000㎡ 검토',fmtSchemeArea(f.area.m2),areaStatus,f.area.m2!=null&&f.area.m2>5000?'5,000㎡ 초과는 역사 직접연결 편의시설 등 별도 특례요건 확인':'',true,{sourceId:'STATION_COMPLEX',locator:'적용대상 ⑤ 면적요건'}));
   let zoneStatus='REVIEW',zoneNote='';
   if(f.zoning.current){
     if(f.zoning.current==='준주거')zoneStatus='PASS';
@@ -7350,16 +7543,21 @@ function longtermCharacteristicAreaEvidence(){
 // 원칙: 필요한 현황은 먼저 공간현황 Fact로 만들고, 판정은 Fact만 읽는다.
 // ============================================================
 function factBoolStatus(v,{trueStatus='PASS',falseStatus='FAIL'}={}){return v==null?'REVIEW':(v?trueStatus:falseStatus)}
+function bestLongtermStationFact(c){
+  if(!stationAnalysis.loaded||!stationFacts().length)return null;
+  const first=stationFacts().filter(x=>x.coverage350!=null&&x.coverage350>=99.999).sort((a,b)=>a.distance_m-b.distance_m)[0];
+  if(first)return {...first,longterm_class:'1차 역세권',longterm_status:'PASS',longterm_note:'대상지 전체가 해당 역 승강장 경계 350m 이내'};
+  const second=stationFacts().filter(x=>x.coverage500!=null&&x.coverage500>=99.999).sort((a,b)=>a.distance_m-b.distance_m)[0];
+  if(second)return {...second,longterm_class:'2차 역세권',longterm_status:'PASS',longterm_note:'대상지 전체가 해당 역 승강장 경계 500m 이내'};
+  const best=bestStationByCoverage(500);
+  return best?{...best,longterm_class:'미충족',longterm_status:'FAIL',longterm_note:'1km 후보역별 350/500m 전체포함을 전수검사했으나 대상지 전체포함 역이 없음'}:null;
+}
 function longtermSpatialFacts(store){
   const c=store.common,route=schemeVal('longterm_route')||'district',locationType=schemeVal('longterm_location_type')||'station';
   const roadEvidence=store.site.spatial_evidence?.roads?.longterm||null;
-  const cov350=c.stationAuto?c.coverage350:c.coverage,cov500=c.stationAuto?c.coverage500:c.coverage;
-  let stationStatus='REVIEW',stationClass='미확인',stationNote='승강장 경계와 대상지 전체 포함률 확인 필요';
-  if(c.dist!=null&&cov350!=null&&cov500!=null){
-    if(c.dist<=350&&cov350>=99.999){stationStatus='PASS';stationClass='1차 역세권';stationNote='대상지 전체가 승강장 경계 350m 이내';}
-    else if(c.dist<=500&&cov500>=99.999){stationStatus='PASS';stationClass='2차 역세권';stationNote='대상지 전체가 승강장 경계 350~500m 범위';}
-    else stationStatus='FAIL';
-  }
+  const longtermStation=bestLongtermStationFact(c);
+  const cov350=longtermStation?.coverage350??(c.stationAuto?c.coverage350:c.coverage),cov500=longtermStation?.coverage500??(c.stationAuto?c.coverage500:c.coverage);
+  let stationStatus=longtermStation?.longterm_status||'REVIEW',stationClass=longtermStation?.longterm_class||'미확인',stationNote=longtermStation?.longterm_note||'승강장 경계와 대상지 전체 포함률 확인 필요';
   const arterialFunctionConfirmed=roadEvidence?.function_confirmed===true;
   const arVals=[c.arterialIntersectionDist,c.has20Width,c.road20Perimeter];
   let arterialStatus='REVIEW';
@@ -7387,7 +7585,7 @@ function longtermSpatialFacts(store){
   const age=schemeAgeFact(store,'longterm',route);
   const fact={
     route:{selected:route,label:route==='redevelopment'?'정비계획 방식':'지구단위계획 방식'},
-    location:{selected_type:locationType,station:{status:stationStatus,class_name:stationClass,distance_m:c.dist,coverage350_pct:cov350,coverage500_pct:cov500,name:c.stationName||'',note:stationNote},
+    location:{selected_type:locationType,station:{status:stationStatus,class_name:stationClass,distance_m:longtermStation?.distance_m??c.dist,coverage350_pct:cov350,coverage500_pct:cov500,name:longtermStation?.name||c.stationName||'',note:stationNote,candidate_count:(c.nearbyStations||[]).length},
       arterial_intersection:{status:arterialStatus,distance_m:c.arterialIntersectionDist,has20_width_candidate:c.has20Width,function_confirmed:arterialFunctionConfirmed,perimeter20_pct:c.road20Perimeter,road_quality:c.roadQuality,evidence:roadEvidence,note:arterialStatus==='PASS'?'교차지 200m·20m 폭원·간선기능·둘레 1/8 모두 확인':(roadEvidence?.note||'간선도로 기능구분·교차지 경계 포함 최종확인')}},
     zoning:{current:c.zoning||'',factory_pct:c.factory,status:zoneStatus,note:zoneNote},area:{m2:c.area,min_m2:minArea,status:areaStatus,note:areaNote},units:{count:c.units,status:c.units==null?'REVIEW':c.units>=100?'PASS':'FAIL'},
     exclusions:{special_character_area:(()=>{const ev=longtermCharacteristicAreaEvidence();const manual=c.excluded===true;const low=ev.lowrise||[],cult=ev.cultural_districts||[],herit=ev.heritage||[];const hits=[];if(manual)hits.push('수기 입지특성화 제외지역 표시');if(low.length)hits.push('저층주거 '+low.map(x=>`${x.name} ${x.pct.toFixed(1)}%`).join('/'));if(cult.length)hits.push('역사문화 경관지구 '+cult.map(x=>x.name).join('/'));if(herit.length)hits.push('국가유산보호구역 '+herit.map(x=>x.name).join('/'));let value=hits.length?hits.join(' · '):'전용·1종/역사문화 경관/국가유산보호구역 중첩 없음 · 구릉지 등 기타 항목 수동검토';return {status:'REVIEW',value,note:'자동확인: UQ111 전용·1종, UQ121 역사문화특화경관지구, LT_C_UO301 국가유산보호구역. 서울시 CUL211/CUL210 및 국가유산청 SHP는 공식 원자료로 추가 대조 가능. 구릉지 공개 SHP는 미확보이므로 자동판정하지 않음',evidence:ev};})()},
@@ -7395,12 +7593,12 @@ function longtermSpatialFacts(store){
     spatial_status_rows:[]
   };
   fact.spatial_status_rows=[
-    spatialFactRow('1차 역세권 350m 전체포함',cov350==null?'-':`${Number(cov350).toFixed(1)}%`,cov350==null?'REVIEW':'CONFIRMED',`최근접역 ${c.stationName||'-'} / ${c.dist==null?'-':Number(c.dist).toFixed(1)+'m'}`),
-    spatialFactRow('2차 역세권 350~500m 전체포함',cov500==null?'-':`${Number(cov500).toFixed(1)}%`,cov500==null?'REVIEW':'CONFIRMED','대상지 전체가 해당 역세권 범위 안에 포함되는지 판정'),
+    spatialFactRow('1차 역세권 350m 전체포함',cov350==null?'-':`${Number(cov350).toFixed(1)}%${longtermStation?' · '+longtermStation.name:''}`,cov350==null?'REVIEW':'CONFIRMED',`중심 1km 내 ${(c.nearbyStations||[]).length}개 역을 역별 전수검사 · 대상지 전체 포함 여부`),
+    spatialFactRow('2차 역세권 350~500m 전체포함',cov500==null?'-':`${Number(cov500).toFixed(1)}%${longtermStation?' · '+longtermStation.name:''}`,cov500==null?'REVIEW':'CONFIRMED','동일 역 기준 대상지 전체가 해당 역세권 범위 안에 포함되는지 판정'),
     spatialFactRow('간선도로 교차지역 200m',c.arterialIntersectionDist==null?'-':`${c.arterialIntersectionDist}m`,c.arterialIntersectionDist==null?'REVIEW':'CONFIRMED','주·보조간선도로 교차지 도로경계 기준'),
     spatialFactRow('20m 간선도로 접면비',c.road20Perimeter==null?'-':`${Number(c.road20Perimeter).toFixed(1)}%`,c.road20Perimeter==null?'REVIEW':'CONFIRMED','간선도로 교차지역은 구역둘레 1/8 이상 접면'),
     spatialFactRow('장기전세 적용 노후도',ageFactValue(age),age?'CONFIRMED':'REVIEW',`${fact.route.label} · ${age?.source_document||'근거 확인 필요'}`),
-    spatialFactRow('700% 특례 입지후보',fact.planning.density.special700_location_candidate?'입지후보 충족':'입지후보 미충족',c.dist==null?'REVIEW':'CONFIRMED',`${fact.planning.density.special700_location_rule} · ${fact.planning.density.special700_condition}`),
+    spatialFactRow('700% 특례 입지후보',fact.planning.density.special700_location_candidate?`입지후보 충족${fact.planning.density.special700_station?' · '+fact.planning.density.special700_station:''}`:'입지후보 미충족',stationAnalysis.loaded?'CONFIRMED':c.dist==null?'REVIEW':'CONFIRMED',`${fact.planning.density.special700_location_rule} · ${fact.planning.density.special700_condition}`),
     spatialFactRow('전용·제1종 일반주거지역',fact.exclusions.special_character_area.evidence.lowrise.length?fact.exclusions.special_character_area.evidence.lowrise.map(x=>`${x.name} ${x.pct.toFixed(1)}%`).join(' / '):'중첩 없음',fact.exclusions.special_character_area.evidence.zoning_known?'CONFIRMED':'REVIEW','서울시 UQ111 SHP / VWorld LT_C_UQ111'),
     spatialFactRow('역사문화특화경관지구',fact.exclusions.special_character_area.evidence.cultural_districts.length?fact.exclusions.special_character_area.evidence.cultural_districts.map(x=>x.name).join(' / '):'중첩 없음',fact.exclusions.special_character_area.evidence.landscape_known?'CONFIRMED':'REVIEW','서울시 UQ121 경관지구 SHP'),
     spatialFactRow('국가유산보호구역',fact.exclusions.special_character_area.evidence.heritage.length?fact.exclusions.special_character_area.evidence.heritage.map(x=>x.name).join(' / '):'중첩 없음',fact.exclusions.special_character_area.evidence.heritage_known?'CONFIRMED':'REVIEW','VWorld LT_C_UO301 · 서울시 CUL211/CUL210 및 국가유산청 SHP 별도 대조'),
@@ -7436,9 +7634,11 @@ function publicComplexSpatialFacts(store){
   const urbanDevHits=(dev.overlaps||[]).filter(x=>x.kind==='urban_development');
   const exclusionKnown=!!renewal.loaded&&!!dev.loaded;
   const age=schemeAgeFact(store,'public_complex');
-  const cov350=c.stationAuto?c.coverage350:c.coverage;
-  const commercial={coverage350_pct:cov350,distance_m:c.dist,underdeveloped:c.underdeveloped,zoning:c.zoning||'',road4_faces:c.road4Faces,has8:c.has8};
-  const industrial={zoning:c.zoning||'',underdeveloped:c.underdeveloped,semiindustrial_plan:{known:false,value:'2030 준공업지역 종합발전계획 사업기준(면적·산업시설비율) 연계자료 미확보'},special_far_exception:(c.area!=null&&c.area>=10000&&((c.dist!=null&&c.dist<=350)||c.has20Width===true))};
+  const publicStation=stationAnalysis.loaded?bestStationByCoverage(350):null;
+  const cov350=publicStation?.coverage350??(c.stationAuto?c.coverage350:c.coverage);
+  const commercial={coverage350_pct:cov350,distance_m:publicStation?.distance_m??c.dist,station_name:publicStation?.name||c.stationName||'',candidate_count:(c.nearbyStations||[]).length,underdeveloped:c.underdeveloped,zoning:c.zoning||'',road4_faces:c.road4Faces,has8:c.has8};
+  const stationWithin350=stationAnalysis.loaded?bestStationByDistance(x=>x.distance_m!=null&&Number(x.distance_m)<=350):null;
+  const industrial={zoning:c.zoning||'',underdeveloped:c.underdeveloped,semiindustrial_plan:{known:false,value:'2030 준공업지역 종합발전계획 사업기준(면적·산업시설비율) 연계자료 미확보'},special_far_exception:(c.area!=null&&c.area>=10000&&((stationWithin350!=null)||(!stationAnalysis.loaded&&c.dist!=null&&c.dist<=350)||c.has20Width===true)),special_far_station:stationWithin350?{name:stationWithin350.name,distance_m:stationWithin350.distance_m}:null};
   const additional=[
     {key:'small_parcel',label:'과소토지 90㎡ 이하 30% 이상',value:c.smallParcelRatio,status:c.smallParcelRatio==null?'REVIEW':c.smallParcelRatio>=30?'PASS':'FAIL'},
     {key:'house_density',label:'호수밀도 50호/ha 이상',value:c.houseDensity,status:c.houseDensity==null?'REVIEW':c.houseDensity>=50?'PASS':'FAIL'},
@@ -7446,11 +7646,11 @@ function publicComplexSpatialFacts(store){
     {key:'disaster',label:'방재지구 면적 1/2 이상',value:null,status:'REVIEW',note:'방재지구 면적비 공간자료 미연결'},
     {key:'basement',label:'지하층 주거사용 건축물 1/2 이상',value:null,status:'REVIEW',note:'건축물 원장상 지하층 주거용도 집계 미구현'}
   ];
-  const fact={type:typ,type_label:typ==='commercial'?'주거상업고밀지구':typ==='industrial'?'주거산업융합지구':'주택공급활성화지구',area:{m2:c.area},zoning:{current:c.zoning||''},station:{distance_m:c.dist,coverage350_pct:cov350,name:c.stationName||''},road:{...store.site.road,evidence:store.site.spatial_evidence?.roads?.public_complex||null},commercial,industrial,housing:{lowrise_bad:c.lowriseBad,additional},aging:{assessment:age},
+  const fact={type:typ,type_label:typ==='commercial'?'주거상업고밀지구':typ==='industrial'?'주거산업융합지구':'주택공급활성화지구',area:{m2:c.area},zoning:{current:c.zoning||''},station:{distance_m:publicStation?.distance_m??c.dist,coverage350_pct:cov350,name:publicStation?.name||c.stationName||'',candidate_count:(c.nearbyStations||[]).length},road:{...store.site.road,evidence:store.site.spatial_evidence?.roads?.public_complex||null},commercial,industrial,housing:{lowrise_bad:c.lowriseBad,additional},aging:{assessment:age},
     exclusions:{renewal_hits:renewalHits,urban_development_hits:urbanDevHits,known:exclusionKnown,urban_regeneration:{known:false,value:'도시재생사업 인허가 공간자료 미연결'}},operator:{input:schemeVal('ccActor')||'',label:ccLabelOf('ccActor')||'미선택'},planning:{density:publicComplexDensity(c),sunset:'도심 공공주택 복합사업 관련 규정은 2026-12-31까지 유효(경과조치 별도)'},spatial_status_rows:[]};
   fact.spatial_status_rows=[
     spatialFactRow('공공복합 세부유형',fact.type_label,'CONFIRMED','목적사업/전문가 선택값에 따라 유형별 기준을 별도 적용'),
-    spatialFactRow('승강장 350m 포함률',cov350==null?'-':`${Number(cov350).toFixed(1)}%`,cov350==null?'REVIEW':'CONFIRMED','주거상업고밀지구 서울 세부기준 · 면적 과반 포함 시 범위 내로 봄'),
+    spatialFactRow('승강장 350m 포함률',cov350==null?'-':`${Number(cov350).toFixed(1)}%${publicStation?' · '+publicStation.name:''}`,cov350==null?'REVIEW':'CONFIRMED',`중심 1km 내 ${(c.nearbyStations||[]).length}개 역을 역별 계산 후 가장 높은 단일역 포함률 사용 · 주거상업고밀지구 면적 과반 기준`),
     spatialFactRow('정비구역·도시개발구역 중첩',renewalHits.length||urbanDevHits.length?`${renewalHits.length+urbanDevHits.length}건 중첩`:exclusionKnown?'중첩 없음':'자료 미확인',exclusionKnown?'CONFIRMED':'REVIEW','공통 배제조건'),
     spatialFactRow('도시재생사업 인허가',fact.exclusions.urban_regeneration.value,'REVIEW','인허가 여부는 별도 공식자료 필요'),
     spatialFactRow('도심공공주택복합 노후도',ageFactValue(age),age?'CONFIRMED':'REVIEW','서울: 20년 이상 건축물 60%'),
@@ -7467,7 +7667,7 @@ function checkPublicComplexFromFacts(store,f){
   rows.push(schemeRow('노후도','서울: 준공 후 20년 이상 건축물 60% 이상',ageFactValue(age),age?.status||'REVIEW',ageFactNote(age),true,{sourceId:'PUBLIC_COMPLEX_GUIDE',locator:'별표 1의10 서울특별시'}));
   if(f.type==='commercial'){
     const loc=f.commercial.coverage350_pct==null?'REVIEW':f.commercial.coverage350_pct>=50?'PASS':'FAIL';
-    rows.push(schemeRow('역세권 범위','승강장 경계 350m 이내 · 사업구역 절반 이상 포함 시 전체를 범위 내로 봄',`최근접 ${f.commercial.distance_m==null?'-':Number(f.commercial.distance_m).toFixed(1)+'m'} / 포함 ${fmtSchemePct(f.commercial.coverage350_pct)}`,loc,'서울 세부 입지요건',true,{sourceId:'PUBLIC_COMPLEX_GUIDE',locator:'별표 1의10 서울 주거상업고밀'}));
+    rows.push(schemeRow('역세권 범위','승강장 경계 350m 이내 · 사업구역 절반 이상 포함 시 전체를 범위 내로 봄',`${f.commercial.station_name||'적격역'} ${f.commercial.distance_m==null?'-':Number(f.commercial.distance_m).toFixed(1)+'m'} / 포함 ${fmtSchemePct(f.commercial.coverage350_pct)}`,loc,`중심 1km 후보 ${f.commercial.candidate_count||0}개 역 전수검사 · 단일역별 포함률 기준` ,true,{sourceId:'PUBLIC_COMPLEX_GUIDE',locator:'별표 1의10 서울 주거상업고밀'}));
     const allowed=['제2종일반주거(7층)','제2종일반주거','제3종일반주거','준주거','일반상업','근린상업'];
     rows.push(schemeRow('용도지역','2·3종 일반주거·준주거·일반/근린상업',f.zoning.current||'-',f.zoning.current?(allowed.includes(f.zoning.current)?'PASS':'FAIL'):'REVIEW','',true,{sourceId:'PUBLIC_COMPLEX_GUIDE',locator:'별표 1의10 서울 주거상업고밀'}));
     const rv=[f.commercial.road4_faces,f.commercial.has8]; const rok=!rv.some(x=>x==null)&&f.commercial.road4_faces>=2&&f.commercial.has8===true;
@@ -7529,25 +7729,38 @@ function innovationSpatialFacts(store,typ){
   if(!['growth','housing'].includes(typ))throw new Error('도심복합개발 유형이 지정되지 않았습니다.');
   const schemeKey=typ==='growth'?'innovation_growth':'innovation_housing';
   const age=typ==='housing'?schemeAgeFact(store,'innovation_housing'):null;
-  const cov350=c.stationAuto?c.coverage350:c.coverage,cov500=c.stationAuto?c.coverage500:c.coverage;
+  const best350=stationAnalysis.loaded?bestStationByCoverage(350):null;
+  const best500=stationAnalysis.loaded?bestStationByCoverage(500):null;
+  const cov350=best350?best350.coverage350:(c.stationAuto?c.coverage350:c.coverage),cov500=best500?best500.coverage500:(c.stationAuto?c.coverage500:c.coverage);
+  const transferCandidate=stationAnalysis.loaded?bestStationByDistance(x=>Number(x.line_count)>=2):null;
   const isCore=['downtown','metro'].includes(c.center);
   const roadEvidence=store.site.spatial_evidence?.roads?.[schemeKey]||null;
   const records=store.site.building.records||[];
   const factory=innovationFactoryBuildingRatio(records,c.factory);
   const apartment=innovationApartmentPrecheck(records,c.area,c.aptMaxArea,c.aptMaxRatio);
-  const fact={scheme_key:schemeKey,type:typ,type_label:typ==='growth'?'성장거점형':'주거중심형',area:{m2:c.area},center:{value:c.center,label:c.centerLabel||'',is_core:isCore,known:!!c.center},station:{distance_m:c.dist,line_count:c.lines,coverage350_pct:cov350,coverage500_pct:cov500,name:c.stationName||''},zoning:{current:c.zoning||'',factory_pct:factory.pct,factory:factory},road:{...store.site.road,evidence:roadEvidence},apartment,aging:{assessment:age},housing:{planned_floor_pct:c.plannedHousingFloor,enclosed6:c.enclosed6},consent:{owner_pct:c.ownerConsent,land_pct:c.landConsent},operator:{landowner_count:c.landownerCount},exclusions:{known:false,value:c.excluded==null?'서울시 세부 제외지역 자료 확인 필요':c.excluded?'제외지역 가능성 입력됨':'비해당 입력'},planning:{density:innovationDensity(c,typ)},spatial_status_rows:[]};
+  const fact={scheme_key:schemeKey,type:typ,type_label:typ==='growth'?'성장거점형':'주거중심형',area:{m2:c.area},center:{value:c.center,label:c.centerLabel||'',is_core:isCore,known:!!c.center},station:{
+    distance_m:typ==='growth'?(transferCandidate?.distance_m??null):(best350?.distance_m??best500?.distance_m??c.dist),
+    line_count:typ==='growth'?(transferCandidate?.line_count??null):(best350?.line_count??best500?.line_count??c.lines),
+    coverage350_pct:cov350,coverage500_pct:cov500,
+    name:typ==='growth'?(transferCandidate?.name||''):(best350?.name||best500?.name||c.stationName||''),
+    transfer_candidate:transferCandidate?{name:transferCandidate.name,distance_m:transferCandidate.distance_m,line_count:transferCandidate.line_count,lines:transferCandidate.lines||[]}:null,
+    coverage350_station:best350?{name:best350.name,distance_m:best350.distance_m,coverage_pct:best350.coverage350}:null,
+    coverage500_station:best500?{name:best500.name,distance_m:best500.distance_m,coverage_pct:best500.coverage500}:null,
+    candidate_count:(c.nearbyStations||[]).length,
+    line_data_complete:(c.nearbyStations||[]).length>0&&(c.nearbyStations||[]).every(x=>x.line_data_complete===true)
+  },zoning:{current:c.zoning||'',factory_pct:factory.pct,factory:factory},road:{...store.site.road,evidence:roadEvidence},apartment,aging:{assessment:age},housing:{planned_floor_pct:c.plannedHousingFloor,enclosed6:c.enclosed6},consent:{owner_pct:c.ownerConsent,land_pct:c.landConsent},operator:{landowner_count:c.landownerCount},exclusions:{known:false,value:c.excluded==null?'서울시 세부 제외지역 자료 확인 필요':c.excluded?'제외지역 가능성 입력됨':'비해당 입력'},planning:{density:innovationDensity(c,typ)},spatial_status_rows:[]};
   if(typ==='growth'){
     fact.spatial_status_rows=[
       spatialFactRow('사업유형','성장거점형','CONFIRMED','서울시 조례 제4조 핵심 사업추진조건'),
       spatialFactRow('생활권 중심지역',isCore?`${c.centerLabel||c.center} 포함`:`${c.centerLabel||c.center||'미확인'}`,c.center?'CONFIRMED':'REVIEW','도심·광역중심 여부 자동분석'),
-      spatialFactRow('비중심지 대중교통 결절지',`${c.lines??'-'}개 노선 / ${c.dist==null?'-':Number(c.dist).toFixed(1)+'m'}`,c.lines!=null&&c.dist!=null?'CONFIRMED':'REVIEW','2개 이상 철도노선 교차 환승역 500m'),
+      spatialFactRow('비중심지 대중교통 결절지',transferCandidate?`${transferCandidate.name} · ${transferCandidate.line_count}개 노선 / ${transferCandidate.distance_m==null?'-':Number(transferCandidate.distance_m).toFixed(1)+'m'}`:'1km 후보역 중 환승역 확인 필요',transferCandidate?'CONFIRMED':'REVIEW',`대상지 중심 1km 후보 ${(c.nearbyStations||[]).length}개 역 전수검사 · 2개 이상 철도노선 교차 환승역 500m`),
       spatialFactRow('20m 간선도로','행안부 도로 기능자료 연계 전 확인필요','REVIEW','중심지 경로는 폭 20m 이상 간선도로 접면을 별도 확인'),
       spatialFactRow('공동주택단지 제한',apartment.has_apartment===false?'공동주택 없음':`최대 ${fmtSchemeArea(apartment.max_area_m2)} / ${fmtSchemePct(apartment.max_ratio_pct)}`,apartment.status==='PASS'?'CONFIRMED':'REVIEW','각 단지 1만㎡ 이하 + 사업구역 면적의 30% 이하')
     ];
   }else{
     fact.spatial_status_rows=[
       spatialFactRow('사업유형','주거중심형','CONFIRMED','서울시 조례 제5조 핵심 사업추진조건'),
-      spatialFactRow('역세권 350m/500m 포함률',`350m ${fmtSchemePct(cov350)} / 500m ${fmtSchemePct(cov500)}`,cov350!=null||cov500!=null?'CONFIRMED':'REVIEW','일반지역 과반 / 준공업 전체'),
+      spatialFactRow('역세권 350m/500m 포함률',`350m ${fmtSchemePct(cov350)}${best350?'('+best350.name+')':''} / 500m ${fmtSchemePct(cov500)}${best500?'('+best500.name+')':''}`,cov350!=null||cov500!=null?'CONFIRMED':'REVIEW','주변 모든 역을 역별 계산 후 가장 높은 단일역 포함률 사용 · 일반지역 과반 / 준공업 전체'),
       spatialFactRow('공장건축물 비율(초기검토)',factory.pct==null?'-':`${Number(factory.pct).toFixed(1)}% (${factory.factory_count}/${factory.total_count}동)`,c.zoning==='준공업'?(factory.pct==null?'REVIEW':'CONFIRMED'):'INFO','공장용도 건축물 수 ÷ 전체 건축물 수 ×100'),
       spatialFactRow('20년 이상 노후도',ageFactValue(age),age?'CONFIRMED':'REVIEW','전체 건축물 중 20년 이상 60%'),
       spatialFactRow('공동주택단지 제한',apartment.has_apartment===false?'공동주택 없음':`최대 ${fmtSchemeArea(apartment.max_area_m2)} / ${fmtSchemePct(apartment.max_ratio_pct)}`,apartment.status==='PASS'?'CONFIRMED':'REVIEW','각 단지 1만㎡ 이하 + 사업구역 면적의 30% 이하')
@@ -7565,11 +7778,15 @@ function checkInnovationFromFacts(store,f){
       loc='REVIEW';note='중심지역 조건은 충족 · 폭 20m 이상 간선도로 접면은 행안부 도로 기능자료 연계 후 확정';
     }else if(!f.center.known){
       locVal='중심지역 여부 미확인';loc='REVIEW';note='비중심지 경로 적용 전 중심지역 여부 확인 필요';
-    }else if(f.station.line_count!=null&&f.station.distance_m!=null){
-      loc=f.station.line_count>=2&&f.station.distance_m<=500?'PASS':'FAIL';
-      locVal=`비중심지 / ${f.station.line_count}개 노선 / ${Number(f.station.distance_m).toFixed(1)}m`;
-      note='비중심지는 2개 이상 철도노선 교차 환승역 500m 이내';
+    }else if(f.station.transfer_candidate){
+      loc=f.station.transfer_candidate.distance_m<=500?'PASS':'FAIL';
+      locVal=`비중심지 / ${f.station.transfer_candidate.name} / ${f.station.transfer_candidate.line_count}개 노선 / ${Number(f.station.transfer_candidate.distance_m).toFixed(1)}m`;
+      note=`대상지 중심 1km 내 모든 역을 전수검사한 뒤 2개 이상 철도노선 교차 환승역 중 최근접 후보로 500m 판정`;
+    }else if(f.station.candidate_count>0){
+      if(f.station.line_data_complete){loc='FAIL';locVal=`1km 후보 ${f.station.candidate_count}개 역 중 2개 이상 노선 환승역 없음`;note='주변 모든 역의 노선정보 확인 결과 대중교통 결절지 후보 없음';}
+      else {loc='REVIEW';locVal='1km 후보역은 있으나 일부 역의 환승노선 정보 미확정';note='역별 노선정보 보강 후 대중교통 결절지 500m 판정';}
     }
+
     rows.push(schemeRow('입지','[중심지 + 폭20m 이상 간선도로] OR [비중심지 + 2개 이상 철도노선 환승역 500m 이내]',locVal,loc,note,true,{sourceId:'INNOVATION_ORD',locator:'제4조제1호'}));
     rows.push(schemeRow('면적','5,000㎡ 이상',fmtSchemeArea(f.area.m2),f.area.m2==null?'REVIEW':f.area.m2>=5000?'PASS':'FAIL','',true,{sourceId:'INNOVATION_ORD',locator:'제4조제2호'}));
     // 시행규칙상 용도지역·접도·제외지역은 핵심 사업추진조건과 분리하여 후속 적정성 검토로 관리한다.
@@ -7586,8 +7803,8 @@ function checkInnovationFromFacts(store,f){
       else loc='FAIL';
       note=[note,`공장건축물 비율 ${f.zoning.factory_pct==null?'-':Number(f.zoning.factory_pct).toFixed(1)+'%'} (${factory?.factory_count??'-'}/${factory?.total_count??'-'}동) · ${factory?.note||''}`].filter(Boolean).join(' · ');
     }else{
-      if(f.station.coverage350_pct!=null&&f.station.coverage350_pct>50)loc='PASS';
-      else if(f.station.coverage500_pct!=null&&f.station.coverage500_pct>50){loc='REVIEW';note='350~500m 구간은 시장 인정 필요';}
+      if(f.station.coverage350_pct!=null&&f.station.coverage350_pct>=50)loc='PASS';
+      else if(f.station.coverage500_pct!=null&&f.station.coverage500_pct>=50){loc='REVIEW';note='350~500m 구간은 시장 인정 필요';}
       else if(f.station.coverage350_pct!=null||f.station.coverage500_pct!=null)loc='FAIL';
     }
     rows.push(schemeRow('입지','일반지역: 사업면적 과반 역세권 / 준공업: 사업면적 전체 역세권 + 공장건축물 비율 10% 미만',`350m ${fmtSchemePct(f.station.coverage350_pct)} / 500m ${fmtSchemePct(f.station.coverage500_pct)}${f.zoning.current==='준공업'?` / 공장 ${fmtSchemePct(f.zoning.factory_pct)}`:''}`,loc,note,true,{sourceId:'INNOVATION_ORD',locator:'제5조제1항제1호'}));
@@ -7989,9 +8206,10 @@ function smallscaleSpatialFacts(store){
   const reconStatus=statusAll([complexStatus,reconAreaStatus,reconUnitStatus,age.status]);
 
   const srAreaStatus=c.area==null?'REVIEW':(c.area>=1500&&c.area<5000)?'PASS':'FAIL';
-  const stationCandidate=c.dist==null?null:Number(c.dist)<=350;
+  const smallRedevelopmentStation=stationAnalysis.loaded?bestStationByDistance(x=>x.distance_m!=null&&Number(x.distance_m)<=350):null;
+  const stationCandidate=stationAnalysis.loaded?(smallRedevelopmentStation?true:false):(c.dist==null?null:Number(c.dist)<=350);
   const semiIndustrial=(c.zoning||'')==='준공업';
-  const srLocationStatus=semiIndustrial||stationCandidate===true?'PASS':(c.dist!=null&&c.zoning?'FAIL':'REVIEW');
+  const srLocationStatus=semiIndustrial||stationCandidate===true?'PASS':(stationAnalysis.loaded||c.dist!=null?((c.zoning||'')?'FAIL':'REVIEW'):'REVIEW');
   const srRoadCandidate=c.has8===true&&Number(c.road4Faces||0)>=2;
   const srRoadStatus=(c.has8===false||(c.road4Faces!=null&&Number(c.road4Faces)<2))?'FAIL':srRoadCandidate?'REVIEW':'REVIEW';
   const clearRenewal=(renewal.overlaps||[]).filter(x=>['housing_district','housing_planned','urban_district','reconstruction','promotion'].includes(x.type));
@@ -8010,7 +8228,7 @@ function smallscaleSpatialFacts(store){
     autonomous:{label:'자율주택정비',status:autonomousStatus,value:`${stock.autonomous_label} · 노후도 ${ageFactValue(age)}`,source_id:'SMALL_AUTONOMOUS'},
     block:{label:'가로주택정비',status:blockStatus,value:`사업대상지 ${fmtSchemeArea(c.area)} · 분석범위 ${blockArea==null?'-':fmtSchemeArea(blockArea)} · ${stock.block_label} · 존치내부도로 ${Number(sb.retained_road_area_m2||0).toLocaleString('ko-KR',{maximumFractionDigits:0})}㎡ · 통과도로후보 ${throughCount}건`,source_id:'SMALL_BLOCK'},
     reconstruction:{label:'소규모재건축',status:reconStatus,value:`${fmtSchemeArea(c.area)} · ${reconUnits==null?'세대수 확인':reconUnits+'세대'} · 주택단지 ${complexStatus==='PASS'?'확인':complexStatus==='FAIL'?'미달':'확인필요'}`,source_id:'SMALL_RECONSTRUCTION'},
-    redevelopment:{label:'소규모재개발',status:srStatus,value:`${fmtSchemeArea(c.area)} · ${semiIndustrial?'준공업':stationCandidate===true?'역세권 350m 후보':'입지확인'} · 도로 ${srRoadCandidate?'개략후보':'확인필요'}`,source_id:'SMALL_REDEVELOPMENT'},
+    redevelopment:{label:'소규모재개발',status:srStatus,value:`${fmtSchemeArea(c.area)} · ${semiIndustrial?'준공업':stationCandidate===true?`${smallRedevelopmentStation?.name||c.stationName||'역'} ${smallRedevelopmentStation?.distance_m==null?(c.dist==null?'-':Number(c.dist).toFixed(1)+'m'):Number(smallRedevelopmentStation.distance_m).toFixed(1)+'m'} · 역세권 350m 후보`:'입지확인'} · 도로 ${srRoadCandidate?'개략후보':'확인필요'}`,source_id:'SMALL_REDEVELOPMENT',station:smallRedevelopmentStation?{name:smallRedevelopmentStation.name,distance_m:smallRedevelopmentStation.distance_m}:null},
     moa:{label:'모아타운·모아주택 추진경로',status:moaStatus,value:moaValue,source_id:'MOA_POLICY'}
   };
   const statuses=Object.values(routes).map(x=>x.status);
@@ -8201,18 +8419,21 @@ function redevelopmentFarProfile(current,target){
 function stationRenewalUpzone(c,name){
   const target=targetOrSuggested(c,name);
   const profile=redevelopmentFarProfile(c.zoning,target);
-  let distanceStatus='REVIEW',distanceText='역거리 미입력';
-  if(c.dist!=null){
-    if(c.dist<=250){distanceStatus='PASS';distanceText='250m 이내';}
-    else if(c.dist<=350){distanceStatus='REVIEW';distanceText='250~350m 위원회 심의 완화구간';}
-    else {distanceStatus='FAIL';distanceText='350m 초과';}
+  const candidate=stationAnalysis.loaded?bestStationByDistance():null;
+  const dist=candidate?.distance_m??c.dist;
+  const stationName=candidate?.name||c.stationName||'';
+  let distanceStatus='REVIEW',distanceText='역거리 미확인';
+  if(dist!=null){
+    if(dist<=250){distanceStatus='PASS';distanceText=`${stationName?stationName+' · ':''}${Number(dist).toFixed(1)}m / 250m 이내`;}
+    else if(dist<=350){distanceStatus='REVIEW';distanceText=`${stationName?stationName+' · ':''}${Number(dist).toFixed(1)}m / 250~350m 위원회 심의 완화구간`;}
+    else {distanceStatus='FAIL';distanceText=`${stationName?stationName+' · ':''}${Number(dist).toFixed(1)}m / 350m 초과`;}
   }
   const policyOk=c.infraGood && c.policyFacility;
   const eligible=(distanceStatus==='PASS' && policyOk && profile)?'PASS':
                  (distanceStatus==='FAIL'||(c.zoning&&target&&!profile))?'FAIL':'REVIEW';
   const far=profile?`기준 ${profile.base}% · 허용 ${profile.allow}% · 상한 ${profile.cap}% · 법적상한 ${profile.legal}%`:'상향경로 선택/확인';
   return {
-    target,profile,eligible,distanceStatus,distanceText,
+    target,profile,eligible,distanceStatus,distanceText,station:{name:stationName,distance_m:dist,candidate_count:stationFacts().length},
     zone:`${c.zoning||'-'} → ${target||'-'}`,
     far,
     contribution:'기존 정률 공공기여 완화 + 임대주택·노인시설·공원 등 시 정책 연계 전략시설 도입 전제(구체량 위원회 결정)'
@@ -8303,12 +8524,15 @@ function stationComplexDensity(c){
 function longtermDensity(c){
   const target=targetOrSuggested(c,'longterm');
   const route=schemeVal('longterm_route');
-  const regionalOrHigher=['downtown','metro','regional'].includes(c.center);
-  const interchange=Number(c.lines)>=2;
-  // 700% 특례의 '입지후보'만 자동확인한다. 실제 적용은 활성화 필요성 및 위원회 인정이 필요하다.
-  const special700Location=(c.dist!=null)&&(
-    Number(c.dist)<=250 || (regionalOrHigher&&interchange&&Number(c.dist)<=350)
-  );
+  // 700% 특례 입지후보도 최근접역 하나가 아니라 주변 모든 역을 검사한다.
+  const special700Station=stationAnalysis.loaded?bestStationByDistance(st=>{
+    const d=Number(st.distance_m);if(!Number.isFinite(d))return false;
+    if(d<=250)return true;
+    return d<=350&&Number(st.line_count)>=2&&['downtown','metro','regional'].includes(st.center_value);
+  }):null;
+  // 수기 입력만 있는 경우의 구버전 fallback
+  const regionalOrHigher=['downtown','metro','regional'].includes(c.center),interchange=Number(c.lines)>=2;
+  const special700Location=special700Station?true:(!stationAnalysis.loaded&&(c.dist!=null)&&(Number(c.dist)<=250||(regionalOrHigher&&interchange&&Number(c.dist)<=350)));
   const specialNote=special700Location
     ? ' · 특례 최대 700% 검토가능(250m 또는 지역중심 이상 환승역 350m 입지후보 + 활성화 필요성·위원회 인정 필요)'
     : '';
@@ -8325,6 +8549,7 @@ function longtermDensity(c){
     far,
     special700_location_candidate:special700Location,
     special700_location_rule:'승강장 경계 250m 이내 또는 지역중심 이상 2개 노선 이상 환승역세권 350m 이내',
+    special700_station:special700Station?`${special700Station.name} ${Number(special700Station.distance_m).toFixed(1)}m`:null,
     special700_condition:'활성화 필요성 및 관련 위원회 인정 필요',
     contribution:'용도지역 변경 등 완화용적률의 1/2 이상을 부지면적으로 환산 · 장기전세주택 우선 제공'
   };
@@ -8477,50 +8702,61 @@ function activationStationCriterion(station,c={}){
   const thresholdRaw=station?.threshold_m,threshold=Number(thresholdRaw),thresholdKnown=thresholdRaw!=null&&[250,350].includes(threshold);
   const distanceRaw=station?.distance_m,distance=Number(distanceRaw),distanceKnown=distanceRaw!=null&&Number.isFinite(distance);
   const shareRaw=station?.block_share_pct,share=Number(shareRaw),shareKnown=shareRaw!=null&&Number.isFinite(share)&&share>=0;
-  const blockQuality=String(station?.block_quality||'').toUpperCase();
+  const blockQuality=String(station?.block_quality||'').toUpperCase(),blockAuthoritative=station?.block_authoritative===true;
+  const thresholdStatus=station?.threshold_status||'CONFIRMED',thresholdReason=station?.threshold_reason||'';
   let directStatus='REVIEW',directNote='적용거리와 승강장 경계 최단거리 확인 필요';
   if(distanceKnown){
     if(thresholdKnown){
-      directStatus=distance<=threshold?'PASS':'FAIL';
-      directNote=directStatus==='PASS'?`최근접 ${distance.toFixed(1)}m ≤ 적용거리 ${threshold}m`:`최근접 ${distance.toFixed(1)}m · 적용거리 ${threshold}m 대비 ${(distance-threshold).toFixed(1)}m 초과`;
+      if(thresholdStatus!=='CONFIRMED'&&distance<=threshold){
+        directStatus='REVIEW';directNote=`판정역 ${distance.toFixed(1)}m ≤ 잠재범위 ${threshold}m · ${thresholdReason||'250/350m 적용거리 확정 필요'}`;
+      }else{
+        directStatus=distance<=threshold?'PASS':'FAIL';
+        directNote=directStatus==='PASS'?`판정역 ${distance.toFixed(1)}m ≤ 적용거리 ${threshold}m`:`판정역 ${distance.toFixed(1)}m · 최대 검토범위 ${threshold}m 대비 ${(distance-threshold).toFixed(1)}m 초과`;
+      }
     }else if(distance<=250){
-      directStatus='PASS';directNote=`최근접 ${distance.toFixed(1)}m · 250m/350m 어느 적용기준에서도 거리상 포함`;
+      directStatus='PASS';directNote=`판정역 ${distance.toFixed(1)}m · 250m/350m 어느 적용기준에서도 거리상 포함`;
     }else if(distance>350){
-      directStatus='FAIL';directNote=`최근접 ${distance.toFixed(1)}m · 최대 350m 직접거리 범위 밖`;
+      directStatus='FAIL';directNote=`판정역 ${distance.toFixed(1)}m · 최대 350m 직접거리 범위 밖`;
     }else{
-      directStatus='REVIEW';directNote=`최근접 ${distance.toFixed(1)}m · 250~350m 구간으로 중심지·환승역 여부에 따라 적용거리 확정 필요`;
+      directStatus='REVIEW';directNote=`판정역 ${distance.toFixed(1)}m · 250~350m 구간으로 중심지·환승역 여부에 따라 적용거리 확정 필요`;
     }
   }
 
   let blockStatus='REVIEW',blockConditional=false,blockCommittee=false,blockNote='가로구역 포함률 산정 필요';
-  if(shareKnown){
+  if(shareKnown&&!blockAuthoritative){
+    blockStatus='REVIEW';blockConditional=true;
+    blockNote=`추정 가로구역 기준 ${share.toFixed(1)}% 중첩 · 현재 내장 기초단위구/ROAD_BT 형상은 법정 가로구역이 아니므로 행안부/공식 가로구역 데이터 연결 전 자동 PASS·FAIL 금지`;
+  }else if(shareKnown){
     if(share>=50){
       blockStatus='PASS';blockConditional=blockQuality==='PARTIAL';
-      blockNote=`적용 역세권 범위가 가로구역의 ${share.toFixed(1)}% 포함 · 1/2 이상 일반경로${blockConditional?' · 도로 외 시설경계 일부 미응답 단서':''}`;
+      blockNote=`적용 역세권 범위가 공식 가로구역의 ${share.toFixed(1)}% 포함 · 1/2 이상 일반경로${blockConditional?' · 도로 외 시설경계 일부 미응답 단서':''}`;
     }
     else if(share>0){
       blockStatus='PASS';blockConditional=true;blockCommittee=true;
       blockNote=c.maxRoad!=null&&Number(c.maxRoad)>=20
-        ?`가로구역 ${share.toFixed(1)}% 포함 · 1/2 미만이나 폭 20m 이상 간선가로 접면 경로로 위원회 심의 가능`
-        :`가로구역 ${share.toFixed(1)}% 포함 · 1/2 미만이나 구역 정형화 필요성 인정 경로로 위원회 심의 가능`;
-    }else{blockStatus='FAIL';blockNote='적용 역세권 범위와 가로구역 중첩 0%';}
+        ?`공식 가로구역 ${share.toFixed(1)}% 포함 · 1/2 미만이나 폭 20m 이상 간선가로 접면 경로로 위원회 심의 가능`
+        :`공식 가로구역 ${share.toFixed(1)}% 포함 · 1/2 미만이나 구역 정형화 필요성 인정 경로로 위원회 심의 가능`;
+    }else{blockStatus='FAIL';blockNote='적용 역세권 범위와 공식 가로구역 중첩 0%';}
   }
 
   let status='REVIEW',conditional=false,path='unresolved',note='역세권 가로구역 적용경로 확인 필요';
   if(blockStatus==='PASS'){
     status='PASS';conditional=blockConditional;path=blockCommittee?'block_committee':'block_half';note=blockNote;
-  }else if(shareKnown&&share===0){
+  }else if(shareKnown&&!blockAuthoritative){
+    status='REVIEW';conditional=true;path='estimated_block_pending';note=blockNote;
+  }else if(shareKnown&&blockAuthoritative&&share===0){
     if(directStatus==='PASS'){
       status='REVIEW';path='data_conflict';note='승강장 직접거리상 포함이나 가로구역 포함률 0%로 데이터 불일치 확인 필요';
     }else{status='FAIL';path='no_block_overlap';note='적용 역세권 범위와 가로구역이 중첩되지 않아 역세권 가로구역 경로 없음';}
   }else if(!shareKnown&&directStatus==='PASS'){
-    // 대상지 자체가 적용거리 안이면 그 대상지가 속한 가로구역은 최소 일부가 역세권 범위와 겹친다.
-    // 1/2 이상이면 일반경로, 1/2 미만이면 위원회 인정경로가 있으므로 사업성 검토에서는 PASS+단서로 유지한다.
-    status='PASS';conditional=true;path='direct_inside_block_pending';
-    note='직접거리상 역세권 범위 안 · 가로구역 포함률 미산정. 1/2 이상이면 일반경로, 1/2 미만이면 간선가로 접면 또는 구역 정형화 필요성에 따른 위원회 인정 필요';
+    // 역세권활성화는 가로구역 관계가 핵심 판정단위다. 거리만으로 PASS시키지 않는다.
+    // 공식/신뢰 가능한 가로구역 데이터가 연결되기 전에는 REVIEW로 보류한다.
+    status='REVIEW';conditional=true;path='direct_inside_block_pending';
+    note='직접거리상 역세권 범위 안이나 가로구역 포함률 미산정 · 가로구역 데이터 연결 후 1/2 이상 일반경로 또는 1/2 미만 위원회 인정경로 판정';
   }else if(!shareKnown&&directStatus==='FAIL'){
     status='REVIEW';path='block_overlap_unknown';note='대상지는 직접거리 범위 밖이나 동일 가로구역 일부가 역세권 범위에 걸칠 수 있어 가로구역 중첩률 산정 필요';
   }
+  if(status==='PASS'&&thresholdStatus!=='CONFIRMED'){status='REVIEW';conditional=true;path='threshold_pending';note=[note,thresholdReason||'250/350m 적용거리 확정 필요'].filter(Boolean).join(' · ');}
   return {direct:{status:directStatus,note:directNote},block:{status:blockStatus,conditional:blockConditional,note:blockNote},overall:{status,conditional,path,note}};
 }
 
@@ -8540,10 +8776,13 @@ function checkActivationFromFacts(store,f){
     `${station.distance_m==null?'-':Number(station.distance_m).toFixed(1)+'m'}${station.name?' · '+station.name:''}${station.block_share_pct==null?' · 가로구역 미산정':` · 가로구역 ${Number(station.block_share_pct).toFixed(1)}%`}`,
     stationStatus,stationNote,false,{sourceId:'ACTIVATION',locator:'1-3-1 가목 / 2-1-2 가목',conditional:stationDecision.overall.conditional,caveat:stationDecision.overall.conditional?stationNote:'',decisionPath:stationDecision.overall.path}));
 
-  let arterialStatus=arterial.linear_commercial===true?'PASS':arterial.linear_commercial===false?'FAIL':'REVIEW';
-  const arterialConditional=arterialStatus==='PASS'&&arterial.block_includes==null;
+  let arterialStatus='REVIEW';
+  if(arterial.linear_commercial===false)arterialStatus='FAIL';
+  else if(arterial.linear_commercial===true&&arterial.block_authoritative===true&&arterial.block_includes===true)arterialStatus='PASS';
+  else if(arterial.linear_commercial===true&&arterial.block_authoritative===true&&arterial.block_includes===false)arterialStatus='FAIL';
+  const arterialConditional=arterial.linear_commercial===true&&arterialStatus!=='PASS';
   rows.push(schemeRow('간선도로변','역세권 외 노선형 상업지역을 포함한 가로구역 전체 또는 일부',arterial.note,arterialStatus,
-    arterialStatus==='REVIEW'?'노선형 상업지역 자동도면은 생성되었으나 가로구역 연계가 미확정':arterialConditional?'대상지 자체의 노선형 상업지역 편입은 자동확인 · 가로구역 형상 재확인':'서울시 공개 대상노선 + 용도지역 GIS 자동분석',false,{sourceId:'ACTIVATION',locator:'1-3-1 나목 / 2-1-2 나목',conditional:arterialConditional,caveat:arterialConditional?'가로구역 자동형상 재확인 필요':''}));
+    arterialStatus==='REVIEW'?'노선형 상업지역 후보는 확인되었으나 공식 가로구역 연계가 미확정':arterialConditional?'공식 가로구역 자료 연결 전 자동 PASS 금지':'서울시 공개 대상노선 + 용도지역 + 공식 가로구역 결합',false,{sourceId:'ACTIVATION',locator:'1-3-1 나목 / 2-1-2 나목',conditional:arterialConditional,caveat:arterialConditional?'가로구역 자동형상 재확인 필요':''}));
 
   const locationStatus=(stationStatus==='PASS'||arterialStatus==='PASS')?'PASS':
     (stationStatus==='FAIL'&&arterialStatus==='FAIL')?'FAIL':'REVIEW';
@@ -8662,17 +8901,32 @@ function safeArterialSpatialCandidate(){
   };
 }
 function safeStationPath(c){
-  let status='REVIEW',note='승강장 경계 최단거리 공식 GIS 확인 필요';
-  if(c.dist!=null){
-    if(c.stationAuto&&c.dist>350){status='FAIL';note='공식 역사 경계 기준 350m를 초과';}
-    else if(c.stationAuto&&c.dist<=250){status='PASS';note='공식 역사 경계 기준 250m 이내 확인';}
-    else if(c.stationAuto&&c.dist<=350){status='REVIEW';note='250~350m는 운영기준상 위원회 심의를 통한 예외 지정 검토구간';}
-    else if(!c.stationAuto&&c.dist<=250){status='REVIEW';note='수기 거리값은 250m 이내이나 공식 역사 경계 GIS 확인 전 자동 PASS 금지';}
-    else if(!c.stationAuto){status='REVIEW';note='수기 거리값만 있어 공식 역사 경계 기준 자동확정 불가';}
+  // 안심주택 역세권 판정은 최근접역 거리 하나가 아니라 역별 '대상지 포함면적'을 본다.
+  // 250m는 일반경로, 350m는 운영기준상 통합심의 예외경로이며 대상지 50% 미만도 추가 공공기여/심의 REVIEW 경로를 남긴다.
+  if(stationAnalysis.loaded&&stationFacts().length){
+    const eligible250=bestStationByCoverage(250,x=>Number(x.coverage250)>=50);
+    const overlap250=bestStationByCoverage(250,x=>Number(x.coverage250)>0);
+    const eligible350=bestStationByCoverage(350,x=>Number(x.coverage350)>=50);
+    const overlap350=bestStationByCoverage(350,x=>Number(x.coverage350)>0);
+    const chosen=eligible250||overlap250||eligible350||overlap350||bestStationByDistance();
+    if(!chosen)return {key:'station',label:'대중교통 중심지역 · 역세권',status:'REVIEW',note:'역 후보자료 미확인',coverage:null,value:'-',scope_m:null};
+    if(eligible250){
+      return {key:'station',label:'대중교통 중심지역 · 역세권',status:'PASS',note:`${eligible250.name} 승강장 250m 범위에 대상지 ${Number(eligible250.coverage250).toFixed(1)}% 포함 · 과반 일반경로`,coverage:eligible250.coverage250,value:`판정역 ${eligible250.name} · 250m 포함 ${fmtSchemePct(eligible250.coverage250)} · 최단 ${Number(eligible250.distance_m).toFixed(1)}m`,station:eligible250,scope_m:250,coverage_status:'PASS'};
+    }
+    if(overlap250){
+      return {key:'station',label:'대중교통 중심지역 · 역세권',status:'REVIEW',note:`${overlap250.name} 250m 범위에 대상지 ${Number(overlap250.coverage250).toFixed(1)}% 포함 · 50% 미만은 통합심의 인정 및 추가 공공기여 검토`,coverage:overlap250.coverage250,value:`판정역 ${overlap250.name} · 250m 포함 ${fmtSchemePct(overlap250.coverage250)} · 최단 ${Number(overlap250.distance_m).toFixed(1)}m`,station:overlap250,scope_m:250,coverage_status:'REVIEW'};
+    }
+    if(eligible350){
+      return {key:'station',label:'대중교통 중심지역 · 역세권',status:'REVIEW',note:`${eligible350.name} 350m 범위에 대상지 ${Number(eligible350.coverage350).toFixed(1)}% 포함 · 250m 밖 확장구간은 운영기준상 통합심의 예외 지정 필요`,coverage:eligible350.coverage350,value:`판정역 ${eligible350.name} · 350m 포함 ${fmtSchemePct(eligible350.coverage350)} · 최단 ${Number(eligible350.distance_m).toFixed(1)}m`,station:eligible350,scope_m:350,coverage_status:'REVIEW'};
+    }
+    if(overlap350){
+      return {key:'station',label:'대중교통 중심지역 · 역세권',status:'REVIEW',note:`${overlap350.name} 350m 범위에 대상지 ${Number(overlap350.coverage350).toFixed(1)}%만 포함 · 350m 예외지정과 50% 미만 추가 공공기여/통합심의 모두 확인 필요`,coverage:overlap350.coverage350,value:`판정역 ${overlap350.name} · 350m 포함 ${fmtSchemePct(overlap350.coverage350)} · 최단 ${Number(overlap350.distance_m).toFixed(1)}m`,station:overlap350,scope_m:350,coverage_status:'REVIEW'};
+    }
+    return {key:'station',label:'대중교통 중심지역 · 역세권',status:'FAIL',note:`대상지 중심 1km 후보 ${stationFacts().length}개 역을 전수검사했으나 어느 역의 350m 범위에도 대상지가 중첩되지 않음`,coverage:0,value:`최근접 ${chosen.name} ${chosen.distance_m==null?'-':Number(chosen.distance_m).toFixed(1)+'m'}`,station:chosen,scope_m:350,coverage_status:'FAIL'};
   }
-  return {key:'station',label:'대중교통 중심지역 · 역세권',status,note,coverage:c.dist!=null&&c.dist<=250?c.coverage250:c.coverage350,
-    value:`${c.dist==null?'-':Number(c.dist).toFixed(1)+'m'}${c.stationAuto?' · 공식 역사경계 AUTO':' · 수기/미확인'}`};
+  return {key:'station',label:'대중교통 중심지역 · 역세권',status:'REVIEW',note:'다중역 역사경계 GIS Fact 미확보 · 수기 최근접거리만으로 안심주택 자동판정 금지',coverage:null,value:c.dist==null?'-':`최근접 수기 ${Number(c.dist).toFixed(1)}m`,scope_m:null,coverage_status:'REVIEW'};
 }
+
 function safeArterialPath(c,stationPath,roadEvidence=null){
   const ref=roadEvidence?{known:!!roadEvidence.known,candidate:roadEvidence.candidate,count:Number(roadEvidence.count||0),note:roadEvidence.note||''}:safeArterialSpatialCandidate();
   let status='REVIEW';
@@ -8737,11 +8991,32 @@ function effectiveGrowthPotentialType(c){
   return 'district';
 }
 function growthPotentialStationCoverage(c){
-  const threshold=(['downtown','metro','regional'].includes(c.center)||c.lines>=2)?350:250;
+  // 성장잠재권의 역세권 배타관계는 역세권활성화 공간과 동일한 후보역군을 사용한다.
+  // 단순 최근접역 반경이 아니라 역별 250/350m 적용범위를 모두 만든다. 이 값은 참고 면적 Fact이고,
+  // 실제 배타판정은 activation_gate(가로구역 포함)로 수행한다.
+  const ac=activationStationCandidates();
+  const bufs=ac.map(x=>x.buffers?.[x.activation_threshold_m]).filter(Boolean);
   let cov=null;
-  if(c.stationAuto)cov=threshold===350?c.coverage350:c.coverage250;
-  else cov=c.coverage;
-  return {threshold,coverage:cov,nonstation:cov==null?null:Math.max(0,100-Number(cov))};
+  if(activeGeometry&&bufs.length){
+    try{const u=safeUnionPolygons(bufs),z=turf.feature(activeGeometry),x=u?turf.intersect(z,u):null,za=turf.area(z);cov=za>0?(x?turf.area(x):0)/za*100:null;}catch(e){}
+  }
+  if(cov==null&&!c.stationAuto)cov=c.coverage;
+  return {threshold:'250/350',coverage:cov,nonstation:cov==null?null:Math.max(0,100-Number(cov)),candidates:ac};
+}
+function activationLocationGateForGrowth(store){
+  const af=store?.scheme_specific?.activation;
+  if(!af)return {status:'REVIEW',value:'역세권활성화 선행판정 미완료',note:'역세권활성화 공간대상 여부를 먼저 확인'};
+  const sd=activationStationCriterion(af.location?.station||{},store.common||{});
+  const stationStatus=sd.overall.status;
+  const arterial=af.location?.arterial||{};
+  let arterialStatus='REVIEW';
+  if(arterial.linear_commercial===false)arterialStatus='FAIL';
+  else if(arterial.linear_commercial===true&&arterial.block_authoritative===true&&arterial.block_includes===true)arterialStatus='PASS';
+  else if(arterial.linear_commercial===true&&arterial.block_authoritative===true&&arterial.block_includes===false)arterialStatus='FAIL';
+  const status=(stationStatus==='PASS'||arterialStatus==='PASS')?'PASS':(stationStatus==='FAIL'&&arterialStatus==='FAIL')?'FAIL':'REVIEW';
+  const value=status==='PASS'?'역세권활성화 공간대상 포함':status==='FAIL'?'역세권활성화 공간대상 아님':'역세권활성화 공간대상 여부 미확정';
+  const note=[`역세권 ${stationStatus}`,`간선가로형 ${arterialStatus}`,sd.overall.note||'',arterial.path||''].filter(Boolean).join(' · ');
+  return {status,value,note,station_status:stationStatus,arterial_status:arterialStatus};
 }
 
 function effectiveSharedHousingType(c){
@@ -10270,46 +10545,50 @@ function stationInfluenceForScheme(name,c){
   const res=schemeResults[name]||latestSchemeModuleResults[name];
   const f=res?.facts;
 
-  // 독립모듈 사업은 모듈이 만든 공간현황 Fact만 사용한다. 여기서 거리·입지기준을 재계산하지 않는다.
+  // 독립모듈 사업은 모듈이 만든 공간현황 Fact만 사용한다. 여기서 최근접역 거리로 재판정하지 않는다.
   if(SCHEME_MODULES[name] && f){
-    if(name==='growth_potential')return {active:false,level:0,note:'성장잠재권은 비역세권 중심의 독립모듈 판정'};
+    if(name==='growth_potential')return {active:false,level:0,note:'성장잠재권은 역세권활성화 공간대상 배타게이트 후 간선도로축을 검토'};
     if(name==='shared_housing')return {active:false,level:0,note:'상생주택은 저이용·유휴토지 및 공공협력 중심'};
     if(name==='activation'){
-      const st=f.location?.station?.status||f.station?.status;
-      const d=f.location?.station?.distance_m??f.station?.distance_m;
-      return st==='PASS'?{active:true,level:2,note:`역세권활성화 모듈 역세권 확인${d!=null?' · '+Number(d).toFixed(1)+'m':''}`}:
-        st==='REVIEW'?{active:true,level:1,note:'역세권활성화 모듈 역세권 조건 확인 필요'}:{active:false,level:0,note:'역세권활성화 모듈 역세권 경로 미충족'};
+      const dec=activationStationCriterion(f.location?.station||{},c||{}).overall;
+      const st=f.location?.station||{};
+      return dec.status==='PASS'?{active:true,level:2,note:`역세권활성화 판정역 ${st.name||'-'} · ${st.threshold_m||'-'}m 가로구역 경로 확인`}:
+        dec.status==='REVIEW'?{active:true,level:1,note:`역세권활성화 ${st.name||'판정역'} · 가로구역/적용거리 확인 필요`}:{active:false,level:0,note:'역세권활성화 가로구역 경로 미충족'};
     }
     if(name==='station_complex'){
-      const st=f.station?.status||f.location?.station?.status;
-      return st==='PASS'?{active:true,level:2,note:'역세권복합개발 모듈 역세권 확인'}:
-        st==='REVIEW'?{active:true,level:1,note:'역세권복합개발 모듈 역세권 확인 필요'}:{active:false,level:0,note:'역세권복합개발 모듈 역세권 경로 미충족'};
+      const st=f.station||{};
+      if(st.catchment_block_share_pct!=null&&st.catchment_block_authoritative===true&&st.catchment_block_share_pct>0)return {active:true,level:st.catchment_block_share_pct>=50?2:1,note:`역세권복합 ${st.name||'판정역'} 250m 가로구역 ${Number(st.catchment_block_share_pct).toFixed(1)}%`};
+      if(st.catchment_block_share_pct!=null)return {active:true,level:1,note:'역세권복합 250m 가로구역은 추정값 · 공식 가로구역 확인 필요'};
+      return {active:false,level:0,note:'역세권복합 가로구역 판정 미확정'};
     }
     if(name==='safe'){
-      const st=f.paths?.station?.status||f.station?.status;
-      return st==='PASS'?{active:true,level:2,note:'안심주택 모듈 역세권 경로 확인'}:
-        st==='REVIEW'?{active:true,level:1,note:'안심주택 모듈 역세권 경로 확인 필요'}:{active:false,level:0,note:'안심주택은 간선도로변·의료시설 경로 포함 별도 판정'};
+      const st=f.location?.station;
+      return st?.status==='PASS'?{active:true,level:2,note:`안심주택 판정역 ${st.station?.name||'-'} · ${st.scope_m||250}m 대상지 과반`}:
+        st?.status==='REVIEW'?{active:true,level:1,note:'안심주택 역세권 면적포함 또는 350m 심의경로 확인 필요'}:{active:false,level:0,note:'안심주택은 간선도로변·의료시설 경로 포함 별도 판정'};
     }
     if(name==='longterm'){
       if(f.location?.selected_type!=='station')return {active:false,level:0,note:'장기전세 간선도로 교차지역 경로'};
-      const st=f.location?.station?.status;
-      const d=f.location?.station?.distance_m;
-      return st==='PASS'?{active:true,level:d!=null&&d<=350?2:1,note:'장기전세 모듈 역세권 경로 확인'}:
-        st==='REVIEW'?{active:true,level:1,note:'장기전세 모듈 역세권 확인 필요'}:{active:false,level:0,note:'장기전세 모듈 역세권 경로 미충족'};
+      const st=f.location?.station?.status,d=f.location?.station?.distance_m;
+      return st==='PASS'?{active:true,level:d!=null&&d<=350?2:1,note:`장기전세 판정역 ${f.location?.station?.name||'-'} · 전체포함`}:
+        st==='REVIEW'?{active:true,level:1,note:'장기전세 단일역 전체포함 여부 확인 필요'}:{active:false,level:0,note:'장기전세 역세권 경로 미충족'};
     }
     if(name==='public_complex'){
       if(f.type!=='commercial')return {active:false,level:0,note:`도심공공주택복합 ${f.type_label||'비역세권'} 유형`};
       const cov=f.station?.coverage350_pct;
-      return cov!=null&&cov>=50?{active:true,level:2,note:'도심공공주택복합 모듈 350m 면적 과반 확인'}:
-        {active:false,level:0,note:'도심공공주택복합 모듈 350m 면적 과반 미확인'};
+      return cov!=null&&cov>=50?{active:true,level:2,note:`도심공공주택복합 ${f.station?.name||'판정역'} 350m 면적 과반`}:
+        {active:false,level:0,note:'도심공공주택복합 단일역 350m 면적 과반 미확인'};
     }
     if(name==='innovation_housing'){
       const c350=f.station?.coverage350_pct,c500=f.station?.coverage500_pct;
-      if(c350!=null&&c350>50)return {active:true,level:2,note:'도심복합 주거중심형 350m 모듈조건 확인'};
-      if(c500!=null&&c500>50)return {active:true,level:1,note:'도심복합 주거중심형 350~500m 시장 인정 검토'};
-      return {active:false,level:0,note:'도심복합 주거중심형 역세권 조건 미충족'};
+      if(c350!=null&&c350>=50)return {active:true,level:2,note:`도심복합 주거중심형 ${f.station?.coverage350_station?.name||f.station?.name||'판정역'} 350m 과반`};
+      if(c500!=null&&c500>=50)return {active:true,level:1,note:`도심복합 주거중심형 ${f.station?.coverage500_station?.name||f.station?.name||'판정역'} 350~500m 시장 인정 검토`};
+      return {active:false,level:0,note:'도심복합 주거중심형 단일역 면적 과반 미충족'};
     }
-    if(name==='innovation_growth')return {active:true,level:1,note:'도심복합 성장거점형은 도심·광역중심 또는 환승결절 500m 조건 적용'};
+    if(name==='innovation_growth'){
+      const tr=f.station?.transfer_candidate;
+      if(tr&&tr.distance_m<=500)return {active:true,level:2,note:`도심복합 성장거점형 환승결절 ${tr.name} ${Number(tr.distance_m).toFixed(1)}m`};
+      return {active:true,level:1,note:'도심복합 성장거점형 중심지·간선도로 또는 환승결절 500m 경로 확인'};
+    }
     if(name==='urban_redevelopment'){
       const routes=Object.values(f.policy_routes||{}).filter(x=>x?.uses_redevelopment===true);
       if(routes.some(x=>x.status==='PASS'))return {active:true,level:2,note:'정책사업 모듈의 도시정비형 시행방식 확인'};
@@ -10318,11 +10597,13 @@ function stationInfluenceForScheme(name,c){
     }
   }
 
-  // 역세권 영향은 사업모듈에서 직접 규정하지 않은 경우에만 보조표현으로 사용한다.
-  if(c.dist==null)return {active:false,level:0,note:'역거리 미확인'};
+  // 모듈 밖 보조표현도 다중역 Fact의 최근접 파생값을 사용한다.
+  const nearest=stationAnalysis.loaded?bestStationByDistance():null;
+  const dist=nearest?.distance_m??c.dist;
+  if(dist==null)return {active:false,level:0,note:'역거리 미확인'};
   if(name==='redevelopment'||name==='reconstruction'){
-    if(c.dist<=250)return {active:true,level:2,note:'역세권 250m 이내'};
-    if(c.dist<=350)return {active:true,level:1,note:'역세권 250~350m 심의구간'};
+    if(dist<=250)return {active:true,level:2,note:`${nearest?.name||c.stationName||'역'} ${Number(dist).toFixed(1)}m · 250m 이내`};
+    if(dist<=350)return {active:true,level:1,note:`${nearest?.name||c.stationName||'역'} ${Number(dist).toFixed(1)}m · 250~350m 심의구간`};
     return {active:false,level:0,note:'역세권 상향검토 거리 초과'};
   }
   if(name==='general_housing')return {active:false,level:0,note:'주택개발사업은 역세권 자체가 별도 밀도특례가 아님'};
@@ -11575,7 +11856,7 @@ function renderActivationDetailPopup(){
   const rows=res?.rows||[];
   if(title)title.textContent='역세권활성화사업 기초검토서';
   const roadText=(f.road.roads||[]).slice(0,4).map(x=>`${x.name} ${x.width_m==null?'-':x.width_m.toFixed(1)+'m'}`).join(' / ')||'도로자료 확인 필요';
-  const stationText=f.location.station.distance_m==null?'확인 필요':`${f.location.station.name||'최근접역'} · ${Number(f.location.station.distance_m).toFixed(1)}m · ${f.location.station.line_count||'-'}개 노선`;
+  const stationText=f.location.station.distance_m==null?'판정역 확인 필요':`판정역 ${f.location.station.name||'-'} · ${Number(f.location.station.distance_m).toFixed(1)}m · 적용 ${f.location.station.threshold_m||'250/350'}m · 가로구역 ${f.location.station.block_share_pct==null?'-':Number(f.location.station.block_share_pct).toFixed(1)+'%'}`;
   const arterialText=f.location.arterial.linear_commercial===true?'노선형 상업지역 포함 확인':f.location.arterial.linear_commercial===false?'노선형 상업지역 미포함':'노선형 상업지역 포함 여부 확인 필요';
   const current=f.zoning.current||'-';
   const farBase=activationFarText(current,range.base_max);
@@ -11763,7 +12044,7 @@ function renderSafeHousingDetailPopup(){
   const selected=f.location?.selected?.label||'입지유형 확인 필요';
   const resultRows=schemeSpecificResultRows(res,[
     {label:'입지유형',items:['역세권','간선도로변','의료시설 중심지역','입지유형','중심지역 포함']},
-    {label:'대상지 현황',items:['사업대상지 면적','용도지역','노후도']},
+    {label:'대상지 현황',items:['면적','용도지역','노후도']},
     {label:'공급·도로조건',items:['어르신 공급조건','간선도로변 도로계획','의료시설형 도로계획']},
     {label:'배제·관리',items:['서울도심 배제범위','학교 출입구 50m','사업 집중도']}
   ],['용도지역 변경 범위','공공기여 기준']);
@@ -11827,7 +12108,7 @@ function renderStationComplexDetailPopup(){
   if(title)title.textContent='역세권복합개발 지구단위계획 기초검토서';
   if(!f||!store){body.innerHTML='<div class="scheme-modal-note"><b>현황분석 필요</b> 먼저 검토하기를 실행하여 공간현황 Fact를 생성해 주세요. 팝업에서는 새 현황을 계산하지 않습니다.</div>';return;}
   const resultRows=schemeSpecificResultRows(res,[
-    {label:'역세권·가로구역',items:['역세권','가로구역']},
+    {label:'역세권·가로구역',items:['역세권 가로구역','사업대상지 가로구역 점유']},
     {label:'대상지 현황',items:['사업대상지 면적','용도지역','노후도']},
     {label:'도로요건',items:['도로요건']},
     {label:'입지제한',items:['구릉지','저층주거지 인접','특성관리지구','정비구역·예정구역']},
@@ -11843,8 +12124,9 @@ function renderStationComplexDetailPopup(){
   body.innerHTML=`<div class="activation-sheet"><div class="activation-sheet-title"><div><h3>역세권복합개발 지구단위계획</h3><p>서울특별시 지구단위계획 수립기준 중 역세권 복합개발(고밀주거) 기준 · 세부 최신 개정일 재확인</p></div><div class="activation-feasibility"><span>입안 가능성</span><b class="${escHtml(res?.overall||'REVIEW')}">${escHtml(schemeSheetFeasibility(res?.overall||'REVIEW'))}</b></div></div>
   <section class="activation-section"><h4>1. 현황</h4><table class="activation-table"><tbody>
     <tr><th>위치</th><td>${escHtml(store.site.address||'주소 확인 필요')}</td><th>면적</th><td>${escHtml(fmtSchemeArea(f.area?.m2))}</td></tr>
-    <tr><th>용도지역</th><td>${escHtml(f.zoning?.current||'-')}</td><th>역세권</th><td>${escHtml(f.station?.distance_m==null?'-':`${f.station.name||'최근접역'} · ${Number(f.station.distance_m).toFixed(1)}m`)}</td></tr>
-    <tr><th>가로구역 포함률</th><td>${escHtml(f.block?.share_pct==null?'-':Number(f.block.share_pct).toFixed(1)+'%')}</td><th>도로요건</th><td>${escHtml(`4m 이상 ${f.road?.road4_faces??'-'}면 / 8m 이상 ${f.road?.has8==null?'-':f.road.has8?'확보':'미확보'}`)}</td></tr>
+    <tr><th>용도지역</th><td>${escHtml(f.zoning?.current||'-')}</td><th>250m 판정역</th><td>${escHtml(f.station?.name?`${f.station.name} · 대상지거리 ${f.station.distance_m==null?'-':Number(f.station.distance_m).toFixed(1)+'m'}`:'-')}</td></tr>
+    <tr><th>250m→가로구역 포함률</th><td>${escHtml(f.station?.catchment_block_share_pct==null?'-':Number(f.station.catchment_block_share_pct).toFixed(1)+'%')}</td><th>대상지→가로구역 점유율</th><td>${escHtml(f.block?.share_pct==null?'-':Number(f.block.share_pct).toFixed(1)+'%')}</td></tr>
+    <tr><th>가로구역 자료상태</th><td>${escHtml(f.station?.catchment_block_authoritative?'공식':'추정/미확정')}</td><th>도로요건</th><td>${escHtml(`4m 이상 ${f.road?.road4_faces??'-'}면 / 8m 이상 ${f.road?.has8==null?'-':f.road.has8?'확보':'미확보'}`)}</td></tr>
     <tr><th>도시계획계 노후도</th><td>${escHtml(ageFactValue(f.aging?.assessment))}</td><th>주요 도로</th><td>${escHtml(summarizeRoadList(f.road))}</td></tr>
     <tr><th>구릉지</th><td>${f.exclusions?.hill?.elevation_m==null?'고도·경사 공식자료 미확보':'확인'}</td><th>저층주거지 인접</th><td>${escHtml(f.zoning?.lowrise_adjacent==null?'공간분석 미확인':String(f.zoning.lowrise_adjacent))}</td></tr>
   </tbody></table></section>
@@ -11931,7 +12213,7 @@ function renderInnovationDetailPopup(name){
   <section class="activation-section"><h4>1. 자동분석 현황</h4><table class="activation-table"><tbody>
     <tr><th>위치</th><td>${escHtml(store.site.address||'-')}</td><th>사업면적</th><td>${escHtml(fmtSchemeArea(f.area?.m2))}</td></tr>
     <tr><th>사업유형</th><td>${escHtml(f.type_label||'-')}</td><th>중심지</th><td>${escHtml(f.center?.label||f.center?.value||'-')}</td></tr>
-    <tr><th>환승결절</th><td>${escHtml(`${f.station?.line_count??'-'}개 노선 / ${f.station?.distance_m==null?'-':Number(f.station.distance_m).toFixed(1)+'m'}`)}</td><th>역세권 포함률</th><td>${escHtml(`350m ${fmtSchemePct(f.station?.coverage350_pct)} / 500m ${fmtSchemePct(f.station?.coverage500_pct)}`)}</td></tr>
+    <tr><th>${f.type==='growth'?'환승결절 판정역':'350m 판정역'}</th><td>${escHtml(f.type==='growth'?(f.station?.transfer_candidate?`${f.station.transfer_candidate.name} · ${(f.station.transfer_candidate.lines||[]).join('·')||f.station.transfer_candidate.line_count+'개 노선'} · ${f.station.transfer_candidate.distance_m==null?'-':Number(f.station.transfer_candidate.distance_m).toFixed(1)+'m'}`:'1km 후보역 중 환승결절 확인 필요'):(f.station?.coverage350_station?`${f.station.coverage350_station.name} · ${Number(f.station.coverage350_station.distance_m).toFixed(1)}m`:'-'))}</td><th>역세권 포함률</th><td>${escHtml(`350m ${fmtSchemePct(f.station?.coverage350_pct)}${f.station?.coverage350_station?' ('+f.station.coverage350_station.name+')':''} / 500m ${fmtSchemePct(f.station?.coverage500_pct)}${f.station?.coverage500_station?' ('+f.station.coverage500_station.name+')':''}`)}</td></tr>
     ${f.type==='housing'?`<tr><th>노후도</th><td>${escHtml(ageFactValue(f.aging?.assessment))}</td><th>공장건축물 비율</th><td>${escHtml(factory.pct==null?'-':`${Number(factory.pct).toFixed(1)}% (${factory.factory_count}/${factory.total_count}동)`)}</td></tr>`:''}
     <tr><th>공동주택단지</th><td colspan="3">${escHtml(apt.has_apartment===false?'건축물대장상 공동주택 용도 없음':`최대단지 ${fmtSchemeArea(apt.max_area_m2)} / 사업구역 대비 ${fmtSchemePct(apt.max_ratio_pct)} · ${apt.note||''}`)}</td></tr>
   </tbody></table></section>
