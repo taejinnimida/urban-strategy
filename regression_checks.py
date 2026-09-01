@@ -1473,6 +1473,41 @@ def check_r21_single_boundary_sequential_diagnostics() -> None:
     assert "TL_SPRD_RW" not in block or "사용하지" in block
 
 
+
+def check_r22_shared_conservation_and_collapsible_ui() -> None:
+    base=Path(__file__).resolve().parent
+    html=(base / "app.html").read_text(encoding="utf-8")
+    py=(base / "app.py").read_text(encoding="utf-8")
+    for marker in (
+        'id="siteDetail_sharedConservation"',
+        'id="ccSharedConservationMiniMap"',
+        'id="siteDetail_planningFacility"',
+        'id="ccPlanningFacilityMiniMap"',
+        "async function analyzeSharedConservation()",
+        "VWorld NED 토지이용계획 getLandUseAttr",
+        "정확 중첩면적은 원본 SHP가 연결되기 전에는 산정하지 않습니다",
+        "function enableSpatialModuleCollapsing()",
+        "function setAllSpatialModulesCollapsed(collapsed)",
+        "status.classList.add('engine-data-panel')",
+        "상생주택 보전환경",
+    ):
+        assert marker in html, marker
+    # 상단 중복 카드 제거: 서비스 템플릿 구간에 카드 제목이 없어야 한다.
+    block=html[html.index("main.innerHTML=`"):html.index("main.insertAdjacentHTML('beforeend'", html.index("main.innerHTML=`"))]
+    assert '<b>도시계획 GIS</b>' not in block
+    assert '<b>종합현황</b>' not in block
+    assert 'repeat(4,minmax(0,1fr))' in html
+    for marker in (
+        'VWORLD_LAND_USE_URL = "https://api.vworld.kr/ned/data/getLandUseAttr"',
+        'def _parse_land_use_xml',
+        '@app.post("/api/spatial/land-use-restrictions")',
+        '"geometry_basis": "parcel_attribute_only"',
+        '"biotope_grade1"',
+        '"public_interest_forest"',
+    ):
+        assert marker in py, marker
+
+
 def main() -> None:
     _run("measurement", check_measurement)
     _run("renewal spatial", check_renewal_server_intersection)
@@ -1493,6 +1528,7 @@ def main() -> None:
     _run("startup drawing + legacy UI", check_startup_drawing_and_legacy_ui)
     _run("progress truth + wide scheme facts", check_r20_progress_truth_and_wide_scheme_facts)
     _run("r21 single boundary + sequential diagnostics", check_r21_single_boundary_sequential_diagnostics)
+    _run("r22 shared conservation + collapsible ui", check_r22_shared_conservation_and_collapsible_ui)
     _run("spatial evidence maps", check_spatial_evidence_maps)
     _run("safe medical api adapter", check_safe_medical_api_adapter)
     _run("safe medical boundary resolution", check_safe_medical_boundary_resolution)

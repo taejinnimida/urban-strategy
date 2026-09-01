@@ -1171,6 +1171,7 @@ def _resolve_medical_facility_boundary(item: Dict[str, Any], site_wgs) -> Dict[s
 
 
 VWORLD_LAND_LEDGER_URL = "https://api.vworld.kr/ned/data/ladfrlList"
+VWORLD_LAND_USE_URL = "https://api.vworld.kr/ned/data/getLandUseAttr"
 LEGACY_LAND_LEDGER_URLS = [
     "https://apis.data.go.kr/1611000/nsdi/eios/LadfrlService/ladfrlList.xml",
     "http://apis.data.go.kr/1611000/nsdi/eios/LadfrlService/ladfrlList.xml",
@@ -1258,6 +1259,69 @@ def _server_land_ledger_legacy_data_go(pnu: str) -> Optional[Dict[str, Any]]:
                 return record
         except Exception:
             continue
+    return None
+
+
+
+def _parse_land_use_xml(text: str) -> List[Dict[str, Any]]:
+    """Parse VWorld NED getLandUseAttr XML.
+
+    The API returns /response/fields/field rows.  Attribute names can be
+    missing for some records, so parsing is deliberately defensive.
+    """
+    root = ET.fromstring(text)
+    result_code = (root.findtext(".//resultCode") or "").strip()
+    result_msg = (root.findtext(".//resultMsg") or "").strip()
+    if result_code and result_code not in {"00", "0"}:
+        raise RuntimeError(f"토지이용계획 API 오류 {result_code}: {result_msg or 'unknown'}")
+
+    def val(row: ET.Element, name: str) -> str:
+        node = row.find(name)
+        return (node.text or "").strip() if node is not None else ""
+
+    rows: List[Dict[str, Any]] = []
+    for row in root.findall(".//fields/field"):
+        rows.append({
+            "pnu": val(row, "pnu"),
+            "cnflcAt": val(row, "cnflcAt"),
+            "cnflcAtNm": val(row, "cnflcAtNm"),
+            "prposAreaDstrcCode": val(row, "prposAreaDstrcCode"),
+            "prposAreaDstrcCodeNm": val(row, "prposAreaDstrcCodeNm"),
+            "manageNo": val(row, "manageNo"),
+            "lastUpdtDt": val(row, "lastUpdtDt"),
+        })
+    return rows
+
+
+@lru_cache(maxsize=4096)
+def _server_land_use_rows_vworld(pnu: str) -> tuple:
+    if not _vworld_key():
+        raise RuntimeError("VWORLD_API_KEY 미설정")
+    params = {
+        "format": "xml",
+        "key": _vworld_key(),
+        "domain": _vworld_domain(),
+        "pnu": pnu,
+        "numOfRows": 1000,
+    }
+    resp, route = _vworld_get(VWORLD_LAND_USE_URL, params=params, timeout=18)
+    if resp.status_code >= 400:
+        raise RuntimeError(f"VWorld HTTP {resp.status_code}")
+    rows = _parse_land_use_xml(resp.text)
+    # cache requires immutable return; endpoint converts to normal dict/list.
+    return tuple(tuple(sorted({**row, "_route": f"server_{route}"}.items())) for row in rows)
+
+
+def _land_use_rows_for_pnu(pnu: str) -> List[Dict[str, Any]]:
+    return [dict(items) for items in _server_land_use_rows_vworld(pnu)]
+
+
+def _land_use_category(name: str) -> Optional[str]:
+    n = re.sub(r"\\s+", "", str(name or ""))
+    if "비오톱" in n and "1등급" in n:
+        return "biotope_grade1"
+    if "공익용산지" in n:
+        return "public_interest_forest"
     return None
 
 RENEWAL_LEGAL_ZIP_PATH = _data_path("uq181_legal.zip")
@@ -2965,6 +3029,10 @@ class LandLedgerOneInput(BaseModel):
     pnu: str
 
 
+class PnuListInput(BaseModel):
+    pnus: List[str] = Field(..., min_length=1, max_length=200)
+
+
 class AnalyticsEventInput(BaseModel):
     analysis_id: Optional[str] = Field(None, min_length=8, max_length=80)
     visitor_id: str = Field(..., min_length=8, max_length=80)
@@ -3421,6 +3489,93 @@ def land_ledger_one(inp: LandLedgerOneInput):
             "dataset": "토지임야정보(속성정보)",
             "operation": "ladfrlList",
             "portal_modified": "2025-07-01",
+        },
+    }
+
+
+@app.post("/api/spatial/land-use-restrictions")
+def land_use_restrictions(inp: PnuListInput):
+    """Parcel-level conservation restrictions from VWorld NED land-use plan.
+
+    This endpoint intentionally does NOT manufacture regulation geometry.
+    It reports which selected cadastral parcels have a matching official
+    land-use-plan row.  Exact overlap geometry/area requires the source SHP.
+    """
+    pnus: List[str] = []
+    seen = set()
+    for raw in inp.pnus:
+        pnu = str(raw or "").strip()
+        if len(pnu) != 19 or not pnu.isdigit() or pnu in seen:
+            continue
+        seen.add(pnu)
+        pnus.append(pnu)
+    if not pnus:
+        raise HTTPException(status_code=422, detail="유효한 19자리 PNU가 없습니다.")
+    if not _vworld_key():
+        raise HTTPException(status_code=503, detail="VWORLD_API_KEY가 설정되지 않았습니다.")
+
+    categories: Dict[str, Dict[str, Any]] = {
+        "biotope_grade1": {"affected_pnus": [], "rows": []},
+        "public_interest_forest": {"affected_pnus": [], "rows": []},
+    }
+    success_pnus: List[str] = []
+    errors: List[Dict[str, str]] = []
+
+    def work(pnu: str):
+        return pnu, _land_use_rows_for_pnu(pnu)
+
+    # Low concurrency on purpose: the prototype must not hammer VWorld and is
+    # designed for only a few simultaneous users.
+    with ThreadPoolExecutor(max_workers=min(4, len(pnus))) as pool:
+        futures = {pool.submit(work, pnu): pnu for pnu in pnus}
+        for fut in as_completed(futures):
+            pnu = futures[fut]
+            try:
+                _, rows = fut.result()
+                success_pnus.append(pnu)
+                for row in rows:
+                    cat = _land_use_category(row.get("prposAreaDstrcCodeNm"))
+                    if not cat:
+                        continue
+                    clean = {
+                        "pnu": pnu,
+                        "relation_code": str(row.get("cnflcAt") or ""),
+                        "relation_name": str(row.get("cnflcAtNm") or ""),
+                        "code": str(row.get("prposAreaDstrcCode") or ""),
+                        "name": str(row.get("prposAreaDstrcCodeNm") or ""),
+                        "manage_no": str(row.get("manageNo") or ""),
+                        "last_update": str(row.get("lastUpdtDt") or ""),
+                    }
+                    categories[cat]["rows"].append(clean)
+                    if pnu not in categories[cat]["affected_pnus"]:
+                        categories[cat]["affected_pnus"].append(pnu)
+            except Exception as exc:
+                errors.append({"pnu": pnu, "error": str(exc)[:300]})
+
+    success_set = set(success_pnus)
+    complete = len(success_set) == len(pnus)
+    for cat in categories.values():
+        cat["affected_pnus"].sort()
+        cat["present"] = bool(cat["affected_pnus"])
+        # Positive evidence is conclusive even when another PNU failed.  A
+        # negative result is conclusive only when every selected PNU was read.
+        cat["known"] = bool(cat["present"] or complete)
+        cat["checked_parcels"] = len(success_set)
+
+    return {
+        "status": "available" if complete else ("partial" if success_set else "error"),
+        "queried_parcels": len(pnus),
+        "success_parcels": len(success_set),
+        "error_parcels": len(errors),
+        "biotope_grade1": categories["biotope_grade1"],
+        "public_interest_forest": categories["public_interest_forest"],
+        "errors": errors,
+        "source": {
+            "provider": "VWorld NED",
+            "dataset": "토지이용계획정보",
+            "operation": "getLandUseAttr",
+            "geometry_basis": "parcel_attribute_only",
+            "note": "비오톱1등급·공익용산지는 해당/저촉 필지를 표시하며 규제 원도형 또는 정확 중첩면적을 의미하지 않습니다.",
         },
     }
 
