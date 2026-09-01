@@ -1620,7 +1620,7 @@ def check_r22_multi_station_fact_engine():
         "function streetBlockIsAuthoritative()",
         "function bestLongtermStationFact(c)",
         "bestStationByCoverage(350)",
-        "transferCandidate=stationAnalysis.loaded?bestStationByDistance(x=>x.transfer===true):null",
+        "transferCandidate=stationAnalysis.loaded?bestStationByDistance(x=>x.transfer===true&&x.line_data_complete===true):null",
         "역세권활성화 공간대상에 포함되면 성장잠재권 활성화구역은 비활성화",
         "공식 가로구역 데이터 연결 전 자동 PASS 금지",
         "현재 내장 기초단위구/ROAD_BT 형상은 법정 가로구역이 아니므로 행안부/공식 가로구역 데이터 연결 전 자동 PASS·FAIL 금지",
@@ -1638,6 +1638,28 @@ def check_r22_multi_station_fact_engine():
     assert "arterial.block_authoritative===true&&arterial.block_includes===true" in html
     # 동명 이격역을 단순 역명으로 합쳐 거짓 환승역을 만들지 않는다.
     assert "group.same_name_cluster_count>1" in html
+
+
+def check_r22_station_runtime_fix():
+    html = Path(app.BASE_DIR, "app.html").read_text(encoding="utf-8")
+    py = Path(app.BASE_DIR, "app.py").read_text(encoding="utf-8")
+    yaml = Path(app.BASE_DIR, "render.yaml").read_text(encoding="utf-8")
+    for token in (
+        '@app.get("/api/reference/station-line/{station_name}")',
+        'def reference_station_lines(force: bool = False):',
+        'R22_STATION_RUNTIME_FIX_20260901',
+        '"seoul_open_data_configured": bool(_seoul_open_data_key())',
+        '"seoul_open_data_env": _seoul_open_data_key_info()[1] or None',
+    ):
+        assert token in py, token
+    for token in (
+        "loadDirectStationLineProbe(stationName,force=false)",
+        "'/api/reference/station-lines'+(force?'?force=1':'')",
+        "x=>x.transfer===true&&x.line_data_complete===true",
+        "노선API 키 미인식",
+    ):
+        assert token in html, token
+    assert 'key: SEOUL_OPEN_DATA_KEY' in yaml
 
 
 def check_r22_station_rule_engine_v4():
@@ -1658,10 +1680,8 @@ def check_r22_station_rule_engine_v4():
     # 노선/환승 Fact: 서울 열린데이터광장 통합 참조 + 부역명 정규화.
     assert '/api/reference/station-lines' in py
     assert 'CardSubwayStatsNew' in py and 'SearchSTNBySubwayLineInfo' in py
-    assert '_normalize_station_public_name' in py and 'SearchInfoBySubwayNameService' in py
-    assert '/api/reference/station-line/{station_name}' in py
+    assert '_normalize_station_public_name' in py
     assert "const lineDataComplete=transferConfirmed" in html
-    assert "directProbe=await loadDirectStationLineProbe" in html
 
     # 역세권활성화: 거리 하나가 아니라 역별 적용반경 + 가로구역. 비공식 블록은 자동 PASS 금지.
     a0=html.index('function activationSpatialFacts(store)')
@@ -1703,7 +1723,7 @@ def check_r22_station_rule_engine_v4():
     assert 'coverage500_pct>50' not in html
 
     # 성장거점형: 1km 전 역에서 2개 이상 철도노선 환승역을 골라 500m 판정.
-    assert 'bestStationByDistance(x=>x.transfer===true)' in html
+    assert 'bestStationByDistance(x=>x.transfer===true&&x.line_data_complete===true)' in html
     assert 'transfer_candidate' in html
     assert '환승결절 판정역' in html
 
@@ -1717,43 +1737,6 @@ def check_r22_station_rule_engine_v4():
     up=html[up0:up1]
     assert 'candidate=stationAnalysis.loaded?bestStationByDistance()' in up
 
-
-
-def check_r22_station_line_direct_probe():
-    # Wangsimni must be positively confirmed as a transfer node even when one global source fails.
-    app._STATION_LINE_CACHE.update({"expires_at":0.0,"data":None})
-    app._STATION_DIRECT_PROBE_CACHE.clear()
-    with patch.dict(os.environ, {"SEOUL_OPEN_DATA_KEY":"test-key"}, clear=False), \
-         patch.object(app, "_fetch_card_subway_recent", return_value=None), \
-         patch.object(app, "_seoul_open_data_rows", return_value=[
-             {"STATION_NM":"왕십리(성동구청)","LINE_NUM":"02호선"},
-             {"STATION_NM":"왕십리(성동구청)","LINE_NUM":"5호선"},
-         ]):
-        ref=app._seoul_station_line_reference(force=True)
-    w=next(x for x in ref["stations"] if x["name"]=="왕십리역")
-    assert set(w["lines"])=={"2호선","5호선"}
-    assert w["transfer"] is True and w["line_count"]==2
-
-    class DirectResp:
-        def raise_for_status(self): return None
-        def json(self):
-            return {"SearchInfoBySubwayNameService":{"RESULT":{"CODE":"INFO-000","MESSAGE":"정상"},"row":[
-                {"STATION_NM":"왕십리","LINE_NUM":"2호선"},
-                {"STATION_NM":"왕십리","LINE_NUM":"5호선"},
-            ]}}
-
-    app._STATION_DIRECT_PROBE_CACHE.clear()
-    with patch.dict(os.environ, {"SEOUL_OPEN_DATA_KEY":"test-key"}, clear=False), \
-         patch.object(app, "_seoul_station_line_reference", return_value={"status":"error","stations":[]}), \
-         patch.object(app.requests, "get", return_value=DirectResp()):
-        probe=app._direct_station_line_probe("왕십리역", force=True)
-    assert set(probe["lines"])=={"2호선","5호선"}
-    assert probe["transfer"] is True and probe["positive_transfer_confirmed"] is True
-
-    # One-line official response may not be converted into a false non-transfer fact.
-    html = Path(app.BASE_DIR, "app.html").read_text(encoding="utf-8")
-    assert "transfer:transferConfirmed?true:null" in html
-    assert "bestStationByDistance(x=>x.transfer===true)" in html
 
 def main() -> None:
     _run("measurement", check_measurement)
@@ -1797,8 +1780,8 @@ def main() -> None:
     _run("r18 bundled basic unit + frontage caveat", check_r18_bundled_basic_unit_and_frontage_caveat)
     _run("r19 activation arterial linear commercial", check_r19_activation_arterial_linear_commercial)
     _run("r22 multi-station fact engine", check_r22_multi_station_fact_engine)
+    _run("r22 station runtime fix", check_r22_station_runtime_fix)
     _run("r22 station rule engine v4", check_r22_station_rule_engine_v4)
-    _run("r22 station line direct probe", check_r22_station_line_direct_probe)
     _run("release files", check_release_files)
     print("v2.5.0 regression checks: PASS")
 

@@ -5501,12 +5501,21 @@ function stationNameKey(v){return String(v||'').replace(/\([^)]*\)|（[^）]*）
 async function loadOfficialStationLineMap(force=false){
   if(stationOfficialLineMap.size&&!force)return;
   try{
-    const r=await fetch('/api/reference/station-lines',{cache:force?'reload':'default'});
+    const r=await fetch('/api/reference/station-lines'+(force?'?force=1':''),{cache:force?'reload':'no-cache'});
     if(!r.ok)throw new Error('HTTP '+r.status);
     const data=await r.json(),m=new Map();
-    for(const row of (data.stations||[])){const k=stationNameKey(row.name);if(k)m.set(k,{lines:[...(row.lines||[])],transfer:row.transfer===true,line_count:Number(row.line_count||0),sources:[...(row.sources||[])]});}
-    stationOfficialLineMap=m;stationOfficialLineMeta={status:data.status||'unknown',...(data.metadata||{})};
+    for(const row of (data.stations||[])){const k=stationNameKey(row.name);if(k)m.set(k,{lines:[...(row.lines||[])],transfer:row.transfer===true,line_count:Number(row.line_count||0),sources:[...(row.sources||[])],positive_transfer_confirmed:row.transfer_positive_confirmed===true});}
+    stationOfficialLineMap=m;stationOfficialLineMeta={status:data.status||'unknown',message:data.message||'',...(data.metadata||{})};
   }catch(e){stationOfficialLineMap=new Map();stationOfficialLineMeta={status:'error',message:String(e.message||e)};}
+}
+async function loadDirectStationLineProbe(stationName,force=false){
+  const k=stationNameKey(stationName);if(!k)return null;
+  if(stationDirectLineCache.has(k)&&!force)return stationDirectLineCache.get(k);
+  try{
+    const r=await fetch('/api/reference/station-line/'+encodeURIComponent(stationName)+(force?'?force=1':''),{cache:force?'reload':'no-cache'});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const data=await r.json();stationDirectLineCache.set(k,data);return data;
+  }catch(e){const data={status:'error',name:stationName,lines:[],line_count:0,transfer:null,errors:[String(e.message||e)]};stationDirectLineCache.set(k,data);return data;}
 }
 async function loadBuiltInStationDataset(force=false){
   const status=document.getElementById('stationDataStatus');
@@ -5848,16 +5857,24 @@ async function analyzeStationBoundary(){
     const anchor=stationFeatureAnchor(features);
     let searchDist=null;try{const zc=turf.centroid(zone);if(anchor)searchDist=turf.distance(zc,anchor,{units:'meters'});}catch(e){}
     let lines=[];
+    const staticTransferConfirmed=features.some(f=>(f.properties||{}).transfer===true)||features.some(f=>Number((f.properties||{}).line_count)>=2);
     for(const f of features)for(const l of ((f.properties||{}).station_lines||[]))if(l&&!lines.includes(l))lines.push(l);
     const official=stationOfficialLineMap.get(stationNameKey(name))||null;
     if(official)for(const l of (official.lines||[]))if(l&&!lines.includes(l))lines.push(l);
+    let directProbe=null;
+    if(lines.length<2||official?.positive_transfer_confirmed!==true){
+      directProbe=await loadDirectStationLineProbe(name,false);
+      for(const l of (directProbe?.lines||[]))if(l&&!lines.includes(l))lines.push(l);
+    }
     let lineSource=official?'SEOUL_OPEN_DATA':(lines.length?'STATION_DATA':'UNKNOWN');
-    // VWorld는 공식 노선표가 비어 있을 때만 보조한다. 공식표와 기존 내장값은 서로 합산한다.
-    if(!official&&lines.length<2){const vw=await enrichStationFromVworld(name,anchor,group.same_name_cluster_count>1);for(const l of vw)if(!lines.includes(l))lines.push(l);if(vw.length)lineSource=lines.length?'STATION_DATA+VWORLD':'VWORLD_PLACE';}
-    const transferConfirmed=lines.length>=2;
-    const lineDataComplete=transferConfirmed || !!official; // 서울 열린데이터광장 종합 노선표에서 해당 역이 확인되면 1개 노선도 비환승으로 확정한다.
+    if(directProbe?.lines?.length)lineSource=(lineSource==='UNKNOWN'?'SEOUL_DIRECT':lineSource+'+SEOUL_DIRECT');
+    let vw=[];
+    if(lines.length<2){vw=await enrichStationFromVworld(name,anchor,group.same_name_cluster_count>1);for(const l of vw)if(!lines.includes(l))lines.push(l);if(vw.length)lineSource=(lineSource==='UNKNOWN'?'VWORLD_PLACE':lineSource+'+VWORLD');}
+    const officialTransferConfirmed=staticTransferConfirmed||official?.positive_transfer_confirmed===true||directProbe?.positive_transfer_confirmed===true||directProbe?.transfer===true;
+    const transferConfirmed=officialTransferConfirmed===true;
+    const lineDataComplete=transferConfirmed;
     const cm=stationCenterMeta(features),m250=stationBufferMetrics(zone,features,250),m350=stationBufferMetrics(zone,features,350),m500=stationBufferMetrics(zone,features,500);
-    return {name,station_instance_id:`${name}#${group.cluster_index}`,same_name_cluster_count:group.same_name_cluster_count,features,distance_m:Number.isFinite(dist)?dist:null,search_distance_m:searchDist,lines,line_count:lines.length||null,transfer:transferConfirmed?true:(lineDataComplete?false:null),line_source:lineSource,line_data_complete:lineDataComplete,center_value:cm.value,center_type:cm.type,center_label:cm.label,
+    return {name,station_instance_id:`${name}#${group.cluster_index}`,same_name_cluster_count:group.same_name_cluster_count,features,distance_m:Number.isFinite(dist)?dist:null,search_distance_m:searchDist,lines,line_count:lines.length||null,transfer:transferConfirmed?true:null,line_source:lineSource,line_data_complete:lineDataComplete,transfer_evidence:transferConfirmed?(staticTransferConfirmed?'STATION_DATA':official?.positive_transfer_confirmed===true?'GLOBAL_OFFICIAL':directProbe?.positive_transfer_confirmed===true?'DIRECT_OFFICIAL':'OFFICIAL'):'UNCONFIRMED',direct_probe_status:directProbe?.status||null,direct_probe_errors:directProbe?.errors||[],center_value:cm.value,center_type:cm.type,center_label:cm.label,
       coverage250:m250.coverage_pct,coverage350:m350.coverage_pct,coverage500:m500.coverage_pct,overlap250M2:m250.overlap_m2,overlap350M2:m350.overlap_m2,overlap500M2:m500.overlap_m2,full250:m250.full_containment,full350:m350.full_containment,full500:m500.full_containment,buffers:{250:m250.buffer,350:m350.buffer,500:m500.buffer}};
   }));
   facts.sort((a,b)=>Number(a.distance_m??Infinity)-Number(b.distance_m??Infinity));
@@ -5886,7 +5903,8 @@ async function analyzeStationBoundary(){
   stationBuffer250Layer.clearLayers();stationBuffer350Layer.clearLayers();stationBuffer500Layer.clearLayers();
   for(const st of facts){if(st.buffers?.[250])stationBuffer250Layer.addData(st.buffers[250]);if(st.buffers?.[350])stationBuffer350Layer.addData(st.buffers[350]);if(st.buffers?.[500])stationBuffer500Layer.addData(st.buffers[500]);}
   const transferCandidates=facts.filter(x=>x.transfer).map(x=>`${x.name} ${x.distance_m==null?'-':x.distance_m.toFixed(0)+'m'}(${x.line_count}개 노선)`).join(' / ');
-  document.getElementById('stationGisNote').textContent=`중심 1km 후보 ${facts.length}개 전수분석 · 최근접 ${best.name} ${best.distance_m==null?'-':best.distance_m.toFixed(1)+'m'}${transferCandidates?' · 환승확정 '+transferCandidates:''} · 사업별 Rule은 최근접역이 아니라 이 후보목록 전체에서 판정역을 선택`;
+  const apiState=stationOfficialLineMeta?.key_configured===false?'노선API 키 미인식':stationOfficialLineMeta?.status==='ok'?'노선API 정상':stationOfficialLineMeta?.status==='partial'?'노선API 부분응답':stationOfficialLineMeta?.status==='error'?'노선API 오류':'노선API 상태미확인';
+  document.getElementById('stationGisNote').textContent=`중심 1km 후보 ${facts.length}개 전수분석 · 최근접 ${best.name} ${best.distance_m==null?'-':best.distance_m.toFixed(1)+'m'}${transferCandidates?' · 환승확정 '+transferCandidates:''} · ${apiState}${stationOfficialLineMeta?.credential_env?'('+stationOfficialLineMeta.credential_env+')':''} · 사업별 Rule은 후보목록 전체에서 판정역을 선택`;
   renderStationCandidateLists();refreshStationCenterMiniMaps();renderStreetBlockSpatialStatus();runAllSchemeChecks();
 }
 
@@ -7732,7 +7750,7 @@ function innovationSpatialFacts(store,typ){
   const best350=stationAnalysis.loaded?bestStationByCoverage(350):null;
   const best500=stationAnalysis.loaded?bestStationByCoverage(500):null;
   const cov350=best350?best350.coverage350:(c.stationAuto?c.coverage350:c.coverage),cov500=best500?best500.coverage500:(c.stationAuto?c.coverage500:c.coverage);
-  const transferCandidate=stationAnalysis.loaded?bestStationByDistance(x=>Number(x.line_count)>=2):null;
+  const transferCandidate=stationAnalysis.loaded?bestStationByDistance(x=>x.transfer===true&&x.line_data_complete===true):null;
   const isCore=['downtown','metro'].includes(c.center);
   const roadEvidence=store.site.spatial_evidence?.roads?.[schemeKey]||null;
   const records=store.site.building.records||[];
