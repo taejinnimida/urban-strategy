@@ -2852,15 +2852,25 @@ SEOUL_OPEN_DATA_KEY_ENV_NAMES = (
 def _seoul_open_data_key_info() -> tuple[str, str]:
     """Return the configured Seoul Open Data key and the env-var name only.
 
-    The key value itself is never exposed in API responses/logs.  v2.5.0 초기
-    배포본은 SEOUL_OPEN_DATA_KEY만 읽었지만 실제 Render 환경에는
-    data.seoul.go.kr_KEY 이름으로 등록되어 있었으므로 두 이름을 모두
-    허용한다.
+    Exact configured names are checked first.  A normalized fallback is kept only
+    to survive hosting-platform name normalization; the secret value is never
+    exposed in API responses/logs.
     """
     for env_name in SEOUL_OPEN_DATA_KEY_ENV_NAMES:
-        value = os.getenv(env_name, "").strip()
+        value = (os.getenv(env_name) or "").strip()
         if value:
             return value, env_name
+
+    aliases = {
+        "seoulopendatakey",
+        "dataseoulgokrkey",
+    }
+    for env_name, raw in os.environ.items():
+        normalized = re.sub(r"[^a-z0-9]", "", str(env_name).lower())
+        if normalized in aliases:
+            value = str(raw or "").strip()
+            if value:
+                return value, env_name
     return "", ""
 
 def _seoul_open_data_key() -> str:
@@ -3447,8 +3457,15 @@ def reference_stations():
     return _station_reference_data()
 
 
+# R22 station-line runtime hotfix.  This block is intentionally backend-only:
+# the existing multi-station frontend already consumes /api/reference/station-lines.
+STATION_RUNTIME_BUILD_MARKER = "R22_STATION_HOTFIX_20260901_0915"
 _STATION_LINE_CACHE_LOCK = threading.Lock()
-_STATION_LINE_CACHE: Dict[str, Any] = {"expires_at": 0.0, "data": None, "credential_env": None}
+_STATION_LINE_CACHE: Dict[str, Any] = {
+    "expires_at": 0.0,
+    "data": None,
+    "credential_env": None,
+}
 _STATION_DIRECT_PROBE_CACHE_LOCK = threading.Lock()
 _STATION_DIRECT_PROBE_CACHE: Dict[str, Dict[str, Any]] = {}
 
@@ -3465,17 +3482,10 @@ def _normalize_subway_line_name(value: Any) -> str:
     ln = re.sub(r"\s+", "", str(value or "").strip())
     if not ln:
         return ""
-    ln = ln.replace("서울지하철", "").replace("도시철도", "")
     ln = re.sub(r"^0+([1-9])호선$", r"\1호선", ln)
-    aliases = {
-        "경의선": "경의중앙선", "중앙선": "경의중앙선", "경의·중앙선": "경의중앙선", "경의중앙선": "경의중앙선",
-        "분당선": "수인분당선", "수인선": "수인분당선", "수인분당선": "수인분당선",
-        "경부선": "1호선", "경인선": "1호선", "경원선": "1호선", "장항선": "1호선",
-        "일산선": "3호선", "과천선": "4호선", "안산선": "4호선",
-        "9호선2~3단계": "9호선", "9호선2단계": "9호선", "9호선3단계": "9호선",
-        "공항철도1호선": "공항철도", "AREX": "공항철도",
-    }
-    return aliases.get(ln, ln)
+    # The daily ridership table sometimes uses operational labels; retain them as
+    # distinct lines rather than collapsing different rail services.
+    return ln
 
 
 def _station_line_add(grouped: Dict[str, Dict[str, Any]], name: Any, line: Any, source: str) -> None:
@@ -3484,62 +3494,42 @@ def _station_line_add(grouped: Dict[str, Dict[str, Any]], name: Any, line: Any, 
     if not nm or not ln:
         return
     key_name = _name_key(nm)
-    rec = grouped.setdefault(key_name, {
-        "name": nm + "역", "lines": [], "sources": [], "source_lines": {}, "transfer_positive_confirmed": False,
-    })
+    rec = grouped.setdefault(key_name, {"name": nm + "역", "lines": [], "sources": []})
     if ln not in rec["lines"]:
         rec["lines"].append(ln)
     if source not in rec["sources"]:
         rec["sources"].append(source)
-    sl = rec["source_lines"].setdefault(source, [])
-    if ln not in sl:
-        sl.append(ln)
-    if len(rec["lines"]) >= 2:
-        rec["transfer_positive_confirmed"] = True
 
 
 def _fetch_search_stn_table(grouped: Dict[str, Dict[str, Any]], errors: List[str], source_counts: Dict[str, int]) -> None:
-    """서울교통공사 역-노선표. 2개 이상이 확인되면 환승은 즉시 확정 가능하다."""
+    """Stable station-line table first: enough to confirm e.g. Wangsimni 2+5 transfer."""
     try:
-        rows = _seoul_open_data_rows("SearchSTNBySubwayLineInfo", 3000)
+        rows = _seoul_open_data_rows("SearchSTNBySubwayLineInfo", 5000)
         source_counts["SearchSTNBySubwayLineInfo"] = len(rows)
         for row in rows:
             _station_line_add(grouped, row.get("STATION_NM"), row.get("LINE_NUM"), "SearchSTNBySubwayLineInfo")
-        if not rows:
-            errors.append("SearchSTNBySubwayLineInfo: 정상 응답이나 row 0건")
     except Exception as exc:
         errors.append(f"SearchSTNBySubwayLineInfo: {exc}")
 
 
 def _fetch_card_subway_recent(key: str, grouped: Dict[str, Dict[str, Any]], errors: List[str], source_counts: Dict[str, int]) -> Optional[str]:
-    """전 운영기관 보강용 일별 승하차표. 3~7일 전 자료만 제한적으로 조회한다."""
+    """Broader operator coverage; only used as a supplement to the stable table."""
     now = datetime.now(ZoneInfo("Asia/Seoul")).date()
-    for days_back in (3, 4, 5, 6, 7):
+    for days_back in range(3, 8):
         d = date.fromordinal(now.toordinal() - days_back).strftime("%Y%m%d")
         try:
             url = f"{SEOUL_OPEN_DATA_BASE}/{quote(key, safe='')}/json/CardSubwayStatsNew/1/1000/{d}"
             resp = requests.get(url, timeout=8)
             resp.raise_for_status()
             payload = resp.json()
-            if not isinstance(payload, dict):
-                raise RuntimeError("응답 형식 오류")
-            top = payload.get("RESULT") or {}
-            code = str(top.get("CODE") or "") if isinstance(top, dict) else ""
-            if code and code not in {"INFO-000", "INFO-200"}:
-                raise RuntimeError(f"{code} {top.get('MESSAGE','')}")
-            body = payload.get("CardSubwayStatsNew")
-            if not isinstance(body, dict):
-                body = next((v for k, v in payload.items() if str(k).lower()=="cardsubwaystatsnew" and isinstance(v, dict)), None)
-            if not isinstance(body, dict):
-                raise RuntimeError("CardSubwayStatsNew 서비스 블록 없음")
-            result = body.get("RESULT") or {}
-            bcode = str(result.get("CODE") or "") if isinstance(result, dict) else ""
-            if bcode and bcode not in {"INFO-000", "INFO-200"}:
-                raise RuntimeError(f"{bcode} {result.get('MESSAGE','')}")
-            rows = body.get("row") or []
-            if not isinstance(rows, list):
-                raise RuntimeError("row 형식 오류")
-            if not rows:
+            top = payload.get("RESULT") if isinstance(payload, dict) else None
+            if isinstance(top, dict):
+                code = str(top.get("CODE") or "")
+                if code and code not in {"INFO-000", "INFO-200"}:
+                    raise RuntimeError(f"{code} {top.get('MESSAGE','')}")
+            body = payload.get("CardSubwayStatsNew") if isinstance(payload, dict) else None
+            rows = body.get("row") if isinstance(body, dict) else None
+            if not isinstance(rows, list) or not rows:
                 errors.append(f"CardSubwayStatsNew {d}: row 0건")
                 continue
             source_counts["CardSubwayStatsNew"] = len(rows)
@@ -3553,7 +3543,7 @@ def _fetch_card_subway_recent(key: str, grouped: Dict[str, Dict[str, Any]], erro
 
 
 def _seoul_station_line_reference(force: bool = False) -> Dict[str, Any]:
-    """역-노선 기준표. 실패/미설정 상태를 장시간 캐시하지 않는다."""
+    """Official station-line reference; unavailable/empty results are never long-cached."""
     key, key_env = _seoul_open_data_key_info()
     now_ts = datetime.now().timestamp()
     with _STATION_LINE_CACHE_LOCK:
@@ -3571,26 +3561,38 @@ def _seoul_station_line_reference(force: bool = False) -> Dict[str, Any]:
         "credential_env": key_env or None,
         "key_configured": bool(key),
         "cache_hit": False,
-        "build_marker": "R22_STATION_RUNTIME_FIX_20260901",
+        "build_marker": STATION_RUNTIME_BUILD_MARKER,
     }
     if not key:
-        return {"status":"unavailable","stations":[],"metadata":meta,"message":"서울 열린데이터광장 인증키 미설정"}
+        return {
+            "status": "unavailable",
+            "stations": [],
+            "metadata": meta,
+            "message": "서울 열린데이터광장 인증키 미설정",
+        }
 
     grouped: Dict[str, Dict[str, Any]] = {}
     errors: List[str] = []
     source_counts = {"SearchSTNBySubwayLineInfo": 0, "CardSubwayStatsNew": 0}
-    # 먼저 고정 역-노선표를 읽어 왕십리 2·5호선 같은 환승을 빠르게 확정한다.
     _fetch_search_stn_table(grouped, errors, source_counts)
-    # 이후 코레일/공항철도 등 타 운영기관 노선을 일별 자료로 보강한다.
     used_date = _fetch_card_subway_recent(key, grouped, errors, source_counts)
 
     stations = sorted(grouped.values(), key=lambda x: x["name"])
+    broad_source_ok = source_counts.get("CardSubwayStatsNew", 0) > 0
     for rec in stations:
-        rec["lines"] = sorted(rec["lines"])
+        rec["lines"] = sorted(set(rec["lines"]))
         rec["line_count"] = len(rec["lines"])
-        rec["transfer"] = len(rec["lines"]) >= 2
-        rec["transfer_positive_confirmed"] = rec["transfer"] is True
-        rec["all_operator_daily_seen"] = "CardSubwayStatsNew" in rec.get("sources", [])
+        if rec["line_count"] >= 2:
+            rec["transfer"] = True
+            rec["transfer_status"] = "CONFIRMED_TRANSFER"
+        elif broad_source_ok and "CardSubwayStatsNew" in rec.get("sources", []):
+            rec["transfer"] = False
+            rec["transfer_status"] = "CONFIRMED_SINGLE_LINE"
+        else:
+            # One line from a partial operator table does not prove non-transfer.
+            rec["transfer"] = None
+            rec["transfer_status"] = "UNRESOLVED_SINGLE_SOURCE"
+
     status = "ok" if stations and not errors else ("partial" if stations else "error")
     wang = next((x for x in stations if _name_key(_normalize_station_public_name(x.get("name"))) == _name_key("왕십리")), None)
     meta.update({
@@ -3598,64 +3600,100 @@ def _seoul_station_line_reference(force: bool = False) -> Dict[str, Any]:
         "station_count": len(stations),
         "source_counts": source_counts,
         "errors": errors[:10],
-        "wangsimni_probe": {"found": bool(wang), "lines": list((wang or {}).get("lines") or []), "line_count": int((wang or {}).get("line_count") or 0), "transfer": (wang or {}).get("transfer")},
+        "wangsimni_probe": {
+            "found": bool(wang),
+            "lines": list((wang or {}).get("lines") or []),
+            "line_count": int((wang or {}).get("line_count") or 0),
+            "transfer": (wang or {}).get("transfer"),
+        },
     })
-    result = {"status":status,"stations":stations,"metadata":meta}
+    result = {"status": status, "stations": stations, "metadata": meta}
+
+    # Long cache only when actual station rows exist; failure/zero rows self-heal quickly.
     ttl = 21600 if stations else 60
     with _STATION_LINE_CACHE_LOCK:
-        _STATION_LINE_CACHE.update({"expires_at": now_ts + ttl, "data": result, "credential_env": key_env or None})
+        _STATION_LINE_CACHE.update({
+            "expires_at": now_ts + ttl,
+            "data": result,
+            "credential_env": key_env or None,
+        })
     return result
 
 
 def _direct_station_line_probe(station_name: str, force: bool = False) -> Dict[str, Any]:
-    """후보역 1개 직접 확인. 전역표에서 찾고, 없으면 서울교통공사 역명검색으로 보강한다."""
+    """Diagnostic single-station probe used to verify runtime merge before scheme testing."""
     nm = _normalize_station_public_name(station_name)
     if not nm:
-        return {"status":"invalid","name":station_name,"lines":[],"line_count":0,"transfer":None}
+        return {"status": "invalid", "name": station_name, "lines": [], "line_count": 0, "transfer": None}
     cache_key = _name_key(nm)
     now_ts = datetime.now().timestamp()
     with _STATION_DIRECT_PROBE_CACHE_LOCK:
         cached = _STATION_DIRECT_PROBE_CACHE.get(cache_key)
         if not force and cached and now_ts < float(cached.get("expires_at") or 0):
             return dict(cached.get("data") or {}, cache_hit=True)
+
     key, key_env = _seoul_open_data_key_info()
     if not key:
-        return {"status":"unavailable","name":nm+"역","lines":[],"line_count":0,"transfer":None,"key_configured":False,"credential_env":None}
-    lines: List[str] = []
+        return {
+            "status": "unavailable", "name": nm + "역", "lines": [], "line_count": 0,
+            "transfer": None, "key_configured": False, "credential_env": None,
+            "build_marker": STATION_RUNTIME_BUILD_MARKER,
+        }
+
     errors: List[str] = []
+    lines: List[str] = []
     try:
         ref = _seoul_station_line_reference(force=force)
-        row = next((x for x in ref.get("stations",[]) if _name_key(_normalize_station_public_name(x.get("name"))) == cache_key), None)
+        row = next((x for x in ref.get("stations", []) if _name_key(_normalize_station_public_name(x.get("name"))) == cache_key), None)
         if row:
-            lines = list(row.get("lines") or [])
+            lines.extend(row.get("lines") or [])
     except Exception as exc:
         errors.append(f"global reference: {exc}")
-    # 전역표에 없을 때만 역명 직접조회. 2개 이상이면 그 즉시 환승 확정.
-    if len(lines) < 2:
+
+    if len(set(lines)) < 2:
         try:
             station_q = quote(nm, safe="")
             url = f"{SEOUL_OPEN_DATA_BASE}/{quote(key, safe='')}/json/SearchInfoBySubwayNameService/1/50/{station_q}/"
             resp = requests.get(url, timeout=8)
             resp.raise_for_status()
             payload = resp.json()
-            top = payload.get("RESULT") or {} if isinstance(payload, dict) else {}
-            code = str(top.get("CODE") or "") if isinstance(top, dict) else ""
-            if code and code not in {"INFO-000","INFO-200"}:
-                raise RuntimeError(f"{code} {top.get('MESSAGE','')}")
+            top = payload.get("RESULT") if isinstance(payload, dict) else None
+            if isinstance(top, dict):
+                code = str(top.get("CODE") or "")
+                if code and code not in {"INFO-000", "INFO-200"}:
+                    raise RuntimeError(f"{code} {top.get('MESSAGE','')}")
             body = payload.get("SearchInfoBySubwayNameService") if isinstance(payload, dict) else None
             if isinstance(body, dict):
                 for row in body.get("row") or []:
-                    if not isinstance(row, dict): continue
-                    if _name_key(_normalize_station_public_name(row.get("STATION_NM"))) != cache_key: continue
+                    if not isinstance(row, dict):
+                        continue
+                    if _name_key(_normalize_station_public_name(row.get("STATION_NM"))) != cache_key:
+                        continue
                     ln = _normalize_subway_line_name(row.get("LINE_NUM"))
-                    if ln and ln not in lines: lines.append(ln)
+                    if ln:
+                        lines.append(ln)
         except Exception as exc:
             errors.append(f"SearchInfoBySubwayNameService: {exc}")
+
     lines = sorted(set(lines))
     transfer = True if len(lines) >= 2 else None
-    result = {"status":"ok" if lines else "error","name":nm+"역","lines":lines,"line_count":len(lines),"transfer":transfer,"positive_transfer_confirmed":transfer is True,"key_configured":True,"credential_env":key_env,"errors":errors[:5]}
+    result = {
+        "status": "ok" if lines else "error",
+        "name": nm + "역",
+        "lines": lines,
+        "line_count": len(lines),
+        "transfer": transfer,
+        "transfer_status": "CONFIRMED_TRANSFER" if transfer else "UNRESOLVED",
+        "key_configured": True,
+        "credential_env": key_env,
+        "errors": errors[:5],
+        "build_marker": STATION_RUNTIME_BUILD_MARKER,
+    }
     with _STATION_DIRECT_PROBE_CACHE_LOCK:
-        _STATION_DIRECT_PROBE_CACHE[cache_key] = {"expires_at": now_ts + (21600 if lines else 60), "data": result}
+        _STATION_DIRECT_PROBE_CACHE[cache_key] = {
+            "expires_at": now_ts + (21600 if lines else 60),
+            "data": result,
+        }
     return result
 
 
@@ -3666,6 +3704,7 @@ def reference_station_line(station_name: str, force: bool = False):
 
 @app.get("/api/reference/station-lines")
 def reference_station_lines(force: bool = False):
+    """Official station-line reference. ?force=1 bypasses the success cache."""
     return _seoul_station_line_reference(force=force)
 
 
@@ -3673,12 +3712,6 @@ def reference_station_lines(force: bool = False):
 def reference_centers():
     """서울시 중심지체계 도형 기준자료."""
     return _center_reference_data()
-
-
-@app.get("/api/reference/station-lines")
-def reference_station_lines():
-    """공식 노선별 역명 자료를 역사경계 Fact에 결합하기 위한 노선 참조표."""
-    return _seoul_station_line_reference()
 
 
 @app.get("/api/reference/renewal-zones")
@@ -3695,9 +3728,10 @@ def health():
         "engine": "site_fact_store_v2.5.0_r11",
         "map": "leaflet-draw",
         "vworld_configured": vworld_ready(),
-        "build_marker": "R22_STATION_RUNTIME_FIX_20260901",
+        "build_marker": STATION_RUNTIME_BUILD_MARKER,
         "seoul_open_data_configured": bool(_seoul_open_data_key()),
         "seoul_open_data_env": _seoul_open_data_key_info()[1] or None,
+        "seoul_env_names_detected": sorted([k for k in os.environ if "seoul" in k.lower() or "data.seoul" in k.lower()]),
         "analytics_storage": _analytics_storage_mode(),
         "admin_configured": bool(os.getenv("ADMIN_PASSWORD", "")),
         "vworld_domain": _vworld_domain() if vworld_ready() else None,
