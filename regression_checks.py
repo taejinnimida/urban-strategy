@@ -1211,7 +1211,11 @@ def check_r11_data_recovery_fix1() -> None:
 
     fetch_block = html[html.index("async function fetchRoadNetwork("):html.index("async function analyzeRoadAccess()", html.index("async function fetchRoadNetwork("))]
     assert "TL_SPRD_MANAGE" in fetch_block and "ROAD_BT" in fetch_block
-    assert "/api/spatial/roads" not in fetch_block
+    # R22: 서버 내장 도로명주소 전자지도(/api/spatial/roads)를 1순위 Fact로 쓰고,
+    # 그게 비어있거나 오류일 때만 VWorld 실시간 조회로 fallback한다(우선순위 반전).
+    assert "'/api/spatial/roads'" in fetch_block
+    assert fetch_block.index("'/api/spatial/roads'") < fetch_block.index("trySpatialLayerCandidates(['TL_SPRD_MANAGE'")
+    assert "fallback" in fetch_block
     assert "TL_SPRD_RW 실폭도로를 사용하지 않는다" in fetch_block
 
     annotate = html[html.index("function annotateRoadWidths"):html.index("function boundaryLines", html.index("function annotateRoadWidths"))]

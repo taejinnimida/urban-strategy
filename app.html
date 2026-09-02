@@ -5245,20 +5245,35 @@ function computeSiteFrontageWidthCoverage(manageFeatures,siteGeometry,thresholdM
 }
 async function fetchRoadNetwork(radiusM=240){
   if(!activeGeometry)return {rw:[],manage:[],source:'none',errors:[],approximation:true,road_mode:'none',search_radius_m:radiusM,diagnostic:null};
-  const zone=turf.buffer(turf.feature(activeGeometry),radiusM,{units:'meters'}).geometry;
   const errors=[];
   // 지적·가로구역·접도 연산에는 TL_SPRD_RW 실폭도로를 사용하지 않는다.
-  // 도로폭 Fact는 VWorld TL_SPRD_MANAGE의 ROAD_BT를 사용하고, 화면용 영향범위만 중심선 폭원으로 버퍼한다.
-  const mgRes=await trySpatialLayerCandidates(['TL_SPRD_MANAGE','LT_C_SPRD_MANAGE'],zone,['rds_man_no','RDS_MAN_NO']);
-  errors.push(...(mgRes.errors||[]));
-  const mg=mgRes.features||[];
+  // 도로폭 Fact는 ROAD_BT를 사용하고, 화면용 영향범위만 중심선 폭원으로 버퍼한다.
+  //
+  // 1순위: 서버 내장 도로명주소 전자지도(TL_SPRD_MANAGE, road_seoul.zip) — /api/spatial/roads.
+  // 이미 검수된 공식 원본이라 VWorld 실시간 응답 여부와 무관하게 항상 쓸 수 있다.
+  // 2순위: 서버 내장 자료가 비어있거나 오류일 때만 VWorld 실시간 조회로 fallback한다.
+  let mg=[],usedSource='';
+  try{
+    const bundled=await fetchBackendJson('/api/spatial/roads',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry:activeGeometry})});
+    const feats=bundled?.manage?.features||[];
+    if(feats.length){mg=feats;usedSource='도로명주소 전자지도 · TL_SPRD_MANAGE · ROAD_BT';}
+    else errors.push('서버 내장 도로자료(TL_SPRD_MANAGE): 대상지 인근 도로중심선 0건');
+  }catch(e){
+    errors.push(`서버 내장 도로자료 조회 실패: ${String(e?.message||e)}`);
+  }
+  if(!mg.length){
+    const zone=turf.buffer(turf.feature(activeGeometry),radiusM,{units:'meters'}).geometry;
+    const mgRes=await trySpatialLayerCandidates(['TL_SPRD_MANAGE','LT_C_SPRD_MANAGE'],zone,['rds_man_no','RDS_MAN_NO']);
+    errors.push(...(mgRes.errors||[]));
+    mg=mgRes.features||[];
+    if(mg.length)usedSource='VWorld TL_SPRD_MANAGE 도로중심선 + ROAD_BT (fallback)';
+  }
   const {derived,diagnostic}=roadPolygonsFromCenterlines(mg);
-  diagnostic.layer_id=mgRes.id||null;
   diagnostic.site_frontage=computeSiteFrontageWidthCoverage(mg,activeGeometry);
   if(derived.length){
-    return {rw:derived,manage:mg,source:'VWorld TL_SPRD_MANAGE 도로중심선 + ROAD_BT',errors,approximation:true,road_mode:'centerline_width_attribute',search_radius_m:radiusM,diagnostic};
+    return {rw:derived,manage:mg,source:usedSource||'도로명주소 전자지도 · TL_SPRD_MANAGE · ROAD_BT',errors,approximation:true,road_mode:'centerline_width_attribute',search_radius_m:radiusM,diagnostic};
   }
-  // VWorld에서 도로구간을 못 얻은 경우 서버 ZIP의 레이어 구성만 확인한다.
+  // 서버 내장 자료도, VWorld도 모두 도로구간을 못 준 경우 서버 ZIP의 레이어 구성만 확인한다.
   // TL_SPRD_RW가 있어도 지적/가로구역 계산에 대체 사용하지 않는다.
   try{
     const inv=await fetchBackendJson('/api/spatial/road-data-status');
