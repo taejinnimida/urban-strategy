@@ -271,7 +271,15 @@ def check_feedback_and_ui() -> None:
     assert "function urbanPlanningAgeAssessment" in html
     assert "function renewalAgeAssessment" in html
     assert "URBAN_PLANNING_AGE" in html and "RENEWAL_AGE" in html
-    assert "records:buildingRawFacts()" in html
+    # buildSiteFactStore()가 buildingRawFacts()를 한 번 호출해 buildingRecords에 담고
+    # site.building.records / site.factory_usage 양쪽이 그 결과를 공유 재사용한다
+    # (예전엔 records:buildingRawFacts()를 인라인으로 두 번 부르던 자리였음 — 중복 호출 제거).
+    store0 = html.index("function buildSiteFactStore()")
+    store1 = html.index("function activationSpatialFacts(store)", store0)
+    store_block = html[store0:store1]
+    assert "const buildingRecords=buildingRawFacts();" in store_block
+    assert "records:buildingRecords" in store_block
+    assert "factory_usage:computeFactoryUsageFact(buildingRecords" in store_block
     assert "derived:{age:null}" in html
     assert "aging:{route:route.route,assessment:schemeAgeFact(store,'activation',route.route)}" in html
     assert "도시계획계 노후도" in html and "도정법계 노후도" in html
@@ -1731,6 +1739,106 @@ def check_r22_station_rule_engine_v4():
     assert 'candidate=stationAnalysis.loaded?bestStationByDistance()' in up
 
 
+def check_factory_usage_common_fact() -> None:
+    """공장용도 현황: 공통 Fact(store.site.factory_usage) → 역세권 장기전세·도심복합 주거중심형이
+    공유 참조하는 구조. 산식은 '공장용도 건축물 수 ÷ 전체 건축물 수 × 100'(동수 기준) 고정이며,
+    공간현황 모듈 자체는 10% 충족/미충족 같은 사업판정을 하지 않는다.
+    """
+    html = Path(app.BASE_DIR, "app.html").read_text(encoding="utf-8")
+
+    # main_use/other_use 기준 공장 판정 정규식은 isFactoryBuildingRecord() 하나만 있어야 한다.
+    # (다른 곳의 /공장/.test(text) 는 무관한 용도의 항목명→근거ID 매핑이라 여기서는 안 본다.)
+    assert html.count("/공장/.test(`${r") == 1, "isFactoryBuildingRecord 밖에서 main_use/other_use 공장 판정 정규식이 중복 작성됨"
+    assert "function isFactoryBuildingRecord(r)" in html
+
+    # 공통 Fact 산식 확인 — 동수 기준 고정, 연면적/대지면적 비율로 바뀌지 않았는지.
+    fu0 = html.index("function computeFactoryUsageFact(records,buildingFeatures,manualPct)")
+    fu1 = html.index("function factoryUsageAsSchemeFact", fu0)
+    fu_block = html[fu0:fu1]
+    assert "isFactoryBuildingRecord" in fu_block
+    assert "factoryCount/total*100" in fu_block
+    assert "total_floor_area_m2" not in fu_block
+    assert "plat_area_m2" not in fu_block
+    assert "calculation_basis:'BUILDING_COUNT'" in fu_block
+
+    # polygon 매칭: 관리번호 확정 매칭 또는 필지 내 1:1일 때만 매칭, 그 외엔 unmatched/ambiguous로 남긴다
+    # (특정 건물을 임의로 공장이라 확정하지 않는다).
+    mt0 = html.index("function matchFactoryBuildingFeatures(factoryRecords,buildingFeatures)")
+    mt1 = html.index("function computeFactoryUsageFact", mt0)
+    match_block = html[mt0:mt1]
+    assert "MGM_BLDRGST_PK" in match_block
+    assert "PARCEL_SINGLE_BUILDING" in match_block
+    assert "unmatched.push(r.id)" in match_block
+    assert "ambiguousParcels.add(pnu)" in match_block
+
+    # buildSiteFactStore가 공통 Fact를 만들어 site.factory_usage에 싣는다.
+    store0 = html.index("function buildSiteFactStore()")
+    store1 = html.index("function activationSpatialFacts(store)", store0)
+    store_block = html[store0:store1]
+    assert "factory_usage:computeFactoryUsageFact(buildingRecords,currentBuildingFeatures,c.factory)" in store_block
+
+    # 역세권 장기전세: c.factory 단독이 아니라 store.site.factory_usage를 우선 참조.
+    lt0 = html.index("function longtermSpatialFacts(store)")
+    lt1 = html.index("function checkLongtermFromFacts", lt0)
+    longterm_block = html[lt0:lt1]
+    assert "store.site.factory_usage" in longterm_block
+    assert "factoryUsage?.factory_ratio_pct" in longterm_block
+    assert "factoryUsage?.mismatch" in longterm_block
+    assert "factoryPct<10" in longterm_block
+
+    # 도심복합개발 주거중심형: innovationFactoryBuildingRatio()를 별도로 다시 계산하지 않고
+    # 동일한 factoryUsageAsSchemeFact(store.site.factory_usage) 어댑터를 쓴다.
+    inv0 = html.index("function innovationSpatialFacts(store,typ)")
+    inv1 = html.index("function checkInnovationFromFacts", inv0)
+    inv_block = html[inv0:inv1]
+    assert "factoryUsageAsSchemeFact(store.site.factory_usage)" in inv_block
+    assert "innovationFactoryBuildingRatio(records" not in inv_block
+
+    chk0 = html.index("function checkInnovationFromFacts(store,f)")
+    chk1 = html.index("function urbanRedevelopmentSpatialFacts", chk0)
+    chk_block = html[chk0:chk1]
+    assert "f.zoning.factory_pct<10" in chk_block
+    assert "factoryMismatch" in chk_block
+
+    # 성장거점형(growth) 분기에는 공장비율 조건을 억지로 추가하지 않는다.
+    growth_branch_start = chk_block.index("if(f.type==='growth'){")
+    growth_branch_end = chk_block.index("}else{", growth_branch_start)
+    growth_branch = chk_block[growth_branch_start:growth_branch_end]
+    assert "factory" not in growth_branch.lower()
+
+    # 공간현황 모듈 자체는 10% 판정을 하지 않는다 — Fact(비율·건수)만 표시.
+    render0 = html.index("function renderFactoryUsageSpatialStatus()")
+    render1 = html.index("function renderZoningSpatialStatus()", render0)
+    render_block = html[render0:render1]
+    assert "<10" not in render_block and ">=10" not in render_block and "FAIL" not in render_block
+
+    # 수기입력(scheme_factory_ratio)은 삭제하지 않고 보정용으로 남긴다.
+    assert 'id="scheme_factory_ratio"' in html
+
+
+
+def check_safe_housing_popup_always_opens() -> None:
+    """안심주택 카드는 분석 전/목적필터/렌더 오류 상태에서도 모달 자체를 항상 연다."""
+    html = Path(app.BASE_DIR, "app.html").read_text(encoding="utf-8")
+    assert "function openSafeHousingDetailSafely()" in html
+    show0 = html.index("function showCandidateBasis(name)")
+    show1 = html.index("function scrollToSchemeDetail", show0)
+    show = html[show0:show1]
+    assert "if(name==='safe'){openSafeHousingDetailSafely();return;}" in show
+    opener0 = html.index("function openSafeHousingDetailSafely()")
+    opener1 = html.index("function showSmallscaleRouteBasis", opener0)
+    opener = html[opener0:opener1]
+    assert "openReviewModal('schemeDetailModal')" in opener
+    assert "renderSchemePopupFallback('safe',e)" in opener
+    assert "검토결과를 불러오는 중입니다" in opener
+    safe0 = html.index("function renderSafeHousingDetailPopup()")
+    safe1 = html.index("function renderSharedHousingDetailPopup()", safe0)
+    safe = html[safe0:safe1]
+    assert "latestSiteFactStore||analysisState.fact_store||null" in safe
+    assert "buildSiteFactStore()" not in safe
+    assert "현황분석 필요" in safe
+    assert "목적사업 필터" in safe
+
 def check_safe_housing_entrance_350() -> None:
     """안심주택 350m 예외경로 전용 승강장+출입구 통합범위 판정.
 
@@ -1917,7 +2025,9 @@ def main() -> None:
     _run("r19 activation arterial linear commercial", check_r19_activation_arterial_linear_commercial)
     _run("r22 multi-station fact engine", check_r22_multi_station_fact_engine)
     _run("r22 station rule engine v4", check_r22_station_rule_engine_v4)
+    _run("safe housing popup always opens", check_safe_housing_popup_always_opens)
     _run("safe housing entrance 350m", check_safe_housing_entrance_350)
+    _run("factory usage common fact", check_factory_usage_common_fact)
     _run("r22 growth frontage engine", check_r22_growth_frontage_engine)
     _run("release files", check_release_files)
     print("v2.5.0 regression checks: PASS")

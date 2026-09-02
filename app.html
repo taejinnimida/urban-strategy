@@ -1740,6 +1740,24 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="spatial-caption">도면정보 · 구역 내 건축물 진하게 / 구역 밖 주변건축물 얇게 · 법정 노후도 판정은 아래 제도별 현황을 사용</div>
 <div class="spatial-mini-map" id="ccBuildingMiniMap"></div>
 </section>
+<section class="spatial-module" id="siteDetail_factoryUsage">
+<div class="spatial-module-head"><b>공장용도 현황</b><span id="ccFactoryState">건축HUB 조회 전</span></div>
+<div class="spatial-metrics">
+<div><span>전체 건축물</span><b id="spFactoryTotal">-</b></div>
+<div><span>공장용도 건축물</span><b id="spFactoryCount">-</b></div>
+<div><span>공장건축물 비율</span><b id="spFactoryRatio">-</b></div>
+<div><span>산정기준</span><b id="spFactorySource">-</b></div>
+</div>
+<div class="spatial-caption" id="spFactoryMismatch" style="color:#b54708"></div>
+<div class="spatial-tags"><span class="map-legend-chip" style="--zone-fill:#f04438;--zone-border:#b42318">공장용도(동 특정)</span><span class="map-legend-chip" style="--zone-fill:#fec84b;--zone-border:#b54708">공장용도(필지단위)</span><span>일반건축물</span></div>
+<div class="spatial-caption">도면정보 · 건축물 관리번호가 확실히 일치하거나, 같은 필지에 건물·공장레코드가 각 1개뿐일 때만 개별 동을 강조합니다. 그 외에는 필지 단위로만 '공장용도 존재'를 표시하고 특정 동을 임의로 확정하지 않습니다.</div>
+<div class="spatial-mini-map" id="ccFactoryMiniMap"></div>
+<div class="road-condition-table-wrap">
+  <table class="road-condition-table"><thead><tr><th>순번</th><th>지번(PNU)</th><th>건물명</th><th>주용도</th><th>기타용도</th><th>사용승인일</th><th>매칭상태</th></tr></thead><tbody id="spFactoryTableBody"><tr><td colspan="7">건축HUB 조회 후 공장용도 건축물이 표시됩니다.</td></tr></tbody></table>
+</div>
+<button class="btn" id="spFactoryToggleBtn" type="button" onclick="toggleFactoryTableShowAll()" style="margin-top:6px">전체 건축물 보기</button>
+<div class="spatial-caption">산정기준 · 공장건축물 비율(동수 기준 초기검토) = 공장용도 건축물 수 ÷ 전체 건축물 수 × 100. 연면적·대지면적 비율이 아닙니다. 이 값은 역세권 장기전세(준공업 공장비율 10% 미만)와 도심복합개발 주거중심형(준공업 공장비율 10% 미만)이 동일하게 참조하는 공통 Fact입니다 — 여기서는 10% 충족/미충족을 판정하지 않습니다.</div>
+</section>
 <section class="spatial-module" id="siteDetail_age">
 <div class="spatial-module-head"><b>제도별 노후도 현황</b><span id="spAgeState">건축HUB 조회 전</span></div>
 <div class="spatial-age-list" id="spAgeFactList"><div class="spatial-age-row"><div class="spatial-age-name"><b>분석 전</b><span>사업별 노후도 기준</span></div><div class="spatial-age-value"><strong>-</strong><small>건축물 사용승인일·구조·용도를 먼저 조회합니다.</small></div><em class="spatial-age-status REVIEW">확인필요</em></div></div>
@@ -2959,6 +2977,18 @@ const ccBuildingMiniBuildings=L.geoJSON(null,{style:f=>{
 }}).addTo(ccBuildingMini);
 const ccBuildingMiniBoundary=L.geoJSON(null,{style:{weight:2.8,color:'#101828',fillOpacity:0}}).addTo(ccBuildingMini);
 
+const ccFactoryMini=L.map('ccFactoryMiniMap',{
+  zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,
+  doubleClickZoom:false,boxZoom:false,keyboard:false,touchZoom:false
+}).setView([37.5665,126.9780],15);
+const ccFactoryMiniBuildings=L.geoJSON(null,{style:f=>{
+  const s=String((f.properties||{})._factory_status||'');
+  if(s==='MATCHED')return {weight:1.6,color:'#b42318',fillColor:'#f04438',fillOpacity:.66};
+  if(s==='PARCEL_ONLY')return {weight:1.35,color:'#b54708',fillColor:'#fec84b',fillOpacity:.5};
+  return {weight:.9,color:'#98a2b3',fillColor:'#eaecf0',fillOpacity:.35};
+}}).addTo(ccFactoryMini);
+const ccFactoryMiniBoundary=L.geoJSON(null,{style:{weight:2.8,color:'#101828',fillOpacity:0}}).addTo(ccFactoryMini);
+
 
 let centerReferenceFeatures=[];
 const ccStationMini=L.map('ccStationMiniMap',{zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,doubleClickZoom:false,boxZoom:false,keyboard:false,touchZoom:false}).setView([37.5665,126.9780],15);
@@ -3184,6 +3214,83 @@ function refreshCommonParcelBases(){
   for(const lyr of layers){
     try{lyr.clearLayers();if(fs.length)lyr.addData({type:'FeatureCollection',features:fs});if(lyr.bringToBack)lyr.bringToBack();}catch(e){}
   }
+}
+let factoryTableShowAll=false;
+function toggleFactoryTableShowAll(){factoryTableShowAll=!factoryTableShowAll;renderFactoryUsageSpatialStatus();}
+// 공장용도 현황: 역세권 장기전세·도심복합개발 주거중심형이 참조하는 공통 Fact(store.site.factory_usage)를
+// 그대로 화면에 보여준다. 여기서는 10% 충족/미충족 같은 사업판정을 하지 않고 Fact만 표시한다.
+function renderFactoryUsageSpatialStatus(){
+  const state=document.getElementById('ccFactoryState');
+  const fu=analysisState.factory_usage||null;
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v==null?'-':String(v);};
+  ccFactoryMiniBuildings.clearLayers();ccFactoryMiniBoundary.clearLayers();
+  if(!fu){
+    if(state)state.textContent='건축HUB 조회 전';
+    set('spFactoryTotal','-');set('spFactoryCount','-');set('spFactoryRatio','-');set('spFactorySource','-');
+    const mm=document.getElementById('spFactoryMismatch');if(mm)mm.textContent='';
+    const body=document.getElementById('spFactoryTableBody');if(body)body.innerHTML='<tr><td colspan="7">건축HUB 조회 후 공장용도 건축물이 표시됩니다.</td></tr>';
+    return;
+  }
+  if(!fu.total_building_count&&fu.source==='MANUAL'){
+    if(state)state.textContent='수기입력(건축HUB 자료 없음)';
+    set('spFactoryTotal','자료 없음');set('spFactoryCount','자료 없음');
+    set('spFactoryRatio',fu.factory_ratio_pct==null?'-':`${Number(fu.factory_ratio_pct).toFixed(1)}%`);
+    set('spFactorySource','사용자 입력 · 자동자료 미확보');
+    const mm=document.getElementById('spFactoryMismatch');if(mm)mm.textContent='자동 공장비율을 계산할 건축HUB 자료가 없어 수기값을 임시 사용합니다.';
+    const body=document.getElementById('spFactoryTableBody');if(body)body.innerHTML='<tr><td colspan="7">건축HUB 건축물 목록이 없어 공장 건축물 개별도형·목록은 표시하지 않습니다.</td></tr>';
+    return;
+  }
+  if(!fu.total_building_count){
+    if(state)state.textContent='건축HUB 조회 전';
+    set('spFactoryTotal','-');set('spFactoryCount','-');set('spFactoryRatio','-');set('spFactorySource','-');
+    const mm=document.getElementById('spFactoryMismatch');if(mm)mm.textContent='';
+    const body=document.getElementById('spFactoryTableBody');if(body)body.innerHTML='<tr><td colspan="7">건축HUB 조회 후 공장용도 건축물이 표시됩니다.</td></tr>';
+    return;
+  }
+  if(state)state.textContent=fu.source==='MANUAL'?'수기입력(건축물대장 자료 없음)':'건축HUB 표제부 AUTO';
+  set('spFactoryTotal',`${fu.total_building_count}동`);
+  set('spFactoryCount',`${fu.factory_building_count}동`);
+  set('spFactoryRatio',fu.factory_ratio_pct==null?'-':`${Number(fu.factory_ratio_pct).toFixed(1)}%`);
+  set('spFactorySource',fu.source==='MANUAL'?'수기입력':'건축HUB 표제부(동수 기준 초기검토)');
+  const mm=document.getElementById('spFactoryMismatch');
+  if(mm)mm.textContent=fu.mismatch?`자동 ${Number(fu.mismatch.auto).toFixed(1)}% / 수기입력 ${Number(fu.mismatch.manual).toFixed(1)}% · 값 불일치 확인 필요`:'';
+
+  // 매칭된 건물 polygon만 강조(MATCHED). 필지 단위로만 확인된 경우(PARCEL_ONLY)는 다르게 표시하고,
+  // 개별 동을 특정할 수 없는 건 그대로 UNKNOWN(=일반건축물과 동일 표시)로 둔다.
+  const matchedKeys=new Set((fu.matched_features||[]).map(m=>m.feature_key).filter(Boolean));
+  const ambiguousParcels=new Set(fu.ambiguous_parcels||[]);
+  const clones=(currentBuildingFeatures||[]).map(f=>{
+    const c2=cloneFeature(f);
+    const key=String((c2.properties||{})._building_key||'');
+    const pnu=String((c2.properties||{}).pnu||'');
+    c2.properties=c2.properties||{};
+    if(key&&matchedKeys.has(key))c2.properties._factory_status='MATCHED';
+    else if(pnu&&ambiguousParcels.has(pnu))c2.properties._factory_status='PARCEL_ONLY';
+    return c2;
+  });
+  if(clones.length)ccFactoryMiniBuildings.addData({type:'FeatureCollection',features:clones});
+  if(activeGeometry)ccFactoryMiniBoundary.addData({type:'Feature',geometry:activeGeometry,properties:{}});
+  fitCompactMiniMap(ccFactoryMini,ccFactoryMiniBoundary,ccFactoryMiniBuildings);
+
+  const idByRecordId=new Map((fu.factory_records||[]).map(r=>[r.id,r]));
+  const matchStatusByRecordId=new Map();
+  for(const m of (fu.matched_features||[]))matchStatusByRecordId.set(m.record_id,'매칭됨');
+  for(const id of (fu.unmatched_factory_records||[]))matchStatusByRecordId.set(id,'필지단위(동 특정불가)');
+  const recordsToShow=factoryTableShowAll?(analysisState.fact_store?.site?.building?.records||[]):(fu.factory_records||[]);
+  const body=document.getElementById('spFactoryTableBody');
+  if(body){
+    if(!recordsToShow.length){
+      body.innerHTML='<tr><td colspan="7">공장용도로 판정된 건축물이 없습니다.</td></tr>';
+    }else{
+      body.innerHTML=recordsToShow.map((r,i)=>{
+        const isFactory=isFactoryBuildingRecord(r);
+        const matchLabel=isFactory?(matchStatusByRecordId.get(r.id)||'필지단위(동 특정불가)'):'-';
+        return `<tr><td>${i+1}</td><td>${escHtml(r.pnu||'-')}</td><td>${escHtml(r.building_name||'-')}</td><td>${escHtml(r.main_use||'-')}</td><td>${escHtml(r.other_use||'-')}</td><td>${escHtml(r.approval_date||'-')}</td><td>${escHtml(matchLabel)}</td></tr>`;
+      }).join('');
+    }
+  }
+  const toggleBtn=document.getElementById('spFactoryToggleBtn');
+  if(toggleBtn)toggleBtn.textContent=factoryTableShowAll?'공장용도만 보기':'전체 건축물 보기';
 }
 function renderZoningSpatialStatus(){
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
@@ -6790,8 +6897,10 @@ function schemeAgeStat(years){
 function buildingRawFacts(){
   return selectedHubRecordsForSchemes().map(r=>({
     id:String(r.mgmBldrgstPk||`${r.pnu||''}|${r.dongNm||''}|${r.bldNm||''}|${r.useAprDay||''}`),
+    mgm_bldrgst_pk:String(r.mgmBldrgstPk||''),
     pnu:String(r.pnu||''),approval_date:String(r.useAprDay||''),
     structure:String(r.strctCdNm||''),main_use:String(r.mainPurpsCdNm||''),other_use:String(r.etcPurps||''),
+    dong_name:String(r.dongNm||''),building_name:String(r.bldNm||''),
     total_floor_area_m2:Number.isFinite(Number(r.totArea))?Number(r.totArea):null,
     plat_area_m2:Number.isFinite(Number(r.platArea))?Number(r.platArea):null,
     ground_floors:Number.isFinite(Number(r.grndFlrCnt))?Number(r.grndFlrCnt):null,
@@ -7576,6 +7685,7 @@ function safeMedicalSpatialEvidenceFacts(){
 function buildSiteFactStore(){
   const c=commonSchemeData();
   const base=selectedParcelLandBase();
+  const buildingRecords=buildingRawFacts();
   const store={
     api_version:SCHEME_MODULE_API_VERSION,
     generated_at:new Date().toISOString(),
@@ -7592,8 +7702,9 @@ function buildSiteFactStore(){
       road_raw:roadRawFacts(c),
       road:compactRoadFacts(c),
       spatial_evidence:{zoning:zoningSpatialEvidenceFacts(),roads:schemeRoadEvidenceFacts(c),frontage:schemeFrontageEvidenceFacts(c),street_block:streetBlockSpatialEvidenceFacts(),activation_arterial:activationLinearCommercialEvidence(),safe_medical:safeMedicalSpatialEvidenceFacts()},
-      building:{total:Number(analysisState.metrics.total_buildings||0),records:buildingRawFacts(),source:'건축HUB 표제부',
+      building:{total:Number(analysisState.metrics.total_buildings||0),records:buildingRecords,source:'건축HUB 표제부',
         note:'공통 현황은 사용승인일·구조·용도·연면적 등 사실값만 저장하며 법적 노후도 판정은 derived.age에서 제도별로 수행'},
+      factory_usage:computeFactoryUsageFact(buildingRecords,currentBuildingFeatures,c.factory),
       renewal:renewalSpatialFacts(),development:developmentSpatialFacts()
     },
     derived:{age:null},family_specific:{},scheme_specific:{}
@@ -7601,6 +7712,7 @@ function buildSiteFactStore(){
   store.derived.age=buildAgeDerivedFacts(c,store.site.building.records);
   latestSiteFactStore=store;
   analysisState.fact_store=store;
+  analysisState.factory_usage=store.site.factory_usage;
   return store;
 }
 
@@ -8188,11 +8300,14 @@ function longtermSpatialFacts(store){
   }
   let zoneStatus='REVIEW',zoneNote='';
   const baseZones=['제2종일반주거(7층)','제2종일반주거','제3종일반주거','준주거'];
+  const factoryUsage=store.site.factory_usage||null;
+  const factoryPct=factoryUsage?.factory_ratio_pct??null;
   if(c.zoning){
     if(baseZones.includes(c.zoning))zoneStatus='PASS';
     else if(c.zoning==='준공업'){
-      if(c.factory==null){zoneStatus='REVIEW';zoneNote='준공업지역 공장비율 확인 필요';}
-      else {zoneStatus=c.factory<10?'PASS':'FAIL';zoneNote='준공업지역은 공장비율 10% 미만';}
+      if(factoryPct==null){zoneStatus='REVIEW';zoneNote='준공업지역 공장비율 확인 필요';}
+      else if(factoryUsage?.mismatch){zoneStatus='REVIEW';zoneNote=`준공업지역 공장비율 자동/수기 값 불일치 · 자동 ${fmtSchemePct(factoryUsage.mismatch.auto)} / 수기 ${fmtSchemePct(factoryUsage.mismatch.manual)}`;}
+      else {zoneStatus=factoryPct<10?'PASS':'FAIL';zoneNote='준공업지역은 공장비율 10% 미만';}
     }else zoneStatus='FAIL';
   }
   const age=schemeAgeFact(store,'longterm',route);
@@ -8200,7 +8315,7 @@ function longtermSpatialFacts(store){
     route:{selected:route,label:route==='redevelopment'?'정비계획 방식':'지구단위계획 방식'},
     location:{selected_type:locationType,station:{status:stationStatus,class_name:stationClass,distance_m:longtermStation?.distance_m??c.dist,coverage350_pct:cov350,coverage500_pct:cov500,name:longtermStation?.name||c.stationName||'',note:stationNote,candidate_count:(c.nearbyStations||[]).length},
       arterial_intersection:{status:arterialStatus,distance_m:c.arterialIntersectionDist,has20_width_candidate:c.has20Width,function_confirmed:arterialFunctionConfirmed,perimeter20_pct:c.road20Perimeter,road_quality:c.roadQuality,evidence:roadEvidence,note:arterialStatus==='PASS'?'교차지 200m·20m 폭원·간선기능·둘레 1/8 모두 확인':(roadEvidence?.note||'간선도로 기능구분·교차지 경계 포함 최종확인')}},
-    zoning:{current:c.zoning||'',factory_pct:c.factory,status:zoneStatus,note:zoneNote},area:{m2:c.area,min_m2:minArea,status:areaStatus,note:areaNote},units:{count:c.units,status:c.units==null?'REVIEW':c.units>=100?'PASS':'FAIL'},
+    zoning:{current:c.zoning||'',factory_pct:factoryPct,status:zoneStatus,note:zoneNote},area:{m2:c.area,min_m2:minArea,status:areaStatus,note:areaNote},units:{count:c.units,status:c.units==null?'REVIEW':c.units>=100?'PASS':'FAIL'},
     exclusions:{special_character_area:(()=>{const ev=longtermCharacteristicAreaEvidence();const manual=c.excluded===true;const low=ev.lowrise||[],cult=ev.cultural_districts||[],herit=ev.heritage||[];const hits=[];if(manual)hits.push('수기 입지특성화 제외지역 표시');if(low.length)hits.push('저층주거 '+low.map(x=>`${x.name} ${x.pct.toFixed(1)}%`).join('/'));if(cult.length)hits.push('역사문화 경관지구 '+cult.map(x=>x.name).join('/'));if(herit.length)hits.push('국가유산보호구역 '+herit.map(x=>x.name).join('/'));let value=hits.length?hits.join(' · '):'전용·1종/역사문화 경관/국가유산보호구역 중첩 없음 · 구릉지 등 기타 항목 수동검토';return {status:'REVIEW',value,note:'자동확인: UQ111 전용·1종, UQ121 역사문화특화경관지구, LT_C_UO301 국가유산보호구역. 서울시 CUL211/CUL210 및 국가유산청 SHP는 공식 원자료로 추가 대조 가능. 구릉지 공개 SHP는 미확보이므로 자동판정하지 않음',evidence:ev};})()},
     aging:{assessment:age},consent:{owner_pct:c.ownerConsent,land_pct:c.landConsent,road20_owner_pct:c.road20OwnerConsent,road20_land_pct:c.road20LandConsent},planning:{density:longtermDensity(c)},
     spatial_status_rows:[]
@@ -8309,10 +8424,102 @@ function checkPublicComplexFromFacts(store,f){
   return rows;
 }
 
+// 공장용도 판정 공통 기준 — main_use/other_use에 '공장'이 포함되는지.
+// innovationFactoryBuildingRatio()·computeFactoryUsageFact() 등 공장 관련 모든 계산이
+// 이 함수 하나만 쓴다. 여기 말고 다른 곳에서 /공장/ 정규식을 새로 만들지 않는다.
+function isFactoryBuildingRecord(r){
+  return /공장/.test(`${r?.main_use||''} ${r?.other_use||''}`);
+}
+// 공장 레코드(건축HUB 표제부)를 실제 건축물 polygon과 연결한다.
+// 서로 다른 원천의 식별자(mgm_bldrgst_pk ↔ VWorld bd_mgt_sn/_building_key)는 동일키라고 검증되지 않았으므로
+// 임의 직접매칭하지 않는다. 건물 polygon 자체가 건축HUB 관리번호를 명시적으로 갖는 경우만 exact match로 인정한다.
+// 그 외에는 같은 필지(PNU) 안에 건물 polygon 1개·공장 레코드 1건일 때만 안전하게 추정한다.
+// 한 필지에 여러 동이 있으면 특정 polygon을 임의로 공장이라 칠하지 않고 필지 단위 '공장용도 존재'로만 표시한다.
+function matchFactoryBuildingFeatures(factoryRecords,buildingFeatures){
+  const byLedgerKey=new Map();
+  for(const f of buildingFeatures||[]){
+    const fp=f.properties||{};
+    const k=String(fp.mgm_bldrgst_pk||fp.mgmBldrgstPk||'');
+    if(k)byLedgerKey.set(k,f);
+  }
+  const featuresByPnu=new Map();
+  for(const f of buildingFeatures||[]){
+    const pnu=String((f.properties||{}).pnu||'');
+    if(!pnu)continue;
+    if(!featuresByPnu.has(pnu))featuresByPnu.set(pnu,[]);
+    featuresByPnu.get(pnu).push(f);
+  }
+  const recordsByPnu=new Map();
+  for(const r of factoryRecords||[]){
+    const pnu=String(r.pnu||'');
+    if(!recordsByPnu.has(pnu))recordsByPnu.set(pnu,[]);
+    recordsByPnu.get(pnu).push(r);
+  }
+  const matched=[],unmatched=[],ambiguousParcels=new Set();
+  for(const r of factoryRecords||[]){
+    const key=String(r.mgm_bldrgst_pk||'');
+    const byKeyHit=key?byLedgerKey.get(key):null;
+    if(byKeyHit){
+      matched.push({record_id:r.id,pnu:String(r.pnu||''),feature_key:String((byKeyHit.properties||{})._building_key||''),match_method:'EXPLICIT_MGM_BLDRGST_PK'});
+      continue;
+    }
+    const pnu=String(r.pnu||'');
+    const pnuFeatures=featuresByPnu.get(pnu)||[];
+    const pnuFactoryRecords=recordsByPnu.get(pnu)||[];
+    if(pnu&&pnuFeatures.length===1&&pnuFactoryRecords.length===1){
+      matched.push({record_id:r.id,pnu,feature_key:String((pnuFeatures[0].properties||{})._building_key||''),match_method:'PARCEL_SINGLE_BUILDING'});
+      continue;
+    }
+    unmatched.push(r.id);
+    if(pnu)ambiguousParcels.add(pnu);
+  }
+  return {matched,unmatched,ambiguous_parcels:[...ambiguousParcels]};
+}
+// 공간현황 공통 Fact. 역세권 장기전세·도심복합개발 주거중심형이 이 하나의 결과를 공유 참조한다.
+// 산식은 고정: 공장용도 건축물 수 ÷ 전체 건축물 수 × 100 (동수 기준 초기검토). 연면적·대지면적 비율로 바꾸지 않는다.
+function computeFactoryUsageFact(records,buildingFeatures,manualPct){
+  const rows=Array.isArray(records)?records:[];
+  const total=rows.length;
+  const factoryRecords=rows.filter(isFactoryBuildingRecord);
+  const factoryCount=factoryRecords.length;
+  const autoPct=total?factoryCount/total*100:null;
+  const match=matchFactoryBuildingFeatures(factoryRecords,buildingFeatures);
+  const manual=manualPct!=null&&Number.isFinite(Number(manualPct))?Number(manualPct):null;
+  let pct=autoPct,source=total?'BUILDING_HUB':'NONE',mismatch=null;
+  if(autoPct!=null){
+    if(manual!=null&&Math.abs(manual-autoPct)>=0.05)mismatch={auto:autoPct,manual};
+  }else if(manual!=null){
+    // 건축물대장 자료가 아예 없을 때만 수기값을 대체 사용한다 — 자동값이 있는데 조용히 덮어쓰지 않는다.
+    pct=manual;source='MANUAL';
+  }
+  return {
+    total_building_count:total,
+    factory_building_count:factoryCount,
+    factory_ratio_pct:pct,
+    manual_ratio_pct:manual,
+    mismatch,
+    source,
+    calculation_basis:'BUILDING_COUNT',
+    factory_records:factoryRecords,
+    matched_features:match.matched,
+    unmatched_factory_records:match.unmatched,
+    ambiguous_parcels:match.ambiguous_parcels,
+    quality:total?'AUTO':source==='MANUAL'?'MANUAL':'NONE'
+  };
+}
+// innovation_housing 등 기존 소비 코드가 기대하던 {pct,factory_count,total_count,source,note} 모양으로
+// 공통 Fact를 어댑팅한다 — 공통 Fact 도입 때문에 소비측 코드를 대거 고치지 않기 위한 최소 변경 지점.
+function factoryUsageAsSchemeFact(factoryUsage){
+  const fu=factoryUsage||{};
+  const note=fu.mismatch
+    ?`자동 ${fmtSchemePct(fu.mismatch.auto)} / 수기입력 ${fmtSchemePct(fu.mismatch.manual)} · 값 불일치 확인 필요`
+    :(fu.total_building_count?'공간현황 공장용도 Fact(건축물 동수 기준 초기검토) 참조':'건축물대장 자료 없음');
+  return {pct:fu.factory_ratio_pct??null,factory_count:fu.factory_building_count??0,total_count:fu.total_building_count??0,source:fu.source||'NONE',note};
+}
 function innovationFactoryBuildingRatio(records,manualPct=null){
   const rows=Array.isArray(records)?records:[];
   const total=rows.length;
-  const factoryCount=rows.filter(r=>/공장/.test(`${r.main_use||''} ${r.other_use||''}`)).length;
+  const factoryCount=rows.filter(isFactoryBuildingRecord).length;
   const autoPct=total?factoryCount/total*100:null;
   if(manualPct!=null)return {pct:Number(manualPct),factory_count:factoryCount,total_count:total,source:'MANUAL',note:'전문가 입력 공장비율 사용'};
   return {pct:autoPct,factory_count:factoryCount,total_count:total,source:total?'BUILDING_COUNT_PROXY':'NONE',note:total?'초기검토 산식: 건축HUB 표제부상 공장용도 건축물 수 ÷ 전체 건축물 수 × 100':'건축물대장 자료 없음'};
@@ -8351,7 +8558,9 @@ function innovationSpatialFacts(store,typ){
   const roadEvidence=store.site.spatial_evidence?.roads?.[schemeKey]||null;
   const growthArea=typ==='growth'?growthInnovationAreaFact(c.area):null;
   const records=store.site.building.records||[];
-  const factory=innovationFactoryBuildingRatio(records,c.factory);
+  // 성장거점형에는 공장비율 조건이 없다 — growth 타입이어도 공통 Fact 자체는 그대로 참조만 하고
+  // 판정(checkInnovationFromFacts)에서는 housing 타입에서만 factory_pct를 쓴다.
+  const factory=factoryUsageAsSchemeFact(store.site.factory_usage);
   const apartment=innovationApartmentPrecheck(records,c.area,c.aptMaxArea,c.aptMaxRatio);
   const fact={scheme_key:schemeKey,type:typ,type_label:typ==='growth'?'성장거점형':'주거중심형',area:typ==='growth'?growthArea:{m2:c.area},center:{value:c.center,label:c.centerLabel||'',is_core:isCore,known:!!c.center},station:{
     distance_m:typ==='growth'?(transferCandidate?.distance_m??null):(best350?.distance_m??best500?.distance_m??c.dist),
@@ -8419,7 +8628,9 @@ function checkInnovationFromFacts(store,f){
     let loc='REVIEW',note='';
     const factory=f.zoning.factory;
     if(f.zoning.current==='준공업'){
+      const factoryMismatch=store.site.factory_usage?.mismatch;
       if(f.zoning.factory_pct==null)loc='REVIEW';
+      else if(factoryMismatch){loc='REVIEW';note='공장비율 자동/수기 값 불일치로 확인 필요';}
       else if(f.station.coverage350_pct!=null&&f.station.coverage350_pct>=99.999&&f.zoning.factory_pct<10)loc='PASS';
       else if(f.station.coverage500_pct!=null&&f.station.coverage500_pct>=99.999&&f.zoning.factory_pct<10){loc='REVIEW';note='350~500m 구간은 시장 인정 필요';}
       else loc='FAIL';
@@ -9841,6 +10052,7 @@ function runAllSchemeChecks(){
     safeSchemeUiStep('zoning-spatial',()=>renderZoningSpatialStatus(),uiErrors);
     safeSchemeUiStep('road-evidence',()=>renderSchemeRoadEvidence(),uiErrors);
     safeSchemeUiStep('safe-medical',()=>renderSafeMedicalSpatialStatus(),uiErrors);
+    safeSchemeUiStep('factory-usage',()=>renderFactoryUsageSpatialStatus(),uiErrors);
     safeSchemeUiStep('scheme-spatial',()=>renderSchemeSpecificSpatialStatus(store),uiErrors);
   }
   safeSchemeUiStep('candidate',()=>updateCandidateSchemes(),uiErrors);
@@ -11512,6 +11724,18 @@ function openSchemeDetailSafely(name){
   openReviewModal('schemeDetailModal');
   try{renderSchemeDetailPopup(name);}catch(e){console.error(`[scheme-popup:${name}]`,e);renderSchemePopupFallback(name,e);}
 }
+function openSafeHousingDetailSafely(){
+  const modal=document.getElementById('schemeDetailModal');
+  const title=document.getElementById('schemeDetailPopupTitle');
+  const body=document.getElementById('schemeDetailPopupBody');
+  if(!modal){console.error('[scheme-popup:safe] schemeDetailModal DOM 없음');return;}
+  if(title)title.textContent='안심주택 기초검토서';
+  if(body)body.innerHTML='<div class="scheme-modal-note"><b>안심주택 기초검토서</b> 검토결과를 불러오는 중입니다.</div>';
+  openReviewModal('schemeDetailModal');
+  // 모달을 먼저 화면에 올린 뒤 렌더한다. 렌더 오류가 나도 팝업 자체는 유지한다.
+  const render=()=>{try{renderSafeHousingDetailPopup();}catch(e){console.error('[scheme-popup:safe]',e);renderSchemePopupFallback('safe',e);}};
+  if(typeof requestAnimationFrame==='function')requestAnimationFrame(render);else setTimeout(render,0);
+}
 function showSmallscaleRouteBasis(route){
   activeSmallscaleRoute=route;
   document.querySelectorAll('#ccSchemeIcons button').forEach(b=>b.classList.remove('candidate-selected'));
@@ -11523,6 +11747,7 @@ function showCandidateBasis(name){
   activeSmallscaleRoute='';
   document.querySelectorAll('#ccSchemeIcons button').forEach(b=>b.classList.toggle('candidate-selected',b.dataset.scheme===name));
   try{renderMobileSelectedScheme(name);}catch(e){console.error(`[scheme-mobile:${name}]`,e);}
+  if(name==='safe'){openSafeHousingDetailSafely();return;}
   openSchemeDetailSafely(name);
 }
 function scrollToSchemeDetail(name){openSchemeDetailSafely(name);}
@@ -12666,7 +12891,12 @@ function renderGrowthPotentialDetailPopup(){
 
 function renderSafeHousingDetailPopup(){
   const title=document.getElementById('schemeDetailPopupTitle'),body=document.getElementById('schemeDetailPopupBody');if(!body)return;
-  const res=schemeResults.safe||latestSchemeModuleResults.safe,store=latestSiteFactStore||buildSiteFactStore(),f=res?.facts||store?.scheme_specific?.safe;
+  // 팝업은 분석엔진을 다시 실행하지 않는다. 이미 생성된 동일 Fact만 읽는다.
+  // 기존 분석 Fact가 없을 때 팝업 안에서 Fact Store를 다시 생성하면 클릭 시점의 미완성 입력/DOM 상태에서
+  // 예외가 발생할 수 있으므로, 분석 전에는 안내문만 표시한다.
+  const res=schemeResults.safe||latestSchemeModuleResults.safe||null;
+  const store=latestSiteFactStore||analysisState.fact_store||null;
+  const f=res?.facts||store?.scheme_specific?.safe||null;
   if(title)title.textContent='안심주택 기초검토서';
   if(res?.purpose_disabled){body.innerHTML=`<div class="scheme-modal-note"><b>목적사업 필터</b> ${escHtml(res.purpose_disabled_reason||'안심주택은 주거(임대) 목적에서만 검토합니다.')} 현재 안심주택 Rule Module은 실행되지 않았습니다.</div>`;return;}
   if(!f||!store){body.innerHTML='<div class="scheme-modal-note"><b>현황분석 필요</b> 먼저 검토하기를 실행하여 공간현황 Fact를 생성해 주세요. 팝업에서는 새 현황을 계산하지 않습니다.</div>';return;}
