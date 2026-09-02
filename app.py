@@ -3460,6 +3460,7 @@ def reference_stations():
 # R22 station-line runtime hotfix.  This block is intentionally backend-only:
 # the existing multi-station frontend already consumes /api/reference/station-lines.
 STATION_RUNTIME_BUILD_MARKER = "R22_STATION_HOTFIX_20260901_0915"
+APP_BUILD_MARKER = "R22_STATION_AREA_FRONTAGE_NO_HIERARCHY_20260902"
 _STATION_LINE_CACHE_LOCK = threading.Lock()
 _STATION_LINE_CACHE: Dict[str, Any] = {
     "expires_at": 0.0,
@@ -3728,7 +3729,8 @@ def health():
         "engine": "site_fact_store_v2.5.0_r11",
         "map": "leaflet-draw",
         "vworld_configured": vworld_ready(),
-        "build_marker": STATION_RUNTIME_BUILD_MARKER,
+        "build_marker": APP_BUILD_MARKER,
+        "station_runtime_build_marker": STATION_RUNTIME_BUILD_MARKER,
         "seoul_open_data_configured": bool(_seoul_open_data_key()),
         "seoul_open_data_env": _seoul_open_data_key_info()[1] or None,
         "seoul_env_names_detected": sorted([k for k in os.environ if "seoul" in k.lower() or "data.seoul" in k.lower()]),
@@ -3774,7 +3776,7 @@ def health():
         "house_density": "shared factual calculation; redevelopment uses >=60/ha as one additional entry criterion and residential-environment uses >=80/ha as a mandatory non-management criterion",
         "parcel_boundary_editor": "pnu_list_click_include_exclude_nearby_union",
         "scheme_architecture": "site facts -> scheme-specific facts -> independent scheme evaluation -> review sheet -> priority comparison",
-        "scheme_module_api": "2026-08-31-r17-spatial-relation-road-facts",
+        "scheme_module_api": "2026-09-02-r22-station-area-frontage-no-hierarchy",
         "independent_scheme_modules": "16 independent modules including smallscale 5-route family and prior_negotiation; urban_innovation_zone / facility_complex_zone / mixed_use_zone remain future shells",
         "scheme_specific_spatial_checks": "scheme module may request additional official spatial facts; missing facts remain REVIEW, never inferred PASS",
         "hill_official_gis": "disabled_public_shp_not_found",

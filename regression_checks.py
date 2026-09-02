@@ -298,7 +298,7 @@ def check_feedback_and_ui() -> None:
     assert "schemeAgeFact(store,'growth_potential',route)" in decision
     assert "schemeAgeFact(store,'urban_redevelopment')" in decision
     assert "const SCHEME_MODULES=" in html
-    assert "SCHEME_MODULE_API_VERSION='2026-08-31-r17-spatial-relation-road-facts'" in html
+    assert "SCHEME_MODULE_API_VERSION='2026-09-02-r22-station-area-frontage-no-hierarchy'" in html
     assert "const SHELL_SCHEMES=new Set(['urban_innovation_zone','facility_complex_zone','mixed_use_zone'])" in html
     assert "현재 자동 활성화·추천·우선순위 미반영" in html
     assert "collectFacts:activationSpatialFacts" in html
@@ -434,7 +434,7 @@ def check_next_four_independent_modules() -> None:
     assert "INNOVATION_RULE" in innov and "INNOVATION_ORD" in innov
     assert "innovationFactoryBuildingRatio" in html and "공장용도 건축물 수 ÷ 전체 건축물 수" in innov
     assert "innovationApartmentPrecheck" in html and "제4조제3호" in innov and "제5조제1항제4호" in innov
-    assert "행안부 도로 기능자료 연계 후 확정" in innov
+    assert "rows.push(schemeRow('접도'" in innov and 'f.road?.evidence' in innov
     # 도시정비형: 정책사업 의제는 독립 추천에 중복집계하지 않는다.
     urban_start=html.index("function urbanRedevelopmentSpatialFacts(store)")
     urban_end=html.index("const SCHEME_MODULES=", urban_start)
@@ -551,7 +551,7 @@ def check_spatial_evidence_maps() -> None:
     assert "mode:'width6_frontage'" in html
     assert "threshold:20" in html and "threshold:35" in html
     assert "mode:'road4_8'" in html
-    assert '도로기능(특별시도·주/보조간선 등) 공식 속성 미연결' in html
+    assert '도로위계 기준자료 미연결 · 사용자 제공자료 연결 후 판정' in html
     assert "if(selected==='safe')" in html and "turf.buffer(f,50,{units:'meters'})" in html
 
     # 접도율/접면기준은 제도별 Fact로 분리하며 공통 frontage Boolean/ratio로 대체하지 않는다.
@@ -856,7 +856,7 @@ def check_remaining_four_independent_modules_and_sources() -> None:
     html = (root / "app.html").read_text(encoding="utf-8")
     py = (root / "app.py").read_text(encoding="utf-8")
 
-    assert "SCHEME_MODULE_API_VERSION='2026-08-31-r17-spatial-relation-road-facts'" in html
+    assert "SCHEME_MODULE_API_VERSION='2026-09-02-r22-station-area-frontage-no-hierarchy'" in html
     assert "const SHELL_SCHEMES=new Set(['urban_innovation_zone','facility_complex_zone','mixed_use_zone'])" in html
     required = (
         "function redevelopmentSpatialFacts(store)", "function checkRedevelopmentFromFacts(store,f)",
@@ -938,7 +938,7 @@ def check_remaining_four_independent_modules_and_sources() -> None:
     # 서버측 구형 재개발 판정엔진/중복 API는 제거한다.
     assert "def evaluate_redevelopment(" not in py
     assert '/api/redevelopment/evaluate' not in py
-    assert '"scheme_module_api": "2026-08-31-r17-spatial-relation-road-facts"' in py
+    assert '"scheme_module_api": "2026-09-02-r22-station-area-frontage-no-hierarchy"' in py
     assert '16 independent modules including smallscale 5-route family and prior_negotiation' in py
 
 def check_scheme_family_separation() -> None:
@@ -1093,7 +1093,7 @@ def check_r8_boundary_map_smallscale_prior() -> None:
     assert "16 independent modules including smallscale 5-route family and prior_negotiation" in py
     assert '"engine": "site_fact_store_v2.5.0_r11"' in py
     assert "five user review routes: autonomous / block / small-scale reconstruction / small-scale redevelopment / Moa Town+Moa Housing policy route" in py
-    assert "r17-spatial-relation-road-facts" in html and "r17-spatial-relation-road-facts" in py
+    assert "r22-station-area-frontage-no-hierarchy" in html and "r22-station-area-frontage-no-hierarchy" in py
 
 
 def check_r9_refinement_placement() -> None:
@@ -1151,7 +1151,7 @@ def check_r10_scheme_fail_safe() -> None:
     pdf = root / "도시계획변경 사전협상 운영지침(11차개정_2026.06.29).pdf"
     assert pdf.is_file() and pdf.stat().st_size > 500_000
     assert 'site_fact_store_v2.5.0_r11' in py
-    assert 'r17-spatial-relation-road-facts' in html and 'r17-spatial-relation-road-facts' in py
+    assert 'r22-station-area-frontage-no-hierarchy' in html and 'r22-station-area-frontage-no-hierarchy' in py
 
 
 def check_r11_popup_spatial_progress() -> None:
@@ -1190,7 +1190,7 @@ def check_r11_popup_spatial_progress() -> None:
     assert "analyzeRoadAccess,60000" in html
     assert "총 ${formatAnalysisElapsed" in html
     assert 'site_fact_store_v2.5.0_r11' in py
-    assert 'r17-spatial-relation-road-facts' in html and 'r17-spatial-relation-road-facts' in py
+    assert 'r22-station-area-frontage-no-hierarchy' in html and 'r22-station-area-frontage-no-hierarchy' in py
 
 
 
@@ -1226,7 +1226,7 @@ def check_r11_data_recovery_fix1() -> None:
     assert "Fact Store 오류로 선순위 산정을 중단" in preview
 
     assert 'TL_SPRD_RW excluded from cadastral arithmetic' in py
-    assert '"scheme_module_api": "2026-08-31-r17-spatial-relation-road-facts"' in py
+    assert '"scheme_module_api": "2026-09-02-r22-station-area-frontage-no-hierarchy"' in py
 
 
 
@@ -1264,8 +1264,8 @@ def check_r13_criterion_layer1() -> None:
     assert "criterionStatus:age?.status||'REVIEW'" in redevelopment
     assert "conditional:f.area.conditional===true" in redevelopment
 
-    assert "SCHEME_MODULE_API_VERSION='2026-08-31-r17-spatial-relation-road-facts'" in html
-    assert '"scheme_module_api": "2026-08-31-r17-spatial-relation-road-facts"' in py
+    assert "SCHEME_MODULE_API_VERSION='2026-09-02-r22-station-area-frontage-no-hierarchy'" in html
+    assert '"scheme_module_api": "2026-09-02-r22-station-area-frontage-no-hierarchy"' in py
 
 def check_r14_street_block_auto() -> None:
     """Current invariant: street-block UI exposes area relations and never treats TL_SPRD_RW as the block engine."""
@@ -1324,8 +1324,8 @@ def check_r16_basic_unit_street_block() -> None:
     assert "SGIS 기초단위구 후보경계" in html
     assert "AUTO · 기초단위구+ROAD_BT" in html
     assert "도로 fallback" not in html[html.index("function renderStreetBlockSpatialStatus"):html.index("async function refreshMiniContextFeatures", html.index("function renderStreetBlockSpatialStatus"))]
-    assert "SCHEME_MODULE_API_VERSION='2026-08-31-r17-spatial-relation-road-facts'" in html
-    assert '"scheme_module_api": "2026-08-31-r17-spatial-relation-road-facts"' in py
+    assert "SCHEME_MODULE_API_VERSION='2026-09-02-r22-station-area-frontage-no-hierarchy'" in html
+    assert '"scheme_module_api": "2026-09-02-r22-station-area-frontage-no-hierarchy"' in py
 
     lon, lat, d = 127.0152, 37.5586, 0.00008
     geom = {"type":"Polygon","coordinates":[[[lon-d,lat-d],[lon+d,lat-d],[lon+d,lat+d],[lon-d,lat+d],[lon-d,lat-d]]]}
@@ -1353,10 +1353,10 @@ def check_r17_spatial_relation_road_facts() -> None:
         assert label in html, label
     assert "frontage_ratio_pct:Number.isFinite(Number(x.boundary_share_pct))" in html
     assert "boundary_share_pct:pct(x.contact)" in html
-    assert "도로명(없으면 관리번호) 단위로 먼저 묶는다" in html
+    assert "도로명(없으면 RN_CD/관리번호) 단위로 묶는다" in html
     assert "faceCountAt(4)" in html and "faceCountAt(35)" in html
     assert "road4Perimeter" in html and "road6Perimeter" in html and "road8Perimeter" in html
-    assert "ROAD_BT 폭원 Fact · 접도구간" in html
+    assert "ROAD_BT 폭원 · 도로위계 판정 비활성(사용자 제공자료 연결 대기)" in html
     assert "공간 Fact → 사업모듈 판정 입력" in html
     # station-complex uses site/block occupancy, while activation uses station/block coverage.
     station_block = html[html.index("function stationComplexSpatialFacts"):html.index("function checkStationComplexFromFacts")]
@@ -1581,7 +1581,7 @@ def check_r22_downtown_complex_type_split() -> None:
     for text in (
         '[중심지 + 폭20m 이상 간선도로] OR [비중심지 + 2개 이상 철도노선 환승역 500m 이내]',
         '제4조제1호', '제4조제2호', '제4조제3호',
-        '행안부 도로 기능자료 연계 후 확정',
+        '간선도로 위계는 사용자 제공자료 연결 후 확정',
     ):
         assert text in html, text
     # Housing core gates: station coverage + age + area + apartment-complex limitation.
@@ -1620,11 +1620,11 @@ def check_r22_multi_station_fact_engine():
         "function streetBlockIsAuthoritative()",
         "function bestLongtermStationFact(c)",
         "bestStationByCoverage(350)",
-        "transferCandidate=stationAnalysis.loaded?bestStationByDistance(x=>x.transfer===true&&x.line_data_complete===true):null",
+        "transferCandidate=stationAnalysis.loaded?bestConfirmedTransferStation():null",
         "역세권활성화 공간대상에 포함되면 성장잠재권 활성화구역은 비활성화",
         "공식 가로구역 데이터 연결 전 자동 PASS 금지",
         "현재 내장 기초단위구/ROAD_BT 형상은 법정 가로구역이 아니므로 행안부/공식 가로구역 데이터 연결 전 자동 PASS·FAIL 금지",
-        "future_function_interface:{field:'road_function'",
+        "future_function_interface:{field:'road_hierarchy'",
     ):
         assert token in html, token
     # 후보검색 1km는 판정기준이 아니라 수집범위이며, 개별 역의 250/350/500m 면적관계를 보존한다.
@@ -1637,29 +1637,9 @@ def check_r22_multi_station_fact_engine():
     assert "shareKnown&&!blockAuthoritative" in html
     assert "arterial.block_authoritative===true&&arterial.block_includes===true" in html
     # 동명 이격역을 단순 역명으로 합쳐 거짓 환승역을 만들지 않는다.
-    assert "group.same_name_cluster_count>1" in html
-
-
-def check_r22_station_runtime_fix():
-    html = Path(app.BASE_DIR, "app.html").read_text(encoding="utf-8")
-    py = Path(app.BASE_DIR, "app.py").read_text(encoding="utf-8")
-    yaml = Path(app.BASE_DIR, "render.yaml").read_text(encoding="utf-8")
-    for token in (
-        '@app.get("/api/reference/station-line/{station_name}")',
-        'def reference_station_lines(force: bool = False):',
-        'R22_STATION_RUNTIME_FIX_20260901',
-        '"seoul_open_data_configured": bool(_seoul_open_data_key())',
-        '"seoul_open_data_env": _seoul_open_data_key_info()[1] or None',
-    ):
-        assert token in py, token
-    for token in (
-        "loadDirectStationLineProbe(stationName,force=false)",
-        "'/api/reference/station-lines'+(force?'?force=1':'')",
-        "x=>x.transfer===true&&x.line_data_complete===true",
-        "노선API 키 미인식",
-    ):
-        assert token in html, token
-    assert 'key: SEOUL_OPEN_DATA_KEY' in yaml
+    assert "function stationNameOnlyLineFactAllowed(group){return Number(group?.same_name_cluster_count||1)<=1;}" in html
+    assert "const sameNameAmbiguous=!stationNameOnlyLineFactAllowed(group);" in html
+    assert "let official=sameNameAmbiguous?null:" in html
 
 
 def check_r22_station_rule_engine_v4():
@@ -1680,8 +1660,10 @@ def check_r22_station_rule_engine_v4():
     # 노선/환승 Fact: 서울 열린데이터광장 통합 참조 + 부역명 정규화.
     assert '/api/reference/station-lines' in py
     assert 'CardSubwayStatsNew' in py and 'SearchSTNBySubwayLineInfo' in py
-    assert '_normalize_station_public_name' in py
-    assert "const lineDataComplete=transferConfirmed" in html
+    assert 'def _normalize_station_public_name' in py
+    assert 'wangsimni_probe' in py
+    assert "const lineDataComplete=!sameNameAmbiguous&&transferConfirmed" in html
+    assert "const transferConfirmed=official?.transfer===true" in html
 
     # 역세권활성화: 거리 하나가 아니라 역별 적용반경 + 가로구역. 비공식 블록은 자동 PASS 금지.
     a0=html.index('function activationSpatialFacts(store)')
@@ -1723,7 +1705,8 @@ def check_r22_station_rule_engine_v4():
     assert 'coverage500_pct>50' not in html
 
     # 성장거점형: 1km 전 역에서 2개 이상 철도노선 환승역을 골라 500m 판정.
-    assert 'bestStationByDistance(x=>x.transfer===true&&x.line_data_complete===true)' in html
+    assert 'bestConfirmedTransferStation(500)' in html
+    assert 'function bestConfirmedTransferStation(maxDistanceM=null)' in html
     assert 'transfer_candidate' in html
     assert '환승결절 판정역' in html
 
@@ -1737,6 +1720,48 @@ def check_r22_station_rule_engine_v4():
     up=html[up0:up1]
     assert 'candidate=stationAnalysis.loaded?bestStationByDistance()' in up
 
+
+
+def check_r22_growth_frontage_engine():
+    html = Path(app.BASE_DIR, "app.html").read_text(encoding="utf-8")
+    py = Path(app.BASE_DIR, "app.py").read_text(encoding="utf-8")
+    # Growth-node area remains an exact project-boundary fact; road hierarchy is deliberately deferred.
+    for token in (
+        "function growthInnovationAreaFact(areaM2)",
+        "status:n>=5000?'PASS':'FAIL'",
+        "source:'USER_CONFIRMED_BOUNDARY'",
+        "function growthInnovationRoadFactFromRecords(records,siteSummary={})",
+        "const touchingSegments=[];",
+        "const segContact=frontageStats(site,[x.road]);",
+        "hierarchy_verification:'DEFERRED_USER_DATA'",
+        "const ordered20=rs.filter(r=>Number(r.width_m)>=20",
+        "const second=selected20?(rs.filter(r=>r.road_id!==selected20.road_id&&Number(r.width_m)>=8",
+        "hierarchy_status:'WAITING_USER_DATA'",
+        "selected_20m:selected20",
+        "간선도로 위계·특별시도 여부는 사용자 제공자료 연결 전 판정하지 않음",
+        "future_function_interface:{field:'road_hierarchy'",
+        "2026-09-02-r22-station-area-frontage-no-hierarchy",
+    ):
+        assert token in html, token
+    # Automatic interpretation of address-road hierarchy codes must be disabled until user-provided hierarchy data is connected.
+    road_attr = html[html.index("function roadAddressAttributeFacts(props)"):html.index("function roadFunctionIsArterial", html.index("function roadAddressAttributeFacts(props)"))]
+    assert "functional_arterial_confirmed:false" in road_attr
+    assert "special_city_road_explicit:false" in road_attr
+    assert "ROA_CLS_SE/WDR_RD_CD 등은 판정에 사용하지 않는다" in road_attr
+    assert "normalizeRoadHierarchyCode" not in html
+    assert "normalizeWideRoadCode" not in html
+    assert "explicitSpecialCityRoadValue" not in html
+    # Growth-node scheme consumes width/contact facts but center-road path and frontage remain REVIEW pending hierarchy data.
+    c0=html.index("function checkInnovationFromFacts(store,f)")
+    c1=html.index("function urbanRedevelopmentSpatialFacts(store)", c0)
+    block=html[c0:c1]
+    assert "rows.push(schemeRow('접도'" in block
+    assert "'REVIEW',gr.note||'폭원·접도 공간 Fact만 산정" in block
+    assert "간선도로 위계는 사용자 제공자료 연결 후 확정" in block
+    assert "if(gr?.status==='CONFIRMED'){loc='PASS'" not in block
+    assert "else if(gr?.status==='FAIL'){loc='FAIL'" not in block
+    assert 'APP_BUILD_MARKER = "R22_STATION_AREA_FRONTAGE_NO_HIERARCHY_20260902"' in py
+    assert '"scheme_module_api": "2026-09-02-r22-station-area-frontage-no-hierarchy"' in py
 
 def main() -> None:
     _run("measurement", check_measurement)
@@ -1780,8 +1805,8 @@ def main() -> None:
     _run("r18 bundled basic unit + frontage caveat", check_r18_bundled_basic_unit_and_frontage_caveat)
     _run("r19 activation arterial linear commercial", check_r19_activation_arterial_linear_commercial)
     _run("r22 multi-station fact engine", check_r22_multi_station_fact_engine)
-    _run("r22 station runtime fix", check_r22_station_runtime_fix)
     _run("r22 station rule engine v4", check_r22_station_rule_engine_v4)
+    _run("r22 growth frontage engine", check_r22_growth_frontage_engine)
     _run("release files", check_release_files)
     print("v2.5.0 regression checks: PASS")
 

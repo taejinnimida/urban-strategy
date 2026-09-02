@@ -8,8 +8,6 @@ services:
     envVars:
       - key: BUILDING_HUB_API_KEY
         sync: false
-      - key: SEOUL_OPEN_DATA_KEY
-        sync: false
       - key: VWORLD_API_KEY
         sync: false
       - key: VWORLD_DOMAIN
