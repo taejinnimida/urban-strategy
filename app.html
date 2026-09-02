@@ -231,6 +231,15 @@
 .station-candidate-row.head{position:sticky;top:0;z-index:1;background:#f9fafb;font-weight:700;color:#344054}
 .station-candidate-row b{font-size:9px;color:#101828;overflow-wrap:anywhere}.station-candidate-row .transfer{font-weight:700;color:#175cd3}
 @media(max-width:760px){.station-candidate-row{grid-template-columns:minmax(80px,1.2fr) 58px minmax(100px,1.4fr) 54px 54px 54px}}
+.station-scheme-list{border-top:1px solid #eaecf0;background:#fff;max-height:310px;overflow:auto}
+.station-scheme-row{display:grid;grid-template-columns:minmax(150px,1.1fr) minmax(160px,1.25fr) 78px minmax(300px,2.5fr);align-items:center;gap:8px;padding:6px 9px;border-bottom:1px solid #f2f4f7;font-size:9px;color:#475467}
+.station-scheme-row.head{position:sticky;top:0;z-index:1;background:#f9fafb;font-weight:700;color:#344054}
+.station-scheme-row b{font-size:9px;color:#101828;overflow-wrap:anywhere}
+.station-scheme-row .station-route{font-weight:800;color:#344054;line-height:1.35}
+.station-scheme-row .scheme-tag{text-align:center}
+.station-scheme-row .station-evidence{color:#667085;overflow-wrap:anywhere;line-height:1.45}
+@media(max-width:900px){.station-scheme-row{grid-template-columns:minmax(130px,1fr) minmax(130px,1fr) 72px minmax(240px,1.8fr)}}
+@media(max-width:640px){.station-scheme-row{grid-template-columns:1fr 82px}.station-scheme-row .station-route,.station-scheme-row .station-evidence{grid-column:1/-1}.station-scheme-row.head{display:none}}
 @media(max-width:1100px){.station-gis-stats{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:640px){.station-gis-head{align-items:flex-start;flex-direction:column}.station-gis-stats{grid-template-columns:repeat(2,1fr)}}
 
@@ -1769,6 +1778,9 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="spatial-tags" id="spStationCoverage"><span>역별 250·350·500m 포함률 자동분석</span></div>
 <div class="station-candidate-list" id="spStationCandidates"><div class="station-candidate-row head"><b>역</b><b>거리</b><b>노선·환승</b><b>250m</b><b>350m</b><b>500m</b></div><div class="station-candidate-row"><b>분석 전</b><span>-</span><span>-</span><span>-</span><span>-</span><span>-</span></div></div>
 <div class="spatial-caption">도면정보 · 대상지 중심 1km 안의 모든 역사를 후보로 수집하고, 역별 거리·노선·환승·250/350/500m 대상지 포함률을 각각 계산합니다. 최근접역은 현황 참고값일 뿐 사업 판정역을 고정하지 않습니다.</div>
+<div class="spatial-module-head"><b>사업방식별 역세권 판정</b><span>독립 Rule Module 요약</span></div>
+<div class="station-scheme-list" id="stationSchemeJudgments"><div class="station-scheme-row head"><b>사업방식</b><span>역세권 경로</span><span>판정</span><span>판정근거</span></div><div class="station-scheme-row"><b>분석 전</b><span class="station-route">-</span><span class="scheme-tag INFO">-</span><span class="station-evidence">구역계를 설정하고 검토하기를 눌러야 각 제도의 역세권 판정이 계산됩니다.</span></div></div>
+<div class="spatial-caption">도면정보 · 이 표는 사업 전체 적합성이 아니라 각 제도의 역세권 입지경로만 검토합니다. 충족(초록)=해당 역세권 경로 충족, 미충족(빨강)=확보된 공식 Fact 기준 해당 역세권 경로 불충족, 확인필요(노랑)=노선·가로구역·포함률 등 필수 Fact 미확정, 역세권 경로 미사용(회색)=같은 사업의 다른 입지경로를 적용한 경우입니다. 성장거점형은 환승결절 500m 경로만 표시하고 중심지+간선도로 경로는 이 표에서 판정하지 않습니다. 최종 인허가 판정이 아니라 초기 검토엔진입니다.</div>
 <div class="spatial-mini-map" id="ccStationMiniMap"></div>
 </section>
 <section class="spatial-module" id="siteDetail_streetBlock">
@@ -5801,6 +5813,127 @@ function renderStationCandidateLists(){
   const html=head+stationCandidateRowsHtml();
   for(const id of ['spStationCandidates','stationGisCandidateList']){const el=document.getElementById(id);if(el)el.innerHTML=html;}
 }
+// 역세권을 법정 입지요건(하드게이트)으로 실제 사용하는 사업만 이 목록에 둔다.
+// 성장잠재권(비역세권 요건이 핵심이라 반대 성격) · 상생주택 · 주택개발사업 · 소규모주택정비 ·
+// 사전협상 · 공간혁신 3종 · 도시정비형 재개발(자체 진입요건이 역세권이 아님)은 표시하지 않는다.
+const STATION_SCHEME_DISPLAY_LIST=['activation','safe','station_complex','longterm','public_complex','innovation_growth','innovation_housing'];
+const STATION_SCHEME_ROUTE_LABELS={
+  activation:'250/350m + 가로구역',
+  safe:'250/350m 대상지 면적경로',
+  station_complex:'250m + 가로구역 관계',
+  longterm:'단일역 역세권 전체포함',
+  public_complex:'350m 대상지 면적 50% 이상',
+  innovation_growth:'환승결절(2개 이상 노선) 역사 500m',
+  innovation_housing:'350/500m 대상지 면적 50% 이상'
+};
+
+// 각 사업 Rule Module이 이미 내린 역세권 관련 row를 그대로 가져온다.
+// 이 요약표는 새 PASS/FAIL 규칙을 만들지 않는다.
+function schemeStationRow(name){
+  const res=schemeResults[name]||latestSchemeModuleResults[name];
+  const rows=res?.rows||[];
+  const f=res?.facts;
+  const pick=item=>rows.find(r=>r.item===item)||null;
+  switch(name){
+    case 'activation': return pick('역세권');
+    case 'safe': return pick('역세권');
+    case 'station_complex': return pick('역세권 가로구역');
+    case 'innovation_housing': return pick('입지');
+    case 'longterm':
+      if(f&&f.location?.selected_type!=='station')return {status:'NA',value:'-',note:'간선도로 교차지 경로 선택 · 역세권 경로 미사용'};
+      return pick('역세권등');
+    case 'public_complex':
+      if(f&&f.type!=='commercial')return {status:'NA',value:'-',note:`${f.type_label||'비역세권 유형'} 선택 · 역세권 경로 미사용`};
+      return pick('역세권 범위');
+    case 'innovation_growth':{
+      // 성장거점형은 이 표에서 환승결절 500m 경로만 분리해 표시한다.
+      const st=f?.station||{};
+      if(st.transfer_within500)return {
+        status:'PASS',
+        value:`${st.transfer_within500.name} ${Number(st.transfer_within500.distance_m).toFixed(1)}m`,
+        note:'환승결절 경로 · 공식 환승확정 역사 경계 500m 이내'
+      };
+      if(st.transfer_candidate)return {
+        status:'FAIL',
+        value:`${st.transfer_candidate.name} ${Number(st.transfer_candidate.distance_m).toFixed(1)}m`,
+        note:'환승결절 경로 · 확인된 환승역이 500m 초과'
+      };
+      if(st.candidate_count>0){
+        if(st.line_data_complete)return {status:'FAIL',value:'-',note:'환승결절 경로 · 1km 후보역 중 공식 확인된 2개 이상 노선 환승역 없음'};
+        return {status:'REVIEW',value:'-',note:'환승결절 경로 · 일부 후보역의 노선·환승 Fact 미확정'};
+      }
+      return {status:'REVIEW',value:'-',note:'환승결절 경로 · 역세권 후보 Fact 미확보'};
+    }
+    default:return null;
+  }
+}
+function stationSchemeStatusMeta(status){
+  if(status==='PASS')return {cls:'PASS',label:'충족'};
+  if(status==='FAIL')return {cls:'FAIL',label:'미충족'};
+  if(status==='NA')return {cls:'INFO',label:'경로 미사용'};
+  return {cls:'REVIEW',label:'확인필요'};
+}
+function stationSchemeFactEvidence(name){
+  const res=schemeResults[name]||latestSchemeModuleResults[name];
+  const f=res?.facts||{};
+  if(name==='innovation_growth'){
+    const st=f.station||{},tr=st.transfer_within500||st.transfer_candidate;
+    if(tr){
+      const lines=(tr.lines||[]).filter(Boolean);
+      return `${tr.name||'판정역'} · ${lines.length?lines.join('·'):(tr.line_count!=null?tr.line_count+'개 노선':'노선 미확정')} · ${tr.distance_m==null?'-':Number(tr.distance_m).toFixed(1)+'m'}`;
+    }
+  }
+  if(name==='innovation_housing'){
+    const st=f.station||{},s350=st.coverage350_station,s500=st.coverage500_station;
+    if(s350||s500)return `350m ${s350?.name||'-'} ${st.coverage350_pct==null?'-':Number(st.coverage350_pct).toFixed(1)+'%'} / 500m ${s500?.name||'-'} ${st.coverage500_pct==null?'-':Number(st.coverage500_pct).toFixed(1)+'%'}`;
+  }
+  if(name==='public_complex'){
+    const st=f.station||{};
+    if(st.name||st.coverage350_pct!=null)return `${st.name||'판정역'} · 350m 포함 ${st.coverage350_pct==null?'-':Number(st.coverage350_pct).toFixed(1)+'%'}`;
+  }
+  if(name==='safe'){
+    const st=f.location?.station;
+    if(st?.station||st?.scope_m)return `${st.station?.name||'판정역'} · ${st.scope_m||'-'}m${st.coverage_pct!=null?' · 대상지 포함 '+Number(st.coverage_pct).toFixed(1)+'%':''}`;
+  }
+  if(name==='longterm'){
+    const st=f.location?.station;
+    if(st?.name||st?.distance_m!=null)return `${st.name||'판정역'} · ${st.distance_m==null?'-':Number(st.distance_m).toFixed(1)+'m'}${st.status?' · '+st.status:''}`;
+  }
+  if(name==='activation'){
+    const st=f.location?.station||{};
+    if(st.name||st.threshold_m)return `${st.name||'판정역'} · 적용거리 ${st.threshold_m||'-'}m`;
+  }
+  if(name==='station_complex'){
+    const st=f.station||{};
+    if(st.name||st.catchment_block_share_pct!=null)return `${st.name||'판정역'} · 250m 가로구역 ${st.catchment_block_share_pct==null?'-':Number(st.catchment_block_share_pct).toFixed(1)+'%'}${st.catchment_block_authoritative===true?' · 공식':' · 비공식/확인필요'}`;
+  }
+  return '';
+}
+function stationSchemeEvidence(name,row){
+  if(!row)return '구역계를 설정하고 검토하기를 눌러야 계산됩니다.';
+  const parts=[];
+  const fact=stationSchemeFactEvidence(name);
+  if(fact)parts.push(fact);
+  if(row.value&&row.value!=='-'&&!parts.some(x=>x.includes(String(row.value))))parts.push(String(row.value));
+  if(row.note&&row.note!=='-'&&!parts.some(x=>x.includes(String(row.note))))parts.push(String(row.note));
+  return parts.filter(Boolean).join(' · ')||'-';
+}
+// 공간현황의 역세권 검토엔진.
+// 사업 전체 적합성이 아니라 각 사업의 '역세권 입지경로' 상태와 근거만 보여준다.
+function renderStationSchemeJudgments(){
+  const root=document.getElementById('stationSchemeJudgments');
+  if(!root)return;
+  const head='<div class="station-scheme-row head"><b>사업방식</b><span>역세권 경로</span><span>판정</span><span>판정근거</span></div>';
+  const rows=STATION_SCHEME_DISPLAY_LIST.map(name=>{
+    let row;
+    try{row=schemeStationRow(name);}catch(e){row={status:'REVIEW',value:'-',note:'판정 요약 중 오류 · 확인 필요'};}
+    const meta=stationSchemeStatusMeta(row?.status);
+    const evidence=stationSchemeEvidence(name,row);
+    const route=STATION_SCHEME_ROUTE_LABELS[name]||'역세권 경로';
+    return `<div class="station-scheme-row"><b>${escHtml(schemeNames[name]||name)}</b><span class="station-route">${escHtml(route)}</span><span class="scheme-tag ${meta.cls}">${meta.label}</span><span class="station-evidence">${escHtml(evidence)}</span></div>`;
+  }).join('');
+  root.innerHTML=head+rows;
+}
 function stationCoverageValue(st,meters){return st?.[`coverage${Number(meters)}`]??null;}
 function stationOverlapValue(st,meters){return st?.[`overlap${Number(meters)}M2`]??null;}
 function bestStationByDistance(predicate=()=>true){return stationFacts().filter(predicate).sort((a,b)=>Number(a.distance_m??Infinity)-Number(b.distance_m??Infinity))[0]||null;}
@@ -9349,6 +9482,7 @@ function runAllSchemeChecks(){
   safeSchemeUiStep('candidate',()=>updateCandidateSchemes(),uiErrors);
   safeSchemeUiStep('comparison',()=>renderSchemeComparison(),uiErrors);
   safeSchemeUiStep('sheets',()=>renderAllSchemeSheets(),uiErrors);
+  safeSchemeUiStep('station-scheme-summary',()=>renderStationSchemeJudgments(),uiErrors);
   if(store)safeSchemeUiStep('compact-info',()=>updateCompactInfoRail(store),uiErrors);
   safeSchemeUiStep('site-status',()=>updateSiteStatusCard(),uiErrors);
   safeSchemeUiStep('priority-preview',()=>renderPriorityPreview(),uiErrors);
