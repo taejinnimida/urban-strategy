@@ -1949,6 +1949,118 @@ def analyze_road_intersections(geometry: Dict[str, Any]) -> Dict[str, Any]:
 
 
 
+
+def _biotope_zip_path() -> Optional[str]:
+    """서울시 개별비오톱(2025 기준) 중 1등급 폴리곤 묶음."""
+    path = _data_path("biotope_seoul.zip")
+    return path if os.path.isfile(path) and os.path.getsize(path) > 0 else None
+
+
+@lru_cache(maxsize=1)
+def _biotope_spatial_layers() -> Dict[str, Any]:
+    """내장 비오톱1등급 ZIP을 WGS84로 변환하고 STRtree로 색인한다."""
+    zip_path = _biotope_zip_path()
+    if not zip_path:
+        return {"available": False, "reason": "data/biotope_seoul.zip 미설치"}
+    rows: List[Dict[str, Any]] = []
+    with zipfile.ZipFile(zip_path) as zf:
+        names = zf.namelist()
+        stems = sorted({os.path.splitext(n)[0] for n in names if n.lower().endswith(".shp")})
+        for stem in stems:
+            shp_name = next((n for n in names if os.path.splitext(n)[0] == stem and n.lower().endswith(".shp")), None)
+            shx_name = next((n for n in names if os.path.splitext(n)[0] == stem and n.lower().endswith(".shx")), None)
+            dbf_name = next((n for n in names if os.path.splitext(n)[0] == stem and n.lower().endswith(".dbf")), None)
+            if not (shp_name and shx_name and dbf_name):
+                continue
+            source_crs = CRS.from_user_input(os.getenv("BIOTOPE_DATA_CRS", "EPSG:5174"))
+            prj_name = next((n for n in names if os.path.splitext(n)[0] == stem and n.lower().endswith(".prj")), None)
+            if prj_name:
+                try:
+                    source_crs = CRS.from_wkt(zf.read(prj_name).decode("utf-8", errors="ignore"))
+                except Exception:
+                    logging.warning("biotope PRJ parse failed; BIOTOPE_DATA_CRS fallback used: %s", stem)
+            to_wgs = Transformer.from_crs(source_crs, 4326, always_xy=True).transform
+            reader = shapefile.Reader(
+                shp=io.BytesIO(zf.read(shp_name)),
+                shx=io.BytesIO(zf.read(shx_name)),
+                dbf=io.BytesIO(zf.read(dbf_name)),
+                encoding="cp949",
+                encodingErrors="replace",
+            )
+            fields = [f[0] for f in reader.fields[1:]]
+            for sr in reader.iterShapeRecords():
+                try:
+                    props = {k: _json_property(v) for k, v in zip(fields, list(sr.record))}
+                    # 배포본이 잘못 교체돼도 1등급 외 도형을 자동판정에 섞지 않는다.
+                    if str(props.get("유형평가") or "").strip() != "1등급" and str(props.get("개별평가") or "").strip() != "1등급":
+                        continue
+                    geom = shape(sr.shape.__geo_interface__)
+                    if geom.is_empty:
+                        continue
+                    if not geom.is_valid:
+                        geom = geom.buffer(0)
+                    geom = geometry_transform(to_wgs, geom)
+                    if geom.is_empty:
+                        continue
+                    rows.append({"geometry": geom, "properties": props})
+                except Exception:
+                    continue
+    tree = STRtree([r["geometry"] for r in rows]) if rows else None
+    return {
+        "available": bool(rows), "rows": rows, "tree": tree,
+        "source": "서울시 개별비오톱(2025 기준) 원본 SHP · 유형평가/개별평가 중 1등급",
+        "file": os.path.basename(zip_path), "count": len(rows),
+    }
+
+
+def analyze_biotope_intersections(geometry: Dict[str, Any]) -> Dict[str, Any]:
+    """대상지와 비오톱1등급을 실제 교차하고 중첩면적·비율·클립도형을 반환한다."""
+    layers = _biotope_spatial_layers()
+    if not layers.get("available"):
+        raise FileNotFoundError(str(layers.get("reason") or "비오톱1등급 원본 미설치"))
+    site = shape(geometry)
+    if site.geom_type not in {"Polygon", "MultiPolygon"} or site.is_empty or not site.is_valid:
+        raise ValueError("유효한 Polygon 또는 MultiPolygon 구역계가 필요합니다.")
+    tree = layers.get("tree")
+    rows = layers.get("rows") or []
+    clipped_rows: List[Dict[str, Any]] = []
+    clipped_geoms = []
+    if tree is not None:
+        for idx in tree.query(site, predicate="intersects"):
+            row = rows[int(idx)]
+            try:
+                inter = _polygonal_only(site.intersection(row["geometry"]))
+            except Exception:
+                inter = []
+            if not inter:
+                continue
+            inter_geom = unary_union(inter)
+            if inter_geom.is_empty:
+                continue
+            clipped_geoms.append(inter_geom)
+            clipped_rows.append({"type": "Feature", "geometry": mapping(inter_geom), "properties": row["properties"]})
+            if len(clipped_rows) >= 5000:
+                break
+    union_wgs = unary_union(clipped_geoms) if clipped_geoms else None
+    to_metric = Transformer.from_crs(4326, 5174, always_xy=True).transform
+    site_m2 = float(geometry_transform(to_metric, site).area)
+    overlap_m2 = float(geometry_transform(to_metric, union_wgs).area) if union_wgs is not None and not union_wgs.is_empty else 0.0
+    overlap_pct = (overlap_m2 / site_m2 * 100.0) if site_m2 > 0 else None
+    return {
+        "status": "matched" if clipped_rows else "none",
+        "intersects": bool(clipped_rows and overlap_m2 > 0.5),
+        "overlap_area_m2": overlap_m2,
+        "overlap_pct": overlap_pct,
+        "features": {"type": "FeatureCollection", "features": clipped_rows},
+        "metadata": {
+            "source": layers.get("source"), "file": layers.get("file"),
+            "dataset_count": layers.get("count", 0), "return_count": len(clipped_rows),
+            "grade_basis": "유형평가 또는 개별평가 중 하나라도 1등급",
+            "geometry_basis": "site_exact_intersection",
+        },
+    }
+
+
 def _polygon_parts(geom: Any) -> List[Any]:
     if geom is None or geom.is_empty:
         return []
@@ -3959,6 +4071,32 @@ def road_intersections(inp: GeometryInput):
     except Exception as exc:
         logging.exception("road intersection failed")
         raise HTTPException(status_code=500, detail=f"실폭도로 중첩분석 오류: {exc}") from exc
+
+
+@app.get("/api/spatial/biotope-data-status")
+def biotope_data_status():
+    """내장 비오톱1등급 SHP 로드상태 진단."""
+    path = _biotope_zip_path()
+    if not path:
+        return {"available": False, "fact_status": "MISSING", "message": "내장 비오톱1등급 자료 없음 · biotope_seoul.zip 필요"}
+    layers = _biotope_spatial_layers()
+    if layers.get("available"):
+        return {"available": True, "fact_status": "BIOTOPE_GRADE1_READY", "message": f"비오톱1등급 폴리곤 {layers.get('count', 0)}건 사용 가능", "file": layers.get("file"), "source": layers.get("source")}
+    return {"available": False, "fact_status": "LOAD_FAILED", "message": str(layers.get("reason") or "비오톱 ZIP 로드 실패")}
+
+
+@app.post("/api/spatial/biotope-intersections")
+def biotope_intersections(inp: GeometryInput):
+    """내장 비오톱1등급 원본과 대상지를 실제 공간교차합니다."""
+    try:
+        return analyze_biotope_intersections(inp.geometry)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logging.exception("biotope intersection failed")
+        raise HTTPException(status_code=500, detail=f"비오톱1등급 중첩분석 오류: {exc}") from exc
 
 
 @app.post("/api/spatial/street-block")

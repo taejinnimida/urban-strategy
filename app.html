@@ -1795,9 +1795,10 @@ body.service-layout-ready>.shell{display:none!important}
 <div><span>비오톱 1등급</span><b id="spSharedBiotope">-</b></div>
 <div><span>공익용산지</span><b id="spSharedPublicForest">-</b></div>
 </div>
-<div class="spatial-tags"><span class="map-legend-chip lg-urban-park">도시자연공원구역</span><span class="map-legend-chip lg-greenbelt">개발제한구역</span><span class="map-legend-chip dashed lg-biotope">비오톱1등급 해당·저촉 필지</span><span class="map-legend-chip dashed lg-public-forest">공익용산지 해당·저촉 필지</span></div>
-<div class="spatial-caption">도면정보 · 도시자연공원구역·개발제한구역은 VWorld 벡터 실제 교차면적을 계산하고, 비오톱1등급·공익용산지는 VWorld 토지이용계획정보에서 해당·저촉 필지를 확인합니다.</div>
-<div class="shared-conservation-note">정확성 단서 · 비오톱1등급·공익용산지의 토지이용계획 API는 규제 원도형을 반환하지 않으므로 지도에는 해당·저촉 필지 경계를 표시합니다. 이 두 항목의 정확 중첩면적은 원본 SHP가 연결되기 전에는 산정하지 않습니다.</div>
+<div class="spatial-tags"><span class="map-legend-chip lg-urban-park">도시자연공원구역</span><span class="map-legend-chip lg-greenbelt">개발제한구역</span><span class="map-legend-chip lg-biotope">비오톱1등급 실제 중첩</span><span class="map-legend-chip dashed lg-public-forest">공익용산지 해당·저촉 필지</span></div>
+<div class="spatial-caption">도면정보 · 도시자연공원구역·개발제한구역은 VWorld 벡터 실제 교차면적을 계산하고, 비오톱1등급은 내장 서울시 개별비오톱(2025 기준) 원본 SHP로 검토구역 실제 교차면적·비율을 계산합니다. 공익용산지는 VWorld 토지이용계획정보에서 해당·저촉 필지를 확인합니다.</div>
+<div class="shared-conservation-note">정확성 단서 · 비오톱1등급은 개별평가 또는 유형평가 중 하나라도 1등급인 폴리곤을 대상으로 실제 공간교차를 산정합니다. 공익용산지는 원본 구분도형이 연결되지 않아 필지단위 해당·저촉 결과만 표시합니다.</div>
+<div class="shared-conservation-note" id="spSharedConservationErrorDetail" style="display:none"></div>
 <div class="spatial-mini-map" id="ccSharedConservationMiniMap"></div>
 </section>
 <section class="spatial-module" id="siteDetail_hill" style="display:none">
@@ -3100,7 +3101,7 @@ const ccSharedConservationMini=L.map('ccSharedConservationMiniMap',{zoomControl:
 const ccSharedConservationParcelBase=L.geoJSON(null,{style:compactParcelBaseStyle}).addTo(ccSharedConservationMini);
 const ccSharedUrbanPark=L.geoJSON(null,{style:{weight:1.8,color:'#067647',fillColor:'#abefc6',fillOpacity:.42},onEachFeature:(f,l)=>l.bindTooltip('도시자연공원구역 · 실제 중첩도형')}).addTo(ccSharedConservationMini);
 const ccSharedGreenbelt=L.geoJSON(null,{style:{weight:1.8,color:'#027a48',fillColor:'#75e0a7',fillOpacity:.28,dashArray:'4,2'},onEachFeature:(f,l)=>l.bindTooltip('개발제한구역 · 실제 중첩도형')}).addTo(ccSharedConservationMini);
-const ccSharedBiotopeParcels=L.geoJSON(null,{style:{weight:2,color:'#7a5af8',fillColor:'#d9d6fe',fillOpacity:.18,dashArray:'5,3'},onEachFeature:(f,l)=>l.bindTooltip(`비오톱1등급 · 토지이용계획상 해당/저촉 필지${f.properties?._conservation_relation?' · '+escHtml(f.properties._conservation_relation):''}`)}).addTo(ccSharedConservationMini);
+const ccSharedBiotopeParcels=L.geoJSON(null,{style:{weight:2,color:'#7a5af8',fillColor:'#d9d6fe',fillOpacity:.30},onEachFeature:(f,l)=>{const p=f.properties||{};const grade=`유형 ${p['유형평가']||'-'} / 개별 ${p['개별평가']||'-'}`;l.bindTooltip(`비오톱1등급 · 실제 중첩도형 · ${escHtml(grade)}${p['비오톱범례']?' · '+escHtml(p['비오톱범례']):''}`);}}).addTo(ccSharedConservationMini);
 const ccSharedForestParcels=L.geoJSON(null,{style:{weight:2,color:'#854a0e',fillColor:'#fedf89',fillOpacity:.16,dashArray:'2,3'},onEachFeature:(f,l)=>l.bindTooltip(`공익용산지 · 토지이용계획상 해당/저촉 필지${f.properties?._conservation_relation?' · '+escHtml(f.properties._conservation_relation):''}`)}).addTo(ccSharedConservationMini);
 const ccSharedConservationBoundary=L.geoJSON(null,{style:{weight:3,color:'#101828',fillOpacity:0}}).addTo(ccSharedConservationMini);
 const ccHillMini=L.map('ccHillMiniMap',{zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,doubleClickZoom:false,boxZoom:false,keyboard:false,touchZoom:false}).setView([37.5665,126.9780],15);
@@ -3333,25 +3334,66 @@ function affectedParcelFeatures(pnus,rows,type){
   for(const raw of pnus||[]){const pnu=String(raw),f=parcelFeatureMap.get(pnu);if(!f)continue;const c=cloneFeature(f);c.properties=Object.assign({},c.properties||{},{_conservation_type:type,_conservation_relation:relationByPnu.get(pnu)||'해당/저촉'});out.push(c);}
   return out;
 }
+function computeBiotopeFactFromBundled(payload){
+  const fc=payload?.features||{type:'FeatureCollection',features:[]};
+  const features=Array.isArray(fc.features)?fc.features:[];
+  const affectedPnus=[],rows=[];
+  // 비오톱 판정 자체는 구역계↔원도형 교차로 끝난다. PNU는 기존 표/진단과의 호환용 보조정보일 뿐 필수조건이 아니다.
+  if(features.length&&selectedParcelPnus?.size){
+    for(const pnu of selectedParcelPnus){
+      const pf=parcelFeatureMap.get(String(pnu));if(!pf)continue;
+      let hit=null;
+      for(const bf of features){try{if(turf.booleanIntersects(pf,turf.feature(bf.geometry,bf.properties||{}))){hit=bf;break;}}catch(e){}}
+      if(hit){
+        affectedPnus.push(String(pnu));
+        const p=hit.properties||{};
+        rows.push({pnu:String(pnu),relation_name:`실제 교차 · 유형평가 ${p['유형평가']||'-'} / 개별평가 ${p['개별평가']||'-'}${p['비오톱범례']?' · '+p['비오톱범례']:''}`,relation_code:'EXACT_SHP'});
+      }
+    }
+  }
+  const area=Number.isFinite(Number(payload?.overlap_area_m2))?Number(payload.overlap_area_m2):null;
+  const pct=Number.isFinite(Number(payload?.overlap_pct))?Number(payload.overlap_pct):null;
+  const present=payload?.intersects===true||(area!=null&&area>0.5)||features.length>0;
+  return {known:true,present,area_m2:area,pct,features,affected_pnus:affectedPnus.sort(),rows,source:payload?.metadata?.source||'서울시 개별비오톱(2025 기준) 원본 SHP',geometry_basis:'EXACT_SHP'};
+}
 async function analyzeSharedConservation(){
   if(!activeGeometry)return sharedConservationAnalysis;
   sharedConservationAnalysis.loading=true;sharedConservationAnalysis.loaded=false;sharedConservationAnalysis.errors=[];
+  // VWorld 벡터 2종은 외부 필지조회와 독립된 공간 Fact이므로 항상 먼저 보존한다.
+  sharedConservationAnalysis.urbanPark=unionAndClipPlanningLayer('LT_C_UQ162');
+  sharedConservationAnalysis.greenbelt=unionAndClipPlanningLayer('LT_C_UD801');
+  sharedConservationAnalysis.biotope={known:false,present:null,area_m2:null,pct:null,features:[],affected_pnus:[],rows:[],geometry_basis:'NONE'};
+  sharedConservationAnalysis.publicForest={known:false,present:null,affected_pnus:[],rows:[]};
+  let biotopeExact=false,nedData=null;
   try{
-    sharedConservationAnalysis.urbanPark=unionAndClipPlanningLayer('LT_C_UQ162');
-    sharedConservationAnalysis.greenbelt=unionAndClipPlanningLayer('LT_C_UD801');
-    const pnus=[...selectedParcelPnus].filter(x=>/^\d{19}$/.test(String(x)));
-    if(!pnus.length)throw new Error('선택필지 PNU 미확보');
-    const data=await fetchBackendJson('/api/spatial/land-use-restrictions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pnus})});
-    sharedConservationAnalysis.status=data.status||'unavailable';
-    sharedConservationAnalysis.biotope={known:!!data.biotope_grade1?.known,present:data.biotope_grade1?.present===true,affected_pnus:data.biotope_grade1?.affected_pnus||[],rows:data.biotope_grade1?.rows||[]};
-    sharedConservationAnalysis.publicForest={known:!!data.public_interest_forest?.known,present:data.public_interest_forest?.present===true,affected_pnus:data.public_interest_forest?.affected_pnus||[],rows:data.public_interest_forest?.rows||[]};
-    sharedConservationAnalysis.errors=data.errors||[];sharedConservationAnalysis.source=data.source||{};sharedConservationAnalysis.loaded=true;
+    const bio=await fetchBackendJson('/api/spatial/biotope-intersections',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry:activeGeometry})});
+    sharedConservationAnalysis.biotope=computeBiotopeFactFromBundled(bio);
+    biotopeExact=true;
   }catch(e){
-    sharedConservationAnalysis.status='error';sharedConservationAnalysis.errors=[{error:String(e.message||e)}];
-    // Planning vectors remain valid even when parcel-level NED lookup fails.
-    sharedConservationAnalysis.urbanPark=unionAndClipPlanningLayer('LT_C_UQ162');sharedConservationAnalysis.greenbelt=unionAndClipPlanningLayer('LT_C_UD801');
-    sharedConservationAnalysis.biotope={known:false,present:null,affected_pnus:[],rows:[]};sharedConservationAnalysis.publicForest={known:false,present:null,affected_pnus:[],rows:[]};sharedConservationAnalysis.loaded=true;
-  }finally{sharedConservationAnalysis.loading=false;renderSharedConservationSpatialStatus();}
+    sharedConservationAnalysis.errors.push({source:'BIOTOPE_SHP',error:`비오톱1등급 내장 원본 조회 실패 · 필지조회 fallback 검토: ${String(e?.message||e)}`});
+  }
+  // 공익용산지는 현재 NED 필지조회가 필요하다. PNU가 없거나 NED가 실패해도 이미 성공한 비오톱 원도형 결과는 지우지 않는다.
+  const pnus=[...selectedParcelPnus].filter(x=>/^\d{19}$/.test(String(x)));
+  if(pnus.length){
+    try{
+      nedData=await fetchBackendJson('/api/spatial/land-use-restrictions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pnus})});
+      sharedConservationAnalysis.publicForest={known:!!nedData.public_interest_forest?.known,present:nedData.public_interest_forest?.present===true,affected_pnus:nedData.public_interest_forest?.affected_pnus||[],rows:nedData.public_interest_forest?.rows||[]};
+      // 내장 SHP가 실패한 경우에만 기존 NED 비오톱 필지결과를 fallback으로 사용한다.
+      if(!biotopeExact){
+        sharedConservationAnalysis.biotope={known:!!nedData.biotope_grade1?.known,present:nedData.biotope_grade1?.present===true,area_m2:null,pct:null,features:[],affected_pnus:nedData.biotope_grade1?.affected_pnus||[],rows:nedData.biotope_grade1?.rows||[],geometry_basis:'PARCEL_ATTRIBUTE'};
+      }
+      sharedConservationAnalysis.errors.push(...(nedData.errors||[]));
+      sharedConservationAnalysis.source=Object.assign({},nedData.source||{},{biotope:sharedConservationAnalysis.biotope.source||'NED fallback'});
+    }catch(e){
+      sharedConservationAnalysis.errors.push({source:'NED',error:`공익용산지 필지조회 실패: ${String(e?.message||e)}`});
+    }
+  }else{
+    sharedConservationAnalysis.errors.push({source:'NED',error:'선택필지 PNU 미확보 · 공익용산지 필지조회만 생략'});
+  }
+  const known=[sharedConservationAnalysis.urbanPark?.known,sharedConservationAnalysis.greenbelt?.known,sharedConservationAnalysis.biotope?.known,sharedConservationAnalysis.publicForest?.known].filter(Boolean).length;
+  sharedConservationAnalysis.status=known===4?'matched':known>0?'partial':'unavailable';
+  sharedConservationAnalysis.loaded=true;sharedConservationAnalysis.loading=false;
+  renderSharedConservationSpatialStatus();
   return sharedConservationAnalysis;
 }
 function renderPlanningFacilitySpatialStatus(){
@@ -3369,15 +3411,32 @@ function renderPlanningFacilitySpatialStatus(){
 function renderSharedConservationSpatialStatus(){
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
   ccSharedUrbanPark.clearLayers();ccSharedGreenbelt.clearLayers();ccSharedBiotopeParcels.clearLayers();ccSharedForestParcels.clearLayers();ccSharedConservationBoundary.clearLayers();
-  if(!activeGeometry){for(const id of ['spSharedUrbanPark','spSharedGreenbelt','spSharedBiotope','spSharedPublicForest'])set(id,'-');set('spSharedConservationState','구역 설정 전');return;}
+  if(!activeGeometry){for(const id of ['spSharedUrbanPark','spSharedGreenbelt','spSharedBiotope','spSharedPublicForest'])set(id,'-');set('spSharedConservationState','구역 설정 전');const err=document.getElementById('spSharedConservationErrorDetail');if(err){err.textContent='';err.style.display='none';}return;}
   const site=turf.feature(activeGeometry);ccSharedConservationBoundary.addData(site);const a=sharedConservationAnalysis;
-  if(a.urbanPark?.features?.length)ccSharedUrbanPark.addData({type:'FeatureCollection',features:a.urbanPark.features});if(a.greenbelt?.features?.length)ccSharedGreenbelt.addData({type:'FeatureCollection',features:a.greenbelt.features});
-  const bioFs=affectedParcelFeatures(a.biotope?.affected_pnus,a.biotope?.rows,'biotope_grade1'),forestFs=affectedParcelFeatures(a.publicForest?.affected_pnus,a.publicForest?.rows,'public_interest_forest');if(bioFs.length)ccSharedBiotopeParcels.addData({type:'FeatureCollection',features:bioFs});if(forestFs.length)ccSharedForestParcels.addData({type:'FeatureCollection',features:forestFs});
+  if(a.urbanPark?.features?.length)ccSharedUrbanPark.addData({type:'FeatureCollection',features:a.urbanPark.features});
+  if(a.greenbelt?.features?.length)ccSharedGreenbelt.addData({type:'FeatureCollection',features:a.greenbelt.features});
+  // 내장 비오톱 SHP가 있으면 실제 교차도형을 표시한다. 실패해 NED로 내려간 경우에만 해당필지 경계를 fallback 표시한다.
+  if(a.biotope?.features?.length)ccSharedBiotopeParcels.addData({type:'FeatureCollection',features:a.biotope.features});
+  else{
+    const bioFs=affectedParcelFeatures(a.biotope?.affected_pnus,a.biotope?.rows,'biotope_grade1');
+    if(bioFs.length)ccSharedBiotopeParcels.addData({type:'FeatureCollection',features:bioFs});
+  }
+  const forestFs=affectedParcelFeatures(a.publicForest?.affected_pnus,a.publicForest?.rows,'public_interest_forest');
+  if(forestFs.length)ccSharedForestParcels.addData({type:'FeatureCollection',features:forestFs});
   const exactText=x=>!x?.known?'자료 미확인':x.present?`${Math.round(x.area_m2||0).toLocaleString('ko-KR')}㎡ · ${Number(x.pct||0).toFixed(1)}%`:'중첩 없음';
-  const parcelText=x=>!x?.known?'자료 미확인':x.present?`해당·저촉 ${x.affected_pnus.length}필지`:'해당 없음';
-  set('spSharedUrbanPark',exactText(a.urbanPark));set('spSharedGreenbelt',exactText(a.greenbelt));set('spSharedBiotope',parcelText(a.biotope));set('spSharedPublicForest',parcelText(a.publicForest));
-  const known=[a.urbanPark?.known,a.greenbelt?.known,a.biotope?.known,a.publicForest?.known].filter(Boolean).length;set('spSharedConservationState',a.loading?'조회 중':`${known}/4 기준 확인${a.errors?.length?` · API 오류 ${a.errors.length}`:''}`);
-  fitCompactMiniMap(ccSharedConservationMini,ccSharedConservationBoundary,ccSharedBiotopeParcels.getLayers().length?ccSharedBiotopeParcels:ccSharedUrbanPark);
+  const parcelText=x=>!x?.known?'자료 미확인':x.present?`해당·저촉 ${(x.affected_pnus||[]).length}필지`:'해당 없음';
+  set('spSharedUrbanPark',exactText(a.urbanPark));set('spSharedGreenbelt',exactText(a.greenbelt));
+  set('spSharedBiotope',a.biotope?.area_m2!=null?exactText(a.biotope):parcelText(a.biotope));
+  set('spSharedPublicForest',parcelText(a.publicForest));
+  const known=[a.urbanPark?.known,a.greenbelt?.known,a.biotope?.known,a.publicForest?.known].filter(Boolean).length;
+  set('spSharedConservationState',a.loading?'조회 중':`${known}/4 기준 확인${a.errors?.length?` · 보완필요 ${a.errors.length}`:''}`);
+  const err=document.getElementById('spSharedConservationErrorDetail');
+  if(err){
+    if(a.errors?.length){const first=a.errors[0]||{};err.textContent=`자료상태 · ${first.error||first.message||String(first)}`;err.style.display='';}
+    else{err.textContent='';err.style.display='none';}
+  }
+  const focus=ccSharedBiotopeParcels.getLayers().length?ccSharedBiotopeParcels:(ccSharedUrbanPark.getLayers().length?ccSharedUrbanPark:ccSharedConservationBoundary);
+  fitCompactMiniMap(ccSharedConservationMini,ccSharedConservationBoundary,focus);
 }
 
 function safeMedicalCategoryLabel(cat){return cat==='general_hospital'?'종합병원':cat==='municipal_hospital'?'시립병원':cat==='public_health_center'?'보건소':String(cat||'의료시설');}
@@ -4034,7 +4093,7 @@ const sharedConservationAnalysis={
   loaded:false,loading:false,status:'unavailable',errors:[],
   urbanPark:{known:false,present:null,area_m2:null,pct:null,features:[]},
   greenbelt:{known:false,present:null,area_m2:null,pct:null,features:[]},
-  biotope:{known:false,present:null,affected_pnus:[],rows:[]},
+  biotope:{known:false,present:null,area_m2:null,pct:null,features:[],affected_pnus:[],rows:[],geometry_basis:'NONE'},
   publicForest:{known:false,present:null,affected_pnus:[],rows:[]},
   source:{geometry_basis:'mixed'}
 };
@@ -4104,7 +4163,7 @@ function resetPlanningAnalysis(){
   developmentAnalysis.loaded=false;developmentAnalysis.loading=false;developmentAnalysis.contextFeatures=[];developmentAnalysis.overlaps=[];developmentAnalysis.metadata={};developmentAnalysis.error='';
   hillAnalysis.loaded=false;hillAnalysis.loading=false;hillAnalysis.status='unavailable';hillAnalysis.source_status='';hillAnalysis.intersects=null;hillAnalysis.overlap_area_m2=null;hillAnalysis.overlap_pct=null;hillAnalysis.distance_m=null;hillAnalysis.contextFeatures=[];hillAnalysis.overlaps=[];hillAnalysis.metadata={};hillAnalysis.error='';
   safeMedicalAnalysis.loaded=false;safeMedicalAnalysis.loading=false;safeMedicalAnalysis.status='unavailable';safeMedicalAnalysis.items=[];safeMedicalAnalysis.metadata={};safeMedicalAnalysis.errors=[];safeMedicalAnalysis.warnings=[];safeMedicalAnalysis.sourceStats={};safeMedicalAnalysis.nearbyCounts={};safeMedicalAnalysis.message='';
-  sharedConservationAnalysis.loaded=false;sharedConservationAnalysis.loading=false;sharedConservationAnalysis.status='unavailable';sharedConservationAnalysis.errors=[];sharedConservationAnalysis.urbanPark={known:false,present:null,area_m2:null,pct:null,features:[]};sharedConservationAnalysis.greenbelt={known:false,present:null,area_m2:null,pct:null,features:[]};sharedConservationAnalysis.biotope={known:false,present:null,affected_pnus:[],rows:[]};sharedConservationAnalysis.publicForest={known:false,present:null,affected_pnus:[],rows:[]};sharedConservationAnalysis.source={geometry_basis:'mixed'};
+  sharedConservationAnalysis.loaded=false;sharedConservationAnalysis.loading=false;sharedConservationAnalysis.status='unavailable';sharedConservationAnalysis.errors=[];sharedConservationAnalysis.urbanPark={known:false,present:null,area_m2:null,pct:null,features:[]};sharedConservationAnalysis.greenbelt={known:false,present:null,area_m2:null,pct:null,features:[]};sharedConservationAnalysis.biotope={known:false,present:null,area_m2:null,pct:null,features:[],affected_pnus:[],rows:[],geometry_basis:'NONE'};sharedConservationAnalysis.publicForest={known:false,present:null,affected_pnus:[],rows:[]};sharedConservationAnalysis.source={geometry_basis:'mixed'};
   activationArterialAnalysis.loaded=false;activationArterialAnalysis.loading=false;activationArterialAnalysis.status='unavailable';activationArterialAnalysis.roads=[];activationArterialAnalysis.commercialZones=[];activationArterialAnalysis.siteOverlapFeatures=[];activationArterialAnalysis.blockFeature=null;activationArterialAnalysis.stationBufferFeature=null;activationArterialAnalysis.siteOverlapM2=null;activationArterialAnalysis.siteOverlapPct=null;activationArterialAnalysis.blockOverlapM2=null;activationArterialAnalysis.siteIncludes=null;activationArterialAnalysis.blockIncludes=null;activationArterialAnalysis.routeStatus='REVIEW';activationArterialAnalysis.routeConditional=false;activationArterialAnalysis.path='';activationArterialAnalysis.metadata={};activationArterialAnalysis.errors=[];activationArterialAnalysis.warnings=[];
   const renewalSelect=document.getElementById('renewal_area_type');if(renewalSelect)renewalSelect.value='auto';
   const promotionSelect=document.getElementById('renewal_promotion_status');if(promotionSelect)promotionSelect.value='auto';
@@ -5688,7 +5747,7 @@ async function runAllAutoAnalyses(options={}){
 
   // 대형 공간자료·외부 API는 순차 실행한다. 작은 Render 인스턴스에서 SHP 2종 동시 적재로 HTML 오류/프로세스 재시작이 나는 가능성을 낮춘다.
   results.push(await safeAnalysisStep('도시계획 GIS',analyzePlanningGIS,90000,{onTimeout:cancelPlanningAnalysis,classify:v=>({status:(v?.error_count||0)>0?'partial':'fulfilled',detail:v?.queried?`성공 ${v.ok}/${v.queried} 레이어`:''})}));
-  results.push(await safeAnalysisStep('상생주택 보전환경',analyzeSharedConservation,60000,{classify:v=>{const known=[v?.urbanPark?.known,v?.greenbelt?.known,v?.biotope?.known,v?.publicForest?.known].filter(Boolean).length;return {status:known===4?(v?.errors?.length?'partial':'fulfilled'):(known>0?'partial':'rejected'),detail:`${known}/4 기준 확인${v?.biotope?.affected_pnus?.length?` · 비오톱 ${v.biotope.affected_pnus.length}필지`:''}${v?.publicForest?.affected_pnus?.length?` · 공익용산지 ${v.publicForest.affected_pnus.length}필지`:''}`};}}));
+  results.push(await safeAnalysisStep('상생주택 보전환경',analyzeSharedConservation,60000,{classify:v=>{const known=[v?.urbanPark?.known,v?.greenbelt?.known,v?.biotope?.known,v?.publicForest?.known].filter(Boolean).length;return {status:known===4?(v?.errors?.length?'partial':'fulfilled'):(known>0?'partial':'rejected'),detail:`${known}/4 기준 확인${v?.biotope?.area_m2!=null?` · 비오톱 ${Math.round(v.biotope.area_m2).toLocaleString('ko-KR')}㎡`:v?.biotope?.affected_pnus?.length?` · 비오톱 ${v.biotope.affected_pnus.length}필지`:''}${v?.publicForest?.affected_pnus?.length?` · 공익용산지 ${v.publicForest.affected_pnus.length}필지`:''}`};}}));
   results.push(await safeAnalysisStep('정비사업 GIS',async()=>{await analyzeRenewalZones();return {error:renewalAnalysis.error,overlaps:renewalAnalysis.overlaps?.length||0};},60000,{classify:v=>({status:v?.error?'rejected':'fulfilled',detail:v?.error?String(v.error).slice(0,120):`중첩 ${v?.overlaps||0}건`})}));
   results.push(await safeAnalysisStep('개발사업 GIS',async()=>{await analyzeDevelopmentZones();return {error:developmentAnalysis.error,overlaps:developmentAnalysis.overlaps?.length||0};},60000,{classify:v=>({status:v?.error?'rejected':'fulfilled',detail:v?.error?String(v.error).slice(0,120):`중첩 ${v?.overlaps||0}건`})}));
   results.push(await safeAnalysisStep('의료시설',async()=>{await analyzeSafeMedicalReference();return {status:safeMedicalAnalysis.status,error_count:safeMedicalAnalysis.errors?.length||0,item_count:safeMedicalAnalysis.items?.length||0};},60000,{classify:v=>({status:v?.status==='error'?'rejected':(v?.error_count?'partial':'fulfilled'),detail:`후보 ${v?.item_count||0}건${v?.error_count?` · 오류 ${v.error_count}`:''}`})}));
@@ -8068,7 +8127,7 @@ function sharedHousingSpatialFacts(store){
     conservation:{
       urban_natural_park:{known:parkKnown,hits:parkHits,present:a.urbanPark?.present??(parkHits.length>0),area_m2:a.urbanPark?.area_m2??null,pct:a.urbanPark?.pct??null},
       development_restriction:{known:gbKnown,hits:gbHits,present:a.greenbelt?.present??(gbHits.length>0),area_m2:a.greenbelt?.area_m2??null,pct:a.greenbelt?.pct??null},
-      biotope_grade1:{known:!!bio.known,present:bio.present===true,affected_pnus:bio.affected_pnus||[],rows:bio.rows||[],value:!bio.known?'자료 미확인':bio.present?`토지이용계획상 해당·저촉 ${bio.affected_pnus.length}필지`:'해당 없음'},
+      biotope_grade1:{known:!!bio.known,present:bio.present===true,affected_pnus:bio.affected_pnus||[],rows:bio.rows||[],area_m2:bio.area_m2??null,pct:bio.pct??null,geometry_basis:bio.geometry_basis||'',value:!bio.known?'자료 미확인':bio.present?(bio.area_m2!=null?`${Math.round(bio.area_m2).toLocaleString('ko-KR')}㎡ · ${Number(bio.pct||0).toFixed(1)}% 실제 중첩`:`토지이용계획상 해당·저촉 ${(bio.affected_pnus||[]).length}필지`):'해당 없음'},
       public_interest_forest:{known:!!forest.known,present:forest.present===true,affected_pnus:forest.affected_pnus||[],rows:forest.rows||[],value:!forest.known?'자료 미확인':forest.present?`토지이용계획상 해당·저촉 ${forest.affected_pnus.length}필지`:'해당 없음'},manual_excluded:c.sharedExcluded
     },
     planning:{facilities:facilityHits,density:sharedHousingDensity(c),type:effectiveSharedHousingType(c)},
@@ -8077,7 +8136,7 @@ function sharedHousingSpatialFacts(store){
       spatialFactRow('민간제안 의사',c.sharedProposal==null?'미확인':c.sharedProposal?'사업 제안 의사 확인':'제안 의사 없음',c.sharedProposal==null?'REVIEW':'CONFIRMED','운영기준상 민간 제안대상 여부를 저이용·유휴토지와 별도 현황으로 관리'),
       spatialFactRow('도시자연공원구역',parkKnown?(a.urbanPark?.present?`${Math.round(a.urbanPark.area_m2||0).toLocaleString('ko-KR')}㎡ · ${Number(a.urbanPark.pct||0).toFixed(1)}% 중첩`:'중첩 없음'):'자료 미확인',parkKnown?'CONFIRMED':'REVIEW','VWorld LT_C_UQ162 실제 공간교차'),
       spatialFactRow('개발제한구역',gbKnown?(a.greenbelt?.present?`${Math.round(a.greenbelt.area_m2||0).toLocaleString('ko-KR')}㎡ · ${Number(a.greenbelt.pct||0).toFixed(1)}% 중첩`:'중첩 없음'):'자료 미확인',gbKnown?'CONFIRMED':'REVIEW','VWorld LT_C_UD801 실제 공간교차'),
-      spatialFactRow('비오톱 1등급',bio.known?(bio.present?`해당·저촉 ${bio.affected_pnus.length}필지`:'해당 없음'):'자료 미확인',bio.known?'CONFIRMED':'REVIEW','VWorld NED 토지이용계획 getLandUseAttr · 필지단위, 원도형 아님'),
+      spatialFactRow('비오톱 1등급',bio.known?(bio.present?(bio.area_m2!=null?`${Math.round(bio.area_m2).toLocaleString('ko-KR')}㎡ · ${Number(bio.pct||0).toFixed(1)}% 실제 중첩`:`해당·저촉 ${(bio.affected_pnus||[]).length}필지`):'해당 없음'):'자료 미확인',bio.known?'CONFIRMED':'REVIEW',bio.area_m2!=null?'서울시 개별비오톱(2025 기준) 원본 SHP · 검토구역 실제 공간교차':'VWorld NED 토지이용계획 getLandUseAttr · 필지단위 fallback'),
       spatialFactRow('공익용산지',forest.known?(forest.present?`해당·저촉 ${forest.affected_pnus.length}필지`:'해당 없음'):'자료 미확인',forest.known?'CONFIRMED':'REVIEW','VWorld NED 토지이용계획 getLandUseAttr · 필지단위, 원도형 아님'),
       spatialFactRow('도시계획시설',facilityHits.length?facilityHits.map(x=>x.name||x.category).join(' / '):'중첩 없음 또는 미확인',d.district_plan_loaded?'CONFIRMED':'REVIEW','시설해제·복합화가 상생주택 계획조건과 공공기여에 영향')
     ]
@@ -8104,7 +8163,7 @@ function checkSharedHousingFromFacts(store,f){
   else if(knownAll){conservationStatus='PASS';conservationValue='4개 공간기준 중 해당·중첩 없음';}
   rows.push(schemeRow('정책상 보전·전문기능 지역','도시자연공원구역·비오톱1등급·개발제한구역·공익용산지 등은 사업대상지에서 제외할 수 있음',conservationValue,conservationStatus,'4개 기준은 자동 분석하되 운영기준 문언이 재량적 “제외할 수 있다”이므로 중첩 시 REVIEW, 공식 선정 제외확정 시 FAIL',true,{sourceId:'SHARED',locator:'2-1-2'}));
   const bio=cons.biotope_grade1,forest=cons.public_interest_forest;
-  rows.push(schemeRow('비오톱 1등급','정책상 보전지역 검토',bio.value,bio.known?(bio.present?'REVIEW':'PASS'):'REVIEW',bio.known?(bio.present?'토지이용계획상 해당·저촉 필지 확인 · 원도형 중첩면적은 SHP 연결 후 보완':'토지이용계획상 해당 없음'):'공식 토지이용계획 API 미확보',false,{sourceId:'SHARED',locator:'2-1-2'}));
+  rows.push(schemeRow('비오톱 1등급','정책상 보전지역 검토',bio.value,bio.known?(bio.present?'REVIEW':'PASS'):'REVIEW',bio.known?(bio.present?(bio.area_m2!=null?'서울시 개별비오톱 원본 SHP 실제 중첩면적·비율 확인 · 운영기준상 제외 여부는 행정검토':'NED 필지단위 fallback 결과 · 원도형 자동확정 아님'):'비오톱1등급 실제 중첩 없음'):'비오톱 원본/필지자료 미확보',false,{sourceId:'SHARED',locator:'2-1-2'}));
   rows.push(schemeRow('공익용산지','정책상 보전지역 검토',forest.value,forest.known?(forest.present?'REVIEW':'PASS'):'REVIEW',forest.known?(forest.present?'토지이용계획상 해당·저촉 필지 확인 · 원도형 중첩면적은 SHP 연결 후 보완':'토지이용계획상 해당 없음'):'공식 토지이용계획 API 미확보',false,{sourceId:'SHARED',locator:'2-1-2'}));
   rows.push(schemeRow('사업추진 방식','민간토지사용형·공동출자형·민간공공협력형·민간토지매입형',sharedHousingTypeLabel(f.planning.type),'INFO','사업자·토지소유관계와 공공협상을 통해 결정',false,{sourceId:'SHARED',locator:'2-2-1'}));
   const actor=schemeVal('ccActor');

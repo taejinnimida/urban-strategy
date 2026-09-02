@@ -1982,6 +1982,35 @@ def check_r22_growth_frontage_engine():
     assert 'APP_BUILD_MARKER = "R22_STATION_AREA_FRONTAGE_NO_HIERARCHY_20260902"' in py
     assert '"scheme_module_api": "2026-09-02-r22-station-area-frontage-no-hierarchy"' in py
 
+
+def check_biotope_bundled_exact_fact() -> None:
+    """비오톱1등급은 내장 SHP 실제 교차 Fact이며 PNU/NED 실패와 독립되어야 한다."""
+    root=Path(app.BASE_DIR)
+    html=Path(app.STATIC_HTML_PATH).read_text(encoding="utf-8")
+    py=Path(root,"app.py").read_text(encoding="utf-8")
+    assert (root / "biotope_seoul.zip").is_file() and (root / "biotope_seoul.zip").stat().st_size > 1_000_000
+    for marker in (
+        "function computeBiotopeFactFromBundled(payload)",
+        "'/api/spatial/biotope-intersections'",
+        "서울시 개별비오톱(2025 기준) 원본 SHP",
+        "geometry_basis:'EXACT_SHP'",
+        "선택필지 PNU 미확보 · 공익용산지 필지조회만 생략",
+        "if(!biotopeExact)",
+        "if(a.biotope?.features?.length)ccSharedBiotopeParcels.addData",
+    ):
+        assert marker in html, marker
+    conserve=html[html.index("async function analyzeSharedConservation()") : html.index("function renderPlanningFacilitySpatialStatus()")]
+    assert conserve.index("biotope-intersections") < conserve.index("land-use-restrictions")
+    assert "throw new Error('선택필지 PNU 미확보')" not in conserve
+    assert "sharedConservationAnalysis.biotope={known:false" in conserve
+    for marker in (
+        "def _biotope_zip_path()", "def _biotope_spatial_layers()", "def analyze_biotope_intersections(",
+        '@app.get("/api/spatial/biotope-data-status")', '@app.post("/api/spatial/biotope-intersections")',
+        '"status": "matched" if clipped_rows else "none"',
+        '"grade_basis": "유형평가 또는 개별평가 중 하나라도 1등급"',
+    ):
+        assert marker in py, marker
+
 def main() -> None:
     _run("measurement", check_measurement)
     _run("renewal spatial", check_renewal_server_intersection)
@@ -2028,6 +2057,7 @@ def main() -> None:
     _run("safe housing popup always opens", check_safe_housing_popup_always_opens)
     _run("safe housing entrance 350m", check_safe_housing_entrance_350)
     _run("factory usage common fact", check_factory_usage_common_fact)
+    _run("biotope bundled exact fact", check_biotope_bundled_exact_fact)
     _run("r22 growth frontage engine", check_r22_growth_frontage_engine)
     _run("release files", check_release_files)
     print("v2.5.0 regression checks: PASS")
