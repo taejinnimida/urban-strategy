@@ -1,5 +1,14 @@
 # 서울 도시정비플랫폼 Web MVP v2.5.0
 
+# v2.5.0 R26 안심주택 공통 팝업경로 통일 (2026-09-02)
+
+- 기준본은 최종 배포본 `urban-strategy-v2.5.0-r25-safe-housing-popup-entrance350.zip`이다.
+- 안심주택만 사용하던 별도 팝업 실행함수와 분기문을 완전히 제거했다.
+- 안심주택 카드도 다른 사업카드와 동일하게 `openSchemeDetailSafely(name)`을 호출한다.
+- 공통 함수가 모달을 먼저 열고 `renderSchemeDetailPopup('safe')`를 거쳐 안심주택 검토서를 렌더하며, 오류 발생 시 같은 공통 fallback을 표시한다.
+- r25의 안심주택 250m 일반경로와 출입구 포함 350m 예외경로는 그대로 유지한다.
+- 앱 본체 버전은 `v2.5.0`을 유지한다.
+
 # v2.5.0 R25 안심주택 팝업·출입구 350m 보정 (2026-09-02)
 
 - 기준본은 `urban-strategy-v2.5.0-r24-candidate-feasibility-density-ui.zip`이며 다른 작업본이나 `app(n).html`은 사용하지 않았다.

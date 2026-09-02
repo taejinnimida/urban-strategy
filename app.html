@@ -11915,17 +11915,6 @@ function openSchemeDetailSafely(name){
   openReviewModal('schemeDetailModal');
   try{renderSchemeDetailPopup(name);}catch(e){console.error(`[scheme-popup:${name}]`,e);renderSchemePopupFallback(name,e);}
 }
-function openSafeHousingDetailSafely(){
-  const modal=document.getElementById('schemeDetailModal');
-  const title=document.getElementById('schemeDetailPopupTitle');
-  const body=document.getElementById('schemeDetailPopupBody');
-  if(!modal){console.error('[scheme-popup:safe] schemeDetailModal DOM 없음');return;}
-  if(title)title.textContent='안심주택 기초검토서';
-  if(body)body.innerHTML='<div class="scheme-modal-note"><b>안심주택 기초검토서</b> 검토결과를 불러오는 중입니다.</div>';
-  openReviewModal('schemeDetailModal');
-  // 클릭한 같은 실행주기에서 즉시 렌더한다. 오류가 나도 이미 열린 팝업 안에 fallback 검토서를 표시한다.
-  try{renderSafeHousingDetailPopup();}catch(e){console.error('[scheme-popup:safe]',e);renderSchemePopupFallback('safe',e);}
-}
 function showSmallscaleRouteBasis(route){
   activeSmallscaleRoute=route;
   document.querySelectorAll('#ccSchemeIcons button').forEach(b=>b.classList.remove('candidate-selected'));
@@ -11937,7 +11926,6 @@ function showCandidateBasis(name){
   activeSmallscaleRoute='';
   document.querySelectorAll('#ccSchemeIcons button').forEach(b=>b.classList.toggle('candidate-selected',b.dataset.scheme===name));
   try{renderMobileSelectedScheme(name);}catch(e){console.error(`[scheme-mobile:${name}]`,e);}
-  if(name==='safe'){openSafeHousingDetailSafely();return;}
   openSchemeDetailSafely(name);
 }
 function scrollToSchemeDetail(name){openSchemeDetailSafely(name);}

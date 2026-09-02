@@ -1,0 +1,17 @@
+도시검토 플랫폼 v2.5.0 r26 — 안심주택 공통 팝업경로 통일
+
+기준본
+- urban-strategy-v2.5.0-r25-safe-housing-popup-entrance350.zip
+- 앱 표시 버전 v2.5.0 유지
+
+수정내용
+- 안심주택 전용 openSafeHousingDetailSafely 함수 삭제
+- showCandidateBasis의 안심주택 예외분기 삭제
+- 안심주택도 다른 사업과 동일한 openSchemeDetailSafely 공통함수 사용
+- 공통 라우터에서 renderSafeHousingDetailPopup 호출
+- 오류 발생 시 공통 fallback 검토서 표시
+
+유지사항
+- r25 안심주택 250m 일반경로 유지
+- r25 출입구 포함 350m 예외경로 유지
+- 다른 사업의 팝업·판정·역세권 로직 미변경

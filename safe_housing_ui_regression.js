@@ -72,22 +72,31 @@ vm.runInContext(sourceBetween('safeEntranceFeaturesForStation', 'safeStation350G
 assert(entranceContext.safeEntranceFeaturesForStation({ name: 'A역' }).length === 1, '해당 역 출입구 누락');
 assert(entranceContext.safeEntranceFeaturesForStation({ name: 'B역' }).length === 0, '다른 역 출입구 혼입');
 
-// 팝업은 requestAnimationFrame 없이 클릭 즉시 렌더한다.
-const modal = { classList: { add() {} }, setAttribute() {} };
-const title = { textContent: '' };
-const body = { innerHTML: '' };
-let renderCount = 0;
+// 안심주택도 다른 사업과 동일한 공통 팝업 경로를 사용한다.
+let openCount = 0;
+let routedName = '';
 const openerContext = {
   console,
-  document: { getElementById: id => id === 'schemeDetailModal' ? modal : id === 'schemeDetailPopupTitle' ? title : id === 'schemeDetailPopupBody' ? body : null },
-  openReviewModal: () => {},
-  renderSafeHousingDetailPopup: () => { renderCount += 1; },
+  openReviewModal: name => { if (name === 'schemeDetailModal') openCount += 1; },
+  renderSchemeDetailPopup: name => { routedName = name; },
   renderSchemePopupFallback: () => { throw new Error('unexpected popup fallback'); },
 };
 vm.createContext(openerContext);
-vm.runInContext(sourceBetween('openSafeHousingDetailSafely', 'showSmallscaleRouteBasis'), openerContext);
-openerContext.openSafeHousingDetailSafely();
-assert(renderCount === 1, '안심주택 팝업이 클릭 즉시 렌더되지 않음');
+vm.runInContext(sourceBetween('openSchemeDetailSafely', 'showSmallscaleRouteBasis'), openerContext);
+openerContext.openSchemeDetailSafely('safe');
+assert(openCount === 1 && routedName === 'safe', '안심주택이 공통 팝업 경로로 열리지 않음');
+
+let commonRouteName = '';
+const showContext = {
+  console, activeSmallscaleRoute: 'x',
+  document: { querySelectorAll: () => [] },
+  renderMobileSelectedScheme: () => {},
+  openSchemeDetailSafely: name => { commonRouteName = name; },
+};
+vm.createContext(showContext);
+vm.runInContext(sourceBetween('showCandidateBasis', 'scrollToSchemeDetail'), showContext);
+showContext.showCandidateBasis('safe');
+assert(commonRouteName === 'safe', '안심주택 카드가 공통 팝업 함수를 호출하지 않음');
 
 // 실제 상세 렌더 함수가 출입구·250m·350m 값을 오류 없이 출력하는지 확인한다.
 const popupBody = { innerHTML: '' };

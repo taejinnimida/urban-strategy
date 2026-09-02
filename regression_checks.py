@@ -1818,21 +1818,23 @@ def check_factory_usage_common_fact() -> None:
 
 
 def check_safe_housing_popup_always_opens() -> None:
-    """안심주택 카드는 분석 전/목적필터/렌더 오류 상태에서도 모달 자체를 항상 연다."""
+    """안심주택도 다른 사업과 동일한 공통 팝업 실행경로만 사용한다."""
     html = Path(app.BASE_DIR, "app.html").read_text(encoding="utf-8")
-    assert "function openSafeHousingDetailSafely()" in html
+    assert "function openSafeHousingDetailSafely()" not in html
     show0 = html.index("function showCandidateBasis(name)")
     show1 = html.index("function scrollToSchemeDetail", show0)
     show = html[show0:show1]
-    assert "if(name==='safe'){openSafeHousingDetailSafely();return;}" in show
-    opener0 = html.index("function openSafeHousingDetailSafely()")
+    assert "openSafeHousingDetailSafely" not in show
+    assert "openSchemeDetailSafely(name);" in show
+    opener0 = html.index("function openSchemeDetailSafely(name)")
     opener1 = html.index("function showSmallscaleRouteBasis", opener0)
     opener = html[opener0:opener1]
     assert "openReviewModal('schemeDetailModal')" in opener
-    assert "renderSchemePopupFallback('safe',e)" in opener
-    assert "검토결과를 불러오는 중입니다" in opener
-    assert "requestAnimationFrame" not in opener
-    assert "try{renderSafeHousingDetailPopup();}" in opener
+    assert "try{renderSchemeDetailPopup(name);}" in opener
+    assert "renderSchemePopupFallback(name,e)" in opener
+    router0 = html.index("function renderSchemeDetailPopup(name)")
+    router1 = html.index("function renderSchemeComparePopup()", router0)
+    assert "if(name==='safe'){renderSafeHousingDetailPopup();return;}" in html[router0:router1]
     safe0 = html.index("function renderSafeHousingDetailPopup()")
     safe1 = html.index("function renderSharedHousingDetailPopup()", safe0)
     safe = html[safe0:safe1]
@@ -1994,7 +1996,7 @@ def check_r22_growth_frontage_engine():
     assert "간선도로 위계는 사용자 제공자료 연결 후 확정" in block
     assert "if(gr?.status==='CONFIRMED'){loc='PASS'" not in block
     assert "else if(gr?.status==='FAIL'){loc='FAIL'" not in block
-    assert 'APP_BUILD_MARKER = "R25_SAFE_HOUSING_POPUP_ENTRANCE_350_20260902"' in py
+    assert 'APP_BUILD_MARKER = "R26_SAFE_POPUP_COMMON_ROUTE_20260902"' in py
     assert '"scheme_module_api": "2026-09-02-r22-station-area-frontage-no-hierarchy"' in py
 
 
