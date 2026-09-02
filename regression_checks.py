@@ -255,8 +255,8 @@ def check_feedback_and_ui() -> None:
     assert "/api/spatial/development-intersections" in html
     assert "TL_SPRD_MANAGE" in html
     assert "TL_SPRD_RW" in html
-    assert "st.areaGate==='FAIL'||st.structural==='FAIL'" in html
-    assert "const disabled=st.state==='off'" in html
+    assert "function candidateDisplayState(name,st=safeCandidateState(name))" in html
+    assert "function candidateChangeOpportunity(name,st)" in html
     assert "r.hardGate==='AREA'" in html
     assert "최신 공식 세부기준 원문 미확보로 자동 PASS 금지" in html
     assert "min_m2:specialLowZone?5000:1000" in html
@@ -1831,6 +1831,8 @@ def check_safe_housing_popup_always_opens() -> None:
     assert "openReviewModal('schemeDetailModal')" in opener
     assert "renderSchemePopupFallback('safe',e)" in opener
     assert "검토결과를 불러오는 중입니다" in opener
+    assert "requestAnimationFrame" not in opener
+    assert "try{renderSafeHousingDetailPopup();}" in opener
     safe0 = html.index("function renderSafeHousingDetailPopup()")
     safe1 = html.index("function renderSharedHousingDetailPopup()", safe0)
     safe = html[safe0:safe1]
@@ -1862,6 +1864,7 @@ def check_safe_housing_entrance_350() -> None:
     ):
         assert token in html, token
     assert "await loadStationEntrances(force)" in html
+    assert "let stationEntranceReferenceStatus=" in html
 
     # 출입구는 반드시 해당 역과 "공식 연결"된 것만 쓴다 — 역명 재정규화로 재매칭하지 않는다.
     ent0 = html.index("function safeEntranceFeaturesForStation(stationFact)")
@@ -1888,6 +1891,8 @@ def check_safe_housing_entrance_350() -> None:
     # 350m에서 출입구가 없어도(연결된 출입구 0개) 승강장 경계만으로는 REVIEW로 남기지,
     # 이 함수 안에서 FAIL 반환 경로를 새로 늘리지 않는다(원래도 최종 fallback 하나뿐).
     assert safe.count("status:'FAIL'") == 2  # 'status:'FAIL'' 은 'coverage_status:'FAIL'' 안에도 부분일치하므로 2
+    assert "!stationEntranceReferenceStatus.loaded||!stationEntranceReferenceStatus.linkage_complete" in safe
+    assert "누락된 해당 역 출입구 가능성이 있어 FAIL 확정 금지" in safe
 
     # 다른 사업방식(다른 station rule)은 안심주택 전용 함수를 절대 참조하지 않는다 — 완전 분리 확인.
     other_module_markers = [
@@ -1913,10 +1918,20 @@ def check_safe_housing_entrance_350() -> None:
     fact_block = html[fact0:fact1]
     assert "역세권 350m 예외경로 상세" in fact_block
     assert "station.entrance_count" in fact_block
+    for label in (
+        "안심주택 250m 기준 geometry", "안심주택 250m 포함률", "안심주택 350m 예외범위",
+        "안심주택 출입구 연결", "안심주택 350m 예외 포함률", "안심주택 역세권 판정",
+    ):
+        assert label in fact_block
 
     # 백엔드: 출입구 참조 데이터 로더 + 엔드포인트.
     assert "def _station_entrance_reference_data()" in py
     assert '@app.get("/api/reference/station-entrances")' in py
+    endpoint = app.reference_station_entrances()
+    assert endpoint["metadata"]["linkage_complete"] is False
+    assert endpoint["metadata"]["official_relation_key"] is False
+    assert endpoint["metadata"]["matched_entrance_count"] > 0
+    assert isinstance(endpoint["stations"], dict) and endpoint["stations"]
 
     # 데이터 품질: 서버 전처리 결과(station_entrances.json)가 실제로 존재하고,
     # 같은 출입구가 두 역에 동시에 배정되지 않았는지(= 다른 역 소속 출입구를 섞어쓰지 않았는지),
@@ -1979,7 +1994,7 @@ def check_r22_growth_frontage_engine():
     assert "간선도로 위계는 사용자 제공자료 연결 후 확정" in block
     assert "if(gr?.status==='CONFIRMED'){loc='PASS'" not in block
     assert "else if(gr?.status==='FAIL'){loc='FAIL'" not in block
-    assert 'APP_BUILD_MARKER = "R23_PUBLIC_FOREST_SHP_20260902"' in py
+    assert 'APP_BUILD_MARKER = "R25_SAFE_HOUSING_POPUP_ENTRANCE_350_20260902"' in py
     assert '"scheme_module_api": "2026-09-02-r22-station-area-frontage-no-hierarchy"' in py
 
 
@@ -2040,6 +2055,31 @@ def check_public_forest_bundled_exact_fact() -> None:
     ):
         assert marker in py, marker
 
+
+def check_r24_candidate_feasibility_density_ui() -> None:
+    """사업카드 색은 추진가능성, 명도는 계획가능용적률만 표현해야 한다."""
+    html=Path(app.STATIC_HTML_PATH).read_text(encoding="utf-8")
+    for marker in (
+        "현재 추진 가능", "조건변경 후 가능", "색이 진할수록 계획가능용적률이 높음",
+        "function candidateDisplayState(name,st=safeCandidateState(name))",
+        "function candidateChangeOpportunity(name,st)",
+        "function candidateOneYearAgeOpportunity(name)",
+        "사업시행자·토지확보 구조 변경", "인접 노후건축물 편입 검토",
+        "display.kind==='available'?'현재 추진 가능'",
+        "display_state:x.display?.kind||'pending'",
+        "available:decisions.filter(x=>x.display_state==='available').length",
+    ):
+        assert marker in html, marker
+    density=html[html.index("function densityPotentialForScheme(name,st=null)"):html.index("function densityTierLabel(tier)")]
+    assert "maxFar>=600?4:maxFar>=400?3:maxFar>=250?2:1" in density
+    assert "색상 농도에는 역세권·공공기여를 반영하지 않음" in density
+    assert "stationInfluenceForScheme" not in density
+    compare=html[html.index("function compareCandidateNames(a,b)"):html.index("function rankedSchemeNames()")]
+    assert "['finalRank','densityTier','purposeRank'" in compare
+    opportunity=html[html.index("function candidateChangeOpportunity(name,st)"):html.index("function candidateDisplayState(name,st=safeCandidateState(name))")]
+    assert "st.purposeGate==='off'||st.structural==='FAIL'||st.stage==='LEGAL_ENTRY'" in opportunity
+    assert "개발제한|공익용산지|비오톱|문화재|군사" in opportunity
+
 def main() -> None:
     _run("measurement", check_measurement)
     _run("renewal spatial", check_renewal_server_intersection)
@@ -2088,6 +2128,7 @@ def main() -> None:
     _run("factory usage common fact", check_factory_usage_common_fact)
     _run("biotope bundled exact fact", check_biotope_bundled_exact_fact)
     _run("public forest bundled exact fact", check_public_forest_bundled_exact_fact)
+    _run("r24 candidate feasibility density ui", check_r24_candidate_feasibility_density_ui)
     _run("r22 growth frontage engine", check_r22_growth_frontage_engine)
     _run("release files", check_release_files)
     print("v2.5.0 regression checks: PASS")

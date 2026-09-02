@@ -288,6 +288,8 @@ body{background:#f4f5f7}
 .cc-candidate-head{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;padding:1px 2px 7px;border-bottom:1px solid #eaecf0}
 .cc-candidate-head b{font-size:16px;color:#344054}
 .cc-candidate-head span{font-size:9px;color:#667085;text-align:right}
+.cc-candidate-head>div:first-child>b,.cc-candidate-head>div:first-child>span{display:block;text-align:left}
+.cc-candidate-head>div:first-child>span{margin-top:3px;max-width:420px;line-height:1.35}
 .cc-scheme-icons{display:grid;grid-template-columns:repeat(4,minmax(90px,1fr));gap:5px;padding:7px 0}
 .cc-scheme-family-label{grid-column:1/-1;display:flex;align-items:center;gap:7px;margin-top:3px;padding:5px 4px 3px;border-top:1px solid #eaecf0;color:#344054;font-size:9px;font-weight:900;letter-spacing:-.1px}
 .cc-scheme-family-label:first-child{border-top:0;margin-top:0}
@@ -1185,46 +1187,51 @@ body.review-modal-open{overflow:hidden}
 .scheme-compare-status{white-space:normal;line-height:1.2}
 
 
-/* v2.1.6 사업가능 후보의 밀도잠재력 3단계 색상 */
+/* v2.5.0 r24 사업가능성 2계열 × 계획가능용적률 4단계 */
 .cc-scheme-icons button.candidate-on,
-.cc-scheme-icons button.candidate-mid{opacity:1}
+.cc-scheme-icons button.candidate-adjustable{opacity:1;border-width:2px}
 
-/* 밀도 1: 살아 있으나 기본 밀도 */
-.cc-scheme-icons button.candidate-on.density-tier-1,
-.cc-scheme-icons button.candidate-mid.density-tier-1{
-  background:#eaf2ff;border-color:#9dbcf7;color:#1849a9
-}
-/* 밀도 2: 역세권 또는 준주거/400%급 */
-.cc-scheme-icons button.candidate-on.density-tier-2,
-.cc-scheme-icons button.candidate-mid.density-tier-2{
-  background:#84adff;border-color:#528bff;color:#102a56
-}
-/* 밀도 3: 상업지역 상향 또는 600%급/역세권 500%급 */
-.cc-scheme-icons button.candidate-on.density-tier-3,
-.cc-scheme-icons button.candidate-mid.density-tier-3{
-  background:#175cd3;border-color:#175cd3;color:#fff
-}
+/* 파랑: 현재 조건으로 추진 가능 */
+.cc-scheme-icons button.candidate-on.density-tier-1{background:#eaf2ff;border-color:#9dbcf7;color:#1849a9}
+.cc-scheme-icons button.candidate-on.density-tier-2{background:#b2ddff;border-color:#84adff;color:#1849a9}
+.cc-scheme-icons button.candidate-on.density-tier-3{background:#7aa7f2;border-color:#528bff;color:#102a56}
+.cc-scheme-icons button.candidate-on.density-tier-4{background:#175cd3;border-color:#175cd3;color:#fff}
+
+/* 빨강: 현재는 곤란하지만 계산 가능한 조건변경 경로가 있음 */
+.cc-scheme-icons button.candidate-adjustable.density-tier-1{background:#fff1f0;border-color:#fda29b;color:#912018}
+.cc-scheme-icons button.candidate-adjustable.density-tier-2{background:#fecdca;border-color:#f97066;color:#7a271a}
+.cc-scheme-icons button.candidate-adjustable.density-tier-3{background:#f97066;border-color:#f04438;color:#55160c}
+.cc-scheme-icons button.candidate-adjustable.density-tier-4{background:#b42318;border-color:#912018;color:#fff}
+
+/* 계획가능용적률 미확정은 각 계열의 가장 연한색과 점선으로 표시 */
+.cc-scheme-icons button.candidate-on.density-tier-0{background:#f5f8ff;border-color:#b2ddff;color:#1849a9;border-style:dashed}
+.cc-scheme-icons button.candidate-adjustable.density-tier-0{background:#fff8f7;border-color:#fda29b;color:#912018;border-style:dashed}
 .cc-scheme-icons button.density-tier-1 i,
 .cc-scheme-icons button.density-tier-2 i,
-.cc-scheme-icons button.density-tier-3 i{filter:none;opacity:1}
+.cc-scheme-icons button.density-tier-3 i,
+.cc-scheme-icons button.density-tier-4 i{filter:none;opacity:1}
 
-/* 후보확정과 검토중은 색상이 아니라 테두리로 구분 */
-.cc-scheme-icons button.candidate-on:not(.candidate-off){border-width:2px}
-.cc-scheme-icons button.candidate-mid:not(.candidate-off){border-style:dashed}
+/* 자료확인 필요: 조건변경 가능성을 아직 계산하지 못한 상태 */
+.cc-scheme-icons button.candidate-review{
+  background:#fcfcfd!important;border:1px dashed #98a2b3!important;color:#667085!important;opacity:.82;box-shadow:none!important
+}
 
-/* 역세권 영향권은 별도 시각 신호. 법적 탈락카드는 절대 살리지 않음 */
-.cc-scheme-icons button.station-density:not(.candidate-off){box-shadow:inset 0 -3px 0 rgba(255,255,255,.7)}
-.cc-scheme-icons button.density-tier-1.station-density:not(.candidate-off),
-.cc-scheme-icons button.density-tier-2.station-density:not(.candidate-off){box-shadow:inset 0 -3px 0 #175cd3}
-
-/* 제외는 어떤 밀도값이 있어도 회색 고정 */
+/* 적용 곤란은 어떤 밀도값이 있어도 회색 고정 */
 .cc-scheme-icons button.candidate-off,
 .cc-scheme-icons button.candidate-off.density-tier-0,
 .cc-scheme-icons button.candidate-off.density-tier-1,
 .cc-scheme-icons button.candidate-off.density-tier-2,
-.cc-scheme-icons button.candidate-off.density-tier-3{
+.cc-scheme-icons button.candidate-off.density-tier-3,
+.cc-scheme-icons button.candidate-off.density-tier-4{
   background:#f2f4f7!important;border:1px solid #e4e7ec!important;color:#98a2b3!important;opacity:.62;box-shadow:none!important
 }
+.candidate-color-legend{display:grid;grid-template-columns:auto repeat(4,38px);gap:4px 6px;align-items:center;margin-left:auto}
+.candidate-color-legend>span{font-size:8px;font-weight:850;color:#344054;white-space:nowrap}
+.candidate-color-legend i{display:block;width:38px;height:14px;border:1px solid rgba(16,24,40,.08)}
+.candidate-color-legend .blue-1{background:#eaf2ff}.candidate-color-legend .blue-2{background:#b2ddff}.candidate-color-legend .blue-3{background:#7aa7f2}.candidate-color-legend .blue-4{background:#175cd3}
+.candidate-color-legend .red-1{background:#fff1f0}.candidate-color-legend .red-2{background:#fecdca}.candidate-color-legend .red-3{background:#f97066}.candidate-color-legend .red-4{background:#b42318}
+.candidate-legend-note{grid-column:2/6;text-align:center;font-size:7px!important;color:#667085!important}
+@media(max-width:900px){.cc-candidate-head{align-items:flex-start;flex-wrap:wrap}.candidate-color-legend{margin-left:0}}
 .density-basis-badge{background:#eff8ff!important;border-color:#b2ddff!important;color:#1849a9!important}
 
 
@@ -1600,8 +1607,12 @@ body.service-layout-ready>.shell{display:none!important}
 </section>
 <div class="cc-candidate-panel" id="mobileSchemeSection">
 <div class="cc-candidate-head">
-<b>사업방식 적용판정</b>
-<span id="ccCandidateSummary">사업 Family를 구분하고 각 독립 Rule Module의 법정·운영기준을 비교합니다.</span>
+<div><b>사업방식 적용판정</b><span id="ccCandidateSummary">사업 Family를 구분하고 각 독립 Rule Module의 법정·운영기준을 비교합니다.</span></div>
+<div class="candidate-color-legend" aria-label="사업추진 가능성과 계획가능용적률 범례">
+  <span>현재 추진 가능</span><i class="blue-1"></i><i class="blue-2"></i><i class="blue-3"></i><i class="blue-4"></i>
+  <span>조건변경 후 가능</span><i class="red-1"></i><i class="red-2"></i><i class="red-3"></i><i class="red-4"></i>
+  <span class="candidate-legend-note">색이 진할수록 계획가능용적률이 높음</span>
+</div>
 </div>
 <div class="cc-scheme-icons" id="ccSchemeIcons">
 <div class="cc-scheme-family-label" data-family="housing_renewal">주택정비사업 <small>도정법 · 공통 현황 Fact / 사업별 독립 판정</small></div>
@@ -2413,7 +2424,7 @@ body.service-layout-ready>.shell{display:none!important}
       </section>
     </div>
     <div class="review-modal-foot">
-      <span>우선순위는 목적·시행구조·법정진입·정량요건을 먼저 적용한 뒤 밀도잠재력을 비교합니다.</span>
+      <span>현재 추진 가능 사업을 먼저, 조건변경 후 가능한 사업을 다음으로 표시하며 같은 그룹에서는 계획가능용적률이 높은 사업을 우선합니다.</span>
       <button class="btn primary" type="button" onclick="closeReviewModal('priorityReviewModal');openPlanningSimulationModal()">시뮬레이션으로</button>
     </div>
   </section>
@@ -6166,16 +6177,32 @@ function safeUnionPolygons(features){
 // 서버(station_entrances.json)에서 "이 역과 공간적으로 확실히 연결된 출입구"만 내려주므로
 // 프론트에서는 이 결과를 그대로 쓰고, 이름 정규화 등으로 재매칭을 시도하지 않는다.
 let stationEntranceMap=new Map();
+let stationEntranceReferenceStatus={loaded:false,linkage_complete:false,official_relation_key:false,source_entrance_count:null,matched_entrance_count:0,excluded_ambiguous_count:null,note:'출입구 자료 미확인'};
 async function loadStationEntrances(force=false){
   if(stationEntranceMap.size&&!force)return;
   try{
     const r=await fetch('/api/reference/station-entrances',{cache:force?'reload':'default'});
     if(!r.ok)throw new Error('HTTP '+r.status);
     const data=await r.json();
+    const rows=(data?.stations&&typeof data.stations==='object')?data.stations:data;
+    const meta=(data?.metadata&&typeof data.metadata==='object')?data.metadata:{};
     const m=new Map();
-    for(const [name,list] of Object.entries(data||{}))if(Array.isArray(list)&&list.length)m.set(name,list);
+    for(const [name,list] of Object.entries(rows||{}))if(Array.isArray(list)&&list.length)m.set(name,list);
     stationEntranceMap=m;
-  }catch(e){stationEntranceMap=new Map();}
+    const matched=[...m.values()].reduce((s,list)=>s+list.length,0);
+    stationEntranceReferenceStatus={
+      loaded:true,
+      linkage_complete:meta.linkage_complete===true,
+      official_relation_key:meta.official_relation_key===true,
+      source_entrance_count:Number.isFinite(Number(meta.source_entrance_count))?Number(meta.source_entrance_count):null,
+      matched_entrance_count:matched,
+      excluded_ambiguous_count:Number.isFinite(Number(meta.excluded_ambiguous_count))?Number(meta.excluded_ambiguous_count):null,
+      note:meta.linkage_complete===true?'공식 연결키로 역사-출입구 연결 완료':'공식 연결키 없음 · 공간적으로 명확한 출입구만 사용, 미연결·모호 자료 제외'
+    };
+  }catch(e){
+    stationEntranceMap=new Map();
+    stationEntranceReferenceStatus={loaded:false,linkage_complete:false,official_relation_key:false,source_entrance_count:null,matched_entrance_count:0,excluded_ambiguous_count:null,note:`출입구 자료 로드 실패 · ${String(e.message||e)}`};
+  }
 }
 // 해당 역(stationFact)과 공식 연결된 출입구만 turf Point feature로 반환한다.
 // 연결이 불명확해 서버 전처리 단계에서 제외된 출입구는 여기 아예 들어오지 않는다.
@@ -6212,11 +6239,21 @@ function safeStation350Facts(){
     const g350=safeStation350Geometry(st);
     const cov=g350?coverageOfSite(activeGeometry,g350):null;
     const entranceCount=safeEntranceFeaturesForStation(st).length;
-    return {...st,safe350_geometry:g350,safe350_coverage:cov,safe350_entrance_count:entranceCount};
+    return {...st,safe350_geometry:g350,safe350_coverage:cov,safe350_entrance_count:entranceCount,safe350_entrance_loaded:stationEntranceReferenceStatus.loaded,safe350_linkage_complete:stationEntranceReferenceStatus.linkage_complete,safe350_linkage_note:stationEntranceReferenceStatus.note};
   });
 }
 function bestSafe350(predicate=()=>true){
   return safeStation350Facts().filter(predicate).filter(x=>x.safe350_coverage!=null).sort((a,b)=>Number(b.safe350_coverage)-Number(a.safe350_coverage)||Number(a.distance_m??Infinity)-Number(b.distance_m??Infinity))[0]||null;
+}
+function safeStationDisplayMetrics(stationFact){
+  if(!stationFact)return {geometry_basis:'승강장 경계',coverage250:null,safe350_basis:'승강장 경계 + 해당 역 연결 출입구',safe350_coverage:null,entrance_count:0,entrance_loaded:stationEntranceReferenceStatus.loaded,linkage_complete:stationEntranceReferenceStatus.linkage_complete,linkage_note:stationEntranceReferenceStatus.note};
+  const exact=safeStation350Facts().find(x=>x.name===stationFact.name)||null;
+  return {
+    geometry_basis:'승강장 경계',coverage250:stationFact.coverage250??exact?.coverage250??null,
+    safe350_basis:'승강장 경계 + 해당 역 연결 출입구',safe350_coverage:exact?.safe350_coverage??null,
+    entrance_count:exact?.safe350_entrance_count||0,entrance_loaded:stationEntranceReferenceStatus.loaded,
+    linkage_complete:stationEntranceReferenceStatus.linkage_complete,linkage_note:stationEntranceReferenceStatus.note
+  };
 }
 function coverageWithinStationBuffers(zoneFeature,features,meters){
   if(!features.length)return null;
@@ -6967,12 +7004,13 @@ function parseHubDate(v){
   const dt=new Date(`${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}T00:00:00+09:00`);
   return Number.isNaN(dt.getTime())?null:dt;
 }
-function olderThanYears(dt,years){
+function olderThanYearsAt(dt,years,asOf=SCHEME_AS_OF){
   if(!dt)return false;
   const anniv=new Date(dt.getTime());
   anniv.setFullYear(anniv.getFullYear()+years);
-  return SCHEME_AS_OF>=anniv;
+  return asOf>=anniv;
 }
+function olderThanYears(dt,years){return olderThanYearsAt(dt,years,SCHEME_AS_OF)}
 function schemeAgeStat(years){
   const rs=selectedHubRecordsForSchemes();
   const known=rs.filter(r=>parseHubDate(r.useAprDay));
@@ -7003,10 +7041,11 @@ function buildingRawFacts(){
 }
 function rawFactDate(r){return parseHubDate(r.approval_date)}
 function rawFactOlderThan(r,years){return olderThanYears(rawFactDate(r),years)}
-function rawFactAgeState(r,years){
+function rawFactAgeStateAt(r,years,asOf=SCHEME_AS_OF){
   const dt=rawFactDate(r);if(!dt)return 'UNKNOWN';
-  return rawFactOlderThan(r,years)?'OLD':'NOT_OLD';
+  return olderThanYearsAt(dt,years,asOf)?'OLD':'NOT_OLD';
 }
+function rawFactAgeState(r,years){return rawFactAgeStateAt(r,years,SCHEME_AS_OF)}
 function boundedRatio(records,classifier,areaField=null){
   let total=0,old=0,unknown=0;
   for(const r of records){
@@ -7065,26 +7104,27 @@ function renewalApartmentThreshold(r){
   if(low)return lowMap[y]??30;
   return null; // 1982~1990 공동주택은 층수 미확인 시 임의 판정하지 않는다.
 }
-function renewalBuildingAgeState(r){
+function renewalBuildingAgeStateAt(r,asOf=SCHEME_AS_OF){
   const dt=rawFactDate(r);if(!dt)return 'UNKNOWN';
   if(renewalApartmentHouse(r)){
     const threshold=renewalApartmentThreshold(r);
     if(threshold==null){
-      if(rawFactOlderThan(r,30))return 'OLD';
-      if(!rawFactOlderThan(r,20))return 'NOT_OLD';
+      if(olderThanYearsAt(dt,30,asOf))return 'OLD';
+      if(!olderThanYearsAt(dt,20,asOf))return 'NOT_OLD';
       return 'UNKNOWN';
     }
-    return rawFactOlderThan(r,threshold)?'OLD':'NOT_OLD';
+    return olderThanYearsAt(dt,threshold,asOf)?'OLD':'NOT_OLD';
   }
   const st=String(r.structure||'');
   if(!st){
-    if(rawFactOlderThan(r,30))return 'OLD';
-    if(!rawFactOlderThan(r,20))return 'NOT_OLD';
+    if(olderThanYearsAt(dt,30,asOf))return 'OLD';
+    if(!olderThanYearsAt(dt,20,asOf))return 'NOT_OLD';
     return 'UNKNOWN';
   }
   const threshold=(renewalLongLifeStructure(r)&&!renewalDetachedHouse(r))?30:20;
-  return rawFactOlderThan(r,threshold)?'OLD':'NOT_OLD';
+  return olderThanYearsAt(dt,threshold,asOf)?'OLD':'NOT_OLD';
 }
+function renewalBuildingAgeState(r){return renewalBuildingAgeStateAt(r,SCHEME_AS_OF)}
 function renewalAgeAssessment(records,threshold=60,{ruleId='urban_renewal',sourceId='RENEWAL_AGE',locator='',label='도정법·서울시 도시정비조례 노후도'}={}){
   const stat=boundedRatio(records,renewalBuildingAgeState);
   const floor=boundedRatio(records,renewalBuildingAgeState,'total_floor_area_m2');
@@ -8082,6 +8122,12 @@ function safeHousingSpatialFacts(store){
     spatial_status_rows:[
       spatialFactRow('역세권',station.value,station.status==='PASS'?'CONFIRMED':'REVIEW',station.note),
       spatialFactRow('역세권 350m 예외경로 상세',station.scope_m===350?`승강장 경계${station.entrance_count?` + 출입구 ${station.entrance_count}개`:'(연결된 출입구 없음)'} · 통합범위 포함률 ${fmtSchemePct(station.coverage)}`:'250m 일반경로 적용 중 · 비해당','INFO',station.scope_m===350?'250m 밖이라 350m 통합심의 예외경로를 검토 중 · 출입구는 역과 공간적으로 확실히 연결된 것만 포함(연결 불명확한 출입구는 제외)':'대상지가 250m 일반경로로 판정돼 350m 예외경로는 적용하지 않음'),
+      spatialFactRow('안심주택 250m 기준 geometry',station.geometry_basis||'승강장 경계','INFO','250m 일반경로는 기존 승강장·역사 경계 버퍼만 사용'),
+      spatialFactRow('안심주택 250m 포함률',fmtSchemePct(station.coverage250),'INFO','대상지 50% 이상 포함 시 일반경로 PASS'),
+      spatialFactRow('안심주택 350m 예외범위',station.safe350_basis||'승강장 경계 + 해당 역 연결 출입구','INFO','350m는 통합심의 예외경로이며 자동 PASS로 변경하지 않음'),
+      spatialFactRow('안심주택 출입구 연결',station.entrance_loaded?`${station.entrance_count||0}개 · ${station.linkage_complete?'공식 연결 완료':'공간적으로 명확한 연결만 사용'}`:'자료 로드 실패',station.linkage_complete?'CONFIRMED':'REVIEW',station.linkage_note||'출입구 연결상태 확인 필요'),
+      spatialFactRow('안심주택 350m 예외 포함률',fmtSchemePct(station.safe350_coverage),'INFO','승강장 경계 350m 버퍼와 해당 역 연결 출입구 350m 버퍼의 합집합'),
+      spatialFactRow('안심주택 역세권 판정',station.status,station.status==='PASS'?'CONFIRMED':station.status==='FAIL'?'FAIL':'REVIEW',station.note),
       spatialFactRow('지구단위계획구역(참고)',district.known?(district.overlap?'중첩':'현황 중첩 없음'):'자료 미확인',district.known?'CONFIRMED':'REVIEW',`${district.note||''} · 안심주택 역세권 하드게이트가 아닌 도시계획 현황 참고`),
       spatialFactRow('간선도로변 50m',arterial.value,arterial.status==='PASS'?'CONFIRMED':'REVIEW',arterial.note),
       spatialFactRow('의료시설 중심지역 350m',medical.value,medical.status,medical.note),
@@ -9829,7 +9875,7 @@ function safeStationPath(c){
   // 안심주택 역세권 판정은 최근접역 거리 하나가 아니라 역별 '대상지 포함면적'을 본다.
   // 250m는 일반경로, 350m는 운영기준상 통합심의 예외경로이며 대상지 50% 미만도 추가 공공기여/심의 REVIEW 경로를 남긴다.
   // 350m 예외경로만 안심주택 전용 승강장+출입구 통합범위(safeStation350Facts)를 사용한다.
-  // 250m 일반경로와 우선순위(250 과반 → 250 일부 → 350 과반 → 350 일부 → FAIL) 구조는 그대로 유지한다.
+  // 250m 일반경로와 우선순위(250 과반 → 250 일부 → 350 과반 → 350 일부 → 최종확인) 구조는 그대로 유지한다.
   if(stationAnalysis.loaded&&stationFacts().length){
     const eligible250=bestStationByCoverage(250,x=>Number(x.coverage250)>=50);
     const overlap250=bestStationByCoverage(250,x=>Number(x.coverage250)>0);
@@ -9838,22 +9884,25 @@ function safeStationPath(c){
     const chosen=eligible250||overlap250||eligible350||overlap350||bestStationByDistance();
     if(!chosen)return {key:'station',label:'대중교통 중심지역 · 역세권',status:'REVIEW',note:'역 후보자료 미확인',coverage:null,value:'-',scope_m:null};
     if(eligible250){
-      return {key:'station',label:'대중교통 중심지역 · 역세권',status:'PASS',note:`${eligible250.name} 승강장 250m 범위에 대상지 ${Number(eligible250.coverage250).toFixed(1)}% 포함 · 과반 일반경로`,coverage:eligible250.coverage250,value:`판정역 ${eligible250.name} · 250m 포함 ${fmtSchemePct(eligible250.coverage250)} · 최단 ${Number(eligible250.distance_m).toFixed(1)}m`,station:eligible250,scope_m:250,coverage_status:'PASS'};
+      return {key:'station',label:'대중교통 중심지역 · 역세권',status:'PASS',note:`${eligible250.name} 승강장 250m 범위에 대상지 ${Number(eligible250.coverage250).toFixed(1)}% 포함 · 과반 일반경로`,coverage:eligible250.coverage250,value:`판정역 ${eligible250.name} · 250m 포함 ${fmtSchemePct(eligible250.coverage250)} · 최단 ${Number(eligible250.distance_m).toFixed(1)}m`,station:eligible250,scope_m:250,coverage_status:'PASS',...safeStationDisplayMetrics(eligible250)};
     }
     if(overlap250){
-      return {key:'station',label:'대중교통 중심지역 · 역세권',status:'REVIEW',note:`${overlap250.name} 250m 범위에 대상지 ${Number(overlap250.coverage250).toFixed(1)}% 포함 · 50% 미만은 통합심의 인정 및 추가 공공기여 검토`,coverage:overlap250.coverage250,value:`판정역 ${overlap250.name} · 250m 포함 ${fmtSchemePct(overlap250.coverage250)} · 최단 ${Number(overlap250.distance_m).toFixed(1)}m`,station:overlap250,scope_m:250,coverage_status:'REVIEW'};
+      return {key:'station',label:'대중교통 중심지역 · 역세권',status:'REVIEW',note:`${overlap250.name} 250m 범위에 대상지 ${Number(overlap250.coverage250).toFixed(1)}% 포함 · 50% 미만은 통합심의 인정 및 추가 공공기여 검토`,coverage:overlap250.coverage250,value:`판정역 ${overlap250.name} · 250m 포함 ${fmtSchemePct(overlap250.coverage250)} · 최단 ${Number(overlap250.distance_m).toFixed(1)}m`,station:overlap250,scope_m:250,coverage_status:'REVIEW',...safeStationDisplayMetrics(overlap250)};
     }
     if(eligible350){
       const en=eligible350.safe350_entrance_count||0;
       const rangeTxt=en>0?`승강장 경계 + 출입구 ${en}개 통합범위`:'승강장 경계(연결된 출입구 없음)';
-      return {key:'station',label:'대중교통 중심지역 · 역세권',status:'REVIEW',note:`${eligible350.name} ${rangeTxt} 350m에 대상지 ${Number(eligible350.safe350_coverage).toFixed(1)}% 포함 · 250m 밖 확장구간은 운영기준상 통합심의 예외 지정 필요`,coverage:eligible350.safe350_coverage,value:`판정역 ${eligible350.name} · 350m(${rangeTxt}) 포함 ${fmtSchemePct(eligible350.safe350_coverage)} · 최단 ${Number(eligible350.distance_m).toFixed(1)}m`,station:eligible350,scope_m:350,coverage_status:'REVIEW',entrance_count:en};
+      return {key:'station',label:'대중교통 중심지역 · 역세권',status:'REVIEW',note:`${eligible350.name} ${rangeTxt} 350m에 대상지 ${Number(eligible350.safe350_coverage).toFixed(1)}% 포함 · 250m 밖 확장구간은 운영기준상 통합심의 예외 지정 필요`,coverage:eligible350.safe350_coverage,value:`판정역 ${eligible350.name} · 350m(${rangeTxt}) 포함 ${fmtSchemePct(eligible350.safe350_coverage)} · 최단 ${Number(eligible350.distance_m).toFixed(1)}m`,station:eligible350,scope_m:350,coverage_status:'REVIEW',entrance_count:en,...safeStationDisplayMetrics(eligible350)};
     }
     if(overlap350){
       const en=overlap350.safe350_entrance_count||0;
       const rangeTxt=en>0?`승강장 경계 + 출입구 ${en}개 통합범위`:'승강장 경계(연결된 출입구 없음)';
-      return {key:'station',label:'대중교통 중심지역 · 역세권',status:'REVIEW',note:`${overlap350.name} ${rangeTxt} 350m에 대상지 ${Number(overlap350.safe350_coverage).toFixed(1)}%만 포함 · 350m 예외지정과 50% 미만 추가 공공기여/통합심의 모두 확인 필요`,coverage:overlap350.safe350_coverage,value:`판정역 ${overlap350.name} · 350m(${rangeTxt}) 포함 ${fmtSchemePct(overlap350.safe350_coverage)} · 최단 ${Number(overlap350.distance_m).toFixed(1)}m`,station:overlap350,scope_m:350,coverage_status:'REVIEW',entrance_count:en};
+      return {key:'station',label:'대중교통 중심지역 · 역세권',status:'REVIEW',note:`${overlap350.name} ${rangeTxt} 350m에 대상지 ${Number(overlap350.safe350_coverage).toFixed(1)}%만 포함 · 350m 예외지정과 50% 미만 추가 공공기여/통합심의 모두 확인 필요`,coverage:overlap350.safe350_coverage,value:`판정역 ${overlap350.name} · 350m(${rangeTxt}) 포함 ${fmtSchemePct(overlap350.safe350_coverage)} · 최단 ${Number(overlap350.distance_m).toFixed(1)}m`,station:overlap350,scope_m:350,coverage_status:'REVIEW',entrance_count:en,...safeStationDisplayMetrics(overlap350)};
     }
-    return {key:'station',label:'대중교통 중심지역 · 역세권',status:'FAIL',note:`대상지 중심 1km 후보 ${stationFacts().length}개 역을 전수검사했으나(승강장 경계 + 연결된 출입구 350m 통합범위 기준) 어느 역에도 대상지가 중첩되지 않음`,coverage:0,value:`최근접 ${chosen.name} ${chosen.distance_m==null?'-':Number(chosen.distance_m).toFixed(1)+'m'}`,station:chosen,scope_m:350,coverage_status:'FAIL'};
+    if(!stationEntranceReferenceStatus.loaded||!stationEntranceReferenceStatus.linkage_complete){
+      return {key:'station',label:'대중교통 중심지역 · 역세권',status:'REVIEW',note:`승강장 경계 350m에는 중첩되지 않으나 ${stationEntranceReferenceStatus.note} · 누락된 해당 역 출입구 가능성이 있어 FAIL 확정 금지`,coverage:0,value:`최근접 ${chosen.name} ${chosen.distance_m==null?'-':Number(chosen.distance_m).toFixed(1)+'m'} · 출입구 연결 불완전`,station:chosen,scope_m:350,coverage_status:'REVIEW',...safeStationDisplayMetrics(chosen)};
+    }
+    return {key:'station',label:'대중교통 중심지역 · 역세권',status:'FAIL',note:`대상지 중심 1km 후보 ${stationFacts().length}개 역을 전수검사했으나(승강장 경계 + 공식 연결 완료 출입구 350m 통합범위 기준) 어느 역에도 대상지가 중첩되지 않음`,coverage:0,value:`최근접 ${chosen.name} ${chosen.distance_m==null?'-':Number(chosen.distance_m).toFixed(1)+'m'}`,station:chosen,scope_m:350,coverage_status:'FAIL',...safeStationDisplayMetrics(chosen)};
   }
   return {key:'station',label:'대중교통 중심지역 · 역세권',status:'REVIEW',note:'다중역 역사경계 GIS Fact 미확보 · 수기 최근접거리만으로 안심주택 자동판정 금지',coverage:null,value:c.dist==null?'-':`최근접 수기 ${Number(c.dist).toFixed(1)}m`,scope_m:null,coverage_status:'REVIEW'};
 }
@@ -10453,6 +10502,8 @@ function renderMobileSelectedScheme(name){
   if(!res)return;
   const den=res.density||{zone:'-',far:'-',contribution:'-'};
   const st=res.overall||'REVIEW';
+  const candidate=safeCandidateState(mobileSelectedSchemeName);
+  const display=candidateDisplayState(mobileSelectedSchemeName,candidate);
 
   const n=document.getElementById('mobileSelectedSchemeName');
   const s=document.getElementById('mobileSelectedSchemeStatus');
@@ -10463,8 +10514,9 @@ function renderMobileSelectedScheme(name){
 
   if(n)n.textContent=schemeNames[mobileSelectedSchemeName]||mobileSelectedSchemeName;
   if(s){
-    s.textContent=overallLabel(st);
-    s.className=`${st}`;
+    s.textContent=display.kind==='available'?'현재 추진 가능':display.kind==='adjustable'?'조건변경 후 가능':display.kind==='pending'?'판정 유보':'적용 곤란';
+    s.className=display.kind==='available'?'PASS':display.kind==='adjustable'?'FAIL':'REVIEW';
+    s.title=display.action||'';
   }
   if(z)z.textContent=den.zone||'-';
   if(f)f.textContent=den.far||'-';
@@ -10731,6 +10783,73 @@ function safeDensityPotentialForScheme(name,st=null){
   try{return densityPotentialForScheme(name,st||safeCandidateState(name));}
   catch(e){console.error(`[density:${name}]`,e);return {tier:0,label:'밀도확인',maxFar:null,targetZone:'',station:false,stationNote:'',reason:'밀도 산정 오류로 REVIEW'};}
 }
+function candidateOneYearAgeOpportunity(name){
+  const fact=schemeResults[name]?.facts?.aging?.assessment;
+  if(!fact||fact.status!=='FAIL'||fact.threshold_pct==null)return null;
+  const records=buildingRawFacts();if(!records.length)return null;
+  const future=new Date(SCHEME_AS_OF.getTime());future.setFullYear(future.getFullYear()+1);
+  const rule=String(fact.rule_id||'');
+  const chronologicalYears={safe_housing:20,longterm_district:20,longterm_redevelopment:30,urban_redevelopment_possible:30,innovation_housing:20,public_complex:20};
+  let stat=null;
+  if(fact.rule_family==='urban_renewal'||/^smallscale/.test(rule)){
+    stat=boundedRatio(records,r=>renewalBuildingAgeStateAt(r,future));
+  }else if(rule==='urban_planning_annex1'){
+    stat=boundedRatio(records,r=>rawFactAgeStateAt(r,20,future));
+    const supplementalPass=Object.values(fact.components?.supplements||{}).some(x=>x?.status==='PASS');
+    const futurePass=stat.lower>=66.6667||(stat.lower>=50&&supplementalPass);
+    if(futurePass)return {possible:true,currentPct:fact.calculated_lower_pct,futurePct:stat.lower,thresholdPct:fact.calculated_lower_pct<50?50:66.6667,label:`1년 내 노후도 ${stat.lower.toFixed(1)}% 예상`};
+  }else if(chronologicalYears[rule]){
+    stat=boundedRatio(records,r=>rawFactAgeStateAt(r,chronologicalYears[rule],future));
+  }
+  if(!stat)return null;
+  if(stat.lower>=Number(fact.threshold_pct))return {possible:true,currentPct:fact.calculated_lower_pct,futurePct:stat.lower,thresholdPct:Number(fact.threshold_pct),label:`1년 내 노후도 ${stat.lower.toFixed(1)}% 예상`};
+  const current=Number(fact.calculated_lower_pct),gap=Number(fact.threshold_pct)-current;
+  if(Number.isFinite(gap)&&gap>0&&gap<=10)return {possible:true,currentPct:current,futurePct:stat.lower,thresholdPct:Number(fact.threshold_pct),label:`노후도 ${gap.toFixed(1)}%p 부족 · 인접 노후건축물 편입 검토`};
+  return null;
+}
+function candidateAreaAdjustmentOpportunity(name,st){
+  const rows=(schemeResults[name]?.rows||[]).filter(r=>r.status==='FAIL'&&r.hardGate==='AREA');
+  if(!rows.length&&st?.areaGate!=='FAIL')return null;
+  const gaps=rows.map(r=>r.gap).filter(x=>x&&x!=='정량 부족값 산정 불가'&&x!=='기준과 대상지 값 재확인');
+  const gapText=gaps[0]||st?.areaReason||'면적기준 조정 필요';
+  const direction=/초과/.test(gapText)?'구역계 축소':/부족/.test(gapText)?'인접필지 편입':'구역계 조정';
+  return {possible:true,label:`${gapText} · ${direction}`,kind:'AREA'};
+}
+function candidateChangeOpportunity(name,st){
+  if(!st||!st.ready||SHELL_SCHEMES.has(name))return null;
+  // 조건을 바꿔도 독립 사업경로가 생기지 않는 하드 제외는 빨간 후보로 만들지 않는다.
+  if(st.purposeGate==='off'||st.structural==='FAIL'||st.stage==='LEGAL_ENTRY')return null;
+  const failed=(schemeResults[name]?.rows||[]).filter(r=>r.status==='FAIL'&&r.required!==false);
+  const hardBlock=/개발제한|공익용산지|비오톱|문화재|군사|보전지역|정책상 제외|법정 제외|대상 아님|진입 불가/;
+  if(failed.some(r=>hardBlock.test(`${r.item} ${r.rule} ${r.note}`)))return null;
+  const area=candidateAreaAdjustmentOpportunity(name,st);if(area)return area;
+  if(st.stage==='EXECUTION'||st.execution?.hardMismatch)return {possible:true,label:'사업시행자·토지확보 구조 변경',kind:'EXECUTION'};
+  if(!failed.length)return st.purposeGate==='secondary'?{possible:true,label:'사업목적·용도구성 변경',kind:'PURPOSE'}:null;
+  const ageOpportunity=candidateOneYearAgeOpportunity(name);
+  const labels=[];
+  for(const row of failed){
+    const text=`${row.item} ${row.rule} ${row.note}`;
+    if(/노후/.test(text)){
+      if(!ageOpportunity)return null;
+      labels.push(ageOpportunity.label);continue;
+    }
+    if(/시행자|시행주체|공공 참여|토지확보/.test(text)){labels.push('사업시행자·토지확보 구조 변경');continue;}
+    if(/동의/.test(text)){labels.push(`${row.gap&&row.gap!=='기준과 대상지 값 재확인'?row.gap+' · ':''}동의율 확보`);continue;}
+    if(/세대수|주택수|주거 연면적/.test(text)){labels.push(`${row.gap&&row.gap!=='기준과 대상지 값 재확인'?row.gap+' · ':''}사업계획 조정`);continue;}
+    if(/대상지 포함|면적 과반|가로구역 포함/.test(text)){labels.push('구역계 재구성 검토');continue;}
+    return null;
+  }
+  return labels.length?{possible:true,label:[...new Set(labels)].slice(0,2).join(' · '),kind:'REGULATION'}:null;
+}
+function candidateDisplayState(name,st=safeCandidateState(name)){
+  if(!st?.ready)return {kind:'pending',css:'candidate-review',label:'분석대기',action:'구역계·현황자료 입력 필요'};
+  if(SHELL_SCHEMES.has(name))return {kind:'pending',css:'candidate-review',label:'추후보완예정',action:'자동판정 모듈 미구축'};
+  if(st.state==='on')return {kind:'available',css:'candidate-on',label:'추진가능',action:'현재 조건으로 추진 가능'};
+  const opportunity=candidateChangeOpportunity(name,st);
+  if(opportunity)return {kind:'adjustable',css:'candidate-adjustable',label:opportunity.label,action:opportunity.label,opportunity};
+  if(st.state==='mid'||st.regulatory==='REVIEW'||st.structural==='REVIEW')return {kind:'pending',css:'candidate-review',label:'추가확인',action:st.reviewDetail||'자료·공식기준 추가확인 필요'};
+  return {kind:'unavailable',css:'candidate-off',label:st.label||'적용 곤란',action:st.failureDetail||st.areaReason||'조건조정만으로 추진경로를 확인하기 어려움'};
+}
 function ccContextFor(name){
   const purpose=document.getElementById('ccPurpose')?.value||'';
   const land=document.getElementById('ccLandControl')?.value||'';
@@ -10875,13 +10994,15 @@ function renderPriorityReview(){
   }
   root.innerHTML=`<div class="priority-rank-grid">${top.map((name,i)=>{
     const st=safeCandidateState(name);
+    const display=candidateDisplayState(name,st);
     const dp=safeDensityPotentialForScheme(name,st);
     const fail=st.failReasons?.length?`<div>조건미달: ${escHtml(st.failReasons.join(' · '))}</div>`:'';
     const review=st.reviewReasons?.length?`<div>추가확인: ${escHtml(st.reviewReasons.join(' · '))}</div>`:'';
     return `<article class="priority-rank-card">
-      <div><span class="priority-rank-no">${i+1}순위</span><span class="priority-rank-status">${escHtml(st.label||'-')}</span></div>
+      <div><span class="priority-rank-no">${i+1}순위</span><span class="priority-rank-status">${escHtml(display.kind==='available'?'현재 추진 가능':'조건변경 후 가능')}</span></div>
       <div class="priority-rank-name">${escHtml(schemeNames[name]||name)} <small>· ${escHtml(schemeFamilyLabel(name))}</small></div>
       <div class="priority-rank-reason">${escHtml(rankingReason(name))}${fail}${review}</div>
+      ${display.kind==='adjustable'?`<div class="priority-rank-density"><b>변경조건</b> · ${escHtml(display.action)}</div>`:''}
       <div class="priority-rank-density"><b>${densityTierLabel(dp.tier)}</b> · ${escHtml(dp.reason||'-')}</div>
     </article>`;
   }).join('')}</div>`;
@@ -10967,6 +11088,7 @@ const planningScenarioState={1:{manualScheme:false},2:{manualScheme:false},3:{ma
 function candidateRegCounts(name){return schemeResultCounts(schemeResults[name]?.rows||[]);}
 function candidateSortTuple(name){
   const st=safeCandidateState(name);
+  const display=candidateDisplayState(name,st);
   const cnt=candidateRegCounts(name);
   const module=schemeResults[name]||{};
   const strengths=(module.strengths||[]).length;
@@ -10978,7 +11100,7 @@ function candidateSortTuple(name){
     areaRank:st.areaGate==='PASS'?2:st.areaGate==='REVIEW'?1:0,
     regulatoryRank:st.regulatory==='PASS'?2:st.regulatory==='REVIEW'?1:0,
     execRank:(st.execution?.land==='FIT'?1:0)+(st.execution?.actor==='FIT'?1:0),
-    finalRank:st.state==='on'?2:st.state==='mid'?1:0,
+    finalRank:display.kind==='available'?2:display.kind==='adjustable'?1:0,
     densityTier:safeDensityPotentialForScheme(name,st).tier,
     strengths,risks,followups,
     review:cnt.review,pass:cnt.pass,fail:cnt.fail
@@ -10986,8 +11108,8 @@ function candidateSortTuple(name){
 }
 function compareCandidateNames(a,b){
   const A=candidateSortTuple(a),B=candidateSortTuple(b);
-  // 가중점수 합산이 아니라 우선순위가 고정된 사전식 비교.
-  for(const k of ['finalRank','purposeRank','structuralRank','regulatoryRank','areaRank','execRank','densityTier','strengths']){
+  // 파랑 우선, 빨강 차순. 같은 추진가능성 그룹 안에서는 계획가능용적률이 최우선이다.
+  for(const k of ['finalRank','densityTier','purposeRank','structuralRank','regulatoryRank','areaRank','execRank','strengths']){
     if(A[k]!==B[k])return B[k]-A[k];
   }
   if(A.risks!==B.risks)return A.risks-B.risks;
@@ -10999,15 +11121,17 @@ function compareCandidateNames(a,b){
 }
 function rankedSchemeNames(){
   const names=Object.keys(schemeNames);
-  const live=names.filter(n=>(safeCandidateState(n)).state!=='off').sort(compareCandidateNames);
-  const off=names.filter(n=>(safeCandidateState(n)).state==='off').sort(compareCandidateNames);
-  return [...live,...off];
+  const live=names.filter(n=>['available','adjustable'].includes(candidateDisplayState(n).kind)).sort(compareCandidateNames);
+  const pending=names.filter(n=>candidateDisplayState(n).kind==='pending').sort(compareCandidateNames);
+  const off=names.filter(n=>candidateDisplayState(n).kind==='unavailable').sort(compareCandidateNames);
+  return [...live,...pending,...off];
 }
 function rankingReason(name){
   const st=safeCandidateState(name);
+  const display=candidateDisplayState(name,st);
   const cnt=candidateRegCounts(name);
   const bits=[
-    schemeFamilyLabel(name),
+    schemeFamilyLabel(name),display.kind==='available'?'현재 추진 가능':display.kind==='adjustable'?`조건변경 후 가능(${display.action})`:display.kind==='pending'?'판정 유보':'적용 곤란',
     st.purposeGate==='priority'?'목적 직접적합':st.purposeGate==='secondary'?'목적 대안':'목적 하드제외',
     st.structural==='PASS'?'법정진입 확인':st.structural==='REVIEW'?'법정진입 확인필요':'법정진입 미달',
     st.regulatory==='PASS'?'정량요건 충족':st.regulatory==='REVIEW'?`정량 ${cnt.review}건 확인`:'정량요건 미달'
@@ -11019,17 +11143,15 @@ function rankingReason(name){
   if((module.risks||[]).length)bits.push(`약점 ${(module.risks||[]).slice(0,2).join('·')}`);
   if((module.followups||[]).length)bits.push(`후속 ${(module.followups||[]).slice(0,2).join('·')}`);
   const dp=safeDensityPotentialForScheme(name,st);
-  if(st.state!=='off')bits.push(`${densityTierLabel(dp.tier)}${dp.station?'·역세권':''}`);
+  bits.push(densityTierLabel(dp.tier));
   return bits.join(' · ');
 }
 function autoRecommendationTop3(){
   if(analysisState.fact_store_error)return [];
   return rankedSchemeNames().filter(n=>{
     const st=safeCandidateState(n);
-    // 명백한 FAIL만 순위에서 제외한다. 자문단 인정·위원회 심의·자료보완 REVIEW는
-    // 사업 가능성을 닫지 않고 조건부 후보로 남긴다.
-    if(st.areaGate==='FAIL'||st.structural==='FAIL')return false;
-    return st.state==='on'||st.state==='mid';
+    const display=candidateDisplayState(n,st);
+    return display.kind==='available'||display.kind==='adjustable';
   }).slice(0,3);
 }
 function numOrNull(v){
@@ -11545,60 +11667,26 @@ function stationInfluenceForScheme(name,c){
 function densityPotentialForScheme(name,st=null){
   if(SHELL_SCHEMES.has(name))return {tier:0,label:'추후보완예정',maxFar:null,targetZone:'',station:false,stationNote:'',reason:'공간혁신 3종 자동판정 추후보완예정'};
   const c=commonSchemeData();
-  const dec=st||safeCandidateState(name);
-  if(!dec || dec.state==='off'){
-    return {tier:0,label:'제외',maxFar:null,targetZone:'',station:false,stationNote:'',reason:'사업후보 제외'};
-  }
-
   const den=schemeResults[name]?.density||densityForScheme(name,c)||{};
   const maxFar=maxPercentFromText(den.far);
-  const targetZone=densityTargetZone(name,c);
-  const zoneRank=zoningDensityRank(targetZone);
-  const station=stationInfluenceForScheme(name,c);
-
-  let tier=1;
-  const reasons=[];
-
-  // 기존 제도 Rule에서 확보 가능한 최고 밀도 경로를 우선 반영.
-  if(maxFar!=null){
-    if(maxFar>=600){tier=3;reasons.push(`제도상 고밀 ${maxFar}%급`);}
-    else if(maxFar>=400){tier=Math.max(tier,2);reasons.push(`제도상 ${maxFar}%급`);}
-    else reasons.push(`제도상 ${maxFar}%급`);
-  }
-
-  // 상업지역 종상향 가능성은 최고 밀도 잠재군.
-  if(zoneRank>=4){
-    tier=3;
-    reasons.push(`${targetZone} 상향경로`);
-  }else if(zoneRank>=3){
-    tier=Math.max(tier,2);
-    reasons.push(`${targetZone} 밀도경로`);
-  }
-
-  // 사용자가 지적한 핵심: 역세권에 실제 포함되면 최소 고밀군으로 시각화.
-  if(station.active){
-    tier=Math.max(tier,2);
-    reasons.push(station.note);
-    // 역세권 + 상한/법적상한 500%급이면 사실상 최상위 밀도 잠재군으로 표시.
-    if(maxFar!=null && maxFar>=500)tier=3;
-  }
-
+  const tier=maxFar==null?0:maxFar>=600?4:maxFar>=400?3:maxFar>=250?2:1;
   return {
     tier,
-    label:tier===3?'고밀도 잠재력':tier===2?'중고밀 잠재력':'기본밀도',
+    label:maxFar==null?'계획가능용적률 미확정':`계획가능용적률 ${maxFar}%`,
     maxFar,
-    targetZone,
-    station:station.active,
-    stationLevel:station.level,
-    stationNote:station.note,
-    reason:reasons.join(' · ')||'현재 제도·입지 기준 기본밀도'
+    targetZone:densityTargetZone(name,c),
+    station:false,
+    stationLevel:0,
+    stationNote:'색상 농도에는 역세권·공공기여를 반영하지 않음',
+    reason:maxFar==null?'계획가능용적률 숫자 미확정':`${maxFar}% · 공공기여·역세권 가중치 미반영`
   };
 }
 function densityTierLabel(tier){
-  if(tier===3)return '밀도잠재력 3';
-  if(tier===2)return '밀도잠재력 2';
-  if(tier===1)return '밀도잠재력 1';
-  return '밀도잠재력 -';
+  if(tier===4)return '계획가능용적률 600% 이상';
+  if(tier===3)return '계획가능용적률 400~599%';
+  if(tier===2)return '계획가능용적률 250~399%';
+  if(tier===1)return '계획가능용적률 250% 미만';
+  return '계획가능용적률 미확정';
 }
 
 // ---------- Anonymous usage statistics (no account / no raw IP / no polygon) ----------
@@ -11644,7 +11732,7 @@ function feedbackContextText(){
   const pnus=[...selectedParcelPnus];
   const recs=(analysisState.recommendations||[]).slice(0,3).map(x=>x.name||x.scheme).filter(Boolean);
   const analysisId=activeGeometry?ensureAnalysisId(currentAnalysisSignature):'';
-  return `${analysisId?'분석번호 '+analysisId+' · ':''}${address} · ${area?fmt(area,0)+'㎡':'면적 미확정'} · ${pnus.length}필지${recs.length?' · 우선검토 '+recs.join(' / '):''}`;
+  return `${analysisId?'분석번호 '+analysisId+' · ':''}${address} · ${area?fmt(area,0)+'㎡':'면적 미확정'} · ${pnus.length}필지${recs.length?' · 추진후보 '+recs.join(' / '):''}`;
 }
 function openFeedbackModal(){
   const context=document.getElementById('feedbackContextText');
@@ -11694,7 +11782,13 @@ function queueAnalysisAnalytics(){
       analysis_id:analysisId,
       address_text:analyticsAddressText(),pnu_list:pnus.slice(0,200),area_m2:Number(area),parcel_count:pnus.length,
       centroid_lat:centroidLat,centroid_lng:centroidLng,recommendations:recs,
-      result_summary:{recommended:recs.length,excluded:decisions.filter(x=>x.state==='off').length,review:decisions.filter(x=>x.state==='mid').length}
+      result_summary:{
+        recommended:recs.length,
+        available:decisions.filter(x=>x.display_state==='available').length,
+        adjustable:decisions.filter(x=>x.display_state==='adjustable').length,
+        excluded:decisions.filter(x=>x.display_state==='unavailable').length,
+        review:decisions.filter(x=>x.display_state==='pending').length
+      }
     });
     sessionStorage.setItem('urban_last_analysis_signature',signature);
   },2500);
@@ -11703,7 +11797,7 @@ function queueAnalysisAnalytics(){
 function updateCandidateSchemes(){
   const root=document.getElementById('ccSchemeIcons');
   if(!root)return;
-  let on=0,mid=0,off=0;
+  let available=0,adjustable=0,unavailable=0,pending=0;
   const ranked=[];
   for(const name of Object.keys(schemeNames)){
     let st;
@@ -11713,26 +11807,29 @@ function updateCandidateSchemes(){
     const btn=root.querySelector(`[data-scheme="${name}"]`);
     try{
       if(btn){
-        btn.classList.remove('candidate-on','candidate-mid','candidate-off','density-tier-0','density-tier-1','density-tier-2','density-tier-3','station-density');
-        if(st.state==='on'){btn.classList.add('candidate-on');on++;}
-        else if(st.state==='mid'){btn.classList.add('candidate-mid');mid++;}
-        else if(st.state==='off'){btn.classList.add('candidate-off');off++;}
+        btn.classList.remove('candidate-on','candidate-mid','candidate-adjustable','candidate-review','candidate-off','density-tier-0','density-tier-1','density-tier-2','density-tier-3','density-tier-4','station-density');
+        const display=candidateDisplayState(name,st);
+        btn.classList.add(display.css);
+        if(display.kind==='available')available++;
+        else if(display.kind==='adjustable')adjustable++;
+        else if(display.kind==='unavailable')unavailable++;
+        else pending++;
         const density=safeDensityPotentialForScheme(name,st);
         btn.classList.add(`density-tier-${density.tier}`);
-        if(density.station&&st.state!=='off')btn.classList.add('station-density');
         btn.dataset.densityTier=String(density.tier);btn.dataset.densityLabel=densityTierLabel(density.tier);
-        const em=btn.querySelector('em');if(em)em.textContent=st.label;
+        btn.dataset.displayState=display.kind;
+        const em=btn.querySelector('em');if(em)em.textContent=display.label;
         btn.dataset.engineStage=st.stage||'';
-        const reasonTip=[`${candidateStageLabel(st.stage)} · ${st.label}`,st.state!=='off'?`${densityTierLabel(density.tier)} · ${density.reason}`:'',density.station&&st.state!=='off'?`역세권 가중: ${density.stationNote}`:'',st.failureDetail?`미달: ${st.failureDetail}`:'',st.reviewDetail?`확인: ${st.reviewDetail}`:''].filter(Boolean).join('\n');
+        const reasonTip=[`${display.kind==='available'?'현재 추진 가능':display.kind==='adjustable'?'조건변경 후 가능':display.kind==='pending'?'판정 유보':'적용 곤란'} · ${display.action}`,`${densityTierLabel(density.tier)} · ${density.reason}`,st.failureDetail?`미달: ${st.failureDetail}`:'',st.reviewDetail?`확인: ${st.reviewDetail}`:''].filter(Boolean).join('\n');
         btn.title=reasonTip;
-        ranked.push({name,rank:st.rank||0,state:st.state,label:st.label,density});
+        ranked.push({name,rank:st.rank||0,state:st.state,label:display.label,display,density});
       }else{
-        ranked.push({name,rank:st.rank||0,state:st.state,label:st.label,density:safeDensityPotentialForScheme(name,st)});
+        ranked.push({name,rank:st.rank||0,state:st.state,label:st.label,display:candidateDisplayState(name,st),density:safeDensityPotentialForScheme(name,st)});
       }
     }catch(e){
       console.error(`[candidate-ui:${name}]`,e);
-      const density={tier:0,label:'밀도확인',reason:'UI 오류'};
-      ranked.push({name,rank:st.rank||0,state:st.state,label:st.label,density});
+      const density={tier:0,label:'계획가능용적률 미확정',reason:'UI 오류'};
+      ranked.push({name,rank:st.rank||0,state:st.state,label:st.label,display:{kind:'pending',css:'candidate-review',label:'표시오류',action:'UI 확인'},density});
     }
   }
 
@@ -11741,7 +11838,7 @@ function updateCandidateSchemes(){
     try{
       const st=ccCandidateState[x.name]||candidateEngineErrorState(x.name,new Error('후보상태 미생성'));
       analysisState.scheme_decisions[x.name]={
-        scheme:schemeNames[x.name],family_key:schemeFamilyKey(x.name),family_label:schemeFamilyLabel(x.name),state:st.state,label:st.label,stage:st.stage,
+        scheme:schemeNames[x.name],family_key:schemeFamilyKey(x.name),family_label:schemeFamilyLabel(x.name),state:st.state,label:x.display?.label||st.label,display_state:x.display?.kind||'pending',condition_change:x.display?.action||'',stage:st.stage,
         purpose_gate:st.purposeGate,structural_gate:st.structural,area_gate:st.areaGate,area_reason:st.areaReason||'',regulatory:st.regulatory,execution:st.execution,
         relations:st.relations||[],fail_reasons:st.failReasons||[],review_reasons:st.reviewReasons||[],failure_detail:st.failureDetail||'',review_detail:st.reviewDetail||'',
         strengths:schemeResults[x.name]?.strengths||[],risks:schemeResults[x.name]?.risks||[],followups:schemeResults[x.name]?.followups||[],module:schemeResults[x.name]?.module||'shell',
@@ -11759,17 +11856,16 @@ function updateCandidateSchemes(){
       if(!activeGeometry)sum.textContent='지도에 그리기·지번 입력·SHP 중 하나로 구역계를 설정하세요.';
       else if(analysisState.fact_store_error)sum.textContent='현황 Fact Store 오류로 사업추천을 중단했습니다. 오류 항목을 복구한 뒤 다시 검토하세요.';
       else if((latestSiteFactStore?.common||commonSchemeData()).area==null)sum.textContent='구역계 설정 완료 · ‘검토하기’를 실행하면 공식 필지면적과 공간정보를 수집해 사업방식을 판정합니다.';
-      else if(!(purpose&&land&&actor))sum.textContent=on+mid?`필수면적 우선판정 · 우선검토 ${on}개 · 예외/추가확인 ${mid}개 · 제외/미달 ${off}개`:'현재 구역면적으로 추천할 수 있는 사업방식이 없습니다. 면적기준·예외인정 여부를 상세보기에서 확인하세요.';
-      else sum.textContent=on+mid?`우선검토 ${on}개 · 예외/추가확인 ${mid}개 · 제외/미달 ${off}개 · 필수면적 미달 사업은 순위에서 제외`:'현재 구역면적으로 추천할 수 있는 사업방식이 없습니다. 사업구역 확대 또는 명시적 예외인정 여부를 검토하세요.';
+      else sum.textContent=available+adjustable?`현재 추진 가능 ${available}개 · 조건변경 후 가능 ${adjustable}개 · 판정 유보 ${pending}개 · 적용 곤란 ${unavailable}개`:'현재 조건 또는 계산 가능한 조건변경으로 추진 가능한 사업방식이 없습니다.';
     }
   }catch(e){console.error('[candidate-summary]',e);}
 
   try{
     const top3=autoRecommendationTop3();
-    analysisState.recommendations=top3.map((n,i)=>({rank:i+1,scheme:n,name:schemeNames[n],reason:rankingReason(n),decision:ccCandidateState[n]?.label||''}));
+    analysisState.recommendations=top3.map((n,i)=>({rank:i+1,scheme:n,name:schemeNames[n],reason:rankingReason(n),decision:candidateDisplayState(n,ccCandidateState[n]).label||''}));
   }catch(e){
     console.error('[candidate-ranking]',e);
-    analysisState.recommendations=ranked.filter(x=>x.state==='on'||x.state==='mid').sort((a,b)=>b.rank-a.rank).slice(0,3).map((x,i)=>({rank:i+1,scheme:x.name,name:schemeNames[x.name],reason:'일부 추천 계산 오류로 기본 후보순위 표시',decision:x.label||'REVIEW'}));
+    analysisState.recommendations=ranked.filter(x=>['available','adjustable'].includes(x.display?.kind)).sort((a,b)=>(b.display?.kind==='available'?2:1)-(a.display?.kind==='available'?2:1)||b.density.tier-a.density.tier).slice(0,3).map((x,i)=>({rank:i+1,scheme:x.name,name:schemeNames[x.name],reason:'일부 추천 계산 오류로 추진가능성·계획가능용적률 기본순위 표시',decision:x.label||'REVIEW'}));
   }
   try{if(document.getElementById('planningSimulationModal')?.classList.contains('open'))updatePlanningAlternatives();}catch(e){console.error('[candidate-planning-ui]',e);}
   try{queueAnalysisAnalytics();}catch(e){console.error('[candidate-analytics]',e);}
@@ -11788,21 +11884,24 @@ function updateSmallscaleRouteButtons(){
   const routes=schemeResults.smallscale?.facts?.routes||latestSiteFactStore?.scheme_specific?.smallscale?.routes||{};
   root.querySelectorAll('[data-smallscale-route]').forEach(btn=>{
     const key=btn.dataset.smallscaleRoute,route=routes[key];
-    btn.classList.remove('candidate-on','candidate-mid','candidate-off','density-tier-0','density-tier-1','density-tier-2','density-tier-3','station-density');
-    let state='neutral',label='입력필요';
+    btn.classList.remove('candidate-on','candidate-mid','candidate-adjustable','candidate-review','candidate-off','density-tier-0','density-tier-1','density-tier-2','density-tier-3','density-tier-4','station-density');
+    let state='pending',label='입력필요';
     if(activeGeometry){
       if(parent.purposeGate==='off'){state='off';label='목적불일치';}
-      else if(!route){state='mid';label='분석대기';}
-      else if(route.status==='PASS'){state='on';label=key==='moa'?'추진경로확인':'가능후보';}
-      else if(route.status==='FAIL'){state='off';label='조건미달';}
-      else {state='mid';label=key==='moa'?'정책경로확인':'추가확인';}
+      else if(!route){state='pending';label='분석대기';}
+      else if(route.status==='PASS'){state='on';label='추진가능';}
+      else if(route.status==='FAIL'&&/면적|노후|주택수|세대|가로구역|도로/.test(`${route.label||''} ${route.value||''}`)){state='adjustable';label='구역계·정량조건 조정';}
+      else if(route.status==='FAIL'){state='off';label='적용 곤란';}
+      else {state='pending';label=key==='moa'?'정책경로확인':'추가확인';}
     }
     if(state==='on')btn.classList.add('candidate-on');
-    else if(state==='mid')btn.classList.add('candidate-mid');
+    else if(state==='adjustable')btn.classList.add('candidate-adjustable');
+    else if(state==='pending')btn.classList.add('candidate-review');
     else if(state==='off')btn.classList.add('candidate-off');
+    const density=safeDensityPotentialForScheme('smallscale',parent);btn.classList.add(`density-tier-${density.tier}`);
     const em=btn.querySelector('em');if(em)em.textContent=label;
     const meta=SMALLSCALE_ROUTE_UI[key];
-    btn.title=route?`${meta?.label||key} · ${label}\n${route.value||''}`:`${meta?.label||key} · ${label}`;
+    btn.title=route?`${meta?.label||key} · ${label}\n${densityTierLabel(density.tier)}\n${route.value||''}`:`${meta?.label||key} · ${label}`;
   });
 }
 function renderSchemePopupFallback(name,error=null){
@@ -11824,9 +11923,8 @@ function openSafeHousingDetailSafely(){
   if(title)title.textContent='안심주택 기초검토서';
   if(body)body.innerHTML='<div class="scheme-modal-note"><b>안심주택 기초검토서</b> 검토결과를 불러오는 중입니다.</div>';
   openReviewModal('schemeDetailModal');
-  // 모달을 먼저 화면에 올린 뒤 렌더한다. 렌더 오류가 나도 팝업 자체는 유지한다.
-  const render=()=>{try{renderSafeHousingDetailPopup();}catch(e){console.error('[scheme-popup:safe]',e);renderSchemePopupFallback('safe',e);}};
-  if(typeof requestAnimationFrame==='function')requestAnimationFrame(render);else setTimeout(render,0);
+  // 클릭한 같은 실행주기에서 즉시 렌더한다. 오류가 나도 이미 열린 팝업 안에 fallback 검토서를 표시한다.
+  try{renderSafeHousingDetailPopup();}catch(e){console.error('[scheme-popup:safe]',e);renderSchemePopupFallback('safe',e);}
 }
 function showSmallscaleRouteBasis(route){
   activeSmallscaleRoute=route;
@@ -12578,7 +12676,7 @@ function serviceModalMarkup(){
   <div class="review-modal-backdrop" id="schemeCompareModal" aria-hidden="true">
     <section class="review-modal review-modal-wide" role="dialog" aria-modal="true">
       <div class="review-modal-head">
-        <div><h2>사업방식 종합비교</h2><span>독립모듈 16개의 후보판정·제도판정·핵심 미달/확인사유·밀도잠재력을 비교합니다. 소규모정비는 5개 세부경로를 Family 내부에서 비교합니다.</span></div>
+        <div><h2>사업방식 종합비교</h2><span>독립모듈 16개의 현재 추진 가능성·조건변경 가능성·계획가능용적률을 비교합니다. 소규모정비는 5개 세부경로를 Family 내부에서 비교합니다.</span></div>
         <button class="review-modal-close" type="button" onclick="closeReviewModal('schemeCompareModal')" aria-label="닫기">×</button>
       </div>
       <div class="review-modal-body"><div class="scheme-compare-popup" id="schemeComparePopupBody"></div></div>
@@ -12993,6 +13091,10 @@ function renderSafeHousingDetailPopup(){
   if(res?.purpose_disabled){body.innerHTML=`<div class="scheme-modal-note"><b>목적사업 필터</b> ${escHtml(res.purpose_disabled_reason||'안심주택은 주거(임대) 목적에서만 검토합니다.')} 현재 안심주택 Rule Module은 실행되지 않았습니다.</div>`;return;}
   if(!f||!store){body.innerHTML='<div class="scheme-modal-note"><b>현황분석 필요</b> 먼저 검토하기를 실행하여 공간현황 Fact를 생성해 주세요. 팝업에서는 새 현황을 계산하지 않습니다.</div>';return;}
   const selected=f.location?.selected?.label||'입지유형 확인 필요';
+  const station=f.location?.station||{};
+  const stationName=station.station?.name||'-';
+  const entranceText=station.entrance_loaded?`${station.entrance_count||0}개 · ${station.linkage_complete?'공식 연결 완료':'공간적으로 명확한 연결만 사용'}`:'출입구 자료 로드 실패';
+  const stationDecision=station.status==='PASS'?'PASS · 250m 일반경로':station.status==='FAIL'?'FAIL 후보':`REVIEW · ${station.scope_m===350?'350m 예외지정/통합심의':'추가 확인'}`;
   const resultRows=schemeSpecificResultRows(res,[
     {label:'입지유형',items:['역세권','간선도로변','의료시설 중심지역','입지유형','중심지역 포함']},
     {label:'대상지 현황',items:['면적','용도지역','노후도']},
@@ -13011,6 +13113,10 @@ function renderSafeHousingDetailPopup(){
     <tr><th>위치</th><td>${escHtml(store.site.address||'주소 확인 필요')}</td><th>면적</th><td>${escHtml(fmtSchemeArea(f.area?.m2))}</td></tr>
     <tr><th>용도지역</th><td>${escHtml(f.zoning?.current||'-')}</td><th>적용 입지유형</th><td>${escHtml(selected)}</td></tr>
     <tr><th>역세권</th><td>${escHtml(f.location?.station?.value||'-')}</td><th>간선도로변</th><td>${escHtml(f.location?.arterial?.value||'-')}</td></tr>
+    <tr><th>안심주택 판정역</th><td>${escHtml(stationName)}</td><th>기준 geometry</th><td>${escHtml(station.geometry_basis||'승강장 경계')}</td></tr>
+    <tr><th>250m 일반경로 포함률</th><td>${escHtml(fmtSchemePct(station.coverage250))}</td><th>350m 예외범위</th><td>${escHtml(station.safe350_basis||'승강장 경계 + 해당 역 연결 출입구')}</td></tr>
+    <tr><th>출입구 연결</th><td>${escHtml(entranceText)}</td><th>350m 예외 포함률</th><td>${escHtml(fmtSchemePct(station.safe350_coverage))}</td></tr>
+    <tr><th>안심주택 역세권 판정</th><td colspan="3">${escHtml(stationDecision)} · ${escHtml(station.note||'-')}</td></tr>
     <tr><th>의료시설 중심지역</th><td>${escHtml(f.location?.medical?.value||'-')}</td><th>중심지역 포함률</th><td>${f.location?.coverage_pct==null?'-':escHtml(Number(f.location.coverage_pct).toFixed(1)+'%')}</td></tr>
     <tr><th>안심주택 노후도</th><td>${escHtml(ageFactValue(f.aging?.assessment))}</td><th>지구단위계획구역</th><td>${escHtml(f.location?.district_plan?.known?(f.location.district_plan.overlap?'중첩':'현황 중첩 없음'):'자료 미확인')}</td></tr>
   </tbody></table></section>
@@ -13292,21 +13398,20 @@ function renderSchemeComparePopup(){
   const body=document.getElementById('schemeComparePopupBody');if(!body)return;
   const rows=rankedSchemeNames().map((name,i)=>{
     const st=safeCandidateState(name);
+    const display=candidateDisplayState(name,st);
     const res=schemeResults[name]||{overall:'REVIEW',density:{zone:'-',far:'-',contribution:'-'}};
     const dp=safeDensityPotentialForScheme(name,st);
     const fail=regulatoryReasonSummary(name,'FAIL');
     const review=regulatoryReasonSummary(name,'REVIEW');
-    const issue=st.state==='off'
-      ? (st.failureDetail||st.reasons?.slice(-1)[0]||'후보 제외')
-      : fail.full||review.full||st.reviewDetail||'주요요건 충족';
+    const issue=display.kind==='adjustable'?display.action:display.kind==='unavailable'?(st.failureDetail||st.reasons?.slice(-1)[0]||'적용 곤란'):fail.full||review.full||st.reviewDetail||'주요요건 충족';
     return `<tr onclick="closeReviewModal('schemeCompareModal');showCandidateBasis('${name}')" style="cursor:pointer">
       <td>${i+1}</td><td>${escHtml(schemeFamilyLabel(name))}</td><td><b>${escHtml(schemeNames[name])}</b></td>
-      <td>${escHtml(st.label||'-')}</td><td>${escHtml(overallLabel(res.overall||'REVIEW'))}</td>
+      <td>${escHtml(display.kind==='available'?'현재 추진 가능':display.kind==='adjustable'?'조건변경 후 가능':display.kind==='pending'?'판정 유보':'적용 곤란')}</td><td>${escHtml(overallLabel(res.overall||'REVIEW'))}</td>
       <td>${escHtml(issue||'-')}</td><td>${escHtml(densityTierLabel(dp.tier))}</td>
       <td>${escHtml((res.density||{}).far||'-')}</td>
     </tr>`;
   }).join('');
-  body.innerHTML=`<table><thead><tr><th>순서</th><th>사업 Family</th><th>사업방식</th><th>후보판정</th><th>제도판정</th><th>핵심 이슈</th><th>밀도잠재력</th><th>용적률</th></tr></thead><tbody>${rows}</tbody></table>`;
+  body.innerHTML=`<table><thead><tr><th>순서</th><th>사업 Family</th><th>사업방식</th><th>추진가능성</th><th>제도판정</th><th>변경조건·핵심 이슈</th><th>계획가능용적률 구간</th><th>용적률</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 function openSchemeCompareModal(){
   runAllSchemeChecks();

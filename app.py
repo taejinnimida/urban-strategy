@@ -3762,13 +3762,27 @@ def reference_station_entrances():
     소속이 애매해서 배포 전 전처리 단계에서 제외된 출입구는 포함하지 않는다.
     프론트엔드는 이 결과를 그대로 신뢰하고, 이름 정규화 등으로 재매칭을 시도하지 않는다.
     """
-    return _station_entrance_reference_data()
+    stations = _station_entrance_reference_data()
+    matched = sum(len(rows) for rows in stations.values() if isinstance(rows, list))
+    return {
+        "metadata": {
+            "source": "도로명주소 전자지도 TL_SPSB_ENTRC 2026.08.01",
+            "linkage_basis": "역사경계 내부 또는 공간적으로 명확한 출입구만 사전 연결",
+            "linkage_complete": False,
+            "official_relation_key": False,
+            "source_entrance_count": 1743,
+            "matched_entrance_count": matched,
+            "excluded_ambiguous_count": max(0, 1743 - matched),
+            "station_count": len(stations),
+        },
+        "stations": stations,
+    }
 
 
 # R22 station-line runtime hotfix.  This block is intentionally backend-only:
 # the existing multi-station frontend already consumes /api/reference/station-lines.
 STATION_RUNTIME_BUILD_MARKER = "R22_STATION_HOTFIX_20260901_0915"
-APP_BUILD_MARKER = "R23_PUBLIC_FOREST_SHP_20260902"
+APP_BUILD_MARKER = "R25_SAFE_HOUSING_POPUP_ENTRANCE_350_20260902"
 _STATION_LINE_CACHE_LOCK = threading.Lock()
 _STATION_LINE_CACHE: Dict[str, Any] = {
     "expires_at": 0.0,
