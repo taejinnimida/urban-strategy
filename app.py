@@ -1317,7 +1317,7 @@ def _land_use_rows_for_pnu(pnu: str) -> List[Dict[str, Any]]:
 
 
 def _land_use_category(name: str) -> Optional[str]:
-    n = re.sub(r"\\s+", "", str(name or ""))
+    n = re.sub(r"\s+", "", str(name or ""))
     if "비오톱" in n and "1등급" in n:
         return "biotope_grade1"
     if "공익용산지" in n:
@@ -2056,6 +2056,162 @@ def analyze_biotope_intersections(geometry: Dict[str, Any]) -> Dict[str, Any]:
             "source": layers.get("source"), "file": layers.get("file"),
             "dataset_count": layers.get("count", 0), "return_count": len(clipped_rows),
             "grade_basis": "유형평가 또는 개별평가 중 하나라도 1등급",
+            "geometry_basis": "site_exact_intersection",
+        },
+    }
+
+
+def _forest_classification_zip_path() -> Optional[str]:
+    """국토교통부 연속주제도 산지구분도(UF801), 서울 2026-08 원본."""
+    path = _data_path("forest_classification_seoul_202608.zip")
+    return path if os.path.isfile(path) and os.path.getsize(path) > 0 else None
+
+
+def _forest_class_from_properties(props: Dict[str, Any]) -> Optional[str]:
+    """UF801 MNUM 분류코드를 우선 사용하고 ALIAS는 결측 시 검증용으로만 쓴다."""
+    mnum = re.sub(r"\s+", "", str(props.get("MNUM") or "").upper())
+    match = re.search(r"UFM(100|110|120|200)", mnum)
+    if match:
+        return {
+            "100": "conservation_forest",
+            "110": "forestry_forest",
+            "120": "public_interest_forest",
+            "200": "semi_conservation_forest",
+        }[match.group(1)]
+    alias = re.sub(r"\s+", "", str(props.get("ALIAS") or ""))
+    return {
+        "보전산지": "conservation_forest",
+        "임업용산지": "forestry_forest",
+        "공익용산지": "public_interest_forest",
+        "준보전산지": "semi_conservation_forest",
+    }.get(alias)
+
+
+@lru_cache(maxsize=1)
+def _forest_classification_spatial_layers() -> Dict[str, Any]:
+    """UF801을 WGS84로 변환해 공익용·임업용 산지를 서로 분리하여 색인한다."""
+    zip_path = _forest_classification_zip_path()
+    if not zip_path:
+        return {"available": False, "reason": "forest_classification_seoul_202608.zip 미설치"}
+    rows_by_class: Dict[str, List[Dict[str, Any]]] = {
+        "conservation_forest": [],
+        "forestry_forest": [],
+        "public_interest_forest": [],
+        "semi_conservation_forest": [],
+    }
+    with zipfile.ZipFile(zip_path) as zf:
+        names = zf.namelist()
+        stems = sorted({os.path.splitext(n)[0] for n in names if n.lower().endswith(".shp")})
+        for stem in stems:
+            shp_name = next((n for n in names if os.path.splitext(n)[0] == stem and n.lower().endswith(".shp")), None)
+            shx_name = next((n for n in names if os.path.splitext(n)[0] == stem and n.lower().endswith(".shx")), None)
+            dbf_name = next((n for n in names if os.path.splitext(n)[0] == stem and n.lower().endswith(".dbf")), None)
+            if not (shp_name and shx_name and dbf_name):
+                continue
+            source_crs = CRS.from_user_input(os.getenv("FOREST_CLASSIFICATION_DATA_CRS", "EPSG:5174"))
+            prj_name = next((n for n in names if os.path.splitext(n)[0] == stem and n.lower().endswith(".prj")), None)
+            if prj_name:
+                try:
+                    source_crs = CRS.from_wkt(zf.read(prj_name).decode("utf-8", errors="ignore"))
+                except Exception:
+                    logging.warning("forest classification PRJ parse failed; EPSG:5174 fallback used: %s", stem)
+            to_wgs = Transformer.from_crs(source_crs, 4326, always_xy=True).transform
+            reader = shapefile.Reader(
+                shp=io.BytesIO(zf.read(shp_name)),
+                shx=io.BytesIO(zf.read(shx_name)),
+                dbf=io.BytesIO(zf.read(dbf_name)),
+                encoding="cp949",
+                encodingErrors="replace",
+            )
+            fields = [f[0] for f in reader.fields[1:]]
+            for sr in reader.iterShapeRecords():
+                try:
+                    props = {k: _json_property(v) for k, v in zip(fields, list(sr.record))}
+                    forest_class = _forest_class_from_properties(props)
+                    if forest_class not in rows_by_class:
+                        continue
+                    geom = shape(sr.shape.__geo_interface__)
+                    if geom.is_empty:
+                        continue
+                    if not geom.is_valid:
+                        geom = geom.buffer(0)
+                    geom = geometry_transform(to_wgs, geom)
+                    if geom.is_empty:
+                        continue
+                    props["_forest_class"] = forest_class
+                    props["_forest_class_basis"] = "MNUM_UFM_CODE"
+                    rows_by_class[forest_class].append({"geometry": geom, "properties": props})
+                except Exception:
+                    continue
+    trees = {
+        key: STRtree([row["geometry"] for row in rows]) if rows else None
+        for key, rows in rows_by_class.items()
+    }
+    return {
+        "available": bool(rows_by_class["public_interest_forest"]),
+        "rows_by_class": rows_by_class,
+        "trees": trees,
+        "counts": {key: len(rows) for key, rows in rows_by_class.items()},
+        "source": "국토교통부 연속주제도 산지구분도(UF801) 서울 2026-08 · MNUM UFM120/110 분리",
+        "file": os.path.basename(zip_path),
+        "crs": "EPSG:5174",
+    }
+
+
+def _forest_class_intersection(site: Any, layers: Dict[str, Any], forest_class: str) -> Dict[str, Any]:
+    rows = (layers.get("rows_by_class") or {}).get(forest_class) or []
+    tree = (layers.get("trees") or {}).get(forest_class)
+    clipped_rows: List[Dict[str, Any]] = []
+    clipped_geoms = []
+    if tree is not None:
+        for idx in tree.query(site, predicate="intersects"):
+            row = rows[int(idx)]
+            try:
+                inter = _polygonal_only(site.intersection(row["geometry"]))
+            except Exception:
+                inter = []
+            if not inter:
+                continue
+            inter_geom = unary_union(inter)
+            if inter_geom.is_empty:
+                continue
+            clipped_geoms.append(inter_geom)
+            clipped_rows.append({"type": "Feature", "geometry": mapping(inter_geom), "properties": row["properties"]})
+            if len(clipped_rows) >= 5000:
+                break
+    union_wgs = unary_union(clipped_geoms) if clipped_geoms else None
+    to_metric = Transformer.from_crs(4326, 5174, always_xy=True).transform
+    site_m2 = float(geometry_transform(to_metric, site).area)
+    overlap_m2 = float(geometry_transform(to_metric, union_wgs).area) if union_wgs is not None and not union_wgs.is_empty else 0.0
+    return {
+        "intersects": bool(clipped_rows and overlap_m2 > 0.5),
+        "overlap_area_m2": overlap_m2,
+        "overlap_pct": (overlap_m2 / site_m2 * 100.0) if site_m2 > 0 else None,
+        "features": {"type": "FeatureCollection", "features": clipped_rows},
+        "return_count": len(clipped_rows),
+    }
+
+
+def analyze_forest_classification_intersections(geometry: Dict[str, Any]) -> Dict[str, Any]:
+    """대상지와 UF801 공익용·임업용산지를 각각 실제 교차한다."""
+    layers = _forest_classification_spatial_layers()
+    if not layers.get("available"):
+        raise FileNotFoundError(str(layers.get("reason") or "서울 산지구분도 원본 미설치"))
+    site = shape(geometry)
+    if site.geom_type not in {"Polygon", "MultiPolygon"} or site.is_empty or not site.is_valid:
+        raise ValueError("유효한 Polygon 또는 MultiPolygon 구역계가 필요합니다.")
+    public_result = _forest_class_intersection(site, layers, "public_interest_forest")
+    forestry_result = _forest_class_intersection(site, layers, "forestry_forest")
+    return {
+        "status": "matched" if public_result["intersects"] or forestry_result["intersects"] else "none",
+        "public_interest_forest": public_result,
+        "forestry_forest": forestry_result,
+        "metadata": {
+            "source": layers.get("source"),
+            "file": layers.get("file"),
+            "source_crs": layers.get("crs"),
+            "dataset_counts": layers.get("counts"),
+            "classification_basis": "MNUM UFM120=공익용산지, UFM110=임업용산지",
             "geometry_basis": "site_exact_intersection",
         },
     }
@@ -3612,7 +3768,7 @@ def reference_station_entrances():
 # R22 station-line runtime hotfix.  This block is intentionally backend-only:
 # the existing multi-station frontend already consumes /api/reference/station-lines.
 STATION_RUNTIME_BUILD_MARKER = "R22_STATION_HOTFIX_20260901_0915"
-APP_BUILD_MARKER = "R22_STATION_AREA_FRONTAGE_NO_HIERARCHY_20260902"
+APP_BUILD_MARKER = "R23_PUBLIC_FOREST_SHP_20260902"
 _STATION_LINE_CACHE_LOCK = threading.Lock()
 _STATION_LINE_CACHE: Dict[str, Any] = {
     "expires_at": 0.0,
@@ -4097,6 +4253,40 @@ def biotope_intersections(inp: GeometryInput):
     except Exception as exc:
         logging.exception("biotope intersection failed")
         raise HTTPException(status_code=500, detail=f"비오톱1등급 중첩분석 오류: {exc}") from exc
+
+
+@app.get("/api/spatial/forest-classification-data-status")
+def forest_classification_data_status():
+    """내장 UF801 서울 산지구분도 로드상태와 분류별 건수를 진단한다."""
+    path = _forest_classification_zip_path()
+    if not path:
+        return {"available": False, "fact_status": "MISSING", "message": "내장 서울 산지구분도 없음"}
+    layers = _forest_classification_spatial_layers()
+    if layers.get("available"):
+        counts = layers.get("counts") or {}
+        return {
+            "available": True,
+            "fact_status": "FOREST_CLASSIFICATION_READY",
+            "message": f"공익용산지 {counts.get('public_interest_forest', 0)}건 · 임업용산지 {counts.get('forestry_forest', 0)}건 사용 가능",
+            "file": layers.get("file"),
+            "source": layers.get("source"),
+            "counts": counts,
+        }
+    return {"available": False, "fact_status": "LOAD_FAILED", "message": str(layers.get("reason") or "산지구분도 ZIP 로드 실패")}
+
+
+@app.post("/api/spatial/forest-classification-intersections")
+def forest_classification_intersections(inp: GeometryInput):
+    """내장 UF801 공익용·임업용산지와 대상지를 독립적으로 실제 공간교차한다."""
+    try:
+        return analyze_forest_classification_intersections(inp.geometry)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logging.exception("forest classification intersection failed")
+        raise HTTPException(status_code=500, detail=f"산지구분도 중첩분석 오류: {exc}") from exc
 
 
 @app.post("/api/spatial/street-block")

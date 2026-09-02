@@ -1531,7 +1531,7 @@ def check_r22_shared_conservation_and_collapsible_ui() -> None:
         'id="ccPlanningFacilityMiniMap"',
         "async function analyzeSharedConservation()",
         "VWorld NED 토지이용계획 getLandUseAttr",
-        "정확 중첩면적은 원본 SHP가 연결되기 전에는 산정하지 않습니다",
+        "UFM120 도형으로 실제 교차면적·비율을 계산합니다",
         "function enableSpatialModuleCollapsing()",
         "function setAllSpatialModulesCollapsed(collapsed)",
         "status.classList.add('engine-data-panel')",
@@ -1979,7 +1979,7 @@ def check_r22_growth_frontage_engine():
     assert "간선도로 위계는 사용자 제공자료 연결 후 확정" in block
     assert "if(gr?.status==='CONFIRMED'){loc='PASS'" not in block
     assert "else if(gr?.status==='FAIL'){loc='FAIL'" not in block
-    assert 'APP_BUILD_MARKER = "R22_STATION_AREA_FRONTAGE_NO_HIERARCHY_20260902"' in py
+    assert 'APP_BUILD_MARKER = "R23_PUBLIC_FOREST_SHP_20260902"' in py
     assert '"scheme_module_api": "2026-09-02-r22-station-area-frontage-no-hierarchy"' in py
 
 
@@ -1994,7 +1994,7 @@ def check_biotope_bundled_exact_fact() -> None:
         "'/api/spatial/biotope-intersections'",
         "서울시 개별비오톱(2025 기준) 원본 SHP",
         "geometry_basis:'EXACT_SHP'",
-        "선택필지 PNU 미확보 · 공익용산지 필지조회만 생략",
+        "선택필지 PNU 미확보 · 실패한 원도형의 필지조회 fallback 생략",
         "if(!biotopeExact)",
         "if(a.biotope?.features?.length)ccSharedBiotopeParcels.addData",
     ):
@@ -2008,6 +2008,35 @@ def check_biotope_bundled_exact_fact() -> None:
         '@app.get("/api/spatial/biotope-data-status")', '@app.post("/api/spatial/biotope-intersections")',
         '"status": "matched" if clipped_rows else "none"',
         '"grade_basis": "유형평가 또는 개별평가 중 하나라도 1등급"',
+    ):
+        assert marker in py, marker
+
+
+def check_public_forest_bundled_exact_fact() -> None:
+    """UF801은 UFM120/110을 분리하며 공익용산지를 구역계와 실제 교차해야 한다."""
+    root=Path(app.BASE_DIR)
+    html=Path(app.STATIC_HTML_PATH).read_text(encoding="utf-8")
+    py=Path(root,"app.py").read_text(encoding="utf-8")
+    forest_zip=root / "forest_classification_seoul_202608.zip"
+    assert forest_zip.is_file() and forest_zip.stat().st_size > 1_000_000
+    for marker in (
+        "function computePublicForestFactFromBundled(payload)",
+        "'/api/spatial/forest-classification-intersections'",
+        "UFM120 도형으로 실제 교차면적·비율",
+        "if(a.publicForest?.features?.length)ccSharedForestParcels.addData",
+        "forest.area_m2!=null",
+    ):
+        assert marker in html, marker
+    conserve=html[html.index("async function analyzeSharedConservation()") : html.index("function renderPlanningFacilitySpatialStatus()")]
+    assert conserve.index("forest-classification-intersections") < conserve.index("land-use-restrictions")
+    assert "if(!forestExact)" in conserve
+    for marker in (
+        "def _forest_classification_zip_path()", "def _forest_class_from_properties(",
+        "def _forest_classification_spatial_layers()", "def analyze_forest_classification_intersections(",
+        '@app.get("/api/spatial/forest-classification-data-status")',
+        '@app.post("/api/spatial/forest-classification-intersections")',
+        '"120": "public_interest_forest"', '"110": "forestry_forest"',
+        '"classification_basis": "MNUM UFM120=공익용산지, UFM110=임업용산지"',
     ):
         assert marker in py, marker
 
@@ -2058,6 +2087,7 @@ def main() -> None:
     _run("safe housing entrance 350m", check_safe_housing_entrance_350)
     _run("factory usage common fact", check_factory_usage_common_fact)
     _run("biotope bundled exact fact", check_biotope_bundled_exact_fact)
+    _run("public forest bundled exact fact", check_public_forest_bundled_exact_fact)
     _run("r22 growth frontage engine", check_r22_growth_frontage_engine)
     _run("release files", check_release_files)
     print("v2.5.0 regression checks: PASS")
