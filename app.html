@@ -1888,13 +1888,19 @@ body.service-layout-ready>.shell{display:none!important}
     <div class="road-condition-diag-head"><b>수집 진단</b><span>VWorld 응답 자체와 폭원 속성 매핑을 구분해서 봅니다 · F12 없이 확인용</span></div>
     <div class="road-condition-subgrid">
       <div><span>진단 상태</span><b id="rcDiagMode">-</b></div>
-      <div><span>도로중심선 수신</span><b id="rcDiagCenterlineCount">-</b></div>
+      <div><span>원시 feature</span><b id="rcDiagCenterlineCount">-</b></div>
+      <div><span>Line geometry</span><b id="rcDiagLineCount">-</b></div>
       <div><span>유효 폭원 확인</span><b id="rcDiagValidWidth">-</b></div>
-      <div><span>폭원 미확인</span><b id="rcDiagMissingWidth">-</b></div>
+      <div><span>폭원 확보율</span><b id="rcDiagCoverage">-</b></div>
+      <div><span>폭원키 없음</span><b id="rcDiagMissingWidth">-</b></div>
+      <div><span>폭원값 이상</span><b id="rcDiagInvalidWidth">-</b></div>
+      <div><span>비 Line 형상</span><b id="rcDiagNonLine">-</b></div>
+      <div><span>버퍼 생성</span><b id="rcDiagBuffer">-</b></div>
     </div>
+    <div class="road-condition-diag-detail"><span>실제 발견 폭원키</span><b id="rcDiagDetectedWidthKeys">-</b></div>
+    <div class="road-condition-diag-detail"><span>대상지 접면 폭원 확보율</span><b id="rcDiagFrontageCoverage">-</b></div>
     <div class="road-condition-diag-detail"><span>원시 속성 키(표본)</span><b id="rcDiagSampleKeys">구역계 검토 후 원시 속성 키가 표시됩니다.</b></div>
     <div class="road-condition-diag-detail"><span>폭원 후보키별 확인 건수</span><b id="rcDiagWidthHits">-</b></div>
-    <div class="road-condition-diag-detail"><span>대상지 접면 폭원 확보율</span><b id="rcDiagFrontageCoverage">-</b></div>
   </div>
   <div class="road-condition-grid">
     <div><span>독립 접도도로</span><b id="rcFaceCount">-</b></div>
@@ -5044,33 +5050,35 @@ function roadWidthFromManage(rw,manage){
 // VWorld TL_SPRD_MANAGE 도로중심선(manageFeatures)에서 폭원 버퍼 도형을 만든다.
 // 반환값에 derived(기존과 동일한 도형 배열)뿐 아니라 diagnostic을 함께 담아,
 // "VWorld가 아예 응답을 안 준 것"과 "응답은 왔는데 폭원 속성을 못 읽은 것"을 구분할 수 있게 한다.
-// 카운터는 반드시 서로 배타적인 사유 하나에만 잡히도록 분리한다(geometry 문제/폭원 결측/폭원 값 이상/버퍼 실패).
 function roadPolygonsFromCenterlines(manageFeatures){
   const out=[];
   const features=manageFeatures||[];
   const widthKeyHits={};for(const k of ROAD_WIDTH_PROP_CANDIDATES)widthKeyHits[k]=0;
-  let nonLineCount=0,missingWidthCount=0,invalidWidthCount=0,bufferFailCount=0,bufferSuccessCount=0;
-  const sampleKeys=new Set();
+  let lineFeatureCount=0,validWidthCount=0,missingWidthCount=0,invalidWidthCount=0,nonLineFeatureCount=0,bufferFailCount=0;
+  const sampleKeys=new Set(),detectedWidthKeys=new Set();
   for(const mf of features){
     try{
       const props=mf.properties||{};
       for(const k of Object.keys(props))if(sampleKeys.size<20)sampleKeys.add(k);
-      const map={};for(const [k,v] of Object.entries(props))map[String(k).toLowerCase()]=v;
-      let hasCandidateKey=false;
+      const map={};for(const [k,v] of Object.entries(props))map[String(k).toLowerCase()]={key:k,value:v};
       for(const cand of ROAD_WIDTH_PROP_CANDIDATES){
-        const v=map[cand.toLowerCase()];
-        if(v!==undefined&&v!==null&&String(v)!==''){
-          hasCandidateKey=true;
-          if(Number.isFinite(Number(v)))widthKeyHits[cand]++;
+        const hit=map[cand.toLowerCase()];
+        if(hit&&hit.value!==undefined&&hit.value!==null&&String(hit.value)!==''){
+          detectedWidthKeys.add(String(hit.key));
+          if(Number.isFinite(Number(hit.value)))widthKeyHits[cand]++;
         }
       }
       const isLine=String(mf.geometry?.type||'').includes('Line');
-      if(!isLine){nonLineCount++;continue;}
-      const w=cleanNum(pickPropCI(props,ROAD_WIDTH_PROP_CANDIDATES));
-      if(!(w>=1&&w<=100)){ hasCandidateKey?invalidWidthCount++:missingWidthCount++; continue; }
+      if(!isLine){nonLineFeatureCount++;continue;}
+      lineFeatureCount++;
+      const rawWidth=pickPropCI(props,ROAD_WIDTH_PROP_CANDIDATES);
+      const rawMissing=rawWidth===undefined||rawWidth===null||String(rawWidth).trim()==='';
+      if(rawMissing){missingWidthCount++;continue;}
+      const w=cleanNum(rawWidth);
+      if(!(w>=1&&w<=100)){invalidWidthCount++;continue;}
+      validWidthCount++;
       const buffered=turf.buffer(mf,w/2,{units:'meters',steps:8});
       if(!buffered?.geometry){bufferFailCount++;continue;}
-      bufferSuccessCount++;
       buffered.properties=Object.assign({},props, {
         _derived_centerline:true,
         _road_method:'centerline_width_buffer',
@@ -5080,25 +5088,27 @@ function roadPolygonsFromCenterlines(manageFeatures){
       out.push(buffered);
     }catch(e){bufferFailCount++;}
   }
-  const lineFeatureCount=features.length-nonLineCount;
-  const mode=features.length===0?'NO_RESPONSE':bufferSuccessCount===0?'CENTERLINE_NO_WIDTH':bufferSuccessCount<lineFeatureCount?'PARTIAL_WIDTH':'WIDTH_OK';
+  const mode=features.length===0?'NO_RESPONSE':lineFeatureCount===0?'CENTERLINE_NO_WIDTH':out.length===0?'CENTERLINE_NO_WIDTH':validWidthCount<lineFeatureCount||out.length<validWidthCount?'PARTIAL_WIDTH':'WIDTH_OK';
   const diagnostic={
     mode,
     centerline_count:features.length,
     line_feature_count:lineFeatureCount,
-    non_line_geometry_count:nonLineCount,
-    buffer_success_count:bufferSuccessCount,
+    valid_width_count:validWidthCount,
+    buffer_success_count:out.length,
     buffer_fail_count:bufferFailCount,
     missing_width_count:missingWidthCount,
     invalid_width_count:invalidWidthCount,
+    non_line_feature_count:nonLineFeatureCount,
+    width_coverage_pct:lineFeatureCount?validWidthCount/lineFeatureCount*100:null,
     sample_property_keys:[...sampleKeys],
+    detected_width_keys:[...detectedWidthKeys],
     width_key_hits:widthKeyHits
   };
   return {derived:out,diagnostic};
 }
 function annotateRoadWidths(rwFeatures,manageFeatures){
   return rwFeatures.map(f=>{
-    const p=Object.assign({},f.properties||{}); let w=cleanNum(pickPropCI(p,['_width_m','ROAD_BT','road_bt'])); let src='';
+    const p=Object.assign({},f.properties||{}); let w=cleanNum(pickPropCI(p,['_width_m',...ROAD_WIDTH_PROP_CANDIDATES])); let src='';
     if(p._derived_centerline===true && w!=null)src=p._width_source||'도로중심선 ROAD_BT 기반 개략범위';
     else if(!(w>=1&&w<=100)){
       w=roadWidthFromManage(f,manageFeatures);
@@ -5109,6 +5119,37 @@ function annotateRoadWidths(rwFeatures,manageFeatures){
 }
 function boundaryLines(poly){
   try{const x=turf.polygonToLine(poly);return x.type==='FeatureCollection'?x.features:[x];}catch(e){return [];}
+}
+// 대상지 경계에 실제로 근접한 도로중심선만 골라서 폭원 확보율을 따로 계산한다.
+// "검색반경 전체 중 몇 %가 폭원 있는지"와 "실제 접도도로 중 몇 %가 폭원 있는지"는 의미가 다르다 —
+// 전체 커버리지가 낮아도 대상지에 실제로 접하는 도로만 폭원이 확보돼 있으면 접도판정엔 충분할 수 있고,
+// 반대로 전체가 높아도 접도도로 하나가 폭원 미상이면 그게 핵심 문제다.
+function siteFrontageCenterlineDistance(siteFeature,centerlineFeature){
+  try{if(turf.booleanIntersects(siteFeature,centerlineFeature))return 0;}catch(e){}
+  const boundary=polygonBoundaryLines(siteFeature);
+  if(!boundary.length)return null;
+  let coords=[];
+  try{coords=turf.coordAll(centerlineFeature);}catch(e){coords=[];}
+  if(!coords.length)return null;
+  let best=Infinity;
+  for(const c of coords){const d=pointToAnyLineDistanceMeters(c,boundary);if(d<best)best=d;}
+  return Number.isFinite(best)?best:null;
+}
+// thresholdM은 법정 접도 판정 기준이 아니라, 폭이 넓은 도로는 중심선이 대지경계에서
+// 그만큼 멀어질 수 있다는 점을 감안한 진단용 근접범위다(도로 폭의 절반 정도를 여유로 둠).
+function computeSiteFrontageWidthCoverage(manageFeatures,siteGeometry,thresholdM=15){
+  if(!siteGeometry)return null;
+  let site;try{site=turf.feature(siteGeometry);}catch(e){return null;}
+  let total=0,withWidth=0;
+  for(const mf of manageFeatures||[]){
+    if(!String(mf.geometry?.type||'').includes('Line'))continue;
+    let d;try{d=siteFrontageCenterlineDistance(site,mf);}catch(e){d=null;}
+    if(d==null||d>thresholdM)continue;
+    total++;
+    const w=cleanNum(pickPropCI(mf.properties||{},ROAD_WIDTH_PROP_CANDIDATES));
+    if(w>=1&&w<=100)withWidth++;
+  }
+  return {threshold_m:thresholdM,frontage_centerline_count:total,frontage_width_confirmed_count:withWidth,frontage_width_missing_count:total-withWidth,coverage_pct:total>0?withWidth/total*100:null};
 }
 function frontageStats(parcel,qualifiedRoads){
   const buffers=qualifiedRoads.map(f=>{try{return turf.buffer(f,0.45,{units:'meters'});}catch(e){return f;}});
@@ -5212,37 +5253,6 @@ function buildingCountsByParcel(){
   return {source:'VWorld LT_C_SPBD 공간건물(1차)',counts:spatialBuildingCountsByParcel()};
 }
 
-// 대상지 경계에 실제로 근접한 도로중심선만 골라서 폭원 확보율을 따로 계산한다.
-// "검색반경 전체 중 몇 %가 폭원 있는지"와 "실제 접도도로 중 몇 %가 폭원 있는지"는 의미가 다르다 —
-// 전체 커버리지가 낮아도 대상지에 실제로 접하는 도로만 폭원이 확보돼 있으면 접도판정엔 충분할 수 있고,
-// 반대로 전체가 높아도 접도도로 하나가 폭원 미상이면 그게 핵심 문제다.
-function siteFrontageCenterlineDistance(siteFeature,centerlineFeature){
-  try{if(turf.booleanIntersects(siteFeature,centerlineFeature))return 0;}catch(e){}
-  const boundary=polygonBoundaryLines(siteFeature);
-  if(!boundary.length)return null;
-  let coords=[];
-  try{coords=turf.coordAll(centerlineFeature);}catch(e){coords=[];}
-  if(!coords.length)return null;
-  let best=Infinity;
-  for(const c of coords){const d=pointToAnyLineDistanceMeters(c,boundary);if(d<best)best=d;}
-  return Number.isFinite(best)?best:null;
-}
-// thresholdM은 법정 접도 판정 기준이 아니라, 폭이 넓은 도로는 중심선이 대지경계에서
-// 그만큼 멀어질 수 있다는 점을 감안한 진단용 근접범위다(도로 폭의 절반 정도를 여유로 둠).
-function computeSiteFrontageWidthCoverage(manageFeatures,siteGeometry,thresholdM=15){
-  if(!siteGeometry)return null;
-  let site;try{site=turf.feature(siteGeometry);}catch(e){return null;}
-  let total=0,withWidth=0;
-  for(const mf of manageFeatures||[]){
-    if(!String(mf.geometry?.type||'').includes('Line'))continue;
-    let d;try{d=siteFrontageCenterlineDistance(site,mf);}catch(e){d=null;}
-    if(d==null||d>thresholdM)continue;
-    total++;
-    const w=cleanNum(pickPropCI(mf.properties||{},ROAD_WIDTH_PROP_CANDIDATES));
-    if(w>=1&&w<=100)withWidth++;
-  }
-  return {threshold_m:thresholdM,frontage_centerline_count:total,frontage_width_confirmed_count:withWidth,frontage_width_missing_count:total-withWidth,coverage_pct:total>0?withWidth/total*100:null};
-}
 async function fetchRoadNetwork(radiusM=240){
   if(!activeGeometry)return {rw:[],manage:[],source:'none',errors:[],approximation:true,road_mode:'none',search_radius_m:radiusM,diagnostic:null};
   const zone=turf.buffer(turf.feature(activeGeometry),radiusM,{units:'meters'}).geometry;
@@ -5284,21 +5294,29 @@ function renderRoadDiagnostic(net){
   const d=net?.diagnostic||null;
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v==null?'-':String(v);};
   if(!d){
-    for(const id of ['rcDiagMode','rcDiagCenterlineCount','rcDiagValidWidth','rcDiagMissingWidth','rcDiagFrontageCoverage'])set(id,'-');
+    for(const id of ['rcDiagMode','rcDiagCenterlineCount','rcDiagLineCount','rcDiagValidWidth','rcDiagCoverage','rcDiagMissingWidth','rcDiagInvalidWidth','rcDiagNonLine','rcDiagBuffer','rcDiagFrontageCoverage'])set(id,'-');
+    const detectedEl=document.getElementById('rcDiagDetectedWidthKeys');if(detectedEl)detectedEl.textContent='-';
     const keysEl=document.getElementById('rcDiagSampleKeys');if(keysEl)keysEl.textContent='구역계 검토 후 원시 속성 키가 표시됩니다.';
     const hitsEl=document.getElementById('rcDiagWidthHits');if(hitsEl)hitsEl.textContent='-';
     return;
   }
   set('rcDiagMode',roadDiagnosticModeLabel(d.mode));
-  set('rcDiagCenterlineCount',`${d.centerline_count}건(Line ${d.line_feature_count}건 / geometry 제외 ${d.non_line_geometry_count}건)`);
-  set('rcDiagValidWidth',`버퍼성공 ${d.buffer_success_count}건${d.buffer_fail_count?` · 버퍼실패 ${d.buffer_fail_count}건`:''}`);
-  set('rcDiagMissingWidth',`속성없음 ${d.missing_width_count}건 · 값이상 ${d.invalid_width_count}건`);
+  set('rcDiagCenterlineCount',`${d.centerline_count}건`);
+  set('rcDiagLineCount',`${d.line_feature_count}건`);
+  set('rcDiagValidWidth',`${d.valid_width_count}건`);
+  set('rcDiagCoverage',d.width_coverage_pct==null?'-':`${Number(d.width_coverage_pct).toFixed(1)}%`);
+  set('rcDiagMissingWidth',`${d.missing_width_count}건`);
+  set('rcDiagInvalidWidth',`${d.invalid_width_count}건`);
+  set('rcDiagNonLine',`${d.non_line_feature_count}건`);
+  set('rcDiagBuffer',`${d.buffer_success_count}건${d.buffer_fail_count?` / 실패 ${d.buffer_fail_count}건`:''}`);
   const sf=d.site_frontage;
   if(sf&&sf.frontage_centerline_count>0){
     set('rcDiagFrontageCoverage',`대상지 접면 반경 ${sf.threshold_m}m 안 중심선 ${sf.frontage_centerline_count}건 중 폭원 확인 ${sf.frontage_width_confirmed_count}건(${sf.coverage_pct.toFixed(0)}%)${sf.frontage_width_missing_count>0?` · 미확인 ${sf.frontage_width_missing_count}건`:''}`);
   }else if(sf){
     set('rcDiagFrontageCoverage','대상지 접면 반경 안에서 도로중심선을 찾지 못함');
   }else set('rcDiagFrontageCoverage','-');
+  const detectedEl=document.getElementById('rcDiagDetectedWidthKeys');
+  if(detectedEl)detectedEl.textContent=(d.detected_width_keys||[]).length?d.detected_width_keys.join(', '):'발견된 폭원 후보키 없음';
   const keysEl=document.getElementById('rcDiagSampleKeys');
   if(keysEl)keysEl.textContent=(d.sample_property_keys||[]).length?d.sample_property_keys.join(', '):'수신된 속성 없음';
   const hitsEl=document.getElementById('rcDiagWidthHits');
@@ -5307,7 +5325,6 @@ function renderRoadDiagnostic(net){
     hitsEl.textContent=Object.keys(hits).length?Object.entries(hits).map(([k,v])=>`${k}:${v}건`).join(' / '):'-';
   }
 }
-
 function renderRoadConditionReview(){
   const net=analysisState.road_network||{};
   const state=document.getElementById('spRoadConditionState');
