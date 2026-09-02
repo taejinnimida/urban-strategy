@@ -1909,8 +1909,7 @@ def analyze_road_intersections(geometry: Dict[str, Any]) -> Dict[str, Any]:
     site = shape(geometry)
     if site.geom_type not in {"Polygon", "MultiPolygon"} or site.is_empty or not site.is_valid:
         raise ValueError("유효한 Polygon 또는 MultiPolygon 구역계가 필요합니다.")
-    to_metric = Transformer.from_crs(4326, 5174, always_xy=True).transform
-    to_wgs = Transformer.from_crs(5174, 4326, always_xy=True).transform
+    to_metric, to_wgs = _road_centerline_transformers()
     query_area = geometry_transform(to_wgs, geometry_transform(to_metric, site).buffer(60))
 
     def selected(kind: str) -> List[Dict[str, Any]]:
@@ -1930,15 +1929,20 @@ def analyze_road_intersections(geometry: Dict[str, Any]) -> Dict[str, Any]:
                 break
         return out
 
+    rw_features = selected("rw")
+    manage_features = selected("manage")
     return {
-        "status": "matched",
-        "rw": {"type": "FeatureCollection", "features": selected("rw")},
-        "manage": {"type": "FeatureCollection", "features": selected("manage")},
+        "status": "matched" if (rw_features or manage_features) else "none",
+        "rw": {"type": "FeatureCollection", "features": rw_features},
+        "manage": {"type": "FeatureCollection", "features": manage_features},
         "metadata": {
             "source": layers.get("source"),
             "road_mode": layers.get("road_mode"),
             "file": layers.get("file"),
             "scope": "대상지 60m 버퍼",
+            "manage_return_count": len(manage_features),
+            "rw_return_count": len(rw_features),
+            "fact_status": "ROAD_MANAGE_READY" if layers.get("manage_count", 0) else "ROAD_DATA_READY",
             "official_original_required": True,
         },
     }

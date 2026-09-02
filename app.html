@@ -5244,57 +5244,87 @@ function computeSiteFrontageWidthCoverage(manageFeatures,siteGeometry,thresholdM
   return {threshold_m:thresholdM,frontage_centerline_count:total,frontage_width_confirmed_count:withWidth,frontage_width_missing_count:total-withWidth,coverage_pct:total>0?withWidth/total*100:null};
 }
 async function fetchRoadNetwork(radiusM=240){
-  if(!activeGeometry)return {rw:[],manage:[],source:'none',errors:[],approximation:true,road_mode:'none',search_radius_m:radiusM,diagnostic:null};
+  if(!activeGeometry)return {rw:[],manage:[],source:'none',errors:[],approximation:true,road_mode:'none',search_radius_m:radiusM,diagnostic:{mode:'NO_RESPONSE',provider_state:'NO_GEOMETRY'}};
   const errors=[];
-  // 지적·가로구역·접도 연산에는 TL_SPRD_RW 실폭도로를 사용하지 않는다.
-  // 도로폭 Fact는 ROAD_BT를 사용하고, 화면용 영향범위만 중심선 폭원으로 버퍼한다.
-  //
-  // 1순위: 서버 내장 도로명주소 전자지도(TL_SPRD_MANAGE, road_seoul.zip) — /api/spatial/roads.
-  // 이미 검수된 공식 원본이라 VWorld 실시간 응답 여부와 무관하게 항상 쓸 수 있다.
-  // 2순위: 서버 내장 자료가 비어있거나 오류일 때만 VWorld 실시간 조회로 fallback한다.
+  // 도로 Fact의 1순위는 서버 내장 도로명주소 전자지도 TL_SPRD_MANAGE(ROAD_BT)이다.
+  // VWorld는 서버 내장자료가 실제로 비어 있거나 HTTP 오류일 때만 fallback한다.
+  // TL_SPRD_RW 실폭도로를 사용하지 않는다: 지적/가로구역/접도 판정의 대체자료로 쓰지 않는다.
   let mg=[],usedSource='';
+  let providerState='SERVER_PENDING',serverFeatureCount=0,vworldFeatureCount=0,serverMetadata=null;
   try{
-    const bundled=await fetchBackendJson('/api/spatial/roads',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry:activeGeometry})});
-    const feats=bundled?.manage?.features||[];
-    if(feats.length){mg=feats;usedSource='도로명주소 전자지도 · TL_SPRD_MANAGE · ROAD_BT';}
-    else errors.push('서버 내장 도로자료(TL_SPRD_MANAGE): 대상지 인근 도로중심선 0건');
+    const bundled=await fetchBackendJson('/api/spatial/roads',{
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry:activeGeometry})
+    });
+    const feats=Array.isArray(bundled?.manage?.features)?bundled.manage.features:[];
+    serverFeatureCount=feats.length;
+    serverMetadata=bundled?.metadata||null;
+    if(feats.length){
+      mg=feats;
+      usedSource='도로명주소 전자지도 · TL_SPRD_MANAGE · ROAD_BT';
+      providerState='SERVER_OK';
+    }else{
+      providerState='SERVER_EMPTY';
+      errors.push('서버 내장 도로자료(TL_SPRD_MANAGE): 대상지 인근 도로중심선 0건');
+    }
   }catch(e){
+    providerState='SERVER_ERROR';
     errors.push(`서버 내장 도로자료 조회 실패: ${String(e?.message||e)}`);
   }
   if(!mg.length){
-    const zone=turf.buffer(turf.feature(activeGeometry),radiusM,{units:'meters'}).geometry;
-    const mgRes=await trySpatialLayerCandidates(['TL_SPRD_MANAGE','LT_C_SPRD_MANAGE'],zone,['rds_man_no','RDS_MAN_NO']);
-    errors.push(...(mgRes.errors||[]));
-    mg=mgRes.features||[];
-    if(mg.length)usedSource='VWorld TL_SPRD_MANAGE 도로중심선 + ROAD_BT (fallback)';
+    try{
+      const zone=turf.buffer(turf.feature(activeGeometry),radiusM,{units:'meters'}).geometry;
+      const mgRes=await trySpatialLayerCandidates(['TL_SPRD_MANAGE','LT_C_SPRD_MANAGE'],zone,['rds_man_no','RDS_MAN_NO']);
+      errors.push(...(mgRes.errors||[]));
+      mg=mgRes.features||[];
+      vworldFeatureCount=mg.length;
+      if(mg.length){usedSource='VWorld TL_SPRD_MANAGE 도로중심선 + ROAD_BT (fallback)';providerState='VWORLD_FALLBACK_OK';}
+      else providerState=providerState==='SERVER_ERROR'?'SERVER_ERROR_VWORLD_EMPTY':'SERVER_EMPTY_VWORLD_EMPTY';
+    }catch(e){
+      errors.push(`VWorld fallback 조회 실패: ${String(e?.message||e)}`);
+      providerState=providerState==='SERVER_ERROR'?'SERVER_ERROR_VWORLD_ERROR':'SERVER_EMPTY_VWORLD_ERROR';
+    }
   }
   const {derived,diagnostic}=roadPolygonsFromCenterlines(mg);
+  diagnostic.provider_state=providerState;
+  diagnostic.server_feature_count=serverFeatureCount;
+  diagnostic.vworld_feature_count=vworldFeatureCount;
+  diagnostic.server_metadata=serverMetadata;
+  diagnostic.source=usedSource||'none';
   diagnostic.site_frontage=computeSiteFrontageWidthCoverage(mg,activeGeometry);
   if(derived.length){
     return {rw:derived,manage:mg,source:usedSource||'도로명주소 전자지도 · TL_SPRD_MANAGE · ROAD_BT',errors,approximation:true,road_mode:'centerline_width_attribute',search_radius_m:radiusM,diagnostic};
   }
-  // 서버 내장 자료도, VWorld도 모두 도로구간을 못 준 경우 서버 ZIP의 레이어 구성만 확인한다.
-  // TL_SPRD_RW가 있어도 지적/가로구역 계산에 대체 사용하지 않는다.
+  // 어느 자료원에서도 유효한 중심선+폭원 도로면을 만들지 못한 경우에만 데이터 상태를 보조 확인한다.
   try{
-    const inv=await fetchBackendJson('/api/spatial/road-data-status');
-    if(inv?.message)errors.push(`내장도로: ${inv.message}`);
-  }catch(e){errors.push(`내장도로 진단 실패: ${String(e?.message||e)}`);}
-  // mg(원시 VWorld 도로중심선)가 있었는지 여부로 "VWorld 무응답"과 "속성 매핑 실패"를 구분한다.
-  // diagnostic.mode가 이미 NO_RESPONSE/CENTERLINE_NO_WIDTH를 갖고 있으므로 여기선 그대로 보존만 한다.
-  return {rw:[],manage:mg,source:'none',errors,approximation:true,road_mode:'none',search_radius_m:radiusM,diagnostic};
+    const status=await fetchBackendJson('/api/spatial/road-data-status');
+    if(status?.fact_status)errors.push(`서버 도로자료 상태: ${status.fact_status}${status.message?' · '+status.message:''}`);
+  }catch(e){}
+  return {rw:[],manage:mg,source:usedSource||'none',errors,approximation:true,road_mode:'none',search_radius_m:radiusM,diagnostic};
 }
-
-function roadDiagnosticModeLabel(mode){
-  switch(mode){
-    case 'NO_RESPONSE': return 'VWorld 무응답 · 도로중심선 0건';
-    case 'CENTERLINE_NO_WIDTH': return '도로중심선 수신됨 · 폭원 속성 매핑 실패';
-    case 'PARTIAL_WIDTH': return '도로중심선 수신됨 · 폭원 속성 일부만 확인';
-    case 'WIDTH_OK': return '도로중심선·폭원 정상 확인';
-    default: return '진단 전';
-  }
+function roadDiagnosticModeLabel(mode,providerState=''){
+  const provider={
+    SERVER_OK:'내장 도로명주소 전자지도',
+    SERVER_EMPTY:'내장자료 0건',
+    SERVER_ERROR:'내장자료 요청 오류',
+    VWORLD_FALLBACK_OK:'VWorld fallback',
+    SERVER_ERROR_VWORLD_EMPTY:'내장자료 오류 + VWorld 0건',
+    SERVER_EMPTY_VWORLD_EMPTY:'내장자료 0건 + VWorld 0건',
+    SERVER_ERROR_VWORLD_ERROR:'내장자료 오류 + VWorld 오류',
+    SERVER_EMPTY_VWORLD_ERROR:'내장자료 0건 + VWorld 오류'
+  }[providerState]||'';
+  const state=(()=>{
+    switch(mode){
+      case 'NO_RESPONSE': return '도로중심선 0건';
+      case 'CENTERLINE_NO_WIDTH': return '도로중심선 있음 · 폭원 사용불가';
+      case 'PARTIAL_WIDTH': return '폭원 일부 확인';
+      case 'WIDTH_OK': return '도로중심선·폭원 정상';
+      default: return '진단 전';
+    }
+  })();
+  return provider?`${provider} · ${state}`:state;
 }
-// F12/Network 탭을 열지 않아도 "VWorld가 아예 안 줬는지" vs "줬는데 폭원 속성을 못 읽었는지"를
-// 화면에서 바로 구분할 수 있게 원시 진단값을 그대로 노출한다. known 여부와 무관하게 항상 그린다.
+// F12/Network 탭 없이도 서버 내장자료 → VWorld fallback → 폭원 해석 단계 중 어디서 멈췄는지
+// 화면에서 구분할 수 있게 원시 진단값을 노출한다. known 여부와 무관하게 항상 그린다.
 function renderRoadDiagnostic(net){
   const d=net?.diagnostic||null;
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v==null?'-':String(v);};
@@ -5304,7 +5334,7 @@ function renderRoadDiagnostic(net){
     const hitsEl=document.getElementById('rcDiagWidthHits');if(hitsEl)hitsEl.textContent='-';
     return;
   }
-  set('rcDiagMode',roadDiagnosticModeLabel(d.mode));
+  set('rcDiagMode',roadDiagnosticModeLabel(d.mode,d.provider_state));
   set('rcDiagCenterlineCount',`${d.centerline_count}건(Line ${d.line_feature_count}건 / geometry 제외 ${d.non_line_geometry_count}건)`);
   set('rcDiagValidWidth',`버퍼성공 ${d.buffer_success_count}건${d.buffer_fail_count?` · 버퍼실패 ${d.buffer_fail_count}건`:''}`);
   set('rcDiagMissingWidth',`속성없음 ${d.missing_width_count}건 · 값이상 ${d.invalid_width_count}건`);
@@ -5387,7 +5417,7 @@ async function analyzeRoadAccess(){
   const summary=document.getElementById('roadSummary'),conn=document.getElementById('roadConn'),tbody=document.getElementById('roadTableBody'),wrap=document.getElementById('roadTableWrap');
   conn.textContent='접도율 개략산정 중';conn.className='conn planned';summary.textContent='도로중심선·폭원 조회 및 개략 공간연산 중...';tbody.innerHTML='';wrap.style.display='none';
   try{
-    const net=await fetchRoadNetwork(); if(!net.rw.length){document.getElementById('road_basis_building_count').value='';document.getElementById('road_access_building_count_6m').value='';const frontage=document.getElementById('scheme_road_frontage_ratio');if(frontage?.dataset.autoRoad){frontage.value='';delete frontage.dataset.autoRoad;}clearRoadNetworkAutoValues();const diag=(net.errors||[]).join(' / ');const dgMode=net.diagnostic?.mode||'NO_RESPONSE';const dgMsg=dgMode==='CENTERLINE_NO_WIDTH'?`VWorld가 도로중심선 ${net.diagnostic.centerline_count}건은 정상 응답했지만, 그중 폭원(ROAD_BT 등) 속성을 읽을 수 있는 구간이 0건입니다 · 속성명 매핑 확인 필요.`:'VWorld 도로중심선(TL_SPRD_MANAGE)의 폭원 ROAD_BT를 확인하지 못했습니다(무응답/0건). 접도율은 REVIEW로 남깁니다.';summary.textContent=dgMsg+(diag?` · 진단: ${diag}`:'');conn.textContent=dgMode==='CENTERLINE_NO_WIDTH'?'폭원 속성 미매핑':'도로중심선 REVIEW';conn.className='conn planned';analysisState.quality.road='NO_DATA';analysisState.road_network={source:'none',quality:'NO_DATA',diagnostics:[...(net.errors||[])],diagnostic:net.diagnostic||null};renderRoadConditionReview();refreshAnalysisLayers();refreshCompactMiniMaps();return {quality:'NO_DATA',road_count:0,errors:net.errors||[],diagnostic:net.diagnostic||null};}
+    const net=await fetchRoadNetwork(); if(!net.rw.length){document.getElementById('road_basis_building_count').value='';document.getElementById('road_access_building_count_6m').value='';const frontage=document.getElementById('scheme_road_frontage_ratio');if(frontage?.dataset.autoRoad){frontage.value='';delete frontage.dataset.autoRoad;}clearRoadNetworkAutoValues();const diag=(net.errors||[]).join(' / ');const d=net.diagnostic||{};const dgMode=d.mode||'NO_RESPONSE';const provider=roadDiagnosticModeLabel(dgMode,d.provider_state);const dgMsg=dgMode==='CENTERLINE_NO_WIDTH'?`${provider} · 도로중심선 ${d.centerline_count??0}건 중 유효한 ROAD_BT 폭원을 도로면으로 변환하지 못했습니다.`:`${provider} · 내장 도로명주소 전자지도와 fallback 결과에서 접도 계산용 도로면을 확보하지 못했습니다. 접도율은 REVIEW로 남깁니다.`;summary.textContent=dgMsg+(diag?` · 진단: ${diag}`:'');conn.textContent=dgMode==='CENTERLINE_NO_WIDTH'?'폭원 확인 필요':'도로자료 REVIEW';conn.className='conn planned';analysisState.quality.road='NO_DATA';analysisState.road_network={source:net.source||'none',quality:'NO_DATA',diagnostics:[...(net.errors||[])],diagnostic:d};renderRoadConditionReview();refreshAnalysisLayers();refreshCompactMiniMaps();return {quality:'NO_DATA',road_count:0,errors:net.errors||[],diagnostic:d};}
     currentRoadManageFeatures=net.manage; currentRoadWidthFeatures=annotateRoadWidths(net.rw,net.manage); roadLayer.clearLayers();roadLayer.addData({type:'FeatureCollection',features:currentRoadWidthFeatures});
     const qualified4=currentRoadWidthFeatures.filter(f=>(f.properties||{})._qualifies4===true);
     const qualified6=currentRoadWidthFeatures.filter(f=>(f.properties||{})._qualifies6===true);
