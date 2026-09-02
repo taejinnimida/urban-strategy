@@ -1888,19 +1888,13 @@ body.service-layout-ready>.shell{display:none!important}
     <div class="road-condition-diag-head"><b>수집 진단</b><span>VWorld 응답 자체와 폭원 속성 매핑을 구분해서 봅니다 · F12 없이 확인용</span></div>
     <div class="road-condition-subgrid">
       <div><span>진단 상태</span><b id="rcDiagMode">-</b></div>
-      <div><span>원시 feature</span><b id="rcDiagCenterlineCount">-</b></div>
-      <div><span>Line geometry</span><b id="rcDiagLineCount">-</b></div>
+      <div><span>도로중심선 수신</span><b id="rcDiagCenterlineCount">-</b></div>
       <div><span>유효 폭원 확인</span><b id="rcDiagValidWidth">-</b></div>
-      <div><span>폭원 확보율</span><b id="rcDiagCoverage">-</b></div>
-      <div><span>폭원키 없음</span><b id="rcDiagMissingWidth">-</b></div>
-      <div><span>폭원값 이상</span><b id="rcDiagInvalidWidth">-</b></div>
-      <div><span>비 Line 형상</span><b id="rcDiagNonLine">-</b></div>
-      <div><span>버퍼 생성</span><b id="rcDiagBuffer">-</b></div>
+      <div><span>폭원 미확인</span><b id="rcDiagMissingWidth">-</b></div>
     </div>
-    <div class="road-condition-diag-detail"><span>실제 발견 폭원키</span><b id="rcDiagDetectedWidthKeys">-</b></div>
-    <div class="road-condition-diag-detail"><span>대상지 접면 폭원 확보율</span><b id="rcDiagFrontageCoverage">-</b></div>
     <div class="road-condition-diag-detail"><span>원시 속성 키(표본)</span><b id="rcDiagSampleKeys">구역계 검토 후 원시 속성 키가 표시됩니다.</b></div>
     <div class="road-condition-diag-detail"><span>폭원 후보키별 확인 건수</span><b id="rcDiagWidthHits">-</b></div>
+    <div class="road-condition-diag-detail"><span>대상지 접면 폭원 확보율</span><b id="rcDiagFrontageCoverage">-</b></div>
   </div>
   <div class="road-condition-grid">
     <div><span>독립 접도도로</span><b id="rcFaceCount">-</b></div>
@@ -5050,35 +5044,33 @@ function roadWidthFromManage(rw,manage){
 // VWorld TL_SPRD_MANAGE 도로중심선(manageFeatures)에서 폭원 버퍼 도형을 만든다.
 // 반환값에 derived(기존과 동일한 도형 배열)뿐 아니라 diagnostic을 함께 담아,
 // "VWorld가 아예 응답을 안 준 것"과 "응답은 왔는데 폭원 속성을 못 읽은 것"을 구분할 수 있게 한다.
+// 카운터는 반드시 서로 배타적인 사유 하나에만 잡히도록 분리한다(geometry 문제/폭원 결측/폭원 값 이상/버퍼 실패).
 function roadPolygonsFromCenterlines(manageFeatures){
   const out=[];
   const features=manageFeatures||[];
   const widthKeyHits={};for(const k of ROAD_WIDTH_PROP_CANDIDATES)widthKeyHits[k]=0;
-  let lineFeatureCount=0,validWidthCount=0,missingWidthCount=0,invalidWidthCount=0,nonLineFeatureCount=0,bufferFailCount=0;
-  const sampleKeys=new Set(),detectedWidthKeys=new Set();
+  let nonLineCount=0,missingWidthCount=0,invalidWidthCount=0,bufferFailCount=0,bufferSuccessCount=0;
+  const sampleKeys=new Set();
   for(const mf of features){
     try{
       const props=mf.properties||{};
       for(const k of Object.keys(props))if(sampleKeys.size<20)sampleKeys.add(k);
-      const map={};for(const [k,v] of Object.entries(props))map[String(k).toLowerCase()]={key:k,value:v};
+      const map={};for(const [k,v] of Object.entries(props))map[String(k).toLowerCase()]=v;
+      let hasCandidateKey=false;
       for(const cand of ROAD_WIDTH_PROP_CANDIDATES){
-        const hit=map[cand.toLowerCase()];
-        if(hit&&hit.value!==undefined&&hit.value!==null&&String(hit.value)!==''){
-          detectedWidthKeys.add(String(hit.key));
-          if(Number.isFinite(Number(hit.value)))widthKeyHits[cand]++;
+        const v=map[cand.toLowerCase()];
+        if(v!==undefined&&v!==null&&String(v)!==''){
+          hasCandidateKey=true;
+          if(Number.isFinite(Number(v)))widthKeyHits[cand]++;
         }
       }
       const isLine=String(mf.geometry?.type||'').includes('Line');
-      if(!isLine){nonLineFeatureCount++;continue;}
-      lineFeatureCount++;
-      const rawWidth=pickPropCI(props,ROAD_WIDTH_PROP_CANDIDATES);
-      const rawMissing=rawWidth===undefined||rawWidth===null||String(rawWidth).trim()==='';
-      if(rawMissing){missingWidthCount++;continue;}
-      const w=cleanNum(rawWidth);
-      if(!(w>=1&&w<=100)){invalidWidthCount++;continue;}
-      validWidthCount++;
+      if(!isLine){nonLineCount++;continue;}
+      const w=cleanNum(pickPropCI(props,ROAD_WIDTH_PROP_CANDIDATES));
+      if(!(w>=1&&w<=100)){ hasCandidateKey?invalidWidthCount++:missingWidthCount++; continue; }
       const buffered=turf.buffer(mf,w/2,{units:'meters',steps:8});
       if(!buffered?.geometry){bufferFailCount++;continue;}
+      bufferSuccessCount++;
       buffered.properties=Object.assign({},props, {
         _derived_centerline:true,
         _road_method:'centerline_width_buffer',
@@ -5088,27 +5080,25 @@ function roadPolygonsFromCenterlines(manageFeatures){
       out.push(buffered);
     }catch(e){bufferFailCount++;}
   }
-  const mode=features.length===0?'NO_RESPONSE':lineFeatureCount===0?'CENTERLINE_NO_WIDTH':out.length===0?'CENTERLINE_NO_WIDTH':validWidthCount<lineFeatureCount||out.length<validWidthCount?'PARTIAL_WIDTH':'WIDTH_OK';
+  const lineFeatureCount=features.length-nonLineCount;
+  const mode=features.length===0?'NO_RESPONSE':bufferSuccessCount===0?'CENTERLINE_NO_WIDTH':bufferSuccessCount<lineFeatureCount?'PARTIAL_WIDTH':'WIDTH_OK';
   const diagnostic={
     mode,
     centerline_count:features.length,
     line_feature_count:lineFeatureCount,
-    valid_width_count:validWidthCount,
-    buffer_success_count:out.length,
+    non_line_geometry_count:nonLineCount,
+    buffer_success_count:bufferSuccessCount,
     buffer_fail_count:bufferFailCount,
     missing_width_count:missingWidthCount,
     invalid_width_count:invalidWidthCount,
-    non_line_feature_count:nonLineFeatureCount,
-    width_coverage_pct:lineFeatureCount?validWidthCount/lineFeatureCount*100:null,
     sample_property_keys:[...sampleKeys],
-    detected_width_keys:[...detectedWidthKeys],
     width_key_hits:widthKeyHits
   };
   return {derived:out,diagnostic};
 }
 function annotateRoadWidths(rwFeatures,manageFeatures){
   return rwFeatures.map(f=>{
-    const p=Object.assign({},f.properties||{}); let w=cleanNum(pickPropCI(p,['_width_m',...ROAD_WIDTH_PROP_CANDIDATES])); let src='';
+    const p=Object.assign({},f.properties||{}); let w=cleanNum(pickPropCI(p,['_width_m','ROAD_BT','road_bt'])); let src='';
     if(p._derived_centerline===true && w!=null)src=p._width_source||'도로중심선 ROAD_BT 기반 개략범위';
     else if(!(w>=1&&w<=100)){
       w=roadWidthFromManage(f,manageFeatures);
@@ -5119,37 +5109,6 @@ function annotateRoadWidths(rwFeatures,manageFeatures){
 }
 function boundaryLines(poly){
   try{const x=turf.polygonToLine(poly);return x.type==='FeatureCollection'?x.features:[x];}catch(e){return [];}
-}
-// 대상지 경계에 실제로 근접한 도로중심선만 골라서 폭원 확보율을 따로 계산한다.
-// "검색반경 전체 중 몇 %가 폭원 있는지"와 "실제 접도도로 중 몇 %가 폭원 있는지"는 의미가 다르다 —
-// 전체 커버리지가 낮아도 대상지에 실제로 접하는 도로만 폭원이 확보돼 있으면 접도판정엔 충분할 수 있고,
-// 반대로 전체가 높아도 접도도로 하나가 폭원 미상이면 그게 핵심 문제다.
-function siteFrontageCenterlineDistance(siteFeature,centerlineFeature){
-  try{if(turf.booleanIntersects(siteFeature,centerlineFeature))return 0;}catch(e){}
-  const boundary=polygonBoundaryLines(siteFeature);
-  if(!boundary.length)return null;
-  let coords=[];
-  try{coords=turf.coordAll(centerlineFeature);}catch(e){coords=[];}
-  if(!coords.length)return null;
-  let best=Infinity;
-  for(const c of coords){const d=pointToAnyLineDistanceMeters(c,boundary);if(d<best)best=d;}
-  return Number.isFinite(best)?best:null;
-}
-// thresholdM은 법정 접도 판정 기준이 아니라, 폭이 넓은 도로는 중심선이 대지경계에서
-// 그만큼 멀어질 수 있다는 점을 감안한 진단용 근접범위다(도로 폭의 절반 정도를 여유로 둠).
-function computeSiteFrontageWidthCoverage(manageFeatures,siteGeometry,thresholdM=15){
-  if(!siteGeometry)return null;
-  let site;try{site=turf.feature(siteGeometry);}catch(e){return null;}
-  let total=0,withWidth=0;
-  for(const mf of manageFeatures||[]){
-    if(!String(mf.geometry?.type||'').includes('Line'))continue;
-    let d;try{d=siteFrontageCenterlineDistance(site,mf);}catch(e){d=null;}
-    if(d==null||d>thresholdM)continue;
-    total++;
-    const w=cleanNum(pickPropCI(mf.properties||{},ROAD_WIDTH_PROP_CANDIDATES));
-    if(w>=1&&w<=100)withWidth++;
-  }
-  return {threshold_m:thresholdM,frontage_centerline_count:total,frontage_width_confirmed_count:withWidth,frontage_width_missing_count:total-withWidth,coverage_pct:total>0?withWidth/total*100:null};
 }
 function frontageStats(parcel,qualifiedRoads){
   const buffers=qualifiedRoads.map(f=>{try{return turf.buffer(f,0.45,{units:'meters'});}catch(e){return f;}});
@@ -5253,6 +5212,37 @@ function buildingCountsByParcel(){
   return {source:'VWorld LT_C_SPBD 공간건물(1차)',counts:spatialBuildingCountsByParcel()};
 }
 
+// 대상지 경계에 실제로 근접한 도로중심선만 골라서 폭원 확보율을 따로 계산한다.
+// "검색반경 전체 중 몇 %가 폭원 있는지"와 "실제 접도도로 중 몇 %가 폭원 있는지"는 의미가 다르다 —
+// 전체 커버리지가 낮아도 대상지에 실제로 접하는 도로만 폭원이 확보돼 있으면 접도판정엔 충분할 수 있고,
+// 반대로 전체가 높아도 접도도로 하나가 폭원 미상이면 그게 핵심 문제다.
+function siteFrontageCenterlineDistance(siteFeature,centerlineFeature){
+  try{if(turf.booleanIntersects(siteFeature,centerlineFeature))return 0;}catch(e){}
+  const boundary=polygonBoundaryLines(siteFeature);
+  if(!boundary.length)return null;
+  let coords=[];
+  try{coords=turf.coordAll(centerlineFeature);}catch(e){coords=[];}
+  if(!coords.length)return null;
+  let best=Infinity;
+  for(const c of coords){const d=pointToAnyLineDistanceMeters(c,boundary);if(d<best)best=d;}
+  return Number.isFinite(best)?best:null;
+}
+// thresholdM은 법정 접도 판정 기준이 아니라, 폭이 넓은 도로는 중심선이 대지경계에서
+// 그만큼 멀어질 수 있다는 점을 감안한 진단용 근접범위다(도로 폭의 절반 정도를 여유로 둠).
+function computeSiteFrontageWidthCoverage(manageFeatures,siteGeometry,thresholdM=15){
+  if(!siteGeometry)return null;
+  let site;try{site=turf.feature(siteGeometry);}catch(e){return null;}
+  let total=0,withWidth=0;
+  for(const mf of manageFeatures||[]){
+    if(!String(mf.geometry?.type||'').includes('Line'))continue;
+    let d;try{d=siteFrontageCenterlineDistance(site,mf);}catch(e){d=null;}
+    if(d==null||d>thresholdM)continue;
+    total++;
+    const w=cleanNum(pickPropCI(mf.properties||{},ROAD_WIDTH_PROP_CANDIDATES));
+    if(w>=1&&w<=100)withWidth++;
+  }
+  return {threshold_m:thresholdM,frontage_centerline_count:total,frontage_width_confirmed_count:withWidth,frontage_width_missing_count:total-withWidth,coverage_pct:total>0?withWidth/total*100:null};
+}
 async function fetchRoadNetwork(radiusM=240){
   if(!activeGeometry)return {rw:[],manage:[],source:'none',errors:[],approximation:true,road_mode:'none',search_radius_m:radiusM,diagnostic:null};
   const zone=turf.buffer(turf.feature(activeGeometry),radiusM,{units:'meters'}).geometry;
@@ -5294,29 +5284,21 @@ function renderRoadDiagnostic(net){
   const d=net?.diagnostic||null;
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v==null?'-':String(v);};
   if(!d){
-    for(const id of ['rcDiagMode','rcDiagCenterlineCount','rcDiagLineCount','rcDiagValidWidth','rcDiagCoverage','rcDiagMissingWidth','rcDiagInvalidWidth','rcDiagNonLine','rcDiagBuffer','rcDiagFrontageCoverage'])set(id,'-');
-    const detectedEl=document.getElementById('rcDiagDetectedWidthKeys');if(detectedEl)detectedEl.textContent='-';
+    for(const id of ['rcDiagMode','rcDiagCenterlineCount','rcDiagValidWidth','rcDiagMissingWidth','rcDiagFrontageCoverage'])set(id,'-');
     const keysEl=document.getElementById('rcDiagSampleKeys');if(keysEl)keysEl.textContent='구역계 검토 후 원시 속성 키가 표시됩니다.';
     const hitsEl=document.getElementById('rcDiagWidthHits');if(hitsEl)hitsEl.textContent='-';
     return;
   }
   set('rcDiagMode',roadDiagnosticModeLabel(d.mode));
-  set('rcDiagCenterlineCount',`${d.centerline_count}건`);
-  set('rcDiagLineCount',`${d.line_feature_count}건`);
-  set('rcDiagValidWidth',`${d.valid_width_count}건`);
-  set('rcDiagCoverage',d.width_coverage_pct==null?'-':`${Number(d.width_coverage_pct).toFixed(1)}%`);
-  set('rcDiagMissingWidth',`${d.missing_width_count}건`);
-  set('rcDiagInvalidWidth',`${d.invalid_width_count}건`);
-  set('rcDiagNonLine',`${d.non_line_feature_count}건`);
-  set('rcDiagBuffer',`${d.buffer_success_count}건${d.buffer_fail_count?` / 실패 ${d.buffer_fail_count}건`:''}`);
+  set('rcDiagCenterlineCount',`${d.centerline_count}건(Line ${d.line_feature_count}건 / geometry 제외 ${d.non_line_geometry_count}건)`);
+  set('rcDiagValidWidth',`버퍼성공 ${d.buffer_success_count}건${d.buffer_fail_count?` · 버퍼실패 ${d.buffer_fail_count}건`:''}`);
+  set('rcDiagMissingWidth',`속성없음 ${d.missing_width_count}건 · 값이상 ${d.invalid_width_count}건`);
   const sf=d.site_frontage;
   if(sf&&sf.frontage_centerline_count>0){
     set('rcDiagFrontageCoverage',`대상지 접면 반경 ${sf.threshold_m}m 안 중심선 ${sf.frontage_centerline_count}건 중 폭원 확인 ${sf.frontage_width_confirmed_count}건(${sf.coverage_pct.toFixed(0)}%)${sf.frontage_width_missing_count>0?` · 미확인 ${sf.frontage_width_missing_count}건`:''}`);
   }else if(sf){
     set('rcDiagFrontageCoverage','대상지 접면 반경 안에서 도로중심선을 찾지 못함');
   }else set('rcDiagFrontageCoverage','-');
-  const detectedEl=document.getElementById('rcDiagDetectedWidthKeys');
-  if(detectedEl)detectedEl.textContent=(d.detected_width_keys||[]).length?d.detected_width_keys.join(', '):'발견된 폭원 후보키 없음';
   const keysEl=document.getElementById('rcDiagSampleKeys');
   if(keysEl)keysEl.textContent=(d.sample_property_keys||[]).length?d.sample_property_keys.join(', '):'수신된 속성 없음';
   const hitsEl=document.getElementById('rcDiagWidthHits');
@@ -5325,6 +5307,7 @@ function renderRoadDiagnostic(net){
     hitsEl.textContent=Object.keys(hits).length?Object.entries(hits).map(([k,v])=>`${k}:${v}건`).join(' / '):'-';
   }
 }
+
 function renderRoadConditionReview(){
   const net=analysisState.road_network||{};
   const state=document.getElementById('spRoadConditionState');
@@ -5872,6 +5855,7 @@ async function loadBuiltInStationDataset(force=false){
     stationAnalysis.metadata=fc.metadata||{};
     stationAnalysis.sourceDate='2026-08-01';
     await loadOfficialStationLineMap(force);
+    await loadStationEntrances(force);
     updateStationDataStatus();
     if(activeGeometry)await analyzeStationBoundary();
   }catch(e){
@@ -5933,6 +5917,62 @@ function safeUnionPolygons(features){
     try{out=turf.union(out,f)||out;}catch(e){}
   }
   return out;
+}
+// 역명 -> 서버가 미리 매칭해 둔 출입구 좌표 목록(안심주택 350m 예외경로 전용).
+// 서버(station_entrances.json)에서 "이 역과 공간적으로 확실히 연결된 출입구"만 내려주므로
+// 프론트에서는 이 결과를 그대로 쓰고, 이름 정규화 등으로 재매칭을 시도하지 않는다.
+let stationEntranceMap=new Map();
+async function loadStationEntrances(force=false){
+  if(stationEntranceMap.size&&!force)return;
+  try{
+    const r=await fetch('/api/reference/station-entrances',{cache:force?'reload':'default'});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const data=await r.json();
+    const m=new Map();
+    for(const [name,list] of Object.entries(data||{}))if(Array.isArray(list)&&list.length)m.set(name,list);
+    stationEntranceMap=m;
+  }catch(e){stationEntranceMap=new Map();}
+}
+// 해당 역(stationFact)과 공식 연결된 출입구만 turf Point feature로 반환한다.
+// 연결이 불명확해 서버 전처리 단계에서 제외된 출입구는 여기 아예 들어오지 않는다.
+function safeEntranceFeaturesForStation(stationFact){
+  const list=stationEntranceMap.get(stationFact?.name)||[];
+  return list.map(e=>{try{return turf.point([Number(e.lon),Number(e.lat)],{entrc_no:e.entrc_no,entrance_id:e.entrance_id});}catch(err){return null;}}).filter(Boolean);
+}
+// 안심주택 350m 예외경로 전용 판정 geometry: 승강장/역사 경계 350m 버퍼 ∪ 연결된 출입구 350m 버퍼.
+// 역세권활성화·장기전세 등 다른 사업의 역세권 판정에는 절대 쓰지 않는다 — 안심주택 전용이다.
+function safeStation350Geometry(stationFact){
+  const geoms=[];
+  if(stationFact?.buffers?.[350])geoms.push(stationFact.buffers[350]);
+  for(const e of safeEntranceFeaturesForStation(stationFact)){
+    try{geoms.push(turf.buffer(e,350,{units:'meters'}));}catch(err){}
+  }
+  if(!geoms.length)return null;
+  return safeUnionPolygons(geoms);
+}
+function coverageOfSite(siteGeometry,unionGeometry){
+  if(!siteGeometry||!unionGeometry)return null;
+  try{
+    const site=turf.feature(siteGeometry);
+    const za=turf.area(site);
+    const x=turf.intersect(site,unionGeometry);
+    const ia=x?turf.area(x):0;
+    return za>0?Math.min(100,ia/za*100):null;
+  }catch(e){return null;}
+}
+// 안심주택 전용 350m 통합범위(승강장+출입구) 포함률을 역별로 계산한다.
+// 다른 사업의 stationFacts()/coverage350은 여기서 전혀 건드리지 않는다.
+function safeStation350Facts(){
+  if(!activeGeometry)return [];
+  return stationFacts().map(st=>{
+    const g350=safeStation350Geometry(st);
+    const cov=g350?coverageOfSite(activeGeometry,g350):null;
+    const entranceCount=safeEntranceFeaturesForStation(st).length;
+    return {...st,safe350_geometry:g350,safe350_coverage:cov,safe350_entrance_count:entranceCount};
+  });
+}
+function bestSafe350(predicate=()=>true){
+  return safeStation350Facts().filter(predicate).filter(x=>x.safe350_coverage!=null).sort((a,b)=>Number(b.safe350_coverage)-Number(a.safe350_coverage)||Number(a.distance_m??Infinity)-Number(b.distance_m??Infinity))[0]||null;
 }
 function coverageWithinStationBuffers(zoneFeature,features,meters){
   if(!features.length)return null;
@@ -7792,6 +7832,7 @@ function safeHousingSpatialFacts(store){
     planning:{density:safeDensity(c),target_zoning:targetOrSuggested(c,'safe')},
     spatial_status_rows:[
       spatialFactRow('역세권',station.value,station.status==='PASS'?'CONFIRMED':'REVIEW',station.note),
+      spatialFactRow('역세권 350m 예외경로 상세',station.scope_m===350?`승강장 경계${station.entrance_count?` + 출입구 ${station.entrance_count}개`:'(연결된 출입구 없음)'} · 통합범위 포함률 ${fmtSchemePct(station.coverage)}`:'250m 일반경로 적용 중 · 비해당','INFO',station.scope_m===350?'250m 밖이라 350m 통합심의 예외경로를 검토 중 · 출입구는 역과 공간적으로 확실히 연결된 것만 포함(연결 불명확한 출입구는 제외)':'대상지가 250m 일반경로로 판정돼 350m 예외경로는 적용하지 않음'),
       spatialFactRow('지구단위계획구역(참고)',district.known?(district.overlap?'중첩':'현황 중첩 없음'):'자료 미확인',district.known?'CONFIRMED':'REVIEW',`${district.note||''} · 안심주택 역세권 하드게이트가 아닌 도시계획 현황 참고`),
       spatialFactRow('간선도로변 50m',arterial.value,arterial.status==='PASS'?'CONFIRMED':'REVIEW',arterial.note),
       spatialFactRow('의료시설 중심지역 350m',medical.value,medical.status,medical.note),
@@ -9439,11 +9480,13 @@ function safeArterialSpatialCandidate(){
 function safeStationPath(c){
   // 안심주택 역세권 판정은 최근접역 거리 하나가 아니라 역별 '대상지 포함면적'을 본다.
   // 250m는 일반경로, 350m는 운영기준상 통합심의 예외경로이며 대상지 50% 미만도 추가 공공기여/심의 REVIEW 경로를 남긴다.
+  // 350m 예외경로만 안심주택 전용 승강장+출입구 통합범위(safeStation350Facts)를 사용한다.
+  // 250m 일반경로와 우선순위(250 과반 → 250 일부 → 350 과반 → 350 일부 → FAIL) 구조는 그대로 유지한다.
   if(stationAnalysis.loaded&&stationFacts().length){
     const eligible250=bestStationByCoverage(250,x=>Number(x.coverage250)>=50);
     const overlap250=bestStationByCoverage(250,x=>Number(x.coverage250)>0);
-    const eligible350=bestStationByCoverage(350,x=>Number(x.coverage350)>=50);
-    const overlap350=bestStationByCoverage(350,x=>Number(x.coverage350)>0);
+    const eligible350=bestSafe350(x=>Number(x.safe350_coverage)>=50);
+    const overlap350=bestSafe350(x=>Number(x.safe350_coverage)>0);
     const chosen=eligible250||overlap250||eligible350||overlap350||bestStationByDistance();
     if(!chosen)return {key:'station',label:'대중교통 중심지역 · 역세권',status:'REVIEW',note:'역 후보자료 미확인',coverage:null,value:'-',scope_m:null};
     if(eligible250){
@@ -9453,12 +9496,16 @@ function safeStationPath(c){
       return {key:'station',label:'대중교통 중심지역 · 역세권',status:'REVIEW',note:`${overlap250.name} 250m 범위에 대상지 ${Number(overlap250.coverage250).toFixed(1)}% 포함 · 50% 미만은 통합심의 인정 및 추가 공공기여 검토`,coverage:overlap250.coverage250,value:`판정역 ${overlap250.name} · 250m 포함 ${fmtSchemePct(overlap250.coverage250)} · 최단 ${Number(overlap250.distance_m).toFixed(1)}m`,station:overlap250,scope_m:250,coverage_status:'REVIEW'};
     }
     if(eligible350){
-      return {key:'station',label:'대중교통 중심지역 · 역세권',status:'REVIEW',note:`${eligible350.name} 350m 범위에 대상지 ${Number(eligible350.coverage350).toFixed(1)}% 포함 · 250m 밖 확장구간은 운영기준상 통합심의 예외 지정 필요`,coverage:eligible350.coverage350,value:`판정역 ${eligible350.name} · 350m 포함 ${fmtSchemePct(eligible350.coverage350)} · 최단 ${Number(eligible350.distance_m).toFixed(1)}m`,station:eligible350,scope_m:350,coverage_status:'REVIEW'};
+      const en=eligible350.safe350_entrance_count||0;
+      const rangeTxt=en>0?`승강장 경계 + 출입구 ${en}개 통합범위`:'승강장 경계(연결된 출입구 없음)';
+      return {key:'station',label:'대중교통 중심지역 · 역세권',status:'REVIEW',note:`${eligible350.name} ${rangeTxt} 350m에 대상지 ${Number(eligible350.safe350_coverage).toFixed(1)}% 포함 · 250m 밖 확장구간은 운영기준상 통합심의 예외 지정 필요`,coverage:eligible350.safe350_coverage,value:`판정역 ${eligible350.name} · 350m(${rangeTxt}) 포함 ${fmtSchemePct(eligible350.safe350_coverage)} · 최단 ${Number(eligible350.distance_m).toFixed(1)}m`,station:eligible350,scope_m:350,coverage_status:'REVIEW',entrance_count:en};
     }
     if(overlap350){
-      return {key:'station',label:'대중교통 중심지역 · 역세권',status:'REVIEW',note:`${overlap350.name} 350m 범위에 대상지 ${Number(overlap350.coverage350).toFixed(1)}%만 포함 · 350m 예외지정과 50% 미만 추가 공공기여/통합심의 모두 확인 필요`,coverage:overlap350.coverage350,value:`판정역 ${overlap350.name} · 350m 포함 ${fmtSchemePct(overlap350.coverage350)} · 최단 ${Number(overlap350.distance_m).toFixed(1)}m`,station:overlap350,scope_m:350,coverage_status:'REVIEW'};
+      const en=overlap350.safe350_entrance_count||0;
+      const rangeTxt=en>0?`승강장 경계 + 출입구 ${en}개 통합범위`:'승강장 경계(연결된 출입구 없음)';
+      return {key:'station',label:'대중교통 중심지역 · 역세권',status:'REVIEW',note:`${overlap350.name} ${rangeTxt} 350m에 대상지 ${Number(overlap350.safe350_coverage).toFixed(1)}%만 포함 · 350m 예외지정과 50% 미만 추가 공공기여/통합심의 모두 확인 필요`,coverage:overlap350.safe350_coverage,value:`판정역 ${overlap350.name} · 350m(${rangeTxt}) 포함 ${fmtSchemePct(overlap350.safe350_coverage)} · 최단 ${Number(overlap350.distance_m).toFixed(1)}m`,station:overlap350,scope_m:350,coverage_status:'REVIEW',entrance_count:en};
     }
-    return {key:'station',label:'대중교통 중심지역 · 역세권',status:'FAIL',note:`대상지 중심 1km 후보 ${stationFacts().length}개 역을 전수검사했으나 어느 역의 350m 범위에도 대상지가 중첩되지 않음`,coverage:0,value:`최근접 ${chosen.name} ${chosen.distance_m==null?'-':Number(chosen.distance_m).toFixed(1)+'m'}`,station:chosen,scope_m:350,coverage_status:'FAIL'};
+    return {key:'station',label:'대중교통 중심지역 · 역세권',status:'FAIL',note:`대상지 중심 1km 후보 ${stationFacts().length}개 역을 전수검사했으나(승강장 경계 + 연결된 출입구 350m 통합범위 기준) 어느 역에도 대상지가 중첩되지 않음`,coverage:0,value:`최근접 ${chosen.name} ${chosen.distance_m==null?'-':Number(chosen.distance_m).toFixed(1)+'m'}`,station:chosen,scope_m:350,coverage_status:'FAIL'};
   }
   return {key:'station',label:'대중교통 중심지역 · 역세권',status:'REVIEW',note:'다중역 역사경계 GIS Fact 미확보 · 수기 최근접거리만으로 안심주택 자동판정 금지',coverage:null,value:c.dist==null?'-':`최근접 수기 ${Number(c.dist).toFixed(1)}m`,scope_m:null,coverage_status:'REVIEW'};
 }

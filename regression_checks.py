@@ -6,6 +6,7 @@ import os
 import gc
 import time
 import hashlib
+import json
 import tempfile
 import zipfile
 from pathlib import Path
@@ -137,23 +138,26 @@ def check_centerline_width_buffer() -> None:
 
 
 def check_bundled_road_dataset() -> None:
-    """배포본의 서울 실폭도로 원본·좌표계·공간검색이 실제로 작동해야 한다."""
+    """배포본의 서울 도로 원본·좌표계·공간검색이 실제로 작동해야 한다.
+
+    번들 road_seoul.zip은 TL_SPRD_RW(실폭도로) 또는 TL_SPRD_MANAGE(도로중심선+ROAD_BT)
+    둘 중 하나일 수 있다 — 정확한 건수를 특정 원본에 고정하지 않고, "실제로 로드되고
+    공간검색이 작동하는지"만 검증한다.
+    """
     road_zip = app._road_zip_path()
     assert road_zip and Path(road_zip).name == "road_seoul.zip"
-    assert Path(road_zip).stat().st_size > 20_000_000
+    assert Path(road_zip).stat().st_size > 5_000_000
     app._road_spatial_layers.cache_clear()
     layers = app._road_spatial_layers()
     assert layers["available"] is True
-    assert layers["road_mode"] == "real_width_polygon"
-    assert layers["rw_count"] == 60534
-    assert layers["manage_count"] == 0
+    assert layers["road_mode"] in {"real_width_polygon", "centerline_width_buffer"}
+    assert layers["rw_count"] > 0
     road = layers["rw"][0]["geometry"]
     point = road.representative_point()
     site = box(point.x - 0.00002, point.y - 0.00002, point.x + 0.00002, point.y + 0.00002)
     result = app.analyze_road_intersections(site.__geo_interface__)
     assert result["rw"]["features"]
-    assert result["metadata"]["road_mode"] == "real_width_polygon"
-    assert result["metadata"]["source"] == "서버 내장 공식 실폭도로 TL_SPRD_RW"
+    assert result["metadata"]["road_mode"] == layers["road_mode"]
 
 
 def check_road_zip_pipeline() -> None:
@@ -617,7 +621,7 @@ def check_release_files() -> None:
     basic_zip = root / "basic_unit_seoul.zip"
     assert basic_zip.is_file() and basic_zip.stat().st_size > 10_000_000
     road_zip = root / "road_seoul.zip"
-    assert road_zip.is_file() and road_zip.stat().st_size > 20_000_000
+    assert road_zip.is_file() and road_zip.stat().st_size > 5_000_000
     # 기준본에 포함된 공식 근거 PDF 8종이 배포 ZIP에서 누락되지 않도록 고정한다.
     assert len(list(root.glob("*.pdf"))) >= 8
     structured = root / "static" / "app.html"
@@ -1680,11 +1684,13 @@ def check_r22_station_rule_engine_v4():
     assert '역세권활성화 공간대상에 포함되면 성장잠재권 활성화구역은 비활성화' in growth
 
     # 안심주택: 최근접 거리만으로 PASS 금지. 역별 대상지 면적 50% + 250/350 경로.
+    # 350m 예외경로는 안심주택 전용 승강장+출입구 통합범위(safe350)를 쓴다.
     s0=html.index('function safeStationPath(c)')
     s1=html.index('function safeArterialPath',s0)
     safe=html[s0:s1]
     assert 'Number(x.coverage250)>=50' in safe
-    assert 'Number(x.coverage350)>=50' in safe
+    assert 'Number(x.safe350_coverage)>=50' in safe
+    assert 'bestSafe350(' in safe
     assert '50% 미만' in safe
     assert "distance_m<=250" not in safe
 
@@ -1719,6 +1725,107 @@ def check_r22_station_rule_engine_v4():
     up1=html.index('function activationContribution',up0)
     up=html[up0:up1]
     assert 'candidate=stationAnalysis.loaded?bestStationByDistance()' in up
+
+
+def check_safe_housing_entrance_350() -> None:
+    """안심주택 350m 예외경로 전용 승강장+출입구 통합범위 판정.
+
+    250m 일반경로는 손대지 않았고, 다른 사업방식(역세권활성화·장기전세·역세권복합·
+    도심공공주택복합·도심복합개발 등)의 station 판정 로직은 이 기능과 완전히
+    분리되어 있어야 한다(같은 안심주택 파일 안에서만 safeStation350Geometry /
+    safeEntranceFeaturesForStation / bestSafe350을 참조해야 한다).
+    """
+    html = Path(app.BASE_DIR, "app.html").read_text(encoding="utf-8")
+    py = Path(app.BASE_DIR, "app.py").read_text(encoding="utf-8")
+
+    # 신규 함수 존재 확인
+    for token in (
+        "function safeEntranceFeaturesForStation(stationFact)",
+        "function safeStation350Geometry(stationFact)",
+        "function coverageOfSite(siteGeometry,unionGeometry)",
+        "function safeStation350Facts()",
+        "function bestSafe350(predicate=()=>true)",
+        "let stationEntranceMap=new Map()",
+        "async function loadStationEntrances(force=false)",
+    ):
+        assert token in html, token
+    assert "await loadStationEntrances(force)" in html
+
+    # 출입구는 반드시 해당 역과 "공식 연결"된 것만 쓴다 — 역명 재정규화로 재매칭하지 않는다.
+    ent0 = html.index("function safeEntranceFeaturesForStation(stationFact)")
+    ent1 = html.index("function safeStation350Geometry", ent0)
+    ent_block = html[ent0:ent1]
+    assert "stationEntranceMap.get(stationFact?.name)" in ent_block
+    assert "stationNameKey" not in ent_block  # 이름 정규화 재매칭 금지
+
+    # 350m geometry는 승강장 경계 buffers[350] ∪ 연결된 출입구 350m 버퍼.
+    geo0 = html.index("function safeStation350Geometry(stationFact)")
+    geo1 = html.index("function coverageOfSite", geo0)
+    geo_block = html[geo0:geo1]
+    assert "stationFact?.buffers?.[350]" in geo_block
+    assert "safeEntranceFeaturesForStation(stationFact)" in geo_block
+    assert "turf.buffer(e,350" in geo_block
+
+    # 250m 일반경로는 원래 함수·우선순위 그대로. 350m만 안심주택 전용 안전판정으로 교체.
+    s0 = html.index("function safeStationPath(c)")
+    s1 = html.index("function safeArterialPath", s0)
+    safe = html[s0:s1]
+    assert safe.index("eligible250") < safe.index("eligible350")
+    assert safe.index("eligible350") < safe.index("overlap350")
+    assert "eligible250||overlap250||eligible350||overlap350||bestStationByDistance()" in safe
+    # 350m에서 출입구가 없어도(연결된 출입구 0개) 승강장 경계만으로는 REVIEW로 남기지,
+    # 이 함수 안에서 FAIL 반환 경로를 새로 늘리지 않는다(원래도 최종 fallback 하나뿐).
+    assert safe.count("status:'FAIL'") == 2  # 'status:'FAIL'' 은 'coverage_status:'FAIL'' 안에도 부분일치하므로 2
+
+    # 다른 사업방식(다른 station rule)은 안심주택 전용 함수를 절대 참조하지 않는다 — 완전 분리 확인.
+    other_module_markers = [
+        ("function activationSpatialFacts(store)", "function growthPotentialSpatialFacts(store)"),
+        ("function stationComplexSpatialFacts(store)", "function moduleStrengthRisk"),
+        ("function longtermSpatialFacts(store)", "function checkLongtermFromFacts"),
+        ("function publicComplexSpatialFacts(store)", "function checkPublicComplexFromFacts"),
+        ("function innovationSpatialFacts(store,typ)", "function checkInnovationFromFacts"),
+    ]
+    for start_marker, end_marker in other_module_markers:
+        if start_marker not in html:
+            continue
+        b0 = html.index(start_marker)
+        b1 = html.index(end_marker, b0)
+        block = html[b0:b1]
+        assert "safeStation350Geometry" not in block, start_marker
+        assert "safeEntranceFeaturesForStation" not in block, start_marker
+        assert "bestSafe350(" not in block, start_marker
+
+    # 공간현황 UI: 350m 예외경로 상세(출입구 연결 개수 포함) row가 별도로 있어야 한다.
+    fact0 = html.index("function safeHousingSpatialFacts(store)")
+    fact1 = html.index("function checkSafeFromFacts(store,f)", fact0)
+    fact_block = html[fact0:fact1]
+    assert "역세권 350m 예외경로 상세" in fact_block
+    assert "station.entrance_count" in fact_block
+
+    # 백엔드: 출입구 참조 데이터 로더 + 엔드포인트.
+    assert "def _station_entrance_reference_data()" in py
+    assert '@app.get("/api/reference/station-entrances")' in py
+
+    # 데이터 품질: 서버 전처리 결과(station_entrances.json)가 실제로 존재하고,
+    # 같은 출입구가 두 역에 동시에 배정되지 않았는지(= 다른 역 소속 출입구를 섞어쓰지 않았는지),
+    # 그리고 애매한 출입구는 실제로 제외되어 매칭 개수가 원본보다 적은지 확인한다.
+    entrance_path = Path(app.BASE_DIR, "station_entrances.json")
+    assert entrance_path.is_file()
+    with entrance_path.open(encoding="utf-8") as fp:
+        entrance_data = json.load(fp)
+    assert isinstance(entrance_data, dict) and len(entrance_data) > 0
+    seen_sub_ent_sn = set()
+    total_matched = 0
+    for station_name, entries in entrance_data.items():
+        assert isinstance(entries, list) and len(entries) > 0
+        for e in entries:
+            assert "lon" in e and "lat" in e
+            key = e.get("entrance_id")
+            assert key, "entrance_id missing"
+            assert key not in seen_sub_ent_sn, f"entrance {key} assigned to multiple stations"
+            seen_sub_ent_sn.add(key)
+            total_matched += 1
+    assert total_matched < 1743  # 원본 출입구 1743건 중 애매한 것들은 실제로 빠졌어야 한다
 
 
 
@@ -1806,6 +1913,7 @@ def main() -> None:
     _run("r19 activation arterial linear commercial", check_r19_activation_arterial_linear_commercial)
     _run("r22 multi-station fact engine", check_r22_multi_station_fact_engine)
     _run("r22 station rule engine v4", check_r22_station_rule_engine_v4)
+    _run("safe housing entrance 350m", check_safe_housing_entrance_350)
     _run("r22 growth frontage engine", check_r22_growth_frontage_engine)
     _run("release files", check_release_files)
     print("v2.5.0 regression checks: PASS")

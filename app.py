@@ -1340,6 +1340,19 @@ def _center_reference_data():
     with open(CENTER_REFERENCE_PATH, encoding="utf-8") as fp:
         return json.load(fp)
 
+# 역명 -> 해당 역과 공간적으로 확실히 연결된 출입구 좌표 목록.
+# 원본(TL_SPSB_ENTRC)에는 소속 역을 가리키는 속성 키가 없어, 배포 전 오프라인
+# 전처리 단계에서 stations.json 폴리곤 기준 최근접 매칭 + 애매하면 제외(margin
+# 검사)로 미리 만들어 둔 결과다. 런타임에 이름 정규화 등으로 추가 매칭을 시도하지 않는다.
+STATION_ENTRANCE_REFERENCE_PATH = _data_path("station_entrances.json")
+@lru_cache(maxsize=1)
+def _station_entrance_reference_data():
+    try:
+        with open(STATION_ENTRANCE_REFERENCE_PATH, encoding="utf-8") as fp:
+            return json.load(fp)
+    except FileNotFoundError:
+        return {}
+
 
 RENEWAL_LEGAL_TYPES = {
     "UQ1221": ("housing_district", "주택정비형 재개발구역"),
@@ -1762,12 +1775,25 @@ def _road_width_m(properties: Dict[str, Any]) -> Optional[float]:
     return None
 
 
+@lru_cache(maxsize=1)
+def _road_centerline_transformers():
+    """4326<->5174 변환기는 좌표계가 고정이므로 한 번만 만들어 재사용한다.
+
+    이전에는 _centerline_road_polygon() 호출마다(중심선 1건당) Transformer를 새로
+    만들었다. 도로중심선이 수만 건인 실제 배포 데이터(예: 서울시 전역 TL_SPRD_MANAGE)에서는
+    이게 극심한 성능 저하/사실상 hang으로 이어진다. PROJ Transformer 생성 자체가 무겁기
+    때문에, 좌표계 쌍이 고정이라면 반드시 한 번만 만들고 재사용해야 한다.
+    """
+    to_metric = Transformer.from_crs(4326, 5174, always_xy=True).transform
+    to_wgs = Transformer.from_crs(5174, 4326, always_xy=True).transform
+    return to_metric, to_wgs
+
+
 def _centerline_road_polygon(geometry: Any, width_m: float) -> Optional[Any]:
     """WGS84 도로중심선을 공식 폭원의 절반만큼 양측 버퍼한다."""
     if geometry.geom_type not in {"LineString", "MultiLineString"}:
         return None
-    to_metric = Transformer.from_crs(4326, 5174, always_xy=True).transform
-    to_wgs = Transformer.from_crs(5174, 4326, always_xy=True).transform
+    to_metric, to_wgs = _road_centerline_transformers()
     metric = geometry_transform(to_metric, geometry)
     polygon = metric.buffer(width_m / 2, cap_style=2, join_style=2)
     if polygon.is_empty:
@@ -3455,6 +3481,16 @@ def home():
 def reference_stations():
     """내장 지하철역사 기준자료. API 키나 원본 SHP 파일을 외부에 노출하지 않습니다."""
     return _station_reference_data()
+
+
+@app.get("/api/reference/station-entrances")
+def reference_station_entrances():
+    """역명 -> 공식 연결된 출입구 좌표 목록(안심주택 350m 예외경로 전용).
+
+    소속이 애매해서 배포 전 전처리 단계에서 제외된 출입구는 포함하지 않는다.
+    프론트엔드는 이 결과를 그대로 신뢰하고, 이름 정규화 등으로 재매칭을 시도하지 않는다.
+    """
+    return _station_entrance_reference_data()
 
 
 # R22 station-line runtime hotfix.  This block is intentionally backend-only:
