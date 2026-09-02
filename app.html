@@ -87,6 +87,12 @@
 .road-condition-table th{position:sticky;top:0;background:#f9fafb;z-index:1;font-size:8px}
 .road-condition-table .under4{color:#b42318;font-weight:900}.road-condition-table .wide{color:#067647;font-weight:800}
 .road-condition-note{padding:8px 10px;background:#f8fafc;color:#475467;font-size:9px;line-height:1.5}
+.road-condition-diag-box{border-bottom:1px solid #eaecf0;background:#fffaeb}
+.road-condition-diag-head{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid #fef0c7}
+.road-condition-diag-head b{font-size:10px;color:#93370d}.road-condition-diag-head span{font-size:8px;color:#b54708}
+.road-condition-diag-detail{padding:6px 10px;border-top:1px solid #fef0c7;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.road-condition-diag-detail span{font-size:8px;color:#b54708;flex:0 0 140px}
+.road-condition-diag-detail b{font-size:9px;color:#475467;font-weight:600;overflow-wrap:anywhere}
 @media(max-width:1100px){.road-condition-grid{grid-template-columns:repeat(3,1fr)}.road-condition-subgrid{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:640px){.road-condition-grid,.road-condition-subgrid{grid-template-columns:repeat(2,1fr)}}
 
@@ -1878,6 +1884,18 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="spatial-module-head"><b>도로·접도 현황 진단</b><span id="spRoadConditionState">도로 분석 전</span></div>
 <div class="road-condition-box">
   <div class="road-condition-head"><b>대상지 경계 기준 도로 현황</b><span>사업방식 판정과 분리된 공간 Fact</span></div>
+  <div class="road-condition-diag-box">
+    <div class="road-condition-diag-head"><b>수집 진단</b><span>VWorld 응답 자체와 폭원 속성 매핑을 구분해서 봅니다 · F12 없이 확인용</span></div>
+    <div class="road-condition-subgrid">
+      <div><span>진단 상태</span><b id="rcDiagMode">-</b></div>
+      <div><span>도로중심선 수신</span><b id="rcDiagCenterlineCount">-</b></div>
+      <div><span>유효 폭원 확인</span><b id="rcDiagValidWidth">-</b></div>
+      <div><span>폭원 미확인</span><b id="rcDiagMissingWidth">-</b></div>
+    </div>
+    <div class="road-condition-diag-detail"><span>원시 속성 키(표본)</span><b id="rcDiagSampleKeys">구역계 검토 후 원시 속성 키가 표시됩니다.</b></div>
+    <div class="road-condition-diag-detail"><span>폭원 후보키별 확인 건수</span><b id="rcDiagWidthHits">-</b></div>
+    <div class="road-condition-diag-detail"><span>대상지 접면 폭원 확보율</span><b id="rcDiagFrontageCoverage">-</b></div>
+  </div>
   <div class="road-condition-grid">
     <div><span>독립 접도도로</span><b id="rcFaceCount">-</b></div>
     <div><span>4m 미만 접도도로</span><b id="rcUnder4Faces">-</b></div>
@@ -5008,35 +5026,75 @@ function estimateRoadPolygonWidthMeters(f){
     const bb=turf.bbox(f); const a=turf.distance([bb[0],bb[1]],[bb[2],bb[1]],{units:'kilometers'})*1000; const b=turf.distance([bb[0],bb[1]],[bb[0],bb[3]],{units:'kilometers'})*1000; const w=Math.min(a,b); return (w>0.5&&w<100)?w:null;
   }catch(e){return null;}
 }
+// 도로중심선 폭원 속성 후보. roadPolygonsFromCenterlines/roadWidthFromManage가 같은 목록을 공유해야
+// "이 함수는 되는데 저 함수는 안 되는" 불일치가 안 생긴다. pickPropCI가 대소문자를 이미 흡수하므로
+// 여기엔 실제로 있을 법한 서로 다른 속성명만 나열한다.
+const ROAD_WIDTH_PROP_CANDIDATES=['ROAD_BT','ROAD_WIDTH','ROAD_W','WIDTH'];
 function roadWidthFromManage(rw,manage){
   let best=null;
   for(const mf of manage){
     try{
       if(!turf.booleanIntersects(rw,mf))continue;
-      let w=cleanNum(pickPropCI(mf.properties,['ROAD_BT','road_bt','roadBt']));
+      let w=cleanNum(pickPropCI(mf.properties,ROAD_WIDTH_PROP_CANDIDATES));
       if(w!=null && w>=1 && w<=100){ if(best==null||w>best)best=w; }
     }catch(e){}
   }
   return best;
 }
+// VWorld TL_SPRD_MANAGE 도로중심선(manageFeatures)에서 폭원 버퍼 도형을 만든다.
+// 반환값에 derived(기존과 동일한 도형 배열)뿐 아니라 diagnostic을 함께 담아,
+// "VWorld가 아예 응답을 안 준 것"과 "응답은 왔는데 폭원 속성을 못 읽은 것"을 구분할 수 있게 한다.
+// 카운터는 반드시 서로 배타적인 사유 하나에만 잡히도록 분리한다(geometry 문제/폭원 결측/폭원 값 이상/버퍼 실패).
 function roadPolygonsFromCenterlines(manageFeatures){
   const out=[];
-  for(const mf of manageFeatures||[]){
+  const features=manageFeatures||[];
+  const widthKeyHits={};for(const k of ROAD_WIDTH_PROP_CANDIDATES)widthKeyHits[k]=0;
+  let nonLineCount=0,missingWidthCount=0,invalidWidthCount=0,bufferFailCount=0,bufferSuccessCount=0;
+  const sampleKeys=new Set();
+  for(const mf of features){
     try{
-      const w=cleanNum(pickPropCI(mf.properties,['ROAD_BT','ROAD_WIDTH','ROAD_W','WIDTH']));
-      if(!(w>=1&&w<=100)||!String(mf.geometry?.type||'').includes('Line'))continue;
+      const props=mf.properties||{};
+      for(const k of Object.keys(props))if(sampleKeys.size<20)sampleKeys.add(k);
+      const map={};for(const [k,v] of Object.entries(props))map[String(k).toLowerCase()]=v;
+      let hasCandidateKey=false;
+      for(const cand of ROAD_WIDTH_PROP_CANDIDATES){
+        const v=map[cand.toLowerCase()];
+        if(v!==undefined&&v!==null&&String(v)!==''){
+          hasCandidateKey=true;
+          if(Number.isFinite(Number(v)))widthKeyHits[cand]++;
+        }
+      }
+      const isLine=String(mf.geometry?.type||'').includes('Line');
+      if(!isLine){nonLineCount++;continue;}
+      const w=cleanNum(pickPropCI(props,ROAD_WIDTH_PROP_CANDIDATES));
+      if(!(w>=1&&w<=100)){ hasCandidateKey?invalidWidthCount++:missingWidthCount++; continue; }
       const buffered=turf.buffer(mf,w/2,{units:'meters',steps:8});
-      if(!buffered?.geometry)continue;
-      buffered.properties=Object.assign({},mf.properties||{}, {
+      if(!buffered?.geometry){bufferFailCount++;continue;}
+      bufferSuccessCount++;
+      buffered.properties=Object.assign({},props, {
         _derived_centerline:true,
         _road_method:'centerline_width_buffer',
         _width_m:w,
         _width_source:'도로중심선 ROAD_BT 기반 개략범위'
       });
       out.push(buffered);
-    }catch(e){}
+    }catch(e){bufferFailCount++;}
   }
-  return out;
+  const lineFeatureCount=features.length-nonLineCount;
+  const mode=features.length===0?'NO_RESPONSE':bufferSuccessCount===0?'CENTERLINE_NO_WIDTH':bufferSuccessCount<lineFeatureCount?'PARTIAL_WIDTH':'WIDTH_OK';
+  const diagnostic={
+    mode,
+    centerline_count:features.length,
+    line_feature_count:lineFeatureCount,
+    non_line_geometry_count:nonLineCount,
+    buffer_success_count:bufferSuccessCount,
+    buffer_fail_count:bufferFailCount,
+    missing_width_count:missingWidthCount,
+    invalid_width_count:invalidWidthCount,
+    sample_property_keys:[...sampleKeys],
+    width_key_hits:widthKeyHits
+  };
+  return {derived:out,diagnostic};
 }
 function annotateRoadWidths(rwFeatures,manageFeatures){
   return rwFeatures.map(f=>{
@@ -5154,8 +5212,39 @@ function buildingCountsByParcel(){
   return {source:'VWorld LT_C_SPBD 공간건물(1차)',counts:spatialBuildingCountsByParcel()};
 }
 
+// 대상지 경계에 실제로 근접한 도로중심선만 골라서 폭원 확보율을 따로 계산한다.
+// "검색반경 전체 중 몇 %가 폭원 있는지"와 "실제 접도도로 중 몇 %가 폭원 있는지"는 의미가 다르다 —
+// 전체 커버리지가 낮아도 대상지에 실제로 접하는 도로만 폭원이 확보돼 있으면 접도판정엔 충분할 수 있고,
+// 반대로 전체가 높아도 접도도로 하나가 폭원 미상이면 그게 핵심 문제다.
+function siteFrontageCenterlineDistance(siteFeature,centerlineFeature){
+  try{if(turf.booleanIntersects(siteFeature,centerlineFeature))return 0;}catch(e){}
+  const boundary=polygonBoundaryLines(siteFeature);
+  if(!boundary.length)return null;
+  let coords=[];
+  try{coords=turf.coordAll(centerlineFeature);}catch(e){coords=[];}
+  if(!coords.length)return null;
+  let best=Infinity;
+  for(const c of coords){const d=pointToAnyLineDistanceMeters(c,boundary);if(d<best)best=d;}
+  return Number.isFinite(best)?best:null;
+}
+// thresholdM은 법정 접도 판정 기준이 아니라, 폭이 넓은 도로는 중심선이 대지경계에서
+// 그만큼 멀어질 수 있다는 점을 감안한 진단용 근접범위다(도로 폭의 절반 정도를 여유로 둠).
+function computeSiteFrontageWidthCoverage(manageFeatures,siteGeometry,thresholdM=15){
+  if(!siteGeometry)return null;
+  let site;try{site=turf.feature(siteGeometry);}catch(e){return null;}
+  let total=0,withWidth=0;
+  for(const mf of manageFeatures||[]){
+    if(!String(mf.geometry?.type||'').includes('Line'))continue;
+    let d;try{d=siteFrontageCenterlineDistance(site,mf);}catch(e){d=null;}
+    if(d==null||d>thresholdM)continue;
+    total++;
+    const w=cleanNum(pickPropCI(mf.properties||{},ROAD_WIDTH_PROP_CANDIDATES));
+    if(w>=1&&w<=100)withWidth++;
+  }
+  return {threshold_m:thresholdM,frontage_centerline_count:total,frontage_width_confirmed_count:withWidth,frontage_width_missing_count:total-withWidth,coverage_pct:total>0?withWidth/total*100:null};
+}
 async function fetchRoadNetwork(radiusM=240){
-  if(!activeGeometry)return {rw:[],manage:[],source:'none',errors:[],approximation:true,road_mode:'none',search_radius_m:radiusM};
+  if(!activeGeometry)return {rw:[],manage:[],source:'none',errors:[],approximation:true,road_mode:'none',search_radius_m:radiusM,diagnostic:null};
   const zone=turf.buffer(turf.feature(activeGeometry),radiusM,{units:'meters'}).geometry;
   const errors=[];
   // 지적·가로구역·접도 연산에는 TL_SPRD_RW 실폭도로를 사용하지 않는다.
@@ -5163,9 +5252,11 @@ async function fetchRoadNetwork(radiusM=240){
   const mgRes=await trySpatialLayerCandidates(['TL_SPRD_MANAGE','LT_C_SPRD_MANAGE'],zone,['rds_man_no','RDS_MAN_NO']);
   errors.push(...(mgRes.errors||[]));
   const mg=mgRes.features||[];
-  const derived=roadPolygonsFromCenterlines(mg);
+  const {derived,diagnostic}=roadPolygonsFromCenterlines(mg);
+  diagnostic.layer_id=mgRes.id||null;
+  diagnostic.site_frontage=computeSiteFrontageWidthCoverage(mg,activeGeometry);
   if(derived.length){
-    return {rw:derived,manage:mg,source:'VWorld TL_SPRD_MANAGE 도로중심선 + ROAD_BT',errors,approximation:true,road_mode:'centerline_width_attribute',search_radius_m:radiusM};
+    return {rw:derived,manage:mg,source:'VWorld TL_SPRD_MANAGE 도로중심선 + ROAD_BT',errors,approximation:true,road_mode:'centerline_width_attribute',search_radius_m:radiusM,diagnostic};
   }
   // VWorld에서 도로구간을 못 얻은 경우 서버 ZIP의 레이어 구성만 확인한다.
   // TL_SPRD_RW가 있어도 지적/가로구역 계산에 대체 사용하지 않는다.
@@ -5173,7 +5264,48 @@ async function fetchRoadNetwork(radiusM=240){
     const inv=await fetchBackendJson('/api/spatial/road-data-status');
     if(inv?.message)errors.push(`내장도로: ${inv.message}`);
   }catch(e){errors.push(`내장도로 진단 실패: ${String(e?.message||e)}`);}
-  return {rw:[],manage:mg,source:'none',errors,approximation:true,road_mode:'none',search_radius_m:radiusM};
+  // mg(원시 VWorld 도로중심선)가 있었는지 여부로 "VWorld 무응답"과 "속성 매핑 실패"를 구분한다.
+  // diagnostic.mode가 이미 NO_RESPONSE/CENTERLINE_NO_WIDTH를 갖고 있으므로 여기선 그대로 보존만 한다.
+  return {rw:[],manage:mg,source:'none',errors,approximation:true,road_mode:'none',search_radius_m:radiusM,diagnostic};
+}
+
+function roadDiagnosticModeLabel(mode){
+  switch(mode){
+    case 'NO_RESPONSE': return 'VWorld 무응답 · 도로중심선 0건';
+    case 'CENTERLINE_NO_WIDTH': return '도로중심선 수신됨 · 폭원 속성 매핑 실패';
+    case 'PARTIAL_WIDTH': return '도로중심선 수신됨 · 폭원 속성 일부만 확인';
+    case 'WIDTH_OK': return '도로중심선·폭원 정상 확인';
+    default: return '진단 전';
+  }
+}
+// F12/Network 탭을 열지 않아도 "VWorld가 아예 안 줬는지" vs "줬는데 폭원 속성을 못 읽었는지"를
+// 화면에서 바로 구분할 수 있게 원시 진단값을 그대로 노출한다. known 여부와 무관하게 항상 그린다.
+function renderRoadDiagnostic(net){
+  const d=net?.diagnostic||null;
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v==null?'-':String(v);};
+  if(!d){
+    for(const id of ['rcDiagMode','rcDiagCenterlineCount','rcDiagValidWidth','rcDiagMissingWidth','rcDiagFrontageCoverage'])set(id,'-');
+    const keysEl=document.getElementById('rcDiagSampleKeys');if(keysEl)keysEl.textContent='구역계 검토 후 원시 속성 키가 표시됩니다.';
+    const hitsEl=document.getElementById('rcDiagWidthHits');if(hitsEl)hitsEl.textContent='-';
+    return;
+  }
+  set('rcDiagMode',roadDiagnosticModeLabel(d.mode));
+  set('rcDiagCenterlineCount',`${d.centerline_count}건(Line ${d.line_feature_count}건 / geometry 제외 ${d.non_line_geometry_count}건)`);
+  set('rcDiagValidWidth',`버퍼성공 ${d.buffer_success_count}건${d.buffer_fail_count?` · 버퍼실패 ${d.buffer_fail_count}건`:''}`);
+  set('rcDiagMissingWidth',`속성없음 ${d.missing_width_count}건 · 값이상 ${d.invalid_width_count}건`);
+  const sf=d.site_frontage;
+  if(sf&&sf.frontage_centerline_count>0){
+    set('rcDiagFrontageCoverage',`대상지 접면 반경 ${sf.threshold_m}m 안 중심선 ${sf.frontage_centerline_count}건 중 폭원 확인 ${sf.frontage_width_confirmed_count}건(${sf.coverage_pct.toFixed(0)}%)${sf.frontage_width_missing_count>0?` · 미확인 ${sf.frontage_width_missing_count}건`:''}`);
+  }else if(sf){
+    set('rcDiagFrontageCoverage','대상지 접면 반경 안에서 도로중심선을 찾지 못함');
+  }else set('rcDiagFrontageCoverage','-');
+  const keysEl=document.getElementById('rcDiagSampleKeys');
+  if(keysEl)keysEl.textContent=(d.sample_property_keys||[]).length?d.sample_property_keys.join(', '):'수신된 속성 없음';
+  const hitsEl=document.getElementById('rcDiagWidthHits');
+  if(hitsEl){
+    const hits=d.width_key_hits||{};
+    hitsEl.textContent=Object.keys(hits).length?Object.entries(hits).map(([k,v])=>`${k}:${v}건`).join(' / '):'-';
+  }
 }
 
 function renderRoadConditionReview(){
@@ -5182,7 +5314,8 @@ function renderRoadConditionReview(){
   if(!state)return;
   const q=String(net.quality||analysisState.quality.road||'NO_DATA');
   const known=q!=='NO_DATA'&&Array.isArray(net.roads);
-  state.textContent=known?(q==='AUTO'?'자동확정':'개략 자동산정'):'도로 분석 전';
+  renderRoadDiagnostic(net);
+  state.textContent=known?(q==='AUTO'?'자동확정':'개략 자동산정'):(net.diagnostic?roadDiagnosticModeLabel(net.diagnostic.mode):'도로 분석 전');
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v==null?'-':String(v);};
   const n=v=>Number.isFinite(Number(v))?Number(v):null;
   const m=v=>n(v)==null?'-':`${n(v).toFixed(1)}m`;
@@ -5228,7 +5361,9 @@ function renderRoadConditionReview(){
   const note=document.getElementById('rcRoadNote');
   if(note){
     const under=n(net.roadUnder4Faces)||0;
-    note.innerHTML=`<b>현황 해석</b> · ${under>0?`대상지 경계에 ROAD_BT 기준 4m 미만 접도도로 ${under}개가 확인됩니다. `:'ROAD_BT 기준 4m 미만 접도도로는 현재 확인되지 않았습니다. '}4m·6m 기준 건축물 접도율은 선택필지 내 건축물 수와 대지경계의 4m 이상 연속접촉을 이용한 초기검토값입니다. <b>건축법상 도로 인정 여부·사도/현황도로·도로위계는 이 수치로 확정하지 않습니다.</b>`;
+    const sf=net.diagnostic?.site_frontage;
+    const partialCaveat=net.diagnostic?.mode==='PARTIAL_WIDTH'?` <b>일부 도로중심선은 폭원 속성이 확인되지 않아 접도율 계산에서 빠졌습니다${sf&&sf.frontage_width_missing_count>0?` · 대상지 접면 반경 안에서도 ${sf.frontage_width_missing_count}건이 폭원 미확인입니다`:''} · 이 수치만으로 접도요건 충족/불충족을 확정하지 않습니다.</b>`:'';
+    note.innerHTML=`<b>현황 해석</b> · ${under>0?`대상지 경계에 ROAD_BT 기준 4m 미만 접도도로 ${under}개가 확인됩니다. `:'ROAD_BT 기준 4m 미만 접도도로는 현재 확인되지 않았습니다. '}4m·6m 기준 건축물 접도율은 선택필지 내 건축물 수와 대지경계의 4m 이상 연속접촉을 이용한 초기검토값입니다.${partialCaveat} <b>건축법상 도로 인정 여부·사도/현황도로·도로위계는 이 수치로 확정하지 않습니다.</b>`;
   }
 }
 
@@ -5237,7 +5372,7 @@ async function analyzeRoadAccess(){
   const summary=document.getElementById('roadSummary'),conn=document.getElementById('roadConn'),tbody=document.getElementById('roadTableBody'),wrap=document.getElementById('roadTableWrap');
   conn.textContent='접도율 개략산정 중';conn.className='conn planned';summary.textContent='도로중심선·폭원 조회 및 개략 공간연산 중...';tbody.innerHTML='';wrap.style.display='none';
   try{
-    const net=await fetchRoadNetwork(); if(!net.rw.length){document.getElementById('road_basis_building_count').value='';document.getElementById('road_access_building_count_6m').value='';const frontage=document.getElementById('scheme_road_frontage_ratio');if(frontage?.dataset.autoRoad){frontage.value='';delete frontage.dataset.autoRoad;}clearRoadNetworkAutoValues();const diag=(net.errors||[]).join(' / ');summary.textContent='VWorld 도로중심선(TL_SPRD_MANAGE)의 폭원 ROAD_BT를 확인하지 못했습니다. 접도율은 REVIEW로 남깁니다.'+(diag?` · 진단: ${diag}`:'');conn.textContent='도로중심선 REVIEW';conn.className='conn planned';analysisState.quality.road='NO_DATA';analysisState.road_network={source:'none',quality:'NO_DATA',diagnostics:[...(net.errors||[])]};renderRoadConditionReview();refreshAnalysisLayers();refreshCompactMiniMaps();return {quality:'NO_DATA',road_count:0,errors:net.errors||[]};}
+    const net=await fetchRoadNetwork(); if(!net.rw.length){document.getElementById('road_basis_building_count').value='';document.getElementById('road_access_building_count_6m').value='';const frontage=document.getElementById('scheme_road_frontage_ratio');if(frontage?.dataset.autoRoad){frontage.value='';delete frontage.dataset.autoRoad;}clearRoadNetworkAutoValues();const diag=(net.errors||[]).join(' / ');const dgMode=net.diagnostic?.mode||'NO_RESPONSE';const dgMsg=dgMode==='CENTERLINE_NO_WIDTH'?`VWorld가 도로중심선 ${net.diagnostic.centerline_count}건은 정상 응답했지만, 그중 폭원(ROAD_BT 등) 속성을 읽을 수 있는 구간이 0건입니다 · 속성명 매핑 확인 필요.`:'VWorld 도로중심선(TL_SPRD_MANAGE)의 폭원 ROAD_BT를 확인하지 못했습니다(무응답/0건). 접도율은 REVIEW로 남깁니다.';summary.textContent=dgMsg+(diag?` · 진단: ${diag}`:'');conn.textContent=dgMode==='CENTERLINE_NO_WIDTH'?'폭원 속성 미매핑':'도로중심선 REVIEW';conn.className='conn planned';analysisState.quality.road='NO_DATA';analysisState.road_network={source:'none',quality:'NO_DATA',diagnostics:[...(net.errors||[])],diagnostic:net.diagnostic||null};renderRoadConditionReview();refreshAnalysisLayers();refreshCompactMiniMaps();return {quality:'NO_DATA',road_count:0,errors:net.errors||[],diagnostic:net.diagnostic||null};}
     currentRoadManageFeatures=net.manage; currentRoadWidthFeatures=annotateRoadWidths(net.rw,net.manage); roadLayer.clearLayers();roadLayer.addData({type:'FeatureCollection',features:currentRoadWidthFeatures});
     const qualified4=currentRoadWidthFeatures.filter(f=>(f.properties||{})._qualifies4===true);
     const qualified6=currentRoadWidthFeatures.filter(f=>(f.properties||{})._qualifies6===true);
@@ -5273,7 +5408,7 @@ async function analyzeRoadAccess(){
     setRoadNetworkAutoValue('growth_arterial_status',siteStats.maxWidth!=null&&siteStats.maxWidth>=35?'candidate':null);
     document.getElementById('road_basis_building_count').value=basis;document.getElementById('road_access_building_count_6m').value=access6;const ratio6=basis?access6/basis*100:0,ratio4=basis?access4/basis*100:0;const frontage=document.getElementById('scheme_road_frontage_ratio');if(frontage){frontage.value=basis?ratio6.toFixed(2):'';frontage.dataset.autoRoad=estimateUsed?'ESTIMATE':'AUTO';}
     tbody.innerHTML=rows.map(r=>`<tr><td>${escHtml(r.jibun)}</td><td>${escHtml(r.pnu)}</td><td>${r.bc}</td><td>${r.total.toFixed(1)}m</td><td>${r.max.toFixed(1)}m</td><td>${r.ok?'<b class="PASS">접도</b>':'-'}</td><td>${escHtml(r.src)}</td></tr>`).join('');wrap.style.display='block';
-    const dates=currentRoadManageFeatures.map(f=>String(pickPropCI(f.properties,['OPERT_DE','opert_de'])||'')).filter(Boolean).sort();const dr=dates.length?`${hubFmtDay(dates[0].slice(0,8))} ~ ${hubFmtDay(dates[dates.length-1].slice(0,8))}`:'미제공';const approxNote='접도연장·접도율은 TL_SPRD_MANAGE ROAD_BT와 도로중심선 위치를 이용한 초기검토용 자동산정값입니다. 지적경계·현황도로·도로구역·실제 도로폭 불일치 가능성이 있으므로 지적측량성과도·도로대장·결정도서·현장조사로 재확인해야 합니다. TL_SPRD_RW 실폭도로는 지적 연산에 사용하지 않습니다.';const roadQuality='ESTIMATE';const roadLabel='도로폭 Fact · 접도 개략';summary.innerHTML=`${net.source} · 도로구간 ${currentRoadManageFeatures.length}건(4m+ ${qualified4.length}건 / 6m+ ${qualified6.length}건) · 대상지 독립 접도도로 ${siteStats.faceCount??'-'}개·최대폭 ${siteStats.maxWidth==null?'-':siteStats.maxWidth.toFixed(1)+'m'} · 성장거점 접도 ${siteStats.growthInnovation?.status==='CONFIRMED'?'확정':siteStats.growthInnovation?.status==='FAIL'?'미달':'확인필요'} · ${counts.source} 기준 주택접도율 4m 기준 ${basis?ratio4.toFixed(1):'-'}% / 6m 기준 ${basis?ratio6.toFixed(1):'-'}% · <b>${approxNote}</b> · OPERT_DE ${dr}`;conn.textContent=roadLabel;conn.className='conn planned';analysisState.quality.road=roadQuality;analysisState.road_network={...siteStats,source:net.source,quality:roadQuality,road_mode:net.road_mode||'',search_radius_m:net.search_radius_m||null,approximation_note:approxNote,frontage_basis_buildings:basis,frontage_access_buildings_4m:access4,frontage_ratio_4m:basis?ratio4:null,frontage_access_buildings_6m:access6,frontage_ratio_6m:basis?ratio6:null,frontage_building_source:counts.source};renderRoadConditionReview();refreshAnalysisLayers();refreshCompactMiniMaps();runAllSchemeChecks();return {quality:roadQuality,road_count:currentRoadManageFeatures.length,max_width_m:siteStats.maxWidth,face_count:siteStats.faceCount,errors:net.errors||[]};
+    const dates=currentRoadManageFeatures.map(f=>String(pickPropCI(f.properties,['OPERT_DE','opert_de'])||'')).filter(Boolean).sort();const dr=dates.length?`${hubFmtDay(dates[0].slice(0,8))} ~ ${hubFmtDay(dates[dates.length-1].slice(0,8))}`:'미제공';const approxNote='접도연장·접도율은 TL_SPRD_MANAGE ROAD_BT와 도로중심선 위치를 이용한 초기검토용 자동산정값입니다. 지적경계·현황도로·도로구역·실제 도로폭 불일치 가능성이 있으므로 지적측량성과도·도로대장·결정도서·현장조사로 재확인해야 합니다. TL_SPRD_RW 실폭도로는 지적 연산에 사용하지 않습니다.';const roadQuality='ESTIMATE';const roadLabel='도로폭 Fact · 접도 개략';summary.innerHTML=`${net.source} · 도로구간 ${currentRoadManageFeatures.length}건(4m+ ${qualified4.length}건 / 6m+ ${qualified6.length}건) · 대상지 독립 접도도로 ${siteStats.faceCount??'-'}개·최대폭 ${siteStats.maxWidth==null?'-':siteStats.maxWidth.toFixed(1)+'m'} · 성장거점 접도 ${siteStats.growthInnovation?.status==='CONFIRMED'?'확정':siteStats.growthInnovation?.status==='FAIL'?'미달':'확인필요'} · ${counts.source} 기준 주택접도율 4m 기준 ${basis?ratio4.toFixed(1):'-'}% / 6m 기준 ${basis?ratio6.toFixed(1):'-'}% · <b>${approxNote}</b> · OPERT_DE ${dr}`;conn.textContent=roadLabel;conn.className='conn planned';analysisState.quality.road=roadQuality;analysisState.road_network={...siteStats,source:net.source,quality:roadQuality,road_mode:net.road_mode||'',search_radius_m:net.search_radius_m||null,approximation_note:approxNote,frontage_basis_buildings:basis,frontage_access_buildings_4m:access4,frontage_ratio_4m:basis?ratio4:null,frontage_access_buildings_6m:access6,frontage_ratio_6m:basis?ratio6:null,frontage_building_source:counts.source,diagnostic:net.diagnostic||null};renderRoadConditionReview();refreshAnalysisLayers();refreshCompactMiniMaps();runAllSchemeChecks();return {quality:roadQuality,road_count:currentRoadManageFeatures.length,max_width_m:siteStats.maxWidth,face_count:siteStats.faceCount,errors:net.errors||[],diagnostic:net.diagnostic||null};
   }catch(e){summary.textContent='접도율 계산 실패: '+String(e.message||e);conn.textContent='접도율 REVIEW';conn.className='conn planned';return {quality:'ERROR',road_count:0,error:String(e.message||e)};}
 }
 let siteReviewRunning=false;
