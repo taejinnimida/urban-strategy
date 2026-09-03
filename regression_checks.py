@@ -1215,16 +1215,20 @@ def check_r11_data_recovery_fix1() -> None:
 
     fetch_block = html[html.index("async function fetchRoadNetwork("):html.index("async function analyzeRoadAccess()", html.index("async function fetchRoadNetwork("))]
     assert "TL_SPRD_MANAGE" in fetch_block and "ROAD_BT" in fetch_block
-    # R22: 서버 내장 도로명주소 전자지도(/api/spatial/roads)를 1순위 Fact로 쓰고,
-    # 그게 비어있거나 오류일 때만 VWorld 실시간 조회로 fallback한다(우선순위 반전).
+    # R31: 서버 내장 TL_SPRD_RW 실폭도로 polygon을 1순위 Fact로 쓴다(면적/둘레로 폭을
+    # 다시 추정할 필요 없이 형상 자체가 실제 도로면이다). 내장 rw/manage가 둘 다
+    # 비었을 때만 VWorld 실시간 TL_SPRD_MANAGE 중심선으로 fallback한다.
     assert "'/api/spatial/roads'" in fetch_block
     assert fetch_block.index("'/api/spatial/roads'") < fetch_block.index("trySpatialLayerCandidates(['TL_SPRD_MANAGE'")
     assert "fallback" in fetch_block
-    assert "TL_SPRD_RW 실폭도로를 사용하지 않는다" in fetch_block
+    assert "bundled?.rw?.features" in fetch_block
 
     annotate = html[html.index("function annotateRoadWidths"):html.index("function boundaryLines", html.index("function annotateRoadWidths"))]
+    # R31: TL_SPRD_RW에는 ROAD_BT 속성이 없어(폭이 형상 자체에 담김) 형상 기반 국부폭
+    # 추정을 쓴다 — 다만 대상지 인근으로 잘라낸 국부구간에만 적용해야 하므로
+    # estimateLocalRoadPolygonWidthMeters()를 거쳐야 하고, 전체 폴리곤 공식을 직접 쓰면 안 된다.
+    assert "estimateLocalRoadPolygonWidthMeters(f,activeGeometry)" in annotate
     assert "estimateRoadPolygonWidthMeters(f)" not in annotate
-    assert "TL_SPRD_RW 공식 실폭도형 산정" not in annotate
 
     ranking = html[html.index("function autoRecommendationTop3()"):html.index("function numOrNull", html.index("function autoRecommendationTop3()"))]
     assert "if(analysisState.fact_store_error)return [];" in ranking
@@ -1494,7 +1498,8 @@ def check_r21_single_boundary_sequential_diagnostics() -> None:
         "JSON 아님",
         "선행 ROAD_BT 미확보 · 분석 미실행",
         "/api/spatial/road-data-status",
-        "TL_SPRD_RW 실폭도로를 사용하지 않는다: 지적/가로구역/접도 판정의 대체자료로 쓰지 않는다",
+        # R31: RW 실폭도로를 1순위로 쓰도록 원칙이 바뀌었다 — 이 문구 대신 새 원칙 문구를 확인한다.
+        "bundled?.rw?.features",
     ):
         assert marker in html, marker
     finalize=html[html.index("function finalizeAnalysisGeometryFromSelectedParcels()"):html.index("const parcelFeatureMap", html.index("function finalizeAnalysisGeometryFromSelectedParcels()"))]
@@ -2111,6 +2116,59 @@ def check_three_legal_road_groups() -> None:
     assert "40% 이하" in frontage and "20% 이하" in frontage
 
 
+def check_r31_road_local_width_safety_margin() -> None:
+    """R31 도로패치: TL_SPRD_RW 실폭도로 polygon을 1순위로 쓰되(manage=0 버그 수정),
+    폭 추정은 폴리곤 전체가 아니라 대상지 인근 국부구간만 잘라서 하고, 추정치가
+    법정 경계값(8m/20m)에 바짝 붙으면 확정판정하지 않는지 확인한다.
+    """
+    html = Path(app.BASE_DIR, "app.html").read_text(encoding="utf-8")
+
+    # 프론트가 실제 데이터가 있는 rw 키를 읽는지(예전엔 manage만 읽어서 항상 0건이었음).
+    fetch0 = html.index("async function fetchRoadNetwork(")
+    fetch1 = html.index("async function analyzeRoadAccess()", fetch0)
+    fetch_block = html[fetch0:fetch1]
+    assert "bundled?.rw?.features" in fetch_block
+    assert "bundled?.manage?.features" in fetch_block
+    assert fetch_block.index("bundled?.rw?.features") < fetch_block.index("bundled?.manage?.features")
+    assert "roadPolygonsFromRealWidth(rwFeats,mg)" in fetch_block
+
+    # 국부폭 추정: 폴리곤 전체가 아니라 대상지 인근으로 잘라낸 조각에서 폭을 잰다.
+    assert "function estimateLocalRoadPolygonWidthMeters(roadFeature,siteFeature,zoneRadiusM" in html
+    local0 = html.index("function estimateLocalRoadPolygonWidthMeters(roadFeature,siteFeature,zoneRadiusM")
+    local1 = html.index("function isNearRoadWidthThreshold", local0)
+    local_block = html[local0:local1]
+    assert "turf.buffer(siteFeature,zoneRadiusM" in local_block
+    assert "turf.intersect(" in local_block
+    assert "estimateRoadPolygonWidthMeters(clipped)" in local_block
+
+    # annotateRoadWidths()가 ROAD_BT 없는 RW polygon에 국부폭 추정을 쓰고, 추정치임을 표시한다.
+    annotate0 = html.index("function annotateRoadWidths(rwFeatures,manageFeatures)")
+    annotate1 = html.index("function boundaryLines", annotate0)
+    annotate_block = html[annotate0:annotate1]
+    assert "estimateLocalRoadPolygonWidthMeters(f,activeGeometry)" in annotate_block
+    assert "p._width_estimated=estimated" in annotate_block
+
+    # roadPolygonsFromRealWidth: RW는 이미 폴리곤이라 중심선처럼 버퍼링하지 않는다.
+    assert "function roadPolygonsFromRealWidth(rwFeatures,manageFeatures)" in html
+    rw0 = html.index("function roadPolygonsFromRealWidth(rwFeatures,manageFeatures)")
+    rw1 = html.index("function roadPolygonsFromCenterlines(manageFeatures)", rw0)
+    rw_block = html[rw0:rw1]
+    assert "annotateRoadWidths(polygonFeatures,manageFeatures" in rw_block
+    assert "turf.buffer(mf,w/2" not in rw_block  # 중심선 버퍼링 로직을 그대로 복붙하지 않았는지
+
+    # 안전마진: 추정치가 8m/20m 경계값에 바짝 붙으면 has8/has20Width를 단정하지 않는다
+    # (ROAD_BT 같은 공부상 속성값에는 이 마진을 적용하지 않음 — width_estimated 조건 필수).
+    assert "const ROAD_WIDTH_SAFETY_MARGIN_M=0.5" in html
+    assert "function isNearRoadWidthThreshold(widthM,thresholdM)" in html
+    stats0 = html.index("function siteRoadNetworkStats(site,roads)")
+    stats1 = html.index("function setRoadNetworkAutoValue", stats0)
+    stats_block = html[stats0:stats1]
+    assert "g.width_estimated&&isNearRoadWidthThreshold(Number(g.width),8)" in stats_block
+    assert "g.width_estimated&&isNearRoadWidthThreshold(Number(g.width),20)" in stats_block
+    assert "has8Uncertain?null:faceCountAt(8)>0" in stats_block
+    assert "has20Uncertain?null:faceCountAt(20)>0" in stats_block
+
+
 def main() -> None:
     _run("measurement", check_measurement)
     _run("renewal spatial", check_renewal_server_intersection)
@@ -2162,6 +2220,7 @@ def main() -> None:
     _run("r24 candidate feasibility density ui", check_r24_candidate_feasibility_density_ui)
     _run("r22 growth frontage engine", check_r22_growth_frontage_engine)
     _run("three legal road groups", check_three_legal_road_groups)
+    _run("r31 road local width safety margin", check_r31_road_local_width_safety_margin)
     _run("release files", check_release_files)
     print("v2.5.0 regression checks: PASS")
 

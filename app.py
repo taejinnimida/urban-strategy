@@ -849,6 +849,47 @@ def _vworld_parcel_at_point(lon: float, lat: float) -> Dict[str, Any]:
     return {"status": "not_found", "feature": None, "pnu": None, "candidate_pnus": []}
 
 
+def _vworld_nearest_parcel_candidates(lon: float, lat: float, max_distance_m: float = 15.0, limit: int = 3) -> List[Dict[str, Any]]:
+    """공식 위치점이 어느 필지에도 covers되지 않을 때(도로·출입구·경계 근처)를 위한
+    근접 후보 목록. 이 결과 자체를 대표필지로 자동확정하지 않는다 — 반드시
+    _medical_building_site_boundary()의 건축물대장 매칭(병원명/의료시설 용도 확인)을
+    통과해야만 CONFIRMED로 올라간다. 검증 레이어가 없는 categoly(보건소 등)에는
+    이 후보를 REVIEW 참고용으로만 노출하고 자동확정에 쓰지 않는다.
+    """
+    to_metric = Transformer.from_crs(4326, 5174, always_xy=True)
+    to_wgs = Transformer.from_crs(5174, 4326, always_xy=True)
+    x, y = to_metric.transform(float(lon), float(lat))
+    probe_metric = shape({"type": "Point", "coordinates": [x, y]}).buffer(max_distance_m + 5.0)
+    probe_wgs = geometry_transform(to_wgs.transform, probe_metric)
+    try:
+        candidates = _fetch_vworld_parcel_candidates(probe_wgs)
+    except Exception:
+        return []
+    point_metric = shape({"type": "Point", "coordinates": [x, y]})
+    scored = []
+    for f in candidates:
+        try:
+            geom_metric = geometry_transform(to_metric.transform, shape(f.get("geometry")))
+            dist = float(point_metric.distance(geom_metric))
+        except Exception:
+            continue
+        if dist <= max_distance_m:
+            pnu = str((f.get("properties") or {}).get("pnu") or "").strip()
+            if pnu:
+                scored.append((dist, pnu, f))
+    scored.sort(key=lambda x: x[0])
+    seen = set()
+    out = []
+    for dist, pnu, f in scored:
+        if pnu in seen:
+            continue
+        seen.add(pnu)
+        out.append({"pnu": pnu, "feature": f, "distance_m": round(dist, 1)})
+        if len(out) >= limit:
+            break
+    return out
+
+
 def _vworld_parcel_by_address(address: str) -> Dict[str, Any]:
     """공식 시설주소를 VWorld 주소검색→검색좌표의 실제 지적 포함관계로 연결한다.
 
@@ -1097,7 +1138,19 @@ def _resolve_medical_facility_boundary(item: Dict[str, Any], site_wgs) -> Dict[s
         if point_parcel.get("status") != "resolved" or not point_parcel.get("feature"):
             note = "공식 위치점이 지적경계에 걸려 필지 확정 불가" if point_parcel.get("status") == "ambiguous" else "공식 위치점 소재 지적필지 미확인"
             if point_error: note = f"공식 위치점 소재 지적필지 조회 실패: {point_error}"
-            return {"boundary_status": "REVIEW", "boundary_basis": "BOUNDARY_NOT_RESOLVED", "boundary_note": note, "auto_pass_eligible": False, "parcel_lookup_status": point_parcel.get("status")}
+            # 좌표가 도로변·출입구·필지경계 근처라 covers()가 실패한 경우를 위한 참고용
+            # 근접 후보. 보건소는 건축물대장 교차검증 레이어가 없으므로 이 후보를
+            # CONFIRMED로 자동승격하지 않는다 — REVIEW 화면에 후보로만 노출한다.
+            nearest = []
+            try:
+                nearest = _vworld_nearest_parcel_candidates(lon, lat)
+            except Exception:
+                nearest = []
+            result = {"boundary_status": "REVIEW", "boundary_basis": "BOUNDARY_NOT_RESOLVED", "boundary_note": note, "auto_pass_eligible": False, "parcel_lookup_status": point_parcel.get("status")}
+            if nearest:
+                result["nearest_parcel_candidates"] = [{"pnu": c["pnu"], "distance_m": c["distance_m"]} for c in nearest]
+                result["boundary_note"] = f"{note} · 반경 15m 안 인접필지 {len(nearest)}건 확인(참고용, 자동확정 아님)"
+            return result
         feature = point_parcel["feature"]
         pnu = point_parcel.get("pnu")
         metrics = _medical_boundary_metrics(site_wgs, feature["geometry"])
@@ -1126,6 +1179,18 @@ def _resolve_medical_facility_boundary(item: Dict[str, Any], site_wgs) -> Dict[s
             apnu = address_lookup.get("pnu")
             if not any(pnu == apnu for _, pnu, _ in parcel_candidates):
                 parcel_candidates.append(("official_license_address", apnu, address_lookup.get("feature")))
+    # 좌표/주소 covers()가 둘 다 실패한 경우(도로변·출입구·경계 근처)에도, 반경 15m
+    # 안의 근접 필지를 곧바로 대표필지로 쓰지 않고 _medical_building_site_boundary()의
+    # 건축물대장 매칭(병원명·의료시설 용도 확인)을 통과해야만 CONFIRMED로 인정한다 —
+    # 즉 "가깝다"가 아니라 "건축물대장이 실제로 이 병원임을 확인해준다"가 확정 근거다.
+    if not parcel_candidates:
+        try:
+            nearest = _vworld_nearest_parcel_candidates(lon, lat)
+        except Exception:
+            nearest = []
+        for c in nearest:
+            if not any(pnu == c["pnu"] for _, pnu, _ in parcel_candidates):
+                parcel_candidates.append(("nearest_candidate_unverified", c["pnu"], c["feature"]))
 
     attempts = []
     for candidate_basis, candidate_pnu, candidate_feature in parcel_candidates:
@@ -1136,7 +1201,7 @@ def _resolve_medical_facility_boundary(item: Dict[str, Any], site_wgs) -> Dict[s
             metrics = _medical_boundary_metrics(site_wgs, bsite["geometry"])
             title = bsite.get("title") or {}
             ledger_label = "총괄표제부" if title.get("ledger_kind") == "recap" else "표제부"
-            basis_note = "공식 위치점 소재필지" if candidate_basis == "official_point" else "서울시 인허가 지번주소 소재필지"
+            basis_note = {"official_point": "공식 위치점 소재필지", "official_license_address": "서울시 인허가 지번주소 소재필지", "nearest_candidate_unverified": "인접 후보필지(건축물대장 매칭으로 확인됨)"}.get(candidate_basis, "인접 후보필지")
             return {
                 "boundary_status": "CONFIRMED", "boundary_basis": "BUILDING_REGISTER_SITE_PARCELS",
                 "boundary_basis_label": "건축물대장 대지·부속지번 지적경계", "facility_boundary_geometry": bsite["geometry"],

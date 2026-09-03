@@ -5330,6 +5330,31 @@ function estimateRoadPolygonWidthMeters(f){
     const bb=turf.bbox(f); const a=turf.distance([bb[0],bb[1]],[bb[2],bb[1]],{units:'kilometers'})*1000; const b=turf.distance([bb[0],bb[1]],[bb[0],bb[3]],{units:'kilometers'})*1000; const w=Math.min(a,b); return (w>0.5&&w<100)?w:null;
   }catch(e){return null;}
 }
+// TL_SPRD_RW 실폭도로 polygon은 교차로·가감속차로·광장형 확폭부가 있으면 폴리곤 전체
+// 면적/둘레로 낸 평균폭이 실제 대상지 접면의 폭과 달라질 수 있다(GPT 검토 합의사항).
+// 그래서 폭 추정은 도로 폴리곤 전체가 아니라, 대상지 주변 zoneRadiusM 안으로 잘라낸
+// 조각만 갖고 다시 estimateRoadPolygonWidthMeters()를 돌린다 — 새 공식을 만들지 않고
+// 입력 범위만 대상지 인근 국부구간으로 좁히는 것.
+const ROAD_LOCAL_WIDTH_ZONE_M=12;
+function estimateLocalRoadPolygonWidthMeters(roadFeature,siteFeature,zoneRadiusM=ROAD_LOCAL_WIDTH_ZONE_M){
+  if(!siteFeature)return {width_m:estimateRoadPolygonWidthMeters(roadFeature),local:false};
+  try{
+    const zone=turf.buffer(siteFeature,zoneRadiusM,{units:'meters'});
+    const clipped=turf.intersect(turf.feature(roadFeature.geometry,roadFeature.properties||{}),zone);
+    if(clipped){
+      const w=estimateRoadPolygonWidthMeters(clipped);
+      if(w!=null)return {width_m:w,local:true};
+    }
+  }catch(e){}
+  return {width_m:estimateRoadPolygonWidthMeters(roadFeature),local:false};
+}
+// 폭 추정치가 법정 경계값에 바짝 붙어 있으면(예: 8m 기준에 8.1m) 그 추정오차만으로
+// PASS/FAIL이 갈릴 수 있다 — 이 경우는 확정판정하지 않고 REVIEW로 넘긴다(GPT 검토 합의사항).
+// ROAD_BT처럼 공부상 속성값으로 확정된 폭에는 이 마진을 적용하지 않는다(추정치 전용).
+const ROAD_WIDTH_SAFETY_MARGIN_M=0.5;
+function isNearRoadWidthThreshold(widthM,thresholdM){
+  return Number.isFinite(widthM)&&Math.abs(widthM-thresholdM)<ROAD_WIDTH_SAFETY_MARGIN_M;
+}
 // 공개 용도지역에는 노선형 상업지역 전용 속성이 없으므로 띠형 도형을 자동 추정한다.
 // 면적 A와 둘레 P를 직사각형으로 환산한 짧은 변 w를 구하고, A/w²로 장단비를 함께 검사한다.
 // 8~18m와 장단비 3 이상은 법정 기준이 아니라 공개 GIS 자동분류를 위한 운영값이다.
@@ -5357,6 +5382,51 @@ function roadWidthFromManage(rw,manage){
     }catch(e){}
   }
   return best;
+}
+// TL_SPRD_RW 실폭도로 polygon(rwFeatures)에서 도로면 Fact를 만든다. RW는 이미 실제 도로
+// 형상이라 중심선처럼 버퍼링할 필요가 없다 — annotateRoadWidths()가 이미 갖고 있던
+// ROAD_BT 우선탐색 → manage 교차 → 형상 국부폭 추정 순서를 그대로 재사용한다.
+// 반환 diagnostic은 roadPolygonsFromCenterlines()와 같은 필드명을 쓰되(화면 재사용),
+// "Line 여부" 대신 "Polygon 여부", "버퍼 성공" 대신 "폭 산정 성공"으로 의미만 바꿨다.
+function roadPolygonsFromRealWidth(rwFeatures,manageFeatures){
+  const features=rwFeatures||[];
+  let nonPolygonCount=0;
+  const polygonFeatures=[];
+  for(const f of features){
+    const t=String(f.geometry?.type||'');
+    if(t==='Polygon'||t==='MultiPolygon')polygonFeatures.push(f);
+    else nonPolygonCount++;
+  }
+  const annotated=annotateRoadWidths(polygonFeatures,manageFeatures||[]);
+  const sampleKeys=new Set();
+  for(const f of polygonFeatures)for(const k of Object.keys(f.properties||{}))if(sampleKeys.size<20)sampleKeys.add(k);
+  let widthSuccessCount=0,widthFailCount=0,estimatedCount=0,attestedCount=0;
+  const out=[];
+  for(const f of annotated){
+    const w=f.properties._width_m;
+    if(w==null){widthFailCount++;continue;}
+    widthSuccessCount++;
+    if(f.properties._width_estimated)estimatedCount++;else attestedCount++;
+    out.push(f);
+  }
+  const polygonFeatureCount=polygonFeatures.length;
+  const mode=features.length===0?'NO_RESPONSE':widthSuccessCount===0?'CENTERLINE_NO_WIDTH':widthSuccessCount<polygonFeatureCount?'PARTIAL_WIDTH':'WIDTH_OK';
+  const diagnostic={
+    mode,
+    source_layer:'TL_SPRD_RW',
+    centerline_count:features.length,
+    line_feature_count:polygonFeatureCount,
+    non_line_geometry_count:nonPolygonCount,
+    buffer_success_count:widthSuccessCount,
+    buffer_fail_count:widthFailCount,
+    missing_width_count:widthFailCount,
+    invalid_width_count:0,
+    estimated_width_count:estimatedCount,
+    attested_width_count:attestedCount,
+    sample_property_keys:[...sampleKeys],
+    width_key_hits:{}
+  };
+  return {derived:out,diagnostic};
 }
 // VWorld TL_SPRD_MANAGE 도로중심선(manageFeatures)에서 폭원 버퍼 도형을 만든다.
 // 반환값에 derived(기존과 동일한 도형 배열)뿐 아니라 diagnostic을 함께 담아,
@@ -5415,13 +5485,20 @@ function roadPolygonsFromCenterlines(manageFeatures){
 }
 function annotateRoadWidths(rwFeatures,manageFeatures){
   return rwFeatures.map(f=>{
-    const p=Object.assign({},f.properties||{}); let w=cleanNum(pickPropCI(p,['_width_m','ROAD_BT','road_bt'])); let src='';
+    const p=Object.assign({},f.properties||{}); let w=cleanNum(pickPropCI(p,['_width_m','ROAD_BT','road_bt'])); let src='';let estimated=false;
     if(p._derived_centerline===true && w!=null)src=p._width_source||'도로중심선 ROAD_BT 기반 개략범위';
     else if(!(w>=1&&w<=100)){
       w=roadWidthFromManage(f,manageFeatures);
       if(w!=null)src='TL_SPRD_MANAGE ROAD_BT';
+      else{
+        // TL_SPRD_RW 실폭도로 polygon 자체엔 ROAD_BT 속성이 없다(폭이 이미 형상에 담겨 있음).
+        // 대상지 인근 국부구간만 잘라서 면적·둘레 기반으로 폭을 추정하고, 추정치임을 명시한다.
+        const local=estimateLocalRoadPolygonWidthMeters(f,activeGeometry);
+        w=local.width_m;estimated=w!=null;
+        if(w!=null)src=local.local?'TL_SPRD_RW 실폭도로 국부구간 형상 추정':'TL_SPRD_RW 실폭도로 전체형상 추정(국부구간 산정 실패)';
+      }
     } else src=p._width_source||'도로폭 속성';
-    p._width_m=w; p._width_source=src||'미확인'; p._qualifies4=(w!=null&&w>=4); p._qualifies6=(w!=null&&w>=6); return {type:'Feature',id:f.id,geometry:f.geometry,properties:p};
+    p._width_m=w; p._width_source=src||'미확인'; p._width_estimated=estimated; p._qualifies4=(w!=null&&w>=4); p._qualifies6=(w!=null&&w>=6); return {type:'Feature',id:f.id,geometry:f.geometry,properties:p};
   });
 }
 function boundaryLines(poly){
@@ -5455,7 +5532,7 @@ function siteRoadNetworkStats(site,roads){
     const width=cleanNum((road.properties||{})._width_m);if(width==null)return;
     const key=roadFeatureIdentity(road,index),props=road.properties||{};
     if(!groups.has(key))groups.set(key,{key,features:[],segments:[],name:String(pickPropCI(props,['ROAD_NM','road_nm','RN','ROAD_NAME','rn'])||'도로명 미확인')});
-    groups.get(key).features.push(road);groups.get(key).segments.push({road,width,props,attrs:roadAddressAttributeFacts(props)});
+    groups.get(key).features.push(road);groups.get(key).segments.push({road,width,props,attrs:roadAddressAttributeFacts(props),estimated:!!props._width_estimated});
   });
   const perimeter=boundaryLines(site).reduce((sum,line)=>sum+turf.length(line,{units:'kilometers'})*1000,0);
   const pct=x=>perimeter>0?Math.min(100,x/perimeter*100):null;
@@ -5479,7 +5556,10 @@ function siteRoadNetworkStats(site,roads){
     }
     const under4Fs=touchingSegments.filter(x=>x.width<4).map(x=>x.road);
     const under4Contact=under4Fs.length?frontageStats(site,under4Fs):{total_m:0,max_contiguous_m:0};
-    touchedGroups.push({key:g.key,name:g.name,width:widths.length?Math.max(...widths):null,width_min:widths.length?Math.min(...widths):null,contact:contact.total_m,max_contiguous:contact.max_contiguous_m,
+    // 그룹의 최대폭을 정한 세그먼트가 추정치인지(ROAD_BT 같은 공부상 속성이 아니라
+    // 형상 기반 국부폭 추정인지) 같이 들고 다닌다 — 안전마진 판정에 필요하다.
+    const maxWidthSegment=widths.length?touchingSegments.filter(x=>Number.isFinite(x.width)).reduce((best,x)=>(x.width>(best?.width??-Infinity)?x:best),null):null;
+    touchedGroups.push({key:g.key,name:g.name,width:widths.length?Math.max(...widths):null,width_min:widths.length?Math.min(...widths):null,width_estimated:!!maxWidthSegment?.estimated,contact:contact.total_m,max_contiguous:contact.max_contiguous_m,
       under4_contact:under4Contact.total_m,under4_max_contiguous:under4Contact.max_contiguous_m,
       segment_count:touchingSegments.length,source_segment_count:g.segments.length,thresholdContact});
   }
@@ -5491,13 +5571,20 @@ function siteRoadNetworkStats(site,roads){
   const maxWidth=touchedGroups.length?Math.max(...touchedGroups.map(x=>Number(x.width||0))):null;
   const contactAll=contactAny(),contactUnder4=contactBelow(4);
   const contact4=contactAt(4),contact6=contactAt(6),contact8=contactAt(8),contact20=contactAt(20),contact35=contactAt(35);
-  const roadSummary=touchedGroups.map(x=>({key:x.key,name:x.name,width:x.width,width_min:x.width_min,contact:x.contact,max_contiguous_m:x.max_contiguous,boundary_share_pct:pct(x.contact),segment_count:x.segment_count,source_segment_count:x.source_segment_count,
+  const roadSummary=touchedGroups.map(x=>({key:x.key,name:x.name,width:x.width,width_min:x.width_min,width_estimated:x.width_estimated,contact:x.contact,max_contiguous_m:x.max_contiguous,boundary_share_pct:pct(x.contact),segment_count:x.segment_count,source_segment_count:x.source_segment_count,
     contact_under4m:Number(x.under4_contact||0),under4_max_contiguous_m:Number(x.under4_max_contiguous||0),
     contact_4m:Number(x.thresholdContact?.[4]?.total_m||0),contact_6m:Number(x.thresholdContact?.[6]?.total_m||0),contact_8m:Number(x.thresholdContact?.[8]?.total_m||0),contact_20m:Number(x.thresholdContact?.[20]?.total_m||0),contact_35m:Number(x.thresholdContact?.[35]?.total_m||0)})).sort((a,b)=>b.width-a.width||b.contact-a.contact);
   const growthFact=growthInnovationRoadFactFromRecords(roadSummary.map(x=>({road_id:x.key,road_name:x.name,width_m:x.width,frontage_contact_m:x.contact,contact_8m:x.contact_8m,contact_20m:x.contact_20m})),{face_count:touchedGroups.length});
+  // 안전마진: 접도(도로면) 그룹 중 폭이 '추정치'이면서 8m/20m 경계값에 바짝 붙은 게 있으면,
+  // 그 추정오차만으로 PASS/FAIL이 갈릴 수 있으므로 has8/has20Width를 단정하지 않고 REVIEW(null)로 둔다.
+  // ROAD_BT 같은 공부상 속성값(width_estimated=false)에는 이 마진을 적용하지 않는다.
+  const has8Uncertain=touchedGroups.some(g=>g.width_estimated&&isNearRoadWidthThreshold(Number(g.width),8));
+  const has20Uncertain=touchedGroups.some(g=>g.width_estimated&&isNearRoadWidthThreshold(Number(g.width),20));
+  const has8=maxWidth==null?null:(has8Uncertain?null:faceCountAt(8)>0);
+  const has20Width=maxWidth==null?null:(has20Uncertain?null:faceCountAt(20)>0);
   return {
     faceCount:touchedGroups.length,roadUnder4Faces:under4Groups.length,road4Faces:faceCountAt(4),road6Faces:faceCountAt(6),road8Faces:faceCountAt(8),road20Faces:faceCountAt(20),road35Faces:faceCountAt(35),
-    maxWidth,has8:maxWidth==null?null:faceCountAt(8)>0,has20Width:maxWidth==null?null:faceCountAt(20)>0,
+    maxWidth,has8,has20Width,has8Uncertain,has20Uncertain,
     roadAnyPerimeter:pct(contactAll),roadUnder4Perimeter:pct(contactUnder4),road4Perimeter:pct(contact4),road6Perimeter:pct(contact6),road8Perimeter:pct(contact8),road20Perimeter:pct(contact20),road35Perimeter:pct(contact35),
     perimeterM:perimeter,contactAnyM:contactAll,contactUnder4M:contactUnder4,contact4M:contact4,contact6M:contact6,contact8M:contact8,contact20M:contact20,contact35M:contact35,
     max20ContactM:touchedGroups.reduce((m,x)=>Math.max(m,Number(x.thresholdContact?.[20]?.total_m||0)),0),
@@ -5563,31 +5650,28 @@ function computeSiteFrontageWidthCoverage(manageFeatures,siteGeometry,thresholdM
 async function fetchRoadNetwork(radiusM=240){
   if(!activeGeometry)return {rw:[],manage:[],source:'none',errors:[],approximation:true,road_mode:'none',search_radius_m:radiusM,diagnostic:{mode:'NO_RESPONSE',provider_state:'NO_GEOMETRY'}};
   const errors=[];
-  // 도로 Fact의 1순위는 서버 내장 도로명주소 전자지도 TL_SPRD_MANAGE(ROAD_BT)이다.
-  // VWorld는 서버 내장자료가 실제로 비어 있거나 HTTP 오류일 때만 fallback한다.
-  // TL_SPRD_RW 실폭도로를 사용하지 않는다: 지적/가로구역/접도 판정의 대체자료로 쓰지 않는다.
-  let mg=[],usedSource='';
+  // 도로 Fact의 1순위는 서버 내장 실폭도로 TL_SPRD_RW polygon이다(형상 자체가 실제 도로면).
+  // 서버 내장 rw가 비어있을 때만 서버 내장 manage(중심선+ROAD_BT)를 보고, 그것도 없으면
+  // VWorld TL_SPRD_MANAGE로 fallback한다. TL_SPRD_RW를 VWorld로 대신 조회하지는 않는다
+  // (VWorld엔 이 레이어가 없음 — 도로명주소 전자지도 전용 자료).
+  let rwFeats=[],mg=[],usedSource='';
   let providerState='SERVER_PENDING',serverFeatureCount=0,vworldFeatureCount=0,serverMetadata=null;
   try{
     const bundled=await fetchBackendJson('/api/spatial/roads',{
       method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry:activeGeometry})
     });
-    const feats=Array.isArray(bundled?.manage?.features)?bundled.manage.features:[];
-    serverFeatureCount=feats.length;
+    rwFeats=Array.isArray(bundled?.rw?.features)?bundled.rw.features:[];
+    mg=Array.isArray(bundled?.manage?.features)?bundled.manage.features:[];
+    serverFeatureCount=rwFeats.length+mg.length;
     serverMetadata=bundled?.metadata||null;
-    if(feats.length){
-      mg=feats;
-      usedSource='도로명주소 전자지도 · TL_SPRD_MANAGE · ROAD_BT';
-      providerState='SERVER_OK';
-    }else{
-      providerState='SERVER_EMPTY';
-      errors.push('서버 내장 도로자료(TL_SPRD_MANAGE): 대상지 인근 도로중심선 0건');
-    }
+    if(rwFeats.length){usedSource='도로명주소 전자지도 · TL_SPRD_RW 실폭도로';providerState='SERVER_OK';}
+    else if(mg.length){usedSource='도로명주소 전자지도 · TL_SPRD_MANAGE · ROAD_BT';providerState='SERVER_OK';}
+    else{providerState='SERVER_EMPTY';errors.push('서버 내장 도로자료(TL_SPRD_RW/TL_SPRD_MANAGE): 대상지 인근 도로형상 0건');}
   }catch(e){
     providerState='SERVER_ERROR';
     errors.push(`서버 내장 도로자료 조회 실패: ${String(e?.message||e)}`);
   }
-  if(!mg.length){
+  if(!rwFeats.length&&!mg.length){
     try{
       const zone=turf.buffer(turf.feature(activeGeometry),radiusM,{units:'meters'}).geometry;
       const mgRes=await trySpatialLayerCandidates(['TL_SPRD_MANAGE','LT_C_SPRD_MANAGE'],zone,['rds_man_no','RDS_MAN_NO']);
@@ -5601,17 +5685,20 @@ async function fetchRoadNetwork(radiusM=240){
       providerState=providerState==='SERVER_ERROR'?'SERVER_ERROR_VWORLD_ERROR':'SERVER_EMPTY_VWORLD_ERROR';
     }
   }
-  const {derived,diagnostic}=roadPolygonsFromCenterlines(mg);
+  // rw가 있으면 실폭도로 경로, 없으면 기존 중심선+ROAD_BT 버퍼 경로를 쓴다. 두 경로는
+  // 서로 다른 함수지만 반환 모양(derived/diagnostic)은 같아서 이후 로직은 공통이다.
+  const {derived,diagnostic}=rwFeats.length?roadPolygonsFromRealWidth(rwFeats,mg):roadPolygonsFromCenterlines(mg);
+  const roadMode=rwFeats.length?'real_width_polygon':'centerline_width_attribute';
   diagnostic.provider_state=providerState;
   diagnostic.server_feature_count=serverFeatureCount;
   diagnostic.vworld_feature_count=vworldFeatureCount;
   diagnostic.server_metadata=serverMetadata;
   diagnostic.source=usedSource||'none';
-  diagnostic.site_frontage=computeSiteFrontageWidthCoverage(mg,activeGeometry);
+  diagnostic.site_frontage=computeSiteFrontageWidthCoverage(rwFeats.length?rwFeats:mg,activeGeometry);
   if(derived.length){
-    return {rw:derived,manage:mg,source:usedSource||'도로명주소 전자지도 · TL_SPRD_MANAGE · ROAD_BT',errors,approximation:true,road_mode:'centerline_width_attribute',search_radius_m:radiusM,diagnostic};
+    return {rw:derived,manage:mg,source:usedSource||'도로명주소 전자지도',errors,approximation:true,road_mode:roadMode,search_radius_m:radiusM,diagnostic};
   }
-  // 어느 자료원에서도 유효한 중심선+폭원 도로면을 만들지 못한 경우에만 데이터 상태를 보조 확인한다.
+  // 어느 자료원에서도 유효한 도로면(실폭도로 또는 중심선+폭원)을 만들지 못한 경우에만 데이터 상태를 보조 확인한다.
   try{
     const status=await fetchBackendJson('/api/spatial/road-data-status');
     if(status?.fact_status)errors.push(`서버 도로자료 상태: ${status.fact_status}${status.message?' · '+status.message:''}`);
