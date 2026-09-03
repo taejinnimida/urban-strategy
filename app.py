@@ -1130,7 +1130,7 @@ def _resolve_medical_facility_boundary(item: Dict[str, Any], site_wgs) -> Dict[s
         # 다만 공공데이터 좌표가 건물 출입구/도로경계 쪽에 찍혀 연속지적과 수 m 어긋나는
         # 사례가 있어, 최신 인허가 자료의 공식 지번주소를 2순위 확정 경로로 사용한다.
         # 최근접 필지 추정은 하지 않으며, 주소검색 좌표가 실제 포함되는 필지를 다시 확인한다.
-        parcel_basis = "official_health_portal_address" if pre_resolved else "official_point"
+        parcel_basis = str(item.get("parcel_seed_basis") or ("official_health_portal_address" if pre_resolved else "official_point"))
         resolved_parcel = point_parcel
         address_lookup = None
         if (point_parcel.get("status") != "resolved" or not point_parcel.get("feature")) and not stale_reference:
@@ -1174,11 +1174,20 @@ def _resolve_medical_facility_boundary(item: Dict[str, Any], site_wgs) -> Dict[s
                 "parcel_candidate_basis": parcel_basis, **metrics,
             }
 
+        if parcel_basis == "official_current_address_validated_coordinate_seed":
+            return {
+                "boundary_status": "CONFIRMED", "boundary_basis": "CADASTRAL_PARCEL_FROM_VALIDATED_HEALTH_CENTER_SEED",
+                "boundary_basis_label": "현재 공식주소 교차검증 보건소 소재 지적필지", "facility_boundary_geometry": feature["geometry"],
+                "boundary_note": "서울시민 건강포털의 현재 보건소명·주소와 서울시 시설물 좌표자료의 시설명·주소가 일치하는 경우에만 좌표를 seed로 사용하고, 그 좌표가 실제 포함되는 VWorld 연속지적 필지를 재확인",
+                "primary_pnu": pnu, "parcel_count": 1, "auto_pass_eligible": True,
+                "parcel_candidate_basis": parcel_basis, **metrics,
+            }
+
         if parcel_basis == "official_health_portal_address":
             return {
                 "boundary_status": "CONFIRMED", "boundary_basis": "CADASTRAL_PARCEL_FROM_OFFICIAL_HEALTH_PORTAL_ADDRESS",
                 "boundary_basis_label": "서울시 공식 보건소 주소 소재 지적필지", "facility_boundary_geometry": feature["geometry"],
-                "boundary_note": "서울시민 건강포털의 공식 보건소 도로명주소를 VWorld 주소검색 후 검색좌표가 실제 포함되는 연속지적 필지로 확정",
+                "boundary_note": "서울시민 건강포털의 공식 보건소 주소를 기준으로 확인한 연속지적 필지",
                 "primary_pnu": pnu, "parcel_count": 1, "auto_pass_eligible": True,
                 "parcel_candidate_basis": parcel_basis, **metrics,
             }
@@ -3378,12 +3387,12 @@ def _safe_medical_reference(geometry: Dict[str, Any]) -> Dict[str, Any]:
         "boundary_resolution_order": [
             "도시계획시설 종합의료시설 경계",
             "비도시계획시설 병원: 건축물대장 대지·부속지번 + 연속지적",
-            "보건소: 공식 위치점 소재 연속지적 필지",
+            "보건소: 현재 공식 주소와 교차검증된 위치 seed 소재 연속지적 필지",
         ],
         "reason": "위치점 자체는 PASS에 쓰지 않고, 공식 위치점에서 복원한 시설부지 경계가 CONFIRMED인 경우에만 350m 자동판정",
         "hospital_source": "서울시 병원 인허가 정보 (LOCALDATA_010101, 매일 갱신)",
-        "health_center_source": "서울시민 건강포털 서울시보건소정보 (25개 자치구 보건소 공식 명칭·주소)",
-        "health_center_fallback": "사용 안 함 — LOCALDATA/tbEntranceItem 보건소 추출 제거",
+        "health_center_source": "서울시민 건강포털 현재 25개 보건소 명칭·주소 + 서울시 시설물 좌표 seed 교차검증",
+        "health_center_fallback": "tbEntranceItem은 후보시설 판정자료가 아니라 현재 공식 주소와 일치할 때 좌표 seed로만 사용",
         "official_rule": "서울특별시 안심주택 공급 지원에 관한 조례 제2조 및 안심주택 건립·운영기준 1-3-2",
         "credential_env": key_env or None,
     }
@@ -3461,74 +3470,131 @@ def _safe_medical_reference(geometry: Dict[str, Any]) -> Dict[str, Any]:
         errors.append(f"병원 인허가 LOCALDATA_010101: {exc}")
         stats["hospital"] = {"service": "LOCALDATA_010101", "error": str(exc)}
 
-    # 2) 보건소: LOCALDATA 업종코드에서 추출하지 않는다.
-    # 서울시민 건강포털이 제공하는 25개 자치구 보건소 공식 목록(명칭·주소)을 기준자료로 사용한다.
-    # 공식 도로명주소 → VWorld ADDRESS 검색 → 검색좌표의 실제 연속지적 포함필지를 확인하고,
-    # 그 필지경계를 안심주택 의료시설 중심지역의 350m 기준경계로 사용한다.
+    # 2) 보건소: 서울시민 건강포털의 현재 25개 보건소 목록을 기준으로 한다.
+    # VWorld ADDRESS 검색은 사용하지 않는다. 기존 서울시 시설물 정보(tbEntranceItem)의
+    # 위치좌표는 오직 '좌표 seed'로만 사용하되, 현재 공식 보건소명/자치구/주소와 일치하는
+    # 행만 채택한다. 검증된 seed 좌표가 실제 포함되는 연속지적 필지를 다시 조회하여
+    # 그 지적필지 경계를 시설부지 후보로 확정한다.
     health_results = []
-    def resolve_health_center(center):
-        resolved = _vworld_parcel_by_address(center.get("address") or "")
-        return center, resolved
+
+    def _addr_key(value: Any) -> str:
+        t = str(value or '').strip().lower()
+        t = re.sub(r'^(대한민국\s*)?', '', t)
+        t = t.replace('서울시', '서울특별시')
+        t = re.sub(r'\s+', '', t)
+        t = re.sub(r'[(),]', '', t)
+        return t
+
+    def _addr_match(current_addr: str, legacy_addr: str) -> bool:
+        a, b = _addr_key(current_addr), _addr_key(legacy_addr)
+        if not a or not b:
+            return False
+        if a == b or a in b or b in a:
+            return True
+        # 도로명 + 건물번호가 같으면 표기 차이(서울시/서울특별시, 띄어쓰기)는 허용한다.
+        def road_no(v: str):
+            m = re.search(r'([가-힣A-Za-z0-9]+(?:로|길))\s*(\d+(?:-\d+)?)', str(v or ''))
+            return (m.group(1), m.group(2)) if m else None
+        ra, rb = road_no(current_addr), road_no(legacy_addr)
+        return bool(ra and rb and ra == rb)
 
     try:
-        with ThreadPoolExecutor(max_workers=8) as ex:
-            futures = [ex.submit(resolve_health_center, c) for c in SEOUL_OFFICIAL_HEALTH_CENTERS]
-            for fut in as_completed(futures):
-                center, resolved = fut.result()
-                health_results.append((center, resolved))
+        facility_rows = _seoul_open_data_rows("tbEntranceItem", 10000)
+        legacy_centers = []
+        for row in facility_rows:
+            usage = str(row.get("FCLT_USG_SE") or "")
+            name = str(row.get("FCLT_NM") or "").strip()
+            if "보건소" not in usage and "보건소" not in name:
+                continue
+            if "보건지소" in usage or "보건지소" in name:
+                continue
+            try:
+                lat, lon = float(row.get("LAT")), float(row.get("LOT"))
+                if not (124 <= lon <= 132 and 33 <= lat <= 39):
+                    continue
+            except Exception:
+                continue
+            legacy_centers.append({
+                "name": name, "usage": usage, "lat": lat, "lon": lon,
+                "road_address": str(row.get("RDN_ADDR") or "").strip(),
+                "parcel_address": str(row.get("LOTNO_ADDR") or "").strip(),
+            })
 
         resolved_total = 0
         nearby_total = 0
-        unresolved = []
-        for center, resolved in health_results:
-            if resolved.get("status") != "resolved" or not resolved.get("feature"):
-                unresolved.append({"name": center.get("name"), "status": resolved.get("status"), "reason": resolved.get("reason")})
+        unmatched = []
+        for center in SEOUL_OFFICIAL_HEALTH_CENTERS:
+            district = str(center.get("district") or "")
+            current_name = str(center.get("name") or "")
+            current_addr = str(center.get("address") or "")
+            candidates = []
+            for row in legacy_centers:
+                name_blob = f"{row.get('name','')} {row.get('road_address','')} {row.get('parcel_address','')}"
+                if district and district not in name_blob and district not in str(row.get('road_address') or '') and district not in str(row.get('parcel_address') or ''):
+                    continue
+                name_ok = _name_key(current_name).replace('구보건소','') in _name_key(row.get('name')) or _name_key(row.get('name')).replace('구보건소','') in _name_key(current_name)
+                addr_ok = _addr_match(current_addr, row.get('road_address') or '') or _addr_match(current_addr, row.get('parcel_address') or '')
+                score = (2 if addr_ok else 0) + (1 if name_ok else 0)
+                if score >= 2:
+                    candidates.append((score, row))
+            candidates.sort(key=lambda x: x[0], reverse=True)
+            if not candidates:
+                unmatched.append({"name": current_name, "reason": "현재 공식 주소와 일치하는 서울시 시설물 좌표 seed 없음"})
                 continue
-            resolved_total += 1
-            feature = resolved.get("feature")
+            best = candidates[0][1]
+            try:
+                parcel = _vworld_parcel_at_point(float(best['lon']), float(best['lat']))
+            except Exception as exc:
+                parcel = {"status":"error", "feature":None, "pnu":None, "reason":str(exc)}
+            if parcel.get("status") != "resolved" or not parcel.get("feature"):
+                unmatched.append({"name": current_name, "reason": f"검증된 위치 seed의 연속지적 확정 실패({parcel.get('status')})"})
+                continue
+            feature = parcel.get("feature")
             try:
                 parcel_wgs = _polygonal_only(shape(feature["geometry"]))
                 parcel_metric = geometry_transform(to_metric.transform, parcel_wgs)
                 dist = float(site_metric.distance(parcel_metric))
-            except Exception:
+            except Exception as exc:
+                unmatched.append({"name": current_name, "reason": f"지적 geometry 처리 실패: {exc}"})
                 continue
+            resolved_total += 1
             if dist > 1500:
                 continue
             nearby_total += 1
-            point = resolved.get("search_point")
-            if not point or len(point) < 2:
-                rp = parcel_wgs.representative_point()
-                point = [float(rp.x), float(rp.y)]
-            lon, lat = float(point[0]), float(point[1])
+            lon, lat = float(best['lon']), float(best['lat'])
             items.append({
                 "category": "public_health_center",
-                "name": center.get("name") or "보건소",
-                "district": center.get("district"),
+                "name": current_name or "보건소",
+                "district": district,
                 "distance_point_m": round(dist, 1),
                 "geometry": {"type": "Point", "coordinates": [lon, lat]},
-                "address": center.get("address") or "",
-                "road_address": center.get("address") or "",
-                "parcel_address": "",
-                "data_status": "official_health_portal_current",
+                "address": current_addr,
+                "road_address": current_addr,
+                "parcel_address": str(best.get("parcel_address") or ""),
+                "data_status": "official_current_address_validated_coordinate_seed",
                 "auto_pass_eligible": False,
-                "source": "서울시민 건강포털 서울시보건소정보",
-                "source_service": "SEOUL_HEALTH_PORTAL_25",
+                "source": "서울시민 건강포털 현재 보건소 목록 + 서울시 시설물 좌표 seed",
+                "source_service": "SEOUL_HEALTH_PORTAL_25+tbEntranceItem_seed",
                 "facility_type": "보건소",
-                "pre_resolved_parcel": resolved,
+                "coordinate_seed_source": "tbEntranceItem (좌표 seed only)",
+                "coordinate_seed_address_match": True,
+                "pre_resolved_parcel": parcel,
+                "parcel_seed_basis": "official_current_address_validated_coordinate_seed",
             })
         stats["health_center"] = {
-            "service": "SEOUL_HEALTH_PORTAL_25",
+            "service": "SEOUL_HEALTH_PORTAL_25+tbEntranceItem_seed",
             "official_total": len(SEOUL_OFFICIAL_HEALTH_CENTERS),
+            "legacy_seed_rows": len(legacy_centers),
             "parcel_resolved": resolved_total,
             "nearby_1500m": nearby_total,
-            "unresolved_count": len(unresolved),
-            "unresolved": unresolved[:5],
+            "unresolved_count": len(unmatched),
+            "unresolved": unmatched[:5],
         }
-        if unresolved:
-            warnings.append(f"서울시 공식 보건소 {len(SEOUL_OFFICIAL_HEALTH_CENTERS)}개 중 {len(unresolved)}개는 VWorld 주소→지적필지 확정 실패")
+        if unmatched:
+            warnings.append(f"서울시 공식 보건소 {len(SEOUL_OFFICIAL_HEALTH_CENTERS)}개 중 {len(unmatched)}개는 현재 공식주소↔좌표 seed↔연속지적 교차검증 실패")
     except Exception as exc:
-        errors.append(f"서울시 공식 보건소 주소 지적매칭: {exc}")
-        stats["health_center"] = {"service": "SEOUL_HEALTH_PORTAL_25", "error": str(exc)}
+        errors.append(f"서울시 공식 보건소 좌표 seed/지적매칭: {exc}")
+        stats["health_center"] = {"service": "SEOUL_HEALTH_PORTAL_25+tbEntranceItem_seed", "error": str(exc)}
 
     # 동일 시설이 주/보조 API에 함께 잡히는 경우 지도 중복표시 방지.
     deduped: Dict[tuple[str, str, int, int], Dict[str, Any]] = {}
@@ -4277,7 +4343,7 @@ def safe_medical_nearby(inp: GeometryInput):
 
     종합병원/시립병원은 도시계획시설 종합의료시설 경계를 우선하고,
     비도시계획시설 병원은 건축물대장 대지·부속지번과 연속지적을 결합한다.
-    보건소는 서울시 공식 위치점이 포함되는 연속지적 필지경계를 적용한다.
+    보건소는 현재 공식 명칭·주소와 교차검증된 위치 seed가 포함되는 연속지적 필지경계를 적용한다.
     경계가 CONFIRMED인 경우에만 350m 자동 PASS가 가능하다.
     """
     try:

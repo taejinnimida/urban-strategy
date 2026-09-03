@@ -1977,8 +1977,8 @@ body.service-layout-ready>.shell{display:none!important}
 <div><span>350m 확정 후보</span><b id="spSafeMedicalCandidates">-</b></div>
 <div><span>부지경계 산정</span><b id="spSafeMedicalBoundary">미확보</b></div>
 </div>
-<div class="spatial-tags"><span>종합병원: 도시계획시설 → 건축물대장 대지</span><span>보건소: 서울시 공식 주소 소재필지</span><span>연속지적 경계</span><span>부지경계 350m</span></div>
-<div class="spatial-caption">도면정보 · 공통 지적 베이스 + 공식 의료시설 위치점 + 판정에 실제 사용한 시설부지 경계 + 그 경계의 350m 범위 · 도시계획시설 종합의료시설은 결정경계, 비도시계획시설 병원은 건축물대장 총괄표제부/표제부의 대지·부속지번을 연속지적으로 복원하며 위치점이 부속필지인 경우 서울시 인허가 지번주소를 보조후보로 사용 · 보건소는 서울시민 건강포털 25개 자치구 보건소 공식 주소를 VWorld 주소검색 후 실제 포함 지적필지로 확정 · 경계 미확정은 REVIEW</div>
+<div class="spatial-tags"><span>종합병원: 도시계획시설 → 건축물대장 대지</span><span>보건소: 현재 공식주소 교차검증 지적필지</span><span>연속지적 경계</span><span>부지경계 350m</span></div>
+<div class="spatial-caption">도면정보 · 공통 지적 베이스 + 공식 의료시설 위치점 + 판정에 실제 사용한 시설부지 경계 + 그 경계의 350m 범위 · 도시계획시설 종합의료시설은 결정경계, 비도시계획시설 병원은 건축물대장 총괄표제부/표제부의 대지·부속지번을 연속지적으로 복원하며 위치점이 부속필지인 경우 서울시 인허가 지번주소를 보조후보로 사용 · 보건소는 서울시민 건강포털의 현재 보건소명·주소와 서울시 시설물 위치자료의 시설명·주소가 일치할 때만 그 좌표를 seed로 사용하고, 좌표가 실제 포함되는 VWorld 연속지적 필지를 재확인 · 경계 미확정은 REVIEW</div>
 <div class="spatial-caption" id="spSafeMedicalApiInfo">서울 열린데이터광장 API 연결상태 확인 전</div>
 <div class="spatial-mini-map" id="ccSafeMedicalMiniMap"></div>
 </section>
@@ -13115,7 +13115,7 @@ function renderSafeHousingDetailPopup(){
   </tbody></table></section>
   <section class="activation-section"><h4>2. 검토결과</h4><table class="activation-table"><thead><tr><th>구분</th><th>검토항목</th><th>기준</th><th>대상지 현황</th><th>판정·후속</th><th>근거</th></tr></thead><tbody>${resultRows}</tbody></table>${schemeDetailSummary(res)}</section>
   <section class="activation-section"><h4>3. 계획기준</h4><table class="activation-table"><thead><tr><th>검토항목</th><th>적용가능 범위</th><th>적용조건·해석</th><th>근거</th></tr></thead><tbody>${planRows}</tbody></table></section>
-  <section class="activation-section"><h4>4. 추진일정</h4><div class="activation-procedure">${steps}</div><div style="padding:0 9px 9px;font-size:8px;color:#667085">의료시설 중심지역은 도시계획시설 종합의료시설 경계 → 비도시계획시설 병원 건축물대장 대지·부속지번 → 보건소는 서울시민 건강포털의 공식 주소를 VWorld 주소검색 후 실제 포함 지적필지로 부지경계를 생성하며, 경계 미확정은 REVIEW를 유지합니다. 지구단위계획구역 중첩은 참고 현황이며 역세권 하드게이트로 사용하지 않습니다.</div></section>
+  <section class="activation-section"><h4>4. 추진일정</h4><div class="activation-procedure">${steps}</div><div style="padding:0 9px 9px;font-size:8px;color:#667085">의료시설 중심지역은 도시계획시설 종합의료시설 경계 → 비도시계획시설 병원 건축물대장 대지·부속지번 → 보건소는 서울시민 건강포털의 현재 명칭·주소와 교차검증된 위치 seed가 실제 포함되는 연속지적 필지로 부지경계를 생성하며, 경계 미확정은 REVIEW를 유지합니다. 지구단위계획구역 중첩은 참고 현황이며 역세권 하드게이트로 사용하지 않습니다.</div></section>
   <div class="scheme-modal-note"><b>판정구조</b> 역세권·간선도로변·의료시설 350m·학교 출입구·서울도심 배제범위·안심주택 노후도를 공간현황에 먼저 생성하고 같은 Fact로 본 검토서를 작성합니다.</div></div>`;
 }
 
