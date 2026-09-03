@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import os
+import csv
 import logging
 import json
 import re
@@ -67,7 +68,10 @@ STATIC_DIR = os.path.dirname(STATIC_HTML_PATH)
 
 
 def _data_path(name: str) -> str:
-    return os.path.join(DATA_DIR, name)
+    structured = os.path.join(STRUCTURED_DATA_DIR, name)
+    if os.path.isfile(structured):
+        return structured
+    return os.path.join(BASE_DIR, name)
 
 
 @lru_cache(maxsize=1)
@@ -846,54 +850,58 @@ def _vworld_parcel_at_point(lon: float, lat: float) -> Dict[str, Any]:
 
 
 def _vworld_parcel_by_address(address: str) -> Dict[str, Any]:
-    """서울시 인허가 시설의 공식 지번주소를 VWorld 주소검색→지적 포함관계로 연결한다.
+    """공식 시설주소를 VWorld 주소검색→검색좌표의 실제 지적 포함관계로 연결한다.
 
-    병원 위치점이 대표 대지가 아닌 부속필지 쪽에 찍힌 경우에만 보조 후보로 쓴다.
-    문자열 주소만으로 PNU를 확정하지 않고, 검색 좌표가 실제 포함되는 연속지적 필지를
-    재확인한다. 최근접 필지 추정은 하지 않는다.
+    지번주소뿐 아니라 보건소 공식목록의 도로명주소도 처리한다. 문자열 주소 자체로
+    PNU를 확정하지 않고, 검색 좌표가 실제 포함되는 연속지적 필지를 재확인한다.
+    최근접 필지 추정은 하지 않는다.
     """
     query = re.sub(r"\s+", " ", str(address or "")).strip()
     if not query:
         return {"status": "not_found", "feature": None, "pnu": None, "address": query}
     if not _vworld_key():
         return {"status": "unavailable", "feature": None, "pnu": None, "address": query, "reason": "VWorld API 키 미설정"}
-    params = {
-        "key": _vworld_key(), "domain": _vworld_domain(),
-        "service": "search", "version": "2.0", "request": "search",
-        "format": "json", "size": 10, "page": 1,
-        "query": query, "type": "ADDRESS", "category": "parcel", "crs": "EPSG:4326",
-    }
-    try:
-        resp, route = _vworld_get(VWORLD_SEARCH_URL, params=params, timeout=20)
-        if resp.status_code >= 400:
-            return {"status": "error", "feature": None, "pnu": None, "address": query, "reason": f"VWorld 주소검색 HTTP {resp.status_code}"}
-        payload = resp.json()
-        rsp = payload.get("response") or {}
-        status = str(rsp.get("status") or "").upper()
-        if status == "NOT_FOUND":
-            return {"status": "not_found", "feature": None, "pnu": None, "address": query, "route": route}
-        if status != "OK":
-            return {"status": "error", "feature": None, "pnu": None, "address": query, "route": route, "reason": _response_error_message(payload)}
-        items = (((rsp.get("result") or {}).get("items")) or [])
-        if not items:
-            return {"status": "not_found", "feature": None, "pnu": None, "address": query, "route": route}
-        norm = lambda v: re.sub(r"\s+", "", str(v or ""))
-        qn = norm(query)
-        ranked = sorted(items, key=lambda it: (0 if norm((it.get("address") or {}).get("parcel")) and (norm((it.get("address") or {}).get("parcel")) in qn or qn in norm((it.get("address") or {}).get("parcel"))) else 1))
-        for it in ranked[:5]:
-            point = it.get("point") or {}
-            try:
-                lon, lat = float(point.get("x")), float(point.get("y"))
-            except Exception:
+    last_reason = None
+    for category in ("parcel", "road"):
+        params = {
+            "key": _vworld_key(), "domain": _vworld_domain(),
+            "service": "search", "version": "2.0", "request": "search",
+            "format": "json", "size": 10, "page": 1,
+            "query": query, "type": "ADDRESS", "category": category, "crs": "EPSG:4326",
+        }
+        try:
+            resp, route = _vworld_get(VWORLD_SEARCH_URL, params=params, timeout=20)
+            if resp.status_code >= 400:
+                last_reason = f"VWorld 주소검색({category}) HTTP {resp.status_code}"
                 continue
-            resolved = _vworld_parcel_at_point(lon, lat)
-            if resolved.get("status") == "resolved":
-                result = dict(resolved)
-                result.update({"address": query, "route": route, "search_item": it})
-                return result
-        return {"status": "not_found", "feature": None, "pnu": None, "address": query, "route": route, "reason": "주소검색 결과 좌표의 지적필지 확정 실패"}
-    except Exception as exc:
-        return {"status": "error", "feature": None, "pnu": None, "address": query, "reason": str(exc)}
+            payload = resp.json()
+            rsp = payload.get("response") or {}
+            status = str(rsp.get("status") or "").upper()
+            if status != "OK":
+                last_reason = _response_error_message(payload) if status != "NOT_FOUND" else f"{category} 주소검색 결과 없음"
+                continue
+            items = (((rsp.get("result") or {}).get("items")) or [])
+            if not items:
+                last_reason = f"{category} 주소검색 결과 없음"
+                continue
+            norm = lambda v: re.sub(r"\s+", "", str(v or ""))
+            qn = norm(query)
+            ranked = sorted(items, key=lambda it: (0 if any((norm((it.get("address") or {}).get(k)) and (norm((it.get("address") or {}).get(k)) in qn or qn in norm((it.get("address") or {}).get(k)))) for k in ("parcel","road")) else 1))
+            for it in ranked[:5]:
+                point = it.get("point") or {}
+                try:
+                    lon, lat = float(point.get("x")), float(point.get("y"))
+                except Exception:
+                    continue
+                resolved = _vworld_parcel_at_point(lon, lat)
+                if resolved.get("status") == "resolved":
+                    result = dict(resolved)
+                    result.update({"address": query, "route": route, "search_item": it, "address_category": category, "search_point": [lon, lat]})
+                    return result
+            last_reason = f"{category} 주소검색 결과 좌표의 지적필지 확정 실패"
+        except Exception as exc:
+            last_reason = str(exc)
+    return {"status": "not_found", "feature": None, "pnu": None, "address": query, "reason": last_reason or "주소검색 실패"}
 
 
 def _fetch_vworld_parcels_for_pnus(pnus: List[str], anchor_feature: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
@@ -3260,12 +3268,106 @@ def _seoul_space_catalog_keyword(keyword: str) -> Dict[str, Any]:
 def _name_key(value: Any) -> str:
     return re.sub(r"[^가-힣A-Za-z0-9]", "", str(value or "")).lower()
 
-def _safe_medical_reference(geometry: Dict[str, Any]) -> Dict[str, Any]:
-    """Return official *reference points* near a site for the safe-housing screen.
+def _safe_medical_reference_data() -> Dict[str, Any]:
+    path = _data_path("safe_medical_reference.json")
+    try:
+        with open(path, encoding="utf-8") as fp:
+            data = json.load(fp)
+        if not isinstance(data, dict):
+            raise ValueError("JSON root is not an object")
+        return data
+    except Exception as exc:
+        logger.error("safe medical reference load failed path=%s error=%s", path, exc)
+        return {"health_centers": [], "municipal_hospitals": [], "sources": {}, "load_error": str(exc)}
 
-    The OpenAPI rows provide point coordinates.  The safe-housing legal test is
-    measured from the eligible medical facility *site boundary*, so these points
-    are map/evidence candidates only and can never create an automatic PASS.
+def _safe_medical_name_match(name: str, ref: Dict[str, Any]) -> bool:
+    nk = _name_key(name)
+    if not nk:
+        return False
+    values = [ref.get("name")] + list(ref.get("aliases") or [])
+    for value in values:
+        rk = _name_key(value)
+        if rk and (rk == nk or rk in nk or nk in rk):
+            return True
+    return False
+
+def _tb_hospital_snapshot_rows() -> List[Dict[str, Any]]:
+    path = _data_path("TbHospitalInfo_snapshot_20260808.csv")
+    if not os.path.isfile(path):
+        return []
+    out = []
+    with open(path, encoding="utf-8-sig", newline="") as fp:
+        for r in csv.DictReader(fp):
+            out.append({
+                "HPID": r.get("기관ID"), "DUTYADDR": r.get("주소"),
+                "DUTYDIV": r.get("병원분류"), "DUTYDIVNAM": r.get("병원분류명"),
+                "DUTYNAME": r.get("기관명"), "WGS84LON": r.get("병원경도"),
+                "WGS84LAT": r.get("병원위도"), "WORK_DTTM": r.get("작업시간"),
+            })
+    return out
+
+def _tb_hospital_rows_live_or_snapshot() -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """TbHospitalInfo live first; bundled monthly snapshot is a continuity fallback."""
+    key, key_env = _seoul_open_data_key_info()
+    if key:
+        try:
+            rows = _seoul_open_data_rows("TbHospitalInfo", 20000)
+            if rows:
+                return rows, {"service": "TbHospitalInfo", "mode": "live", "rows": len(rows), "credential_env": key_env}
+        except Exception as exc:
+            live_error = str(exc)
+        else:
+            live_error = "empty response"
+    else:
+        live_error = "서울 열린데이터광장 인증키 미설정"
+    rows = _tb_hospital_snapshot_rows()
+    return rows, {
+        "service": "TbHospitalInfo", "mode": "snapshot_fallback", "rows": len(rows),
+        "snapshot": "data/TbHospitalInfo_snapshot_20260808.csv", "live_error": live_error,
+    }
+
+def _row_wgs84_point(row: Dict[str, Any]) -> Optional[tuple[float, float]]:
+    try:
+        lon, lat = float(row.get("WGS84LON")), float(row.get("WGS84LAT"))
+        if 124 <= lon <= 132 and 33 <= lat <= 39:
+            return lon, lat
+    except Exception:
+        pass
+    return None
+
+def _representative_parcel_for_facility(*, lon: Optional[float], lat: Optional[float], address: str) -> Dict[str, Any]:
+    """Resolve one representative cadastral parcel; never union adjacent campus parcels."""
+    point_result = None
+    if lon is not None and lat is not None:
+        try:
+            point_result = _vworld_parcel_at_point(float(lon), float(lat))
+        except Exception as exc:
+            point_result = {"status": "error", "feature": None, "pnu": None, "reason": str(exc)}
+        if point_result.get("status") == "resolved" and point_result.get("feature"):
+            return {**point_result, "basis": "official_coordinate"}
+    if address:
+        try:
+            addr_result = _vworld_parcel_by_address(address)
+        except Exception as exc:
+            addr_result = {"status": "error", "feature": None, "pnu": None, "reason": str(exc)}
+        if addr_result.get("status") == "resolved" and addr_result.get("feature"):
+            return {**addr_result, "basis": "official_address"}
+        if point_result:
+            return {**addr_result, "point_status": point_result.get("status"), "point_reason": point_result.get("reason")}
+        return addr_result
+    return point_result or {"status": "not_found", "feature": None, "pnu": None, "reason": "좌표·주소 없음"}
+
+def _safe_medical_reference(geometry: Dict[str, Any]) -> Dict[str, Any]:
+    """Safe-housing medical-center screen using one representative cadastral parcel.
+
+    Eligible facilities:
+      * general hospitals from Seoul TbHospitalInfo (monthly live API; bundled snapshot fallback)
+      * Seoul municipal hospitals from the official whitelist/reference table
+      * 25 district public health centers from the official reference table
+
+    The representative cadastral parcel is used as an initial-review approximation of the
+    facility site. A 350 m buffer is created from that parcel boundary. This intentionally
+    does not attempt campus-wide parcel unions.
     """
     try:
         site_wgs = _polygonal_only(shape(geometry))
@@ -3274,269 +3376,208 @@ def _safe_medical_reference(geometry: Dict[str, Any]) -> Dict[str, Any]:
     if site_wgs is None or site_wgs.is_empty:
         raise ValueError("구역계는 Polygon 또는 MultiPolygon이어야 합니다.")
     to_metric = Transformer.from_crs(4326, 5174, always_xy=True)
-    to_wgs = Transformer.from_crs(5174, 4326, always_xy=True)
     site_metric = geometry_transform(to_metric.transform, site_wgs)
 
-    key, key_env = _seoul_open_data_key_info()
-    metadata = {
-        "criterion": "의료시설 대상부지 경계로부터 350m",
-        "auto_pass_eligible": True,
-        "boundary_resolution_order": [
-            "도시계획시설 종합의료시설 경계",
-            "비도시계획시설 병원: 건축물대장 대지·부속지번 + 연속지적",
-            "보건소: 공식 위치점 소재 연속지적 필지",
-        ],
-        "reason": "위치점 자체는 PASS에 쓰지 않고, 공식 위치점에서 복원한 시설부지 경계가 CONFIRMED인 경우에만 350m 자동판정",
-        "hospital_source": "서울시 병원 인허가 정보 (LOCALDATA_010101, 매일 갱신)",
-        "health_center_source": "서울시 의원 인허가 정보 (LOCALDATA_010102, 매일 갱신; 보건소만 선별)",
-        "health_center_fallback": "서울시 시설물 정보 (tbEntranceItem, 2023 일회성) — LOCALDATA_010102 실패 시 위치 참고용",
-        "official_rule": "서울특별시 안심주택 공급 지원에 관한 조례 제2조 및 안심주택 건립·운영기준 1-3-2",
-        "credential_env": key_env or None,
-    }
-    if not key:
-        return {
-            "status": "unavailable", "items": [], "metadata": metadata,
-            "auto_pass_eligible": False,
-            "message": "서울 열린데이터광장 인증키 미설정 · SEOUL_OPEN_DATA_KEY 또는 data.seoul.go.kr_KEY 확인",
-            "errors": ["서울 열린데이터광장 인증키 환경변수를 찾지 못했습니다."],
-            "warnings": [], "source_stats": {},
-        }
-
-    def _row_is_active(row: Dict[str, Any]) -> bool:
-        state = " ".join(str(row.get(k) or "") for k in ("TRDSTATENM", "DTLSTATENM"))
-        return not any(token in state for token in ("폐업", "취소", "말소", "휴업"))
-
-    def _row_point_5174(row: Dict[str, Any]) -> tuple[float, float, float, float, float]:
-        x, y = float(row.get("X")), float(row.get("Y"))
-        if not (50000 <= x <= 400000 and 300000 <= y <= 700000):
-            raise ValueError("EPSG:5174 범위를 벗어난 좌표")
-        pt = shape({"type": "Point", "coordinates": [x, y]})
-        dist = float(site_metric.distance(pt))
-        lon, lat = to_wgs.transform(x, y)
-        if not (124 <= lon <= 132 and 33 <= lat <= 39):
-            raise ValueError("WGS84 변환 결과가 국내 범위를 벗어남")
-        return x, y, lon, lat, dist
-
+    ref = _safe_medical_reference_data()
+    health_refs = list(ref.get("health_centers") or [])
+    municipal_refs = list(ref.get("municipal_hospitals") or [])
     items: List[Dict[str, Any]] = []
     errors: List[str] = []
     warnings: List[str] = []
     stats: Dict[str, Any] = {}
+    key, key_env = _seoul_open_data_key_info()
+    metadata = {
+        "criterion": "인정 의료시설 대표필지 경계로부터 350m",
+        "boundary_method": "대표지번 1필지(초기검토용)",
+        "representative_parcel_note": "실제 의료시설 대지와 일부 차이가 있을 수 있으므로 정밀검토 시 토지이용현황 재확인",
+        "hospital_source": "서울시 병의원 위치 정보 TbHospitalInfo (월 1회 갱신; 장애 시 패키지 snapshot)",
+        "health_center_source": "서울시 공식 25개 자치구 보건소 기준테이블",
+        "municipal_hospital_source": "서울시 공식 서울시립병원 기준테이블",
+        "official_rule": "안심주택 의료시설 중심지역: 종합병원·서울시 관리 시립병원·보건소",
+        "credential_env": key_env or None,
+        "reference_version": ref.get("version"),
+    }
 
-    # 1) 종합병원 + 서울시 관리 시립병원: 병원 인허가 API
-    try:
-        hospital_rows = _seoul_open_data_rows("LOCALDATA_010101", 5000)
-        municipal_keys = {_name_key(x) for x in SEOUL_MUNICIPAL_HOSPITAL_NAMES}
-        eligible_total = 0
-        coord_skipped = 0
-        for row in hospital_rows:
-            if not _row_is_active(row):
-                continue
-            type_name = str(row.get("METRORGASSRNM") or row.get("UPTAENM") or "").strip()
-            name = str(row.get("BPLCNM") or "").strip()
-            category = None
-            if type_name == "종합병원" or str(row.get("UPTAENM") or "").strip() == "종합병원":
-                category = "general_hospital"
-            elif any(k and k in _name_key(name) for k in municipal_keys):
-                # 종합병원이 아닌 시립병원도 안심주택 의료시설 후보로 별도 보존.
-                category = "municipal_hospital"
-            if not category:
-                continue
-            eligible_total += 1
-            try:
-                _, _, lon, lat, dist = _row_point_5174(row)
-            except Exception:
-                coord_skipped += 1
-                continue
-            if dist > 1500:
-                continue
-            items.append({
-                "category": category, "name": name or "의료시설", "distance_point_m": round(dist, 1),
-                "geometry": {"type": "Point", "coordinates": [lon, lat]},
-                "address": str(row.get("RDNWHLADDR") or row.get("SITEWHLADDR") or ""),
-                "road_address": str(row.get("RDNWHLADDR") or ""),
-                "parcel_address": str(row.get("SITEWHLADDR") or ""),
-                "data_status": "current_reference_point", "auto_pass_eligible": False,
-                "source": "서울시 병원 인허가 정보", "source_service": "LOCALDATA_010101",
-                "facility_type": type_name,
-            })
-        stats["hospital"] = {
-            "service": "LOCALDATA_010101", "rows": len(hospital_rows),
-            "eligible_total": eligible_total, "coordinate_skipped": coord_skipped,
+    def add_resolved_item(category: str, name: str, address: str, lon: Optional[float], lat: Optional[float], source: str, source_service: str, facility_type: str, extra: Optional[Dict[str, Any]]=None):
+        parcel = _representative_parcel_for_facility(lon=lon, lat=lat, address=address)
+        point_geom = {"type":"Point","coordinates":[lon,lat]} if lon is not None and lat is not None else None
+        if parcel.get("status") != "resolved" or not parcel.get("feature"):
+            # Keep an unresolved nearby point only when a valid coordinate exists.
+            if point_geom:
+                try:
+                    pmetric = geometry_transform(to_metric.transform, shape(point_geom))
+                    dpoint = float(site_metric.distance(pmetric))
+                except Exception:
+                    dpoint = None
+                if dpoint is not None and dpoint <= 1500:
+                    item = {
+                        "category": category, "name": name, "address": address, "geometry": point_geom,
+                        "distance_point_m": round(dpoint,1), "facility_type": facility_type,
+                        "source": source, "source_service": source_service,
+                        "boundary_status": "REVIEW", "boundary_basis": "REPRESENTATIVE_PARCEL_NOT_RESOLVED",
+                        "boundary_note": f"대표필지 확정 실패: {parcel.get('reason') or parcel.get('status')}",
+                        "auto_pass_eligible": False,
+                    }
+                    if extra: item.update(extra)
+                    items.append(item)
+            return False
+        feature = parcel["feature"]
+        try:
+            metrics = _medical_boundary_metrics(site_wgs, feature["geometry"])
+            boundary_wgs = _polygonal_only(shape(feature["geometry"]))
+            centroid = boundary_wgs.representative_point() if boundary_wgs is not None else None
+            if point_geom is None and centroid is not None:
+                point_geom = {"type":"Point","coordinates":[float(centroid.x),float(centroid.y)]}
+            dist = float(metrics.get("distance_boundary_m"))
+        except Exception as exc:
+            errors.append(f"{name} 대표필지 geometry 처리: {exc}")
+            return False
+        if dist > 1500:
+            return True
+        item = {
+            "category": category, "name": name, "address": address, "geometry": point_geom,
+            "distance_point_m": round(dist,1), "distance_boundary_m": metrics.get("distance_boundary_m"),
+            "within_350": metrics.get("within_350"), "buffer_350_geometry": metrics.get("buffer_350_geometry"),
+            "facility_boundary_geometry": feature["geometry"], "primary_pnu": parcel.get("pnu"), "parcel_count": 1,
+            "facility_type": facility_type, "source": source, "source_service": source_service,
+            "boundary_status": "CONFIRMED", "boundary_basis": "REPRESENTATIVE_CADASTRAL_PARCEL",
+            "boundary_basis_label": "대표지번 연속지적 필지", "parcel_candidate_basis": parcel.get("basis"),
+            "boundary_note": "공식 주소/좌표로 특정한 대표지번 1필지 경계를 초기검토용 의료시설 부지로 적용",
+            "auto_pass_eligible": True,
         }
-    except Exception as exc:
-        errors.append(f"병원 인허가 LOCALDATA_010101: {exc}")
-        stats["hospital"] = {"service": "LOCALDATA_010101", "error": str(exc)}
+        if extra: item.update(extra)
+        items.append(item)
+        return True
 
-    # 2) 보건소: 의원 인허가 API의 '보건소' 유형을 우선 사용한다.
-    #    이 데이터는 매일 갱신되며 EPSG:5174 좌표를 제공한다.
-    health_center_found = 0
-    clinic_failed = False
-    try:
-        clinic_rows = _seoul_open_data_rows("LOCALDATA_010102", 5000)
-        eligible_total = 0
-        coord_skipped = 0
-        for row in clinic_rows:
-            if not _row_is_active(row):
-                continue
-            name = str(row.get("BPLCNM") or "").strip()
-            type_name = " ".join(filter(None, [
-                str(row.get("METRORGASSRNM") or "").strip(),
-                str(row.get("UPTAENM") or "").strip(),
-            ])).strip()
-            probe = f"{type_name} {name}"
-            if "보건소" not in probe or "보건지소" in probe:
-                continue
-            eligible_total += 1
-            try:
-                _, _, lon, lat, dist = _row_point_5174(row)
-            except Exception:
-                coord_skipped += 1
-                continue
-            health_center_found += 1
-            if dist > 1500:
-                continue
-            items.append({
-                "category": "public_health_center", "name": name or "보건소", "distance_point_m": round(dist, 1),
-                "geometry": {"type": "Point", "coordinates": [lon, lat]},
-                "address": str(row.get("RDNWHLADDR") or row.get("SITEWHLADDR") or ""),
-                "road_address": str(row.get("RDNWHLADDR") or ""),
-                "parcel_address": str(row.get("SITEWHLADDR") or ""),
-                "data_status": "current_reference_point", "auto_pass_eligible": False,
-                "source": "서울시 의원 인허가 정보", "source_service": "LOCALDATA_010102",
-                "facility_type": type_name or "보건소",
-            })
-        stats["health_center"] = {
-            "service": "LOCALDATA_010102", "rows": len(clinic_rows),
-            "eligible_total": eligible_total, "coordinate_skipped": coord_skipped,
-        }
-        if eligible_total == 0:
-            warnings.append("LOCALDATA_010102 응답에서 보건소 유형을 찾지 못해 시설물 자료를 보조조회합니다.")
-    except Exception as exc:
-        clinic_failed = True
-        warnings.append(f"보건소 최신 인허가 LOCALDATA_010102 조회 실패: {exc}")
-        stats["health_center"] = {"service": "LOCALDATA_010102", "error": str(exc)}
+    # 1) TbHospitalInfo: general hospitals + municipal hospitals matched against official whitelist.
+    hospital_rows, hospital_stat = _tb_hospital_rows_live_or_snapshot()
+    stats["hospital"] = hospital_stat
+    municipal_seen = set()
+    general_total = municipal_total = parcel_resolved = 0
+    if not hospital_rows:
+        errors.append("TbHospitalInfo 및 패키지 snapshot 모두 비어 있습니다.")
+    for row in hospital_rows:
+        name = str(row.get("DUTYNAME") or "").strip()
+        if not name:
+            continue
+        municipal_ref = next((m for m in municipal_refs if _safe_medical_name_match(name, m)), None)
+        type_name = str(row.get("DUTYDIVNAM") or "").strip()
+        if municipal_ref:
+            category = "municipal_hospital"
+            canonical = str(municipal_ref.get("name") or name)
+            address = str(municipal_ref.get("address") or row.get("DUTYADDR") or "").strip()
+            municipal_seen.add(_name_key(canonical))
+            municipal_total += 1
+        elif type_name == "종합병원":
+            category = "general_hospital"
+            canonical = name
+            address = str(row.get("DUTYADDR") or "").strip()
+            general_total += 1
+        else:
+            continue
+        pt = _row_wgs84_point(row)
+        lon, lat = pt if pt else (None, None)
+        ok = add_resolved_item(
+            category, canonical, address, lon, lat,
+            "서울시 병의원 위치 정보", "TbHospitalInfo", type_name or ("시립병원" if municipal_ref else "종합병원"),
+            {"institution_id": row.get("HPID"), "work_dttm": row.get("WORK_DTTM")}
+        )
+        if ok: parcel_resolved += 1
 
-    # 3) 보건소 보조자료: 최신 인허가 API가 실패하거나 보건소 행이 없을 때만 사용.
-    #    2023년 일회성 자료이므로 위치 참고 외에는 사용하지 않는다.
-    if clinic_failed or health_center_found == 0:
+    # 2) Municipal hospitals missing from TbHospitalInfo: official address -> representative parcel.
+    for m in municipal_refs:
+        canonical = str(m.get("name") or "")
+        if _name_key(canonical) in municipal_seen:
+            continue
+        municipal_total += 1
+        if add_resolved_item(
+            "municipal_hospital", canonical, str(m.get("address") or ""), None, None,
+            "서울시 공식 서울시립병원 목록", "safe_medical_reference.json", "시립병원",
+            {"reference_only": True}
+        ):
+            parcel_resolved += 1
+
+    # 3) Health centers: official table; first try address, then verified tbEntranceItem coordinate seed.
+    facility_rows = []
+    if key:
         try:
             facility_rows = _seoul_open_data_rows("tbEntranceItem", 10000)
-            fallback_total = 0
-            for row in facility_rows:
-                usage = str(row.get("FCLT_USG_SE") or "")
-                name = str(row.get("FCLT_NM") or "").strip()
-                if "보건소" not in usage and "보건소" not in name:
-                    continue
-                if "보건지소" in usage or "보건지소" in name:
-                    continue
-                fallback_total += 1
-                try:
-                    lat, lon = float(row.get("LAT")), float(row.get("LOT"))
-                    x, y = to_metric.transform(lon, lat)
-                    pt = shape({"type": "Point", "coordinates": [x, y]})
-                    dist = float(site_metric.distance(pt))
-                except Exception:
-                    continue
-                if dist > 1500:
-                    continue
-                items.append({
-                    "category": "public_health_center", "name": name or "보건소", "distance_point_m": round(dist, 1),
-                    "geometry": {"type": "Point", "coordinates": [lon, lat]},
-                    "address": str(row.get("RDN_ADDR") or row.get("LOTNO_ADDR") or ""),
-                    "data_status": "stale_reference_point_2023", "auto_pass_eligible": False,
-                    "source": "서울시 시설물 정보(2023 일회성)", "source_service": "tbEntranceItem",
-                    "facility_type": usage or "보건소",
-                })
-            stats["health_center_fallback"] = {
-                "service": "tbEntranceItem", "rows": len(facility_rows), "eligible_total": fallback_total,
-            }
+            stats["health_center_seed"] = {"service":"tbEntranceItem", "rows":len(facility_rows), "mode":"coordinate_seed_only"}
         except Exception as exc:
-            errors.append(f"보건소 보조자료 tbEntranceItem: {exc}")
-            stats["health_center_fallback"] = {"service": "tbEntranceItem", "error": str(exc)}
-
-    # 동일 시설이 주/보조 API에 함께 잡히는 경우 지도 중복표시 방지.
-    deduped: Dict[tuple[str, str, int, int], Dict[str, Any]] = {}
-    for item in items:
-        coords = (item.get("geometry") or {}).get("coordinates") or [0, 0]
-        key_tuple = (
-            str(item.get("category") or ""), _name_key(item.get("name")),
-            int(round(float(coords[0]) * 100000)), int(round(float(coords[1]) * 100000)),
-        )
-        old = deduped.get(key_tuple)
-        if old is None or str(item.get("data_status")) == "current_reference_point":
-            deduped[key_tuple] = item
-    items = list(deduped.values())
-    items.sort(key=lambda x: (float(x.get("distance_point_m")) if x.get("distance_point_m") is not None else 1e12, str(x.get("category")), str(x.get("name"))))
-
-    # API 과다호출을 막기 위해 대상지에서 가까운 후보부터 최대 8건의 시설부지 경계를 복원한다.
-    # 나머지 후보는 자동 FAIL 근거로 쓰지 않고 REVIEW로 남긴다.
-    boundary_resolve_limit = 8
-    resolve_indexes = list(range(min(boundary_resolve_limit, len(items))))
-
-    def resolve_one(index: int):
-        item = dict(items[index])
-        try:
-            resolved = _resolve_medical_facility_boundary(item, site_wgs)
-        except Exception as exc:
-            resolved = {
-                "boundary_status": "REVIEW", "boundary_basis": "BOUNDARY_NOT_RESOLVED",
-                "boundary_note": f"시설부지 경계 복원 오류: {exc}", "auto_pass_eligible": False,
-            }
-        item.update(resolved)
-        return index, item
-
-    if resolve_indexes:
-        with ThreadPoolExecutor(max_workers=min(4, len(resolve_indexes))) as ex:
-            futures = [ex.submit(resolve_one, i) for i in resolve_indexes]
-            for fut in as_completed(futures):
-                i, resolved_item = fut.result()
-                items[i] = resolved_item
-
-    resolved_set = set(resolve_indexes)
-    for i, item in enumerate(items):
-        if i in resolved_set:
-            continue
-        item.update({
-            "boundary_status": "REVIEW", "boundary_basis": "BOUNDARY_NOT_RESOLVED",
-            "boundary_note": f"공식 위치점 거리 {item.get('distance_point_m')}m · 인근 {boundary_resolve_limit}건 경계복원 우선순위 밖(법정 FAIL 확정에는 사용하지 않음)",
-            "auto_pass_eligible": False,
-        })
-
-    confirmed_boundaries = [x for x in items if x.get("boundary_status") == "CONFIRMED" and x.get("facility_boundary_geometry")]
-    confirmed_350 = [x for x in confirmed_boundaries if x.get("within_350") is True]
-    review_boundaries = [x for x in items if x.get("boundary_status") != "CONFIRMED"]
-    nearby_counts = {
-        "general_hospital": sum(1 for x in items if x.get("category") == "general_hospital"),
-        "municipal_hospital": sum(1 for x in items if x.get("category") == "municipal_hospital"),
-        "public_health_center": sum(1 for x in items if x.get("category") == "public_health_center"),
-        "boundary_confirmed": len(confirmed_boundaries),
-        "boundary_confirmed_350": len(confirmed_350),
-        "boundary_review": len(review_boundaries),
-    }
-    stats["boundary_resolution"] = {
-        "candidate_limit": boundary_resolve_limit, "attempted": len(resolve_indexes),
-        "confirmed": len(confirmed_boundaries), "within_350": len(confirmed_350),
-        "review": len(review_boundaries),
-    }
-    if confirmed_350:
-        message = f"공식 시설부지 경계가 확인된 350m 이내 의료시설 {len(confirmed_350)}건 · 동일 경계 Fact로 안심주택 입지를 판정합니다."
-        status = "resolved"
-    elif confirmed_boundaries:
-        message = "일부 의료시설 부지경계는 확인됐으나 350m 이내 확인시설은 없습니다. 미확정 후보가 남아 있으면 FAIL이 아니라 REVIEW를 유지합니다."
-        status = "resolved"
+            warnings.append(f"보건소 좌표 seed 조회 실패: {exc}")
+            stats["health_center_seed"] = {"service":"tbEntranceItem", "error":str(exc)}
     else:
-        message = "의료시설 위치점은 확인했으나 법정 판정용 시설부지 경계가 확정되지 않아 REVIEW입니다."
-        status = "reference" if items else ("error" if errors else "none")
+        stats["health_center_seed"] = {"service":"tbEntranceItem", "mode":"not_called_no_key"}
+
+    legacy_centers=[]
+    for row in facility_rows:
+        name=str(row.get("FCLT_NM") or "").strip(); usage=str(row.get("FCLT_USG_SE") or "")
+        if "보건지소" in name or "보건지소" in usage:
+            continue
+        if "보건소" not in name and "보건소" not in usage:
+            continue
+        try:
+            lat=float(row.get("LAT")); lon=float(row.get("LOT"))
+            if not (124<=lon<=132 and 33<=lat<=39): raise ValueError()
+        except Exception:
+            continue
+        legacy_centers.append({"name":name,"lon":lon,"lat":lat,"road":str(row.get("RDN_ADDR") or ""),"lot":str(row.get("LOTNO_ADDR") or "")})
+
+    health_resolved=0
+    health_unresolved=[]
+    for h in health_refs:
+        hname=str(h.get("name") or ""); district=str(h.get("district") or ""); address=str(h.get("address") or "")
+        # Name is authoritative. The legacy facility dataset is used only to supply a coordinate when VWorld address search is unavailable.
+        candidates=[r for r in legacy_centers if _name_key(hname)==_name_key(r.get("name")) or _name_key(hname) in _name_key(r.get("name")) or _name_key(r.get("name")) in _name_key(hname)]
+        if district:
+            district_candidates=[r for r in candidates if district in (str(r.get("road"))+str(r.get("lot"))+str(r.get("name")))]
+            if district_candidates: candidates=district_candidates
+        lon=lat=None
+        if candidates:
+            lon=float(candidates[0]["lon"]); lat=float(candidates[0]["lat"])
+        before=len(items)
+        ok=add_resolved_item(
+            "public_health_center", hname, address, lon, lat,
+            "서울시 공식 25개 보건소 기준테이블", "safe_medical_reference.json", "보건소",
+            {"district":district, "official_url":h.get("official_url"), "coordinate_seed_source":"tbEntranceItem" if candidates else None}
+        )
+        if ok: health_resolved += 1
+        elif len(items)==before:
+            health_unresolved.append(hname)
+    stats["health_center"]={"official_total":len(health_refs),"parcel_resolved":health_resolved,"unresolved_count":len(health_unresolved),"unresolved":health_unresolved[:5]}
+    stats["medical_reference"]={"municipal_official_total":len(municipal_refs),"general_candidates":general_total,"municipal_candidates":municipal_total,"representative_parcel_resolved":parcel_resolved}
+
+    # Deduplicate same facility/category; prefer confirmed parcel.
+    deduped={}
+    for item in items:
+        key_tuple=(str(item.get("category")), _name_key(item.get("name")))
+        old=deduped.get(key_tuple)
+        if old is None or (item.get("boundary_status")=="CONFIRMED" and old.get("boundary_status")!="CONFIRMED"):
+            deduped[key_tuple]=item
+    items=list(deduped.values())
+    items.sort(key=lambda x:(float(x.get("distance_boundary_m") if x.get("distance_boundary_m") is not None else x.get("distance_point_m") if x.get("distance_point_m") is not None else 1e12), str(x.get("category")), str(x.get("name"))))
+
+    confirmed=[x for x in items if x.get("boundary_status")=="CONFIRMED" and x.get("facility_boundary_geometry")]
+    confirmed_350=[x for x in confirmed if x.get("within_350") is True]
+    review=[x for x in items if x.get("boundary_status")!="CONFIRMED"]
+    nearby_counts={
+        "general_hospital":sum(1 for x in items if x.get("category")=="general_hospital"),
+        "municipal_hospital":sum(1 for x in items if x.get("category")=="municipal_hospital"),
+        "public_health_center":sum(1 for x in items if x.get("category")=="public_health_center"),
+        "boundary_confirmed":len(confirmed), "boundary_confirmed_350":len(confirmed_350), "boundary_review":len(review),
+    }
+    stats["boundary_resolution"]={"method":"representative_parcel","confirmed":len(confirmed),"within_350":len(confirmed_350),"review":len(review)}
+    if confirmed_350:
+        status="resolved"; message=f"대표필지 경계 기준 350m 이내 인정 의료시설 {len(confirmed_350)}건 확인"
+    elif confirmed:
+        status="resolved"; message="대표필지는 확인됐으나 350m 이내 인정 의료시설은 확인되지 않았습니다."
+    else:
+        status="reference" if items else ("error" if errors else "none")
+        message="의료시설 후보는 확인했으나 대표필지를 확정하지 못해 REVIEW입니다." if items else "인근 인정 의료시설 후보를 확인하지 못했습니다."
     return {
-        "status": status,
-        "auto_pass_eligible": bool(confirmed_350),
-        "items": items[:30],
-        "metadata": metadata,
-        "errors": errors,
-        "warnings": warnings,
-        "source_stats": stats,
-        "nearby_counts": nearby_counts,
-        "message": message,
+        "status":status, "auto_pass_eligible":bool(confirmed_350), "items":items[:40],
+        "metadata":metadata, "errors":errors, "warnings":warnings,
+        "source_stats":stats, "nearby_counts":nearby_counts, "message":message,
     }
 
 
@@ -3782,7 +3823,7 @@ def reference_station_entrances():
 # R22 station-line runtime hotfix.  This block is intentionally backend-only:
 # the existing multi-station frontend already consumes /api/reference/station-lines.
 STATION_RUNTIME_BUILD_MARKER = "R22_STATION_HOTFIX_20260901_0915"
-APP_BUILD_MARKER = "R28_ARTERIAL_BINARY_DECISION_20260903"
+APP_BUILD_MARKER = "R29_SAFE_MEDICAL_REFERENCE_MERGED_20260903"
 _STATION_LINE_CACHE_LOCK = threading.Lock()
 _STATION_LINE_CACHE: Dict[str, Any] = {
     "expires_at": 0.0,
@@ -4081,7 +4122,7 @@ def health():
         "renewal_gis": "server-side UQ181/UQ120 intersection; legal-priority; promotion separate; full matched boundaries returned for status map",
         "development_gis": "VWorld district-unit plan + bundled Seoul UQ181 urban-development/public-housing/other legal project intersections",
         "safe_housing_location_paths": "station / arterial-road-side / medical-facility-center evaluated separately; OR combined",
-        "safe_medical_reference": "Seoul medical points + site-boundary resolver (planning medical facility > building-register site parcels; health-center cadastral parcel)" if _seoul_open_data_key() else "needs Seoul Open Data key; no automatic medical PASS",
+        "safe_medical_reference": "TbHospitalInfo general hospitals + official Seoul municipal hospitals/25 district health centers; one representative cadastral parcel and its 350m buffer",
         "safe_medical_key_env": _seoul_open_data_key_info()[1] or None,
         "road_width_gis": "VWorld TL_SPRD_MANAGE ROAD_BT is the road-width Fact source; TL_SPRD_RW is visualization/reference only",
         "street_block_gis": "SGIS 2025 basic-unit seed + VWorld TL_SPRD_MANAGE ROAD_BT 4m+ merge verification; no TL_SPRD_RW fallback; ESTIMATE only and never authoritative PASS/FAIL until official street-block data is connected",
@@ -4197,12 +4238,10 @@ def development_intersections(inp: GeometryInput):
 
 @app.post("/api/reference/safe-medical-nearby")
 def safe_medical_nearby(inp: GeometryInput):
-    """안심주택 의료시설 중심지역 공식 위치 + 시설부지 경계 복원.
+    """안심주택 인정 의료시설의 대표지번 1필지 경계와 350m 범위를 계산합니다.
 
-    종합병원/시립병원은 도시계획시설 종합의료시설 경계를 우선하고,
-    비도시계획시설 병원은 건축물대장 대지·부속지번과 연속지적을 결합한다.
-    보건소는 서울시 공식 위치점이 포함되는 연속지적 필지경계를 적용한다.
-    경계가 CONFIRMED인 경우에만 350m 자동 PASS가 가능하다.
+    종합병원·서울시 관리 시립병원·25개 자치구 보건소를 대상으로 하며,
+    대표필지는 실제 의료시설 전체 대지와 다를 수 있으므로 초기검토용입니다.
     """
     try:
         return _safe_medical_reference(inp.geometry)

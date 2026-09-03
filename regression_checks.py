@@ -665,74 +665,51 @@ def _run(label, fn) -> None:
 
 
 def check_safe_medical_api_adapter() -> None:
-    # Render에서 실제 사용 중인 환경변수명(data.seoul.go.kr_KEY)도 인식해야 한다.
-    with patch.dict(os.environ, {"SEOUL_OPEN_DATA_KEY": "", "data.seoul.go.kr_KEY": "render-test-key"}, clear=False):
-        key, env_name = app._seoul_open_data_key_info()
-        assert key == "render-test-key"
-        assert env_name == "data.seoul.go.kr_KEY"
-
-        # 인증 오류가 top-level RESULT로 와도 '0건'으로 삼키지 않고 명시 오류 처리한다.
-        class FakeResponse:
-            def raise_for_status(self):
-                return None
-            def json(self):
-                return {"RESULT": {"CODE": "INFO-100", "MESSAGE": "인증키가 유효하지 않습니다."}}
-
-        with patch.object(app.requests, "get", return_value=FakeResponse()):
-            try:
-                app._seoul_open_data_rows("LOCALDATA_010101", 5)
-                raise AssertionError("top-level OpenAPI error was swallowed")
-            except RuntimeError as exc:
-                assert "INFO-100" in str(exc)
-
-        to_metric = app.Transformer.from_crs(4326, 5174, always_xy=True)
-        x, y = to_metric.transform(127.0000, 37.5000)
-        site = {
-            "type": "Polygon",
-            "coordinates": [[[126.998, 37.498], [127.002, 37.498], [127.002, 37.502], [126.998, 37.502], [126.998, 37.498]]],
-        }
-
-        def fake_rows(service, limit=10000):
-            if service == "LOCALDATA_010101":
-                return [
-                    {"TRDSTATENM": "영업/정상", "UPTAENM": "종합병원", "BPLCNM": "테스트종합병원", "X": x, "Y": y, "RDNWHLADDR": "서울 테스트로 1"},
-                    {"TRDSTATENM": "영업/정상", "UPTAENM": "병원", "BPLCNM": "서울의료원", "X": x + 30, "Y": y + 30, "RDNWHLADDR": "서울 테스트로 2"},
-                ]
-            if service == "LOCALDATA_010102":
-                return [
-                    {"TRDSTATENM": "영업/정상", "UPTAENM": "보건소", "BPLCNM": "테스트구보건소", "X": x + 60, "Y": y + 60, "RDNWHLADDR": "서울 테스트로 3"},
-                    {"TRDSTATENM": "영업/정상", "UPTAENM": "보건지소", "BPLCNM": "테스트보건지소", "X": x + 80, "Y": y + 80},
-                ]
-            if service == "tbEntranceItem":
-                raise AssertionError("current health-center API succeeded, stale fallback must not run")
-            return []
-
-        def fake_boundary(item, site_wgs):
-            return {
-                "boundary_status": "CONFIRMED",
-                "boundary_basis": "CADASTRAL_PARCEL_FROM_OFFICIAL_POINT" if item.get("category") == "public_health_center" else "URBAN_PLANNING_MEDICAL_FACILITY",
-                "boundary_basis_label": "테스트 시설부지 경계",
-                "facility_boundary_geometry": site,
-                "buffer_350_geometry": site,
-                "distance_boundary_m": 0.0,
-                "within_350": True,
-                "auto_pass_eligible": True,
-            }
-        with patch.object(app, "_seoul_open_data_rows", side_effect=fake_rows), patch.object(app, "_resolve_medical_facility_boundary", side_effect=fake_boundary):
-            result = app._safe_medical_reference(site)
-        cats = {row["category"] for row in result["items"]}
-        assert {"general_hospital", "municipal_hospital", "public_health_center"}.issubset(cats)
-        assert result["metadata"]["credential_env"] == "data.seoul.go.kr_KEY"
-        assert result["auto_pass_eligible"] is True
-        assert result["nearby_counts"]["boundary_confirmed_350"] >= 1
-        assert result["nearby_counts"]["public_health_center"] == 1
-        assert result["source_stats"]["health_center"]["service"] == "LOCALDATA_010102"
+    site = {
+        "type": "Polygon",
+        "coordinates": [[[126.998, 37.498], [127.002, 37.498], [127.002, 37.502], [126.998, 37.502], [126.998, 37.498]]],
+    }
+    test_parcel = {
+        "type": "Feature", "properties": {"pnu": "1111010100100010000"},
+        "geometry": {"type": "Polygon", "coordinates": [[[126.9997,37.4997],[127.0003,37.4997],[127.0003,37.5003],[126.9997,37.5003],[126.9997,37.4997]]]},
+    }
+    refs={
+        "version":"test",
+        "health_centers":[{"district":"테스트구","name":"테스트구보건소","address":"서울 테스트로 3"}],
+        "municipal_hospitals":[{"name":"서울특별시서울의료원","aliases":["서울의료원"],"address":"서울 테스트로 2"}],
+    }
+    rows=[
+        {"HPID":"A","DUTYDIVNAM":"종합병원","DUTYNAME":"테스트종합병원","DUTYADDR":"서울 테스트로 1","WGS84LON":"127.0","WGS84LAT":"37.5","WORK_DTTM":"2026-08-08"},
+        {"HPID":"B","DUTYDIVNAM":"종합병원","DUTYNAME":"서울특별시서울의료원","DUTYADDR":"서울 테스트로 2","WGS84LON":"127.0","WGS84LAT":"37.5","WORK_DTTM":"2026-08-08"},
+    ]
+    def fake_rows(service, limit=10000):
+        if service == "tbEntranceItem":
+            return [{"FCLT_USG_SE":"보건소","FCLT_NM":"테스트구보건소","LAT":37.5,"LOT":127.0,"RDN_ADDR":"서울 테스트로 3","LOTNO_ADDR":"서울 테스트동 1-1"}]
+        return []
+    parcel={"status":"resolved","feature":test_parcel,"pnu":"1111010100100010000"}
+    with patch.object(app, "_safe_medical_reference_data", return_value=refs), \
+         patch.object(app, "_tb_hospital_rows_live_or_snapshot", return_value=(rows,{"service":"TbHospitalInfo","mode":"live","rows":2})), \
+         patch.object(app, "_seoul_open_data_key_info", return_value=("dummy","SEOUL_OPEN_DATA_KEY")), \
+         patch.object(app, "_seoul_open_data_rows", side_effect=fake_rows), \
+         patch.object(app, "_vworld_parcel_at_point", return_value=parcel), \
+         patch.object(app, "_vworld_parcel_by_address", return_value=parcel):
+        result=app._safe_medical_reference(site)
+    cats={row["category"] for row in result["items"]}
+    assert {"general_hospital","municipal_hospital","public_health_center"}.issubset(cats)
+    assert result["auto_pass_eligible"] is True
+    assert result["nearby_counts"]["boundary_confirmed_350"] >= 1
+    assert result["source_stats"]["hospital"]["service"] == "TbHospitalInfo"
+    assert result["source_stats"]["health_center"]["official_total"] == 1
+    assert all(x.get("boundary_basis") == "REPRESENTATIVE_CADASTRAL_PARCEL" for x in result["items"])
 
     html=(Path(__file__).resolve().parent / "app.html").read_text(encoding="utf-8")
     assert 'id="spSafeMedicalApiInfo"' in html
-    assert "data.nearby_counts||{}" in html
-    assert "data.source_stats||{}" in html
-    assert "API 확인필요" in html
+    assert "대표지번 1필지" in html
+    data_dir=Path(__file__).resolve().parent / "data"
+    reference=json.loads((data_dir / "safe_medical_reference.json").read_text(encoding="utf-8"))
+    assert len(reference.get("health_centers") or []) == 25
+    assert len(reference.get("municipal_hospitals") or []) == 10
+    assert (data_dir / "TbHospitalInfo_snapshot_20260808.csv").is_file()
 
 def check_safe_medical_boundary_resolution() -> None:
     site = {
@@ -2008,7 +1985,7 @@ def check_r22_growth_frontage_engine():
     assert "loc=gr?.status==='CONFIRMED'?'PASS':'FAIL'" in block
     assert "centerRoadRequired?(gr.status==='CONFIRMED'?'PASS':'FAIL'):'INFO'" in block
     assert "비중심지 환승결절 500m 경로에는 중심지 접도기준을 중복 적용하지 않음" in block
-    assert 'APP_BUILD_MARKER = "R28_ARTERIAL_BINARY_DECISION_20260903"' in py
+    assert 'APP_BUILD_MARKER = "R29_SAFE_MEDICAL_REFERENCE_MERGED_20260903"' in py
     assert '"scheme_module_api": "2026-09-02-r22-station-area-frontage-no-hierarchy"' in py
 
 

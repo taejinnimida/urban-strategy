@@ -1982,8 +1982,8 @@ body.service-layout-ready>.shell{display:none!important}
 <div><span>350m 확정 후보</span><b id="spSafeMedicalCandidates">-</b></div>
 <div><span>부지경계 산정</span><b id="spSafeMedicalBoundary">미확보</b></div>
 </div>
-<div class="spatial-tags"><span>종합병원: 도시계획시설 → 건축물대장 대지</span><span>보건소: 공식 위치점 소재필지</span><span>연속지적 경계</span><span>부지경계 350m</span></div>
-<div class="spatial-caption">도면정보 · 공통 지적 베이스 + 공식 의료시설 위치점 + 판정에 실제 사용한 시설부지 경계 + 그 경계의 350m 범위 · 도시계획시설 종합의료시설은 결정경계, 비도시계획시설 병원은 건축물대장 총괄표제부/표제부의 대지·부속지번을 연속지적으로 복원하며 위치점이 부속필지인 경우 서울시 인허가 지번주소를 보조후보로 사용 · 보건소는 최신 공식 위치점 소재필지 적용 · 2023 보조자료 및 경계 미확정은 REVIEW</div>
+<div class="spatial-tags"><span>종합병원·시립병원·보건소</span><span>서울시 공식/API 기준자료</span><span>대표지번 1필지</span><span>대표필지 경계 350m</span></div>
+<div class="spatial-caption">도면정보 · 인정대상은 종합병원·서울시 관리 시립병원·25개 자치구 보건소입니다. 공식 좌표·주소로 대표지번 1필지를 확정하고 그 연속지적 경계에서 350m 범위를 생성합니다. 대표필지는 실제 의료시설 전체 대지와 다를 수 있으므로 초기검토용이며 결정·고시도면과 관계기관 자료로 재확인해야 합니다.</div>
 <div class="spatial-caption" id="spSafeMedicalApiInfo">서울 열린데이터광장 API 연결상태 확인 전</div>
 <div class="spatial-mini-map" id="ccSafeMedicalMiniMap"></div>
 </section>
@@ -3516,15 +3516,15 @@ function renderSafeMedicalSpatialStatus(){
   const warningText=(safeMedicalAnalysis.warnings||[]).filter(Boolean).join(' / ');
   const envName=safeMedicalAnalysis.metadata?.credential_env||'';
   if(apiInfo){
-    if(safeMedicalAnalysis.loading)apiInfo.textContent='서울 열린데이터광장 API + 지적/건축물대장/도시계획시설 결합 조회 중';
+    if(safeMedicalAnalysis.loading)apiInfo.textContent='서울시 의료시설 기준자료 + 대표지번 연속지적 조회 중';
     else if(errorText)apiInfo.textContent=`API 확인필요 · ${errorText}${warningText?' · '+warningText:''}`;
     else if(evidence.known)apiInfo.textContent=`API 연결 · ${envName||'인증키'} · 인근 1.5km 종합병원 ${Number(counts.general_hospital||0)} · 시립병원 ${Number(counts.municipal_hospital||0)} · 보건소 ${Number(counts.public_health_center||0)} · 부지경계 확정 ${Number(counts.boundary_confirmed||0)} · 350m 확정 ${Number(counts.boundary_confirmed_350||0)}${warningText?' · '+warningText:''}`;
     else apiInfo.textContent='서울 열린데이터광장 API 미조회';
   }
   set('spSafeMedicalState',safeMedicalAnalysis.loading?'조회 중':errorText?'API 확인필요':within.length?'350m Fact 확정':confirmed.length?'부지경계 확인':'경계 REVIEW');
   try{
-    const fg=L.featureGroup();for(const layer of [ccSafeMedicalBoundary,ccSafeMedicalPoints,ccSafeMedicalFacilitySites])layer.eachLayer(l=>fg.addLayer(l));
-    const b=fg.getBounds();if(b.isValid())ccSafeMedicalMini.fitBounds(b.pad(.18),{animate:false,maxZoom:16});
+    const fg=L.featureGroup();for(const layer of [ccSafeMedicalBoundary,ccSafeMedicalPoints,ccSafeMedicalFacilitySites,ccSafeMedicalBuffers])layer.eachLayer(l=>fg.addLayer(l));
+    const b=fg.getBounds();if(b.isValid())ccSafeMedicalMini.fitBounds(b.pad(.12),{animate:false,maxZoom:16});
   }catch(e){}
   setTimeout(()=>{try{ccSafeMedicalMini.invalidateSize(false);}catch(e){}},0);
 }
@@ -13198,7 +13198,7 @@ function renderSafeHousingDetailPopup(){
   </tbody></table></section>
   <section class="activation-section"><h4>2. 검토결과</h4><table class="activation-table"><thead><tr><th>구분</th><th>검토항목</th><th>기준</th><th>대상지 현황</th><th>판정·후속</th><th>근거</th></tr></thead><tbody>${resultRows}</tbody></table>${schemeDetailSummary(res)}</section>
   <section class="activation-section"><h4>3. 계획기준</h4><table class="activation-table"><thead><tr><th>검토항목</th><th>적용가능 범위</th><th>적용조건·해석</th><th>근거</th></tr></thead><tbody>${planRows}</tbody></table></section>
-  <section class="activation-section"><h4>4. 추진일정</h4><div class="activation-procedure">${steps}</div><div style="padding:0 9px 9px;font-size:8px;color:#667085">의료시설 중심지역은 도시계획시설 종합의료시설 경계 → 비도시계획시설 병원 건축물대장 대지·부속지번 → 보건소 공식 위치점 소재필지 순으로 부지경계를 생성하며, 경계 미확정은 REVIEW를 유지합니다. 지구단위계획구역 중첩은 참고 현황이며 역세권 하드게이트로 사용하지 않습니다.</div></section>
+  <section class="activation-section"><h4>4. 추진일정</h4><div class="activation-procedure">${steps}</div><div style="padding:0 9px 9px;font-size:8px;color:#667085">의료시설 중심지역은 종합병원·서울시 관리 시립병원·25개 자치구 보건소의 공식 좌표·주소로 대표지번 1필지를 확정하고 그 연속지적 경계에서 350m 범위를 산정합니다. 대표필지는 실제 의료시설 전체 대지와 다를 수 있으므로 초기검토 후 결정·고시도면과 관계기관 자료로 재확인합니다. 지구단위계획구역 중첩은 참고 현황이며 역세권 하드게이트로 사용하지 않습니다.</div></section>
   <div class="scheme-modal-note"><b>판정구조</b> 역세권·간선도로변·의료시설 350m·학교 출입구·서울도심 배제범위·안심주택 노후도를 공간현황에 먼저 생성하고 같은 Fact로 본 검토서를 작성합니다.</div></div>`;
 }
 
@@ -13454,7 +13454,8 @@ function renderRemainingSchemeDetailPopup(name){
 
 function baseReviewDisclaimerHtml(name){
   const extra=name==='activation'?'<br>노선형 상업지역 여부는 공개 용도지역 도형의 형상과 도로 인접관계를 이용해 추정한 결과이므로 공식 결정도서를 확인해야 합니다.':'';
-  return `<div class="scheme-modal-note base-review-disclaimer"><b>초기검토 단서</b> 본 검토는 공개된 GIS 및 행정정보를 활용한 초기 자동분석 결과입니다. 실제 사업 추진 시에는 결정·고시된 도시관리계획, 고시도면, 지형도면 및 관계기관 보유자료를 기준으로 재검토해야 하며, 자료의 갱신시점과 공간정보의 정밀도에 따라 실제 현황과 차이가 발생할 수 있습니다.${extra}</div>`;
+  const safeExtra=name==='safe'?'<br>의료시설 중심지역은 공식 좌표·주소로 확인한 대표지번 1필지의 경계를 기준으로 산정했으며 실제 의료시설 전체 대지와 다를 수 있습니다.':'';
+  return `<div class="scheme-modal-note base-review-disclaimer"><b>초기검토 단서</b> 본 검토는 공개된 GIS 및 행정정보를 활용한 초기 자동분석 결과입니다. 실제 사업 추진 시에는 결정·고시된 도시관리계획, 고시도면, 지형도면 및 관계기관 보유자료를 기준으로 재검토해야 하며, 자료의 갱신시점과 공간정보의 정밀도에 따라 실제 현황과 차이가 발생할 수 있습니다.${extra}${safeExtra}</div>`;
 }
 function appendBaseReviewDisclaimer(name){
   const body=document.getElementById('schemeDetailPopupBody');if(!body||body.querySelector('.base-review-disclaimer'))return;
