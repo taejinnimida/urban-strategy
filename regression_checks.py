@@ -570,7 +570,7 @@ def check_spatial_evidence_maps() -> None:
 
     # 접도율/접면기준은 제도별 Fact로 분리하며 공통 frontage Boolean/ratio로 대체하지 않는다.
     assert 'function schemeFrontageEvidenceFacts(cArg=null)' in html
-    for fact_key in ('redevelopmentFrontage6Fact','residentialEnvironmentFrontage4Fact','activationFrontageFact','safeHousingFrontageFact','growthPotentialFrontage35Fact','longtermFrontage20Fact','stationComplexFrontageFact','innovationGrowthFrontageFact','innovationHousingFrontageFact','publicComplexFrontageFact'):
+    for fact_key in ('redevelopmentFrontage6Fact','residentialEnvironmentFrontage6Fact','activationFrontageFact','safeHousingFrontageFact','growthPotentialFrontage35Fact','longtermFrontage20Fact','stationComplexFrontageFact','innovationGrowthFrontageFact','innovationHousingFrontageFact','publicComplexFrontageFact'):
         assert fact_key in html, fact_key
     for dom_id in ('spRoadFrontageLabel','spRoadFrontageValue','spRoadFrontageBasis','spRoadFrontageContact','spRoadFrontageStatus'):
         assert f'id="{dom_id}"' in html, dom_id
@@ -681,25 +681,29 @@ def check_safe_medical_api_adapter() -> None:
     rows=[
         {"HPID":"A","DUTYDIVNAM":"종합병원","DUTYNAME":"테스트종합병원","DUTYADDR":"서울 테스트로 1","WGS84LON":"127.0","WGS84LAT":"37.5","WORK_DTTM":"2026-08-08"},
         {"HPID":"B","DUTYDIVNAM":"종합병원","DUTYNAME":"서울특별시서울의료원","DUTYADDR":"서울 테스트로 2","WGS84LON":"127.0","WGS84LAT":"37.5","WORK_DTTM":"2026-08-08"},
+        {"HPID":"C","DUTYDIVNAM":"보건소","DUTYNAME":"테스트구보건소","DUTYADDR":"서울 테스트로 3","WGS84LON":"127.0","WGS84LAT":"37.5","WORK_DTTM":"2026-08-08"},
+        {"HPID":"D","DUTYDIVNAM":"종합병원","DUTYNAME":"원거리종합병원","DUTYADDR":"서울 원거리로 1","WGS84LON":"126.0","WGS84LAT":"37.5","WORK_DTTM":"2026-08-08"},
+        {"HPID":"E","DUTYDIVNAM":"병원","DUTYNAME":"서울의료원부속의원","DUTYADDR":"서울 테스트로 4","WGS84LON":"127.0","WGS84LAT":"37.5","WORK_DTTM":"2026-08-08"},
     ]
-    def fake_rows(service, limit=10000):
-        if service == "tbEntranceItem":
-            return [{"FCLT_USG_SE":"보건소","FCLT_NM":"테스트구보건소","LAT":37.5,"LOT":127.0,"RDN_ADDR":"서울 테스트로 3","LOTNO_ADDR":"서울 테스트동 1-1"}]
-        return []
     parcel={"status":"resolved","feature":test_parcel,"pnu":"1111010100100010000"}
     with patch.object(app, "_safe_medical_reference_data", return_value=refs), \
-         patch.object(app, "_tb_hospital_rows_live_or_snapshot", return_value=(rows,{"service":"TbHospitalInfo","mode":"live","rows":2})), \
+         patch.object(app, "_tb_hospital_rows_live_or_snapshot", return_value=(rows,{"service":"TbHospitalInfo","mode":"live","rows":len(rows)})), \
+         patch.object(app, "_tb_hospital_snapshot_rows", return_value=[]), \
          patch.object(app, "_seoul_open_data_key_info", return_value=("dummy","SEOUL_OPEN_DATA_KEY")), \
-         patch.object(app, "_seoul_open_data_rows", side_effect=fake_rows), \
-         patch.object(app, "_vworld_parcel_at_point", return_value=parcel), \
-         patch.object(app, "_vworld_parcel_by_address", return_value=parcel):
+         patch.object(app, "_representative_parcel_for_facility", return_value=parcel) as parcel_lookup:
         result=app._safe_medical_reference(site)
     cats={row["category"] for row in result["items"]}
     assert {"general_hospital","municipal_hospital","public_health_center"}.issubset(cats)
     assert result["auto_pass_eligible"] is True
     assert result["nearby_counts"]["boundary_confirmed_350"] >= 1
     assert result["source_stats"]["hospital"]["service"] == "TbHospitalInfo"
-    assert result["source_stats"]["health_center"]["official_total"] == 1
+    assert result["source_stats"]["medical_reference"]["official_health_centers"] == 1
+    assert result["source_stats"]["medical_reference"]["public_health_center"] == 1
+    assert result["source_stats"]["medical_reference"]["point_table_total"] == 4
+    assert result["source_stats"]["medical_reference"]["point_screened_1500m"] == 3
+    assert result["source_stats"]["medical_reference"]["parcel_lookup_calls"] == 3
+    assert parcel_lookup.call_count == 3
+    assert app._safe_medical_match_ref("서울의료원부속의원", refs["municipal_hospitals"]) is None
     assert all(x.get("boundary_basis") == "REPRESENTATIVE_CADASTRAL_PARCEL" for x in result["items"])
 
     html=(Path(__file__).resolve().parent / "app.html").read_text(encoding="utf-8")
@@ -710,6 +714,15 @@ def check_safe_medical_api_adapter() -> None:
     assert len(reference.get("health_centers") or []) == 25
     assert len(reference.get("municipal_hospitals") or []) == 10
     assert (data_dir / "TbHospitalInfo_snapshot_20260808.csv").is_file()
+    snapshot=app._tb_hospital_snapshot_rows()
+    assert sum(1 for row in snapshot if row.get("DUTYDIVNAM")=="보건소") == 25
+
+    app._representative_parcel_cached.cache_clear()
+    with patch.object(app, "_vworld_parcel_at_point", return_value=parcel) as point_lookup:
+        app._representative_parcel_for_facility(lon=127.123456789,lat=37.555555555,address="서울 테스트로 9")
+        app._representative_parcel_for_facility(lon=127.123456788,lat=37.555555554,address="서울  테스트로 9")
+    assert point_lookup.call_count == 1
+    app._representative_parcel_cached.cache_clear()
 
 def check_safe_medical_boundary_resolution() -> None:
     site = {
@@ -917,10 +930,12 @@ def check_remaining_four_independent_modules_and_sources() -> None:
     gh = html[html.index("function generalHousingSpatialFacts(store)"):html.index("const SCHEME_MODULES=", html.index("function generalHousingSpatialFacts(store)"))]
     assert "도시계획 조례 제55조" not in gh
 
-    # 주거환경개선 접도율(4m)과 주택재개발 접도율(6m)은 서로 다른 Fact다.
-    assert "fact_key:'residentialEnvironmentFrontage4Fact'" in html
+    # 두 사업은 같은 6m 도로·연속 4m 접촉 산식을 쓰되 적용 기준비율은 각각 20%/40%다.
+    assert "fact_key:'residentialEnvironmentFrontage6Fact'" in html
     assert "fact_key:'redevelopmentFrontage6Fact'" in html
-    assert "frontage_access_buildings_4m" in html and "frontage_access_buildings_6m" in html
+    assert "주택재개발 접도율(6m 기준·40% 이하)" in html
+    assert "주거환경개선 주택접도율(6m 기준·20% 이하)" in html
+    assert "const resenvAccess=Number.isFinite(Number(net.frontage_access_buildings_6m))" in html
 
     readme = (root / "README.md").read_text(encoding="utf-8")
     list_block = readme[readme.index("## v2.5.0 사업방식 구조 · 독립 검토모듈"):readme.index("## v2.4.3", readme.index("## v2.5.0 사업방식 구조 · 독립 검토모듈"))]
@@ -1421,7 +1436,7 @@ def check_r19_activation_arterial_linear_commercial() -> None:
         'id="ccActivationArterialMiniMap"',
         '간선도로 검토',
         'id="widthRoadSchemeSummary"',
-        "const ARTERIAL_SCHEME_KEYS=['activation','safe','growth','longterm','innovation_growth','innovation_housing']",
+        "const WIDTH_ROAD_SCHEME_KEYS=['safe','growth','longterm','innovation_growth','innovation_housing']",
         'function analyzeActivationArterial()',
         'function updateActivationArterialBlockLink()',
         'function activationLinearCommercialEvidence()',
@@ -1985,7 +2000,7 @@ def check_r22_growth_frontage_engine():
     assert "loc=gr?.status==='CONFIRMED'?'PASS':'FAIL'" in block
     assert "centerRoadRequired?(gr.status==='CONFIRMED'?'PASS':'FAIL'):'INFO'" in block
     assert "비중심지 환승결절 500m 경로에는 중심지 접도기준을 중복 적용하지 않음" in block
-    assert 'APP_BUILD_MARKER = "R29_SAFE_MEDICAL_REFERENCE_MERGED_20260903"' in py
+    assert 'APP_BUILD_MARKER = "R31_SAFE_MEDICAL_PERFORMANCE_MERGED_20260903"' in py
     assert '"scheme_module_api": "2026-09-02-r22-station-area-frontage-no-hierarchy"' in py
 
 
@@ -2071,6 +2086,31 @@ def check_r24_candidate_feasibility_density_ui() -> None:
     assert "st.purposeGate==='off'||st.structural==='FAIL'||st.stage==='LEGAL_ENTRY'" in opportunity
     assert "개발제한|공익용산지|비오톱|문화재|군사" in opportunity
 
+def check_three_legal_road_groups() -> None:
+    html = Path(app.BASE_DIR, "app.html").read_text(encoding="utf-8")
+    for marker in (
+        'id="urbanRenewalFrontageSummary"', 'id="smallscaleBlockSummary"',
+        'id="frontageSchemeSummary"', 'id="widthRoadSchemeSummary"',
+        "const URBAN_RENEWAL_FRONTAGE_SCHEME_KEYS=['redevelopment','residential_environment']",
+        "const STATION_SPECIAL_FRONTAGE_SCHEME_KEYS=['activation','station_complex','public_complex']",
+        "const WIDTH_ROAD_SCHEME_KEYS=['safe','growth','longterm','innovation_growth','innovation_housing']",
+    ):
+        assert marker in html, marker
+    # 소정법 현황표는 면적·노후도·주택수까지 합친 routes.block 전체판정을 쓰지 않는다.
+    start=html.index("function renderSmallscaleBlockSummary()")
+    end=html.index("function renderWidthRoadSchemeSummary()",start)
+    block=html[start:end]
+    assert ".street_block" in block
+    assert "street_status" in block and "through_road_status" in block
+    assert "routes?.block" not in block and "routes.block" not in block
+    assert "통과도로 요건 적용 제외" in block
+    # 도정법 두 사업은 동일한 6m 산식 입력을 사용하고 기준비율만 40%/20%로 분리한다.
+    frontage=html[html.index("function schemeFrontageEvidenceFacts(cArg=null)"):html.index("function schemeRoadEvidenceFacts(")]
+    assert "frontage_access_buildings_6m" in frontage
+    assert "frontage_access_buildings_4m))?Number(net.frontage_access_buildings_4m)" not in frontage
+    assert "40% 이하" in frontage and "20% 이하" in frontage
+
+
 def main() -> None:
     _run("measurement", check_measurement)
     _run("renewal spatial", check_renewal_server_intersection)
@@ -2121,6 +2161,7 @@ def main() -> None:
     _run("public forest bundled exact fact", check_public_forest_bundled_exact_fact)
     _run("r24 candidate feasibility density ui", check_r24_candidate_feasibility_density_ui)
     _run("r22 growth frontage engine", check_r22_growth_frontage_engine)
+    _run("three legal road groups", check_three_legal_road_groups)
     _run("release files", check_release_files)
     print("v2.5.0 regression checks: PASS")
 
