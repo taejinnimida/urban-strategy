@@ -849,47 +849,6 @@ def _vworld_parcel_at_point(lon: float, lat: float) -> Dict[str, Any]:
     return {"status": "not_found", "feature": None, "pnu": None, "candidate_pnus": []}
 
 
-def _vworld_nearest_parcel_candidates(lon: float, lat: float, max_distance_m: float = 15.0, limit: int = 3) -> List[Dict[str, Any]]:
-    """공식 위치점이 어느 필지에도 covers되지 않을 때(도로·출입구·경계 근처)를 위한
-    근접 후보 목록. 이 결과 자체를 대표필지로 자동확정하지 않는다 — 반드시
-    _medical_building_site_boundary()의 건축물대장 매칭(병원명/의료시설 용도 확인)을
-    통과해야만 CONFIRMED로 올라간다. 검증 레이어가 없는 categoly(보건소 등)에는
-    이 후보를 REVIEW 참고용으로만 노출하고 자동확정에 쓰지 않는다.
-    """
-    to_metric = Transformer.from_crs(4326, 5174, always_xy=True)
-    to_wgs = Transformer.from_crs(5174, 4326, always_xy=True)
-    x, y = to_metric.transform(float(lon), float(lat))
-    probe_metric = shape({"type": "Point", "coordinates": [x, y]}).buffer(max_distance_m + 5.0)
-    probe_wgs = geometry_transform(to_wgs.transform, probe_metric)
-    try:
-        candidates = _fetch_vworld_parcel_candidates(probe_wgs)
-    except Exception:
-        return []
-    point_metric = shape({"type": "Point", "coordinates": [x, y]})
-    scored = []
-    for f in candidates:
-        try:
-            geom_metric = geometry_transform(to_metric.transform, shape(f.get("geometry")))
-            dist = float(point_metric.distance(geom_metric))
-        except Exception:
-            continue
-        if dist <= max_distance_m:
-            pnu = str((f.get("properties") or {}).get("pnu") or "").strip()
-            if pnu:
-                scored.append((dist, pnu, f))
-    scored.sort(key=lambda x: x[0])
-    seen = set()
-    out = []
-    for dist, pnu, f in scored:
-        if pnu in seen:
-            continue
-        seen.add(pnu)
-        out.append({"pnu": pnu, "feature": f, "distance_m": round(dist, 1)})
-        if len(out) >= limit:
-            break
-    return out
-
-
 def _vworld_parcel_by_address(address: str) -> Dict[str, Any]:
     """공식 시설주소를 VWorld 주소검색→검색좌표의 실제 지적 포함관계로 연결한다.
 
@@ -1138,19 +1097,7 @@ def _resolve_medical_facility_boundary(item: Dict[str, Any], site_wgs) -> Dict[s
         if point_parcel.get("status") != "resolved" or not point_parcel.get("feature"):
             note = "공식 위치점이 지적경계에 걸려 필지 확정 불가" if point_parcel.get("status") == "ambiguous" else "공식 위치점 소재 지적필지 미확인"
             if point_error: note = f"공식 위치점 소재 지적필지 조회 실패: {point_error}"
-            # 좌표가 도로변·출입구·필지경계 근처라 covers()가 실패한 경우를 위한 참고용
-            # 근접 후보. 보건소는 건축물대장 교차검증 레이어가 없으므로 이 후보를
-            # CONFIRMED로 자동승격하지 않는다 — REVIEW 화면에 후보로만 노출한다.
-            nearest = []
-            try:
-                nearest = _vworld_nearest_parcel_candidates(lon, lat)
-            except Exception:
-                nearest = []
-            result = {"boundary_status": "REVIEW", "boundary_basis": "BOUNDARY_NOT_RESOLVED", "boundary_note": note, "auto_pass_eligible": False, "parcel_lookup_status": point_parcel.get("status")}
-            if nearest:
-                result["nearest_parcel_candidates"] = [{"pnu": c["pnu"], "distance_m": c["distance_m"]} for c in nearest]
-                result["boundary_note"] = f"{note} · 반경 15m 안 인접필지 {len(nearest)}건 확인(참고용, 자동확정 아님)"
-            return result
+            return {"boundary_status": "REVIEW", "boundary_basis": "BOUNDARY_NOT_RESOLVED", "boundary_note": note, "auto_pass_eligible": False, "parcel_lookup_status": point_parcel.get("status")}
         feature = point_parcel["feature"]
         pnu = point_parcel.get("pnu")
         metrics = _medical_boundary_metrics(site_wgs, feature["geometry"])
@@ -1179,18 +1126,6 @@ def _resolve_medical_facility_boundary(item: Dict[str, Any], site_wgs) -> Dict[s
             apnu = address_lookup.get("pnu")
             if not any(pnu == apnu for _, pnu, _ in parcel_candidates):
                 parcel_candidates.append(("official_license_address", apnu, address_lookup.get("feature")))
-    # 좌표/주소 covers()가 둘 다 실패한 경우(도로변·출입구·경계 근처)에도, 반경 15m
-    # 안의 근접 필지를 곧바로 대표필지로 쓰지 않고 _medical_building_site_boundary()의
-    # 건축물대장 매칭(병원명·의료시설 용도 확인)을 통과해야만 CONFIRMED로 인정한다 —
-    # 즉 "가깝다"가 아니라 "건축물대장이 실제로 이 병원임을 확인해준다"가 확정 근거다.
-    if not parcel_candidates:
-        try:
-            nearest = _vworld_nearest_parcel_candidates(lon, lat)
-        except Exception:
-            nearest = []
-        for c in nearest:
-            if not any(pnu == c["pnu"] for _, pnu, _ in parcel_candidates):
-                parcel_candidates.append(("nearest_candidate_unverified", c["pnu"], c["feature"]))
 
     attempts = []
     for candidate_basis, candidate_pnu, candidate_feature in parcel_candidates:
@@ -1201,7 +1136,7 @@ def _resolve_medical_facility_boundary(item: Dict[str, Any], site_wgs) -> Dict[s
             metrics = _medical_boundary_metrics(site_wgs, bsite["geometry"])
             title = bsite.get("title") or {}
             ledger_label = "총괄표제부" if title.get("ledger_kind") == "recap" else "표제부"
-            basis_note = {"official_point": "공식 위치점 소재필지", "official_license_address": "서울시 인허가 지번주소 소재필지", "nearest_candidate_unverified": "인접 후보필지(건축물대장 매칭으로 확인됨)"}.get(candidate_basis, "인접 후보필지")
+            basis_note = "공식 위치점 소재필지" if candidate_basis == "official_point" else "서울시 인허가 지번주소 소재필지"
             return {
                 "boundary_status": "CONFIRMED", "boundary_basis": "BUILDING_REGISTER_SITE_PARCELS",
                 "boundary_basis_label": "건축물대장 대지·부속지번 지적경계", "facility_boundary_geometry": bsite["geometry"],
@@ -1794,43 +1729,8 @@ def analyze_development_intersections(geometry: Dict[str, Any]) -> Dict[str, Any
     }
 
 
-def _road_zip_path() -> Optional[str]:
-    """관리자가 한 번 배치하면 모든 사용자가 자동 조회하는 서울 도로 전자지도 묶음."""
-    path = _data_path("road_seoul.zip")
-    return path if os.path.isfile(path) and os.path.getsize(path) > 0 else None
-
-
-@lru_cache(maxsize=1)
-def _road_dataset_inventory() -> Dict[str, Any]:
-    """도로 ZIP의 레이어 구성만 가볍게 확인한다. 도형은 읽지 않는다."""
-    path = _road_zip_path()
-    if not path:
-        return {"available": False, "file": None, "stems": [], "has_real_width": False, "has_manage": False}
-    try:
-        with zipfile.ZipFile(path) as zf:
-            stems = sorted({os.path.basename(os.path.splitext(n)[0]) for n in zf.namelist() if n.lower().endswith(".shp")})
-    except Exception as exc:
-        return {"available": False, "file": os.path.basename(path), "stems": [], "has_real_width": False, "has_manage": False, "error": str(exc)}
-    upper=[x.upper() for x in stems]
-    return {
-        "available": True,
-        "file": os.path.basename(path),
-        "stems": stems,
-        "has_real_width": any("SPRD_RW" in x for x in upper),
-        "has_manage": any("SPRD_MANAGE" in x for x in upper),
-    }
-
-
-def _json_property(value: Any) -> Any:
-    if value is None or isinstance(value, (str, int, float, bool)):
-        return value
-    if isinstance(value, (date, datetime)):
-        return value.isoformat()
-    return str(value)
-
-
 def _road_width_m(properties: Dict[str, Any]) -> Optional[float]:
-    """도로구간 속성에서 공식 폭원(m)을 보수적으로 읽는다."""
+    """TL_SPRD_MANAGE 도로구간 속성에서 ROAD_BT 등 공식 폭원(m)을 읽는다."""
     by_upper = {str(key).upper(): value for key, value in (properties or {}).items()}
     for key in ("ROAD_BT", "ROAD_WIDTH", "ROAD_W", "WIDTH"):
         value = by_upper.get(key)
@@ -1846,181 +1746,6 @@ def _road_width_m(properties: Dict[str, Any]) -> Optional[float]:
         if 1 <= width <= 100:
             return width
     return None
-
-
-@lru_cache(maxsize=1)
-def _road_centerline_transformers():
-    """4326<->5174 변환기는 좌표계가 고정이므로 한 번만 만들어 재사용한다.
-
-    이전에는 _centerline_road_polygon() 호출마다(중심선 1건당) Transformer를 새로
-    만들었다. 도로중심선이 수만 건인 실제 배포 데이터(예: 서울시 전역 TL_SPRD_MANAGE)에서는
-    이게 극심한 성능 저하/사실상 hang으로 이어진다. PROJ Transformer 생성 자체가 무겁기
-    때문에, 좌표계 쌍이 고정이라면 반드시 한 번만 만들고 재사용해야 한다.
-    """
-    to_metric = Transformer.from_crs(4326, 5174, always_xy=True).transform
-    to_wgs = Transformer.from_crs(5174, 4326, always_xy=True).transform
-    return to_metric, to_wgs
-
-
-def _centerline_road_polygon(geometry: Any, width_m: float) -> Optional[Any]:
-    """WGS84 도로중심선을 공식 폭원의 절반만큼 양측 버퍼한다."""
-    if geometry.geom_type not in {"LineString", "MultiLineString"}:
-        return None
-    to_metric, to_wgs = _road_centerline_transformers()
-    metric = geometry_transform(to_metric, geometry)
-    polygon = metric.buffer(width_m / 2, cap_style=2, join_style=2)
-    if polygon.is_empty:
-        return None
-    if not polygon.is_valid:
-        polygon = polygon.buffer(0)
-    return geometry_transform(to_wgs, polygon)
-
-
-@lru_cache(maxsize=1)
-def _road_spatial_layers() -> Dict[str, Any]:
-    """VWorld/도로명주소 전자지도 ZIP의 실폭도로·도로구간을 공간색인한다.
-
-    배포본에 포함된 서울 공식 실폭도로 원본(data/road_seoul.zip)을 사용한다.
-    일반 사용자는 파일 업로드나 회원가입 없이 구역계만으로 자동 조회한다.
-    """
-    zip_path = _road_zip_path()
-    if not zip_path:
-        return {"available": False, "reason": "data/road_seoul.zip 미설치"}
-
-    layers: Dict[str, List[Dict[str, Any]]] = {"rw": [], "manage": []}
-    with zipfile.ZipFile(zip_path) as zf:
-        names = zf.namelist()
-        all_stems = sorted({os.path.splitext(n)[0] for n in names if n.lower().endswith(".shp")})
-        named_road_stems = [
-            stem for stem in all_stems
-            if "SPRD_RW" in os.path.basename(stem).upper()
-            or "SPRD_MANAGE" in os.path.basename(stem).upper()
-        ]
-        # 전자지도 전체묶음에 포함된 건물·행정경계 폴리곤을 실폭도로로
-        # 오인하지 않는다. 레이어명이 없는 단일 자료일 때만 도형유형 fallback.
-        stems = named_road_stems or all_stems
-        for stem in stems:
-            shp_name = next((n for n in names if os.path.splitext(n)[0] == stem and n.lower().endswith(".shp")), None)
-            shx_name = next((n for n in names if os.path.splitext(n)[0] == stem and n.lower().endswith(".shx")), None)
-            dbf_name = next((n for n in names if os.path.splitext(n)[0] == stem and n.lower().endswith(".dbf")), None)
-            if not (shp_name and shx_name and dbf_name):
-                continue
-            prj_name = next((n for n in names if os.path.splitext(n)[0] == stem and n.lower().endswith(".prj")), None)
-            source_crs = CRS.from_user_input(os.getenv("ROAD_DATA_CRS", "EPSG:5174"))
-            if prj_name:
-                try:
-                    source_crs = CRS.from_wkt(zf.read(prj_name).decode("utf-8", errors="ignore"))
-                except Exception:
-                    logging.warning("road PRJ parse failed; ROAD_DATA_CRS fallback used: %s", stem)
-            to_wgs = Transformer.from_crs(source_crs, 4326, always_xy=True).transform
-            reader = shapefile.Reader(
-                shp=io.BytesIO(zf.read(shp_name)),
-                shx=io.BytesIO(zf.read(shx_name)),
-                dbf=io.BytesIO(zf.read(dbf_name)),
-                encoding="cp949",
-                encodingErrors="replace",
-            )
-            fields = [f[0] for f in reader.fields[1:]]
-            stem_upper = os.path.basename(stem).upper()
-            for sr in reader.iterShapeRecords():
-                try:
-                    geom = shape(sr.shape.__geo_interface__)
-                    if geom.is_empty:
-                        continue
-                    if not geom.is_valid:
-                        geom = geom.buffer(0)
-                    geom = geometry_transform(to_wgs, geom)
-                    props = {k: _json_property(v) for k, v in zip(fields, list(sr.record))}
-                    kind = "rw" if ("SPRD_RW" in stem_upper or (not named_road_stems and geom.geom_type in {"Polygon", "MultiPolygon"})) else "manage"
-                    layers[kind].append({"geometry": geom, "properties": props})
-                except Exception:
-                    continue
-
-    # 실폭도로 폴리곤이 없는 공식 자료는 도로중심선의 ROAD_BT 등 폭원을
-    # 이용해 예비 도로면을 만든다. 법정 접도율 자동확정에는 쓰지 않고
-    # 프론트에서 ESTIMATE/REVIEW로 구분한다.
-    road_mode = "real_width_polygon"
-    if not layers["rw"] and layers["manage"]:
-        derived: List[Dict[str, Any]] = []
-        for row in layers["manage"]:
-            width = _road_width_m(row["properties"])
-            if width is None:
-                continue
-            polygon = _centerline_road_polygon(row["geometry"], width)
-            if polygon is None:
-                continue
-            props = dict(row["properties"])
-            props.update({
-                "_derived_centerline": True,
-                "_road_method": "centerline_width_buffer",
-                "_width_m": width,
-                "_width_source": "도로중심선+공식 폭원 버퍼(예비)",
-            })
-            derived.append({"geometry": polygon, "properties": props})
-        if derived:
-            layers["rw"] = derived
-            road_mode = "centerline_width_buffer"
-
-    for kind in ("rw", "manage"):
-        geoms = [x["geometry"] for x in layers[kind]]
-        layers[f"{kind}_tree"] = STRtree(geoms) if geoms else None
-    layers.update({
-        "available": bool(layers["rw"]),
-        "source": "서버 내장 공식 실폭도로 TL_SPRD_RW" if road_mode == "real_width_polygon" else "공식 도로중심선+폭원 버퍼(예비)",
-        "road_mode": road_mode,
-        "file": os.path.basename(zip_path),
-        "rw_count": len(layers["rw"]),
-        "manage_count": len(layers["manage"]),
-    })
-    return layers
-
-
-def analyze_road_intersections(geometry: Dict[str, Any]) -> Dict[str, Any]:
-    layers = _road_spatial_layers()
-    if not layers.get("available"):
-        raise FileNotFoundError(str(layers.get("reason") or "서울 실폭도로 원본 미설치"))
-    site = shape(geometry)
-    if site.geom_type not in {"Polygon", "MultiPolygon"} or site.is_empty or not site.is_valid:
-        raise ValueError("유효한 Polygon 또는 MultiPolygon 구역계가 필요합니다.")
-    to_metric, to_wgs = _road_centerline_transformers()
-    query_area = geometry_transform(to_wgs, geometry_transform(to_metric, site).buffer(60))
-
-    def selected(kind: str) -> List[Dict[str, Any]]:
-        tree = layers.get(f"{kind}_tree")
-        rows = layers.get(kind) or []
-        if tree is None:
-            return []
-        out = []
-        for idx in tree.query(query_area, predicate="intersects"):
-            row = rows[int(idx)]
-            out.append({
-                "type": "Feature",
-                "geometry": mapping(row["geometry"]),
-                "properties": row["properties"],
-            })
-            if len(out) >= 5000:
-                break
-        return out
-
-    rw_features = selected("rw")
-    manage_features = selected("manage")
-    return {
-        "status": "matched" if (rw_features or manage_features) else "none",
-        "rw": {"type": "FeatureCollection", "features": rw_features},
-        "manage": {"type": "FeatureCollection", "features": manage_features},
-        "metadata": {
-            "source": layers.get("source"),
-            "road_mode": layers.get("road_mode"),
-            "file": layers.get("file"),
-            "scope": "대상지 60m 버퍼",
-            "manage_return_count": len(manage_features),
-            "rw_return_count": len(rw_features),
-            "fact_status": "ROAD_MANAGE_READY" if layers.get("manage_count", 0) else "ROAD_DATA_READY",
-            "official_original_required": True,
-        },
-    }
-
-
 
 
 def _biotope_zip_path() -> Optional[str]:
@@ -2305,43 +2030,6 @@ def _polygon_parts(geom: Any) -> List[Any]:
     return []
 
 
-def _street_block_road_width_m(metric_geom: Any, properties: Dict[str, Any]) -> Optional[float]:
-    """가로구역 경계용 도로 폭원을 구한다.
-
-    공식 폭원 속성이 있으면 우선 사용하고, TL_SPRD_RW처럼 폭원 속성이 없는
-    실폭도로 폴리곤은 면적/둘레를 장방형으로 환산한 대표 폭원을 사용한다.
-    이 4m 기준은 법정 가로구역 정의가 아니라 자동분석 운영기준이다.
-    """
-    explicit = _road_width_m(properties or {})
-    if explicit is not None:
-        return explicit
-    try:
-        area = float(metric_geom.area)
-        perimeter = float(metric_geom.length)
-        if area <= 0 or perimeter <= 0:
-            return None
-        semi = perimeter / 2.0
-        disc = semi * semi - 4.0 * area
-        if disc > 0:
-            width = (semi - math.sqrt(disc)) / 2.0
-            if 0.5 < width < 100:
-                return float(width)
-        rect = metric_geom.minimum_rotated_rectangle
-        coords = list(rect.exterior.coords)
-        sides = []
-        for i in range(min(4, len(coords) - 1)):
-            dx = coords[i + 1][0] - coords[i][0]
-            dy = coords[i + 1][1] - coords[i][1]
-            sides.append(math.hypot(dx, dy))
-        if sides:
-            width = min(sides)
-            if 0.5 < width < 100:
-                return float(width)
-    except Exception:
-        return None
-    return None
-
-
 def _street_block_site_parts(frame_metric: Any, barrier_union: Any, site_metric: Any) -> List[tuple[Any, float]]:
     """현재 barrier에서 대상지와 겹치는 열린 공간 조각을 큰 순서대로 반환한다."""
     try:
@@ -2563,10 +2251,9 @@ def _street_block_from_basic_units(
 ) -> Optional[Dict[str, Any]]:
     """SGIS 기초단위구를 seed로 삼고 VWorld 도로중심선 ROAD_BT로 병합여부를 판단한다.
 
-    중요: TL_SPRD_RW 실폭도로는 지적/기초단위구 경계와 위상정합을 전제할 수 없으므로
-    이 모듈의 공간연산에 사용하지 않는다. 도로폭은 TL_SPRD_MANAGE의 ROAD_BT 등
-    공식 폭원 속성만 읽고, 4m 이상 도로중심선이 기초단위구 공통경계를 가르는지를
-    병합/분리 판단의 보조 Fact로 사용한다.
+    도로폭은 TL_SPRD_MANAGE의 ROAD_BT 등 공식 폭원 속성만 읽고,
+    4m 이상 도로중심선이 기초단위구 공통경계를 가르는지를 병합/분리 판단의
+    보조 Fact로 사용한다.
     """
     units = _basic_unit_spatial_layers()
     if not units.get('available'):
@@ -2614,7 +2301,7 @@ def _street_block_from_basic_units(
             'status':'unavailable','block':None,'blocks':{'type':'FeatureCollection','features':[]},
             'road_barriers':{'type':'FeatureCollection','features':[]},'road_context':{'type':'FeatureCollection','features':[]},
             'facility_barriers':{'type':'FeatureCollection','features':[]},'basic_unit_context':{'type':'FeatureCollection','features':[]},
-            'metadata':{'method':'sgis_basic_unit_roadbt_merge','reason':'TL_SPRD_MANAGE ROAD_BT 도로자료 미확보','basic_unit_file':units.get('file'),'uses_real_width_polygon':False}
+            'metadata':{'method':'sgis_basic_unit_roadbt_merge','reason':'TL_SPRD_MANAGE ROAD_BT 도로자료 미확보','basic_unit_file':units.get('file')}
         }
     selected_items: List[Dict[str, Any]] = []
     road_metric: List[Any] = []
@@ -2770,7 +2457,7 @@ def _street_block_from_basic_units(
             'block_area_m2':block_area,'site_intersection_m2':primary_site_area,
             'site_primary_block_pct':primary_site_pct,'site_share_of_primary_block_pct':primary_block_occupancy_pct,
             'site_spans_multiple_blocks':multi,'merge_limit_reached':primary_limit,'legal_width_rule':False,
-            'basic_unit_is_legal_street_block':False,'authoritative_street_block':False,'uses_real_width_polygon':False,
+            'basic_unit_is_legal_street_block':False,'authoritative_street_block':False,
             'future_street_block_interface':'MOIS_BASIC_UNIT_OR_VERIFIED_PLANNING_ROAD_BLOCK',
             'engine_note':'현재 내장 기초단위구는 가로구역 후보 골격(ESTIMATE)이다. VWorld TL_SPRD_MANAGE ROAD_BT(4m 이상)와 철도·하천으로 인접 기초단위구 병합 여부를 판단하며 법정 가로구역으로 자동확정하지 않는다. 향후 행안부 기초단위구/공식 가로구역 또는 검증된 도시계획시설도로 블록 자료가 연결되면 authoritative_street_block=true로 승격한다.',
         }
@@ -2785,8 +2472,8 @@ def analyze_street_block(
 ) -> Dict[str, Any]:
     """기초단위구 seed + 도로중심선 ROAD_BT 방식만 사용한다.
 
-    기초단위구가 없거나 자동확정에 실패해도 TL_SPRD_RW polygonization으로
-    fallback하지 않는다. 잘못된 가로구역을 만드는 것보다 자료부족을 명시한다.
+    기초단위구가 없거나 자동확정에 실패하면 자료부족을 명시한다.
+    도로 Fact는 TL_SPRD_MANAGE ROAD_BT만 사용한다.
     """
     basic = _street_block_from_basic_units(geometry, barrier_features, road_features, max_radius_m)
     if basic is not None:
@@ -2800,8 +2487,8 @@ def analyze_street_block(
             'method':'sgis_basic_unit_roadbt_merge','preferred_method':'sgis_basic_unit_roadbt_merge',
             'basic_unit_available':bool(unit_layers.get('available')),
             'basic_unit_reason':None if unit_layers.get('available') else unit_layers.get('reason'),
-            'road_feature_count':len(road_features or []),'fallback_used':False,'uses_real_width_polygon':False,
-            'reason':'기초단위구 자료가 없거나 가로구역 후보를 자동확정하지 못했습니다. TL_SPRD_RW 실폭도로 fallback은 사용하지 않습니다.'
+            'road_feature_count':len(road_features or []),'fallback_used':False,
+            'reason':'기초단위구 자료가 없거나 가로구역 후보를 자동확정하지 못했습니다. TL_SPRD_MANAGE ROAD_BT 자료를 확인하세요.'
         }
     }
 
@@ -4191,7 +3878,7 @@ def health():
         "building_spatial_auto": "LT_C_SPBD_browser_direct_ready" if vworld_ready() else "needs_VWORLD_API_KEY",
         "building_hub": "ready" if building_hub_ready() else "needs_BUILDING_HUB_API_KEY",
         "land_ledger": "ladfrlList + getLandCharacteristics + geometry provisional",
-        "road_access": "VWorld TL_SPRD_MANAGE + ROAD_BT for cadastral/frontage calculations; TL_SPRD_RW excluded from cadastral arithmetic",
+        "road_access": "VWorld TL_SPRD_MANAGE + ROAD_BT for cadastral/frontage calculations",
         "road_bundled_configured": bool(_road_zip_path()),
         "analysis_object_model": "parcel/building common ledger retained for station-area/zoning/mixed-use expansion",
         "redevelopment_strategy": "scheme-specific legal aging facts + area/aging/additional-entry AND-OR gates",
@@ -4211,11 +3898,11 @@ def health():
         "safe_housing_location_paths": "station / arterial-road-side / medical-facility-center evaluated separately; OR combined",
         "safe_medical_reference": "TbHospitalInfo general hospitals + official Seoul municipal hospitals/25 district health centers; one representative cadastral parcel and its 350m buffer",
         "safe_medical_key_env": _seoul_open_data_key_info()[1] or None,
-        "road_width_gis": "VWorld TL_SPRD_MANAGE ROAD_BT is the road-width Fact source; TL_SPRD_RW is visualization/reference only",
-        "street_block_gis": "SGIS 2025 basic-unit seed + VWorld TL_SPRD_MANAGE ROAD_BT 4m+ merge verification; no TL_SPRD_RW fallback; ESTIMATE only and never authoritative PASS/FAIL until official street-block data is connected",
+        "road_width_gis": "VWorld TL_SPRD_MANAGE ROAD_BT is the sole road-width Fact source",
+        "street_block_gis": "SGIS 2025 basic-unit seed + VWorld TL_SPRD_MANAGE ROAD_BT 4m+ merge verification; ESTIMATE only and never authoritative PASS/FAIL until official street-block data is connected",
         "street_block_future_interface": "MOIS basic-unit / official street-block or verified planning-road block -> authoritative_street_block=true",
         "arterial_road_future_interface": "official address-based road function/classification -> road_function / statutory_classification fields; width-only candidates remain REVIEW",
-        "activation_arterial_gis": "Seoul published linear-commercial road list + VWorld LT_C_UQ111 zoning + TL_SPRD_MANAGE road centerlines; dedicated station-activation arterial map; TL_SPRD_RW excluded",
+        "activation_arterial_gis": "Seoul published linear-commercial road list + VWorld LT_C_UQ111 zoning + TL_SPRD_MANAGE road centerlines; dedicated station-activation arterial map",
         "street_block_basic_unit_configured": bool(_basic_unit_zip_path()),
         "street_block_basic_unit_file": os.path.basename(_basic_unit_zip_path()) if _basic_unit_zip_path() else None,
         "responsive_ui": "desktop/tablet/mobile responsive layout with mobile workflow and selected-scheme cards",
@@ -4339,36 +4026,6 @@ def safe_medical_nearby(inp: GeometryInput):
         return {"status": "error", "items": [], "errors": [str(exc)], "message": "의료시설 공식 위치자료 조회 실패 · 공식자료 확인 필요"}
 
 
-@app.get("/api/spatial/road-data-status")
-def road_data_status():
-    """R21 진단용: 내장 도로 ZIP에 ROAD_BT 도로구간이 실제 포함되어 있는지 확인한다."""
-    inv = dict(_road_dataset_inventory())
-    if inv.get("has_manage"):
-        inv["fact_status"] = "ROAD_MANAGE_READY"
-        inv["message"] = "내장 TL_SPRD_MANAGE 도로구간 사용 가능"
-    elif inv.get("has_real_width"):
-        inv["fact_status"] = "REAL_WIDTH_ONLY"
-        inv["message"] = "내장자료는 TL_SPRD_RW 실폭도로뿐 · 접도/가로구역용 TL_SPRD_MANAGE ROAD_BT 필요"
-    else:
-        inv["fact_status"] = "MISSING"
-        inv["message"] = "내장 도로구간 자료 없음 · TL_SPRD_MANAGE ROAD_BT 필요"
-    return inv
-
-
-@app.post("/api/spatial/roads")
-def road_intersections(inp: GeometryInput):
-    """관리자 설치 공식 실폭도로에서 대상지 주변 도형만 반환합니다."""
-    try:
-        return analyze_road_intersections(inp.geometry)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except Exception as exc:
-        logging.exception("road intersection failed")
-        raise HTTPException(status_code=500, detail=f"실폭도로 중첩분석 오류: {exc}") from exc
-
-
 @app.get("/api/spatial/biotope-data-status")
 def biotope_data_status():
     """내장 비오톱1등급 SHP 로드상태 진단."""
@@ -4433,8 +4090,8 @@ def forest_classification_intersections(inp: GeometryInput):
 def street_block(inp: StreetBlockInput):
     """SGIS 기초단위구 seed를 TL_SPRD_MANAGE ROAD_BT 4m+ 도로중심선으로 병합 검증합니다.
 
-    TL_SPRD_RW 실폭도로는 지적·기초단위구 공간연산에 사용하지 않으며,
-    기초단위구/ROAD_BT 자료가 없으면 잘못된 도형으로 fallback하지 않습니다.
+    도로 Fact는 TL_SPRD_MANAGE ROAD_BT만 사용하며,
+    기초단위구/ROAD_BT 자료가 없으면 잘못된 도형으로 대체하지 않습니다.
     """
     try:
         return analyze_street_block(inp.geometry, inp.barrier_features, inp.road_features, inp.max_radius_m)

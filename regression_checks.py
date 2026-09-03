@@ -129,70 +129,26 @@ def check_redevelopment_boolean_gate() -> None:
 
 
 def check_centerline_width_buffer() -> None:
+    """도로폭은 TL_SPRD_MANAGE ROAD_BT만 사용하고 프론트에서 중심선 버퍼를 만든다."""
     assert app._road_width_m({"road_bt": "8.0m"}) == 8.0
-    line = LineString([(126.977, 37.565), (126.978, 37.565)])
-    polygon = app._centerline_road_polygon(line, 8.0)
-    assert polygon is not None
-    assert polygon.geom_type in {"Polygon", "MultiPolygon"}
-    assert polygon.area > 0
+    html = Path(app.STATIC_DIR, "app.html").read_text(encoding="utf-8")
+    assert "function roadPolygonsFromCenterlines(manageFeatures)" in html
+    assert "turf.buffer(mf,w/2" in html
+    assert "_width_source:'도로중심선 ROAD_BT 기반 개략범위'" in html
 
 
 def check_bundled_road_dataset() -> None:
-    """배포본의 서울 도로 원본·좌표계·공간검색이 실제로 작동해야 한다.
-
-    번들 road_seoul.zip은 TL_SPRD_RW(실폭도로) 또는 TL_SPRD_MANAGE(도로중심선+ROAD_BT)
-    둘 중 하나일 수 있다 — 정확한 건수를 특정 원본에 고정하지 않고, "실제로 로드되고
-    공간검색이 작동하는지"만 검증한다.
-    """
-    road_zip = app._road_zip_path()
-    assert road_zip and Path(road_zip).name == "road_seoul.zip"
-    assert Path(road_zip).stat().st_size > 5_000_000
-    app._road_spatial_layers.cache_clear()
-    layers = app._road_spatial_layers()
-    assert layers["available"] is True
-    assert layers["road_mode"] in {"real_width_polygon", "centerline_width_buffer"}
-    assert layers["rw_count"] > 0
-    road = layers["rw"][0]["geometry"]
-    point = road.representative_point()
-    site = box(point.x - 0.00002, point.y - 0.00002, point.x + 0.00002, point.y + 0.00002)
-    result = app.analyze_road_intersections(site.__geo_interface__)
-    assert result["rw"]["features"]
-    assert result["metadata"]["road_mode"] == layers["road_mode"]
-
-
-def check_road_zip_pipeline() -> None:
-    """공식 도로중심선+폭원 ZIP 설치 시 서버 자동공간분석이 작동해야 한다."""
-    with tempfile.TemporaryDirectory() as tmp:
-        stem = Path(tmp, "TL_SPRD_MANAGE")
-        writer = shapefile.Writer(str(stem), shapeType=shapefile.POLYLINE)
-        writer.field("ROAD_BT", "N", size=8, decimal=1)
-        writer.line([[(126.9765, 37.5655), (126.9785, 37.5655)]])
-        writer.record(8.0)
-        writer.close()
-        zip_path = Path(tmp, "road_seoul.zip")
-        with zipfile.ZipFile(zip_path, "w") as archive:
-            for suffix in ("shp", "shx", "dbf"):
-                archive.write(stem.with_suffix(f".{suffix}"), f"TL_SPRD_MANAGE.{suffix}")
-
-        previous_crs = os.environ.get("ROAD_DATA_CRS")
-        os.environ["ROAD_DATA_CRS"] = "EPSG:4326"
-        try:
-            with patch.object(app, "_road_zip_path", return_value=str(zip_path)):
-                app._road_spatial_layers.cache_clear()
-                layers = app._road_spatial_layers()
-                assert layers["available"] is True
-                assert layers["road_mode"] == "centerline_width_buffer"
-                site = box(126.9770, 37.5653, 126.9780, 37.5657)
-                result = app.analyze_road_intersections(site.__geo_interface__)
-                assert result["rw"]["features"]
-                assert result["metadata"]["road_mode"] == "centerline_width_buffer"
-        finally:
-            app._road_spatial_layers.cache_clear()
-            if previous_crs is None:
-                os.environ.pop("ROAD_DATA_CRS", None)
-            else:
-                os.environ["ROAD_DATA_CRS"] = previous_crs
-
+    """대용량 도로 폴리곤 번들은 제거되고 TL_SPRD_MANAGE 실시간 조회만 남아야 한다."""
+    root = Path(app.BASE_DIR)
+    html = (root / "app.html").read_text(encoding="utf-8")
+    py = (root / "app.py").read_text(encoding="utf-8")
+    assert not (root / "road_seoul.zip").exists()
+    assert "/api/spatial/roads" not in html and "/api/spatial/roads" not in py
+    assert "/api/spatial/road-data-status" not in html and "/api/spatial/road-data-status" not in py
+    fetch = html[html.index("async function fetchRoadNetwork("):html.index("function roadDiagnosticModeLabel", html.index("async function fetchRoadNetwork("))]
+    assert "trySpatialLayerCandidates(['TL_SPRD_MANAGE','LT_C_SPRD_MANAGE']" in fetch
+    assert "road_polygons:derived" in fetch
+    assert "ROAD_BT가 없거나 유효하지 않은 구간은 폭원을 추정하지 않고 REVIEW" in fetch
 
 
 def check_age_annotation_reference_only() -> None:
@@ -254,7 +210,6 @@ def check_feedback_and_ui() -> None:
     assert "/api/spatial/renewal-intersections" in html
     assert "/api/spatial/development-intersections" in html
     assert "TL_SPRD_MANAGE" in html
-    assert "TL_SPRD_RW" in html
     assert "function candidateDisplayState(name,st=safeCandidateState(name))" in html
     assert "function candidateChangeOpportunity(name,st)" in html
     assert "r.hardGate==='AREA'" in html
@@ -630,8 +585,7 @@ def check_release_files() -> None:
     assert not list(root.glob("CHANGELOG_v2.5.0-r*.txt"))
     basic_zip = root / "basic_unit_seoul.zip"
     assert basic_zip.is_file() and basic_zip.stat().st_size > 10_000_000
-    road_zip = root / "road_seoul.zip"
-    assert road_zip.is_file() and road_zip.stat().st_size > 5_000_000
+    assert not (root / "road_seoul.zip").exists()
     # 기준본에 포함된 공식 근거 PDF 8종이 배포 ZIP에서 누락되지 않도록 고정한다.
     assert len(list(root.glob("*.pdf"))) >= 8
     structured = root / "static" / "app.html"
@@ -650,8 +604,6 @@ def _release_heavy_spatial_cache(kind: str) -> None:
     elif kind == "development":
         app._development_spatial_index.cache_clear()
         app._development_reference_data.cache_clear()
-    elif kind == "road":
-        app._road_spatial_layers.cache_clear()
     gc.collect()
 
 
@@ -850,7 +802,6 @@ def check_purpose_filter_and_frontage_facts() -> None:
     assert "const SHELL_SCHEMES=new Set(['urban_innovation_zone','facility_complex_zone','mixed_use_zone'])" in html
     assert "fact_key:'redevelopmentFrontage6Fact'" in html
     assert "trySpatialLayerCandidates(['TL_SPRD_MANAGE','LT_C_SPRD_MANAGE']" in html
-    assert "trySpatialLayerCandidates(['TL_SPRD_RW'" not in html
     assert "사업진입조건 확인을 위한 개략적 추정치로, 현장조서 및 도면검토를 통해 보완될 수 있음" in html
     assert "const roadQuality='ESTIMATE'" in html
     assert "analysisState.quality.road=roadQuality" in html
@@ -1215,20 +1166,10 @@ def check_r11_data_recovery_fix1() -> None:
 
     fetch_block = html[html.index("async function fetchRoadNetwork("):html.index("async function analyzeRoadAccess()", html.index("async function fetchRoadNetwork("))]
     assert "TL_SPRD_MANAGE" in fetch_block and "ROAD_BT" in fetch_block
-    # R31: 서버 내장 TL_SPRD_RW 실폭도로 polygon을 1순위 Fact로 쓴다(면적/둘레로 폭을
-    # 다시 추정할 필요 없이 형상 자체가 실제 도로면이다). 내장 rw/manage가 둘 다
-    # 비었을 때만 VWorld 실시간 TL_SPRD_MANAGE 중심선으로 fallback한다.
-    assert "'/api/spatial/roads'" in fetch_block
-    assert fetch_block.index("'/api/spatial/roads'") < fetch_block.index("trySpatialLayerCandidates(['TL_SPRD_MANAGE'")
-    assert "fallback" in fetch_block
-    assert "bundled?.rw?.features" in fetch_block
-
-    annotate = html[html.index("function annotateRoadWidths"):html.index("function boundaryLines", html.index("function annotateRoadWidths"))]
-    # R31: TL_SPRD_RW에는 ROAD_BT 속성이 없어(폭이 형상 자체에 담김) 형상 기반 국부폭
-    # 추정을 쓴다 — 다만 대상지 인근으로 잘라낸 국부구간에만 적용해야 하므로
-    # estimateLocalRoadPolygonWidthMeters()를 거쳐야 하고, 전체 폴리곤 공식을 직접 쓰면 안 된다.
-    assert "estimateLocalRoadPolygonWidthMeters(f,activeGeometry)" in annotate
-    assert "estimateRoadPolygonWidthMeters(f)" not in annotate
+    # 도로 Fact는 VWorld TL_SPRD_MANAGE ROAD_BT 단일 경로를 사용한다.
+    assert "trySpatialLayerCandidates(['TL_SPRD_MANAGE','LT_C_SPRD_MANAGE']" in fetch_block
+    assert "road_polygons:derived" in fetch_block
+    assert "ROAD_BT가 없거나 유효하지 않은 구간은 폭원을 추정하지 않고 REVIEW" in fetch_block
 
     ranking = html[html.index("function autoRecommendationTop3()"):html.index("function numOrNull", html.index("function autoRecommendationTop3()"))]
     assert "if(analysisState.fact_store_error)return [];" in ranking
@@ -1241,7 +1182,7 @@ def check_r11_data_recovery_fix1() -> None:
     assert "numOrNull(document.getElementById('area_m2')?.value)" not in preview
     assert "Fact Store 오류로 선순위 산정을 중단" in preview
 
-    assert 'TL_SPRD_RW excluded from cadastral arithmetic' in py
+    assert 'VWorld TL_SPRD_MANAGE + ROAD_BT for cadastral/frontage calculations' in py
     assert '"scheme_module_api": "2026-09-02-r22-station-area-frontage-no-hierarchy"' in py
 
 
@@ -1284,7 +1225,7 @@ def check_r13_criterion_layer1() -> None:
     assert '"scheme_module_api": "2026-09-02-r22-station-area-frontage-no-hierarchy"' in py
 
 def check_r14_street_block_auto() -> None:
-    """Current invariant: street-block UI exposes area relations and never treats TL_SPRD_RW as the block engine."""
+    """가로구역 후보는 기초단위구 + TL_SPRD_MANAGE ROAD_BT만 사용한다."""
     root = Path(app.BASE_DIR)
     html = (root / "app.html").read_text(encoding="utf-8")
     py = (root / "app.py").read_text(encoding="utf-8")
@@ -1294,11 +1235,10 @@ def check_r14_street_block_auto() -> None:
     assert "async function analyzeStreetBlock(" in html
     assert "/api/spatial/street-block" in html
     assert "road_features:roadFeatures" in html
-    assert "경계생성에는 사용하지 않고 내부도로 면적·표시 보조에만 사용" in html
+    assert "TL_SPRD_MANAGE ROAD_BT만 사용" in html
     assert "deriveStreetBlockAnalysisScope" in html
     assert "retainedRoadFeatures" in html and "throughRoadCandidates" in html
     assert "_analyze_street_block_road_fallback" not in py
-    assert "no TL_SPRD_RW fallback" in py
 
 
 def check_r15_street_block_4m_conditional() -> None:
@@ -1308,7 +1248,6 @@ def check_r15_street_block_4m_conditional() -> None:
     py = (root / "app.py").read_text(encoding="utf-8")
     assert "road_min_width_m = 4.0" in py
     assert "TL_SPRD_MANAGE ROAD_BT" in py
-    assert "uses_real_width_polygon':False" in py
     assert "ROAD_BT의 4m는 자동후보 병합을 위한 엔진 운영기준일 뿐 법정 가로구역 도로요건과 별개" in html
     assert "철도|하천" in py
     assert "LT_C_UPISUQ151" not in html[html.index("function streetBlockBarrierSpec"):html.index("async function fetchStreetBlockFacilityBarriers")]
@@ -1325,7 +1264,7 @@ def check_r15_street_block_4m_conditional() -> None:
 
 
 def check_r16_basic_unit_street_block() -> None:
-    """Current invariant: SGIS basic units are the candidate geometry; no real-width-road polygonization fallback."""
+    """SGIS 기초단위구가 후보 geometry이고 도로는 TL_SPRD_MANAGE ROAD_BT만 쓴다."""
     root = Path(app.BASE_DIR)
     html = (root / "app.html").read_text(encoding="utf-8")
     py = (root / "app.py").read_text(encoding="utf-8")
@@ -1350,7 +1289,6 @@ def check_r16_basic_unit_street_block() -> None:
     if not app._basic_unit_spatial_layers().get("available"):
         assert result["status"] == "unavailable", result
         assert md.get("fallback_used") is False
-        assert md.get("uses_real_width_polygon") is False
 
 
 def check_r17_spatial_relation_road_facts() -> None:
@@ -1383,9 +1321,9 @@ def check_r17_spatial_relation_road_facts() -> None:
     # explicit committee path is PASS + caveat, not data-unknown REVIEW.
     station_check = html[html.index("function checkStationComplexFromFacts"):html.index("function longtermSpatialFacts", html.index("function checkStationComplexFromFacts"))]
     assert "blockStatus='PASS';blockConditional=true" in station_check
-    # street-block API accepts centerline features and excludes real-width polygons.
+    # street-block API accepts TL_SPRD_MANAGE centerline features.
     assert "road_features: List[Dict[str, Any]]" in py
-    assert "TL_SPRD_RW 실폭도로는 지적/기초단위구 경계와 위상정합을 전제할 수 없으므로" in py
+    assert "도로폭은 TL_SPRD_MANAGE의 ROAD_BT" in py
     assert "_road_spatial_layers()" not in py[py.index("def _street_block_from_basic_units"):py.index("def analyze_street_block")]
     smallscale = html[html.index("function smallscaleSpatialFacts(store)"):html.index("function checkSmallscaleFromFacts")]
     assert "analysis_scope_m2" in smallscale and "retained_road_area_m2" in smallscale
@@ -1400,7 +1338,7 @@ def check_r17_spatial_relation_road_facts() -> None:
 
 
 def check_r18_bundled_basic_unit_and_frontage_caveat() -> None:
-    """R18: actual Seoul basic-unit SHP is bundled and frontage limitations remain visible without real-width-road arithmetic."""
+    """서울 기초단위구 번들과 TL_SPRD_MANAGE 기반 접도 단서를 검증한다."""
     root = Path(app.BASE_DIR)
     basic_zip = root / "basic_unit_seoul.zip"
     assert basic_zip.is_file() and basic_zip.stat().st_size > 10_000_000
@@ -1411,7 +1349,7 @@ def check_r18_bundled_basic_unit_and_frontage_caveat() -> None:
     assert layers.get("base_date") == "20250630", layers.get("base_date")
     assert layers.get("source_crs_note") == "SGIS 제공기준 EPSG:5179 · PRJ 우선"
     # End-to-end: use one real bundled basic-unit polygon and a synthetic ROAD_BT centerline
-    # exactly along its outer boundary. The result must resolve to that seed without TL_SPRD_RW.
+    # exactly along its outer boundary. The result must resolve to that seed with ROAD_BT centerline input.
     unit = layers["rows"][1234]["geometry"]
     poly = unit if unit.geom_type == "Polygon" else max(unit.geoms, key=lambda g: g.area)
     point = poly.representative_point()
@@ -1423,13 +1361,12 @@ def check_r18_bundled_basic_unit_and_frontage_caveat() -> None:
     }
     result = app.analyze_street_block(mapping(site), [], [boundary_road], 500)
     assert result["status"] in {"resolved", "partial"}, result
-    assert result["metadata"].get("uses_real_width_polygon") is False
     assert result["metadata"].get("merged_basic_unit_count") == 1
     html = (root / "app.html").read_text(encoding="utf-8")
     assert "접도 분석 단서" in html
     assert "지적측량성과도·도로대장·결정도서 및 현장조사" in html
     assert "analysis_caveat" in html
-    assert "TL_SPRD_RW 실폭도로는 지적 연산에 사용하지 않습니다" in html
+    assert "도로폭은 TL_SPRD_MANAGE ROAD_BT만 사용합니다" in html
     changelog = (root / "CHANGELOG_v2.5.0.txt").read_text(encoding="utf-8")
     assert "[v2.5.0-r18" in changelog
     assert not list(root.glob("CHANGELOG_v2.5.0-r*.txt"))
@@ -1454,9 +1391,8 @@ def check_r19_activation_arterial_linear_commercial() -> None:
         "공개 용도지역 도형의 면적·둘레로 띠 폭을 역산",
     ):
         assert marker in html, marker
-    # 실폭도로로 노선형 상업지역이나 가로구역을 만들지 않는다.
+    # 노선형 상업지역·가로구역은 TL_SPRD_MANAGE와 용도지역/기초단위구 Fact로 분석한다.
     block=html[html.index('async function analyzeActivationArterial()'):html.index('async function analyzeStreetBlock(')]
-    assert 'TL_SPRD_RW' not in block
     assert "fetchSpatialFeaturesBrowser('LT_C_UQ111'" in block
     assert "trySpatialLayerCandidates(['TL_SPRD_MANAGE','LT_C_SPRD_MANAGE']" in block
     assert 'ACTIVATION_LINEAR_COMMERCIAL_ROADS' not in html
@@ -1497,9 +1433,7 @@ def check_r21_single_boundary_sequential_diagnostics() -> None:
         "async function fetchBackendJson",
         "JSON 아님",
         "선행 ROAD_BT 미확보 · 분석 미실행",
-        "/api/spatial/road-data-status",
-        # R31: RW 실폭도로를 1순위로 쓰도록 원칙이 바뀌었다 — 이 문구 대신 새 원칙 문구를 확인한다.
-        "bundled?.rw?.features",
+        "ROAD_BT가 없거나 유효하지 않은 구간은 폭원을 추정하지 않고 REVIEW",
     ):
         assert marker in html, marker
     finalize=html[html.index("function finalizeAnalysisGeometryFromSelectedParcels()"):html.index("const parcelFeatureMap", html.index("function finalizeAnalysisGeometryFromSelectedParcels()"))]
@@ -1519,13 +1453,10 @@ def check_r21_single_boundary_sequential_diagnostics() -> None:
         "def _release_heavy_analysis_cache(kind: str)",
         '_release_heavy_analysis_cache("renewal")',
         '_release_heavy_analysis_cache("development")',
-        '@app.get("/api/spatial/road-data-status")',
-        '"fact_status"] = "REAL_WIDTH_ONLY"',
     ):
         assert marker in py, marker
-    # TL_SPRD_RW는 가로구역 지적연산에 사용하지 않는 원칙 유지.
     block=py[py.index('def analyze_street_block('):py.index('@app.post("/api/spatial/street-block")')] if 'def analyze_street_block(' in py else py
-    assert "TL_SPRD_RW" not in block or "사용하지" in block
+    assert "TL_SPRD_MANAGE ROAD_BT" in block
 
 
 
@@ -2116,59 +2047,6 @@ def check_three_legal_road_groups() -> None:
     assert "40% 이하" in frontage and "20% 이하" in frontage
 
 
-def check_r31_road_local_width_safety_margin() -> None:
-    """R31 도로패치: TL_SPRD_RW 실폭도로 polygon을 1순위로 쓰되(manage=0 버그 수정),
-    폭 추정은 폴리곤 전체가 아니라 대상지 인근 국부구간만 잘라서 하고, 추정치가
-    법정 경계값(8m/20m)에 바짝 붙으면 확정판정하지 않는지 확인한다.
-    """
-    html = Path(app.BASE_DIR, "app.html").read_text(encoding="utf-8")
-
-    # 프론트가 실제 데이터가 있는 rw 키를 읽는지(예전엔 manage만 읽어서 항상 0건이었음).
-    fetch0 = html.index("async function fetchRoadNetwork(")
-    fetch1 = html.index("async function analyzeRoadAccess()", fetch0)
-    fetch_block = html[fetch0:fetch1]
-    assert "bundled?.rw?.features" in fetch_block
-    assert "bundled?.manage?.features" in fetch_block
-    assert fetch_block.index("bundled?.rw?.features") < fetch_block.index("bundled?.manage?.features")
-    assert "roadPolygonsFromRealWidth(rwFeats,mg)" in fetch_block
-
-    # 국부폭 추정: 폴리곤 전체가 아니라 대상지 인근으로 잘라낸 조각에서 폭을 잰다.
-    assert "function estimateLocalRoadPolygonWidthMeters(roadFeature,siteFeature,zoneRadiusM" in html
-    local0 = html.index("function estimateLocalRoadPolygonWidthMeters(roadFeature,siteFeature,zoneRadiusM")
-    local1 = html.index("function isNearRoadWidthThreshold", local0)
-    local_block = html[local0:local1]
-    assert "turf.buffer(siteFeature,zoneRadiusM" in local_block
-    assert "turf.intersect(" in local_block
-    assert "estimateRoadPolygonWidthMeters(clipped)" in local_block
-
-    # annotateRoadWidths()가 ROAD_BT 없는 RW polygon에 국부폭 추정을 쓰고, 추정치임을 표시한다.
-    annotate0 = html.index("function annotateRoadWidths(rwFeatures,manageFeatures)")
-    annotate1 = html.index("function boundaryLines", annotate0)
-    annotate_block = html[annotate0:annotate1]
-    assert "estimateLocalRoadPolygonWidthMeters(f,activeGeometry)" in annotate_block
-    assert "p._width_estimated=estimated" in annotate_block
-
-    # roadPolygonsFromRealWidth: RW는 이미 폴리곤이라 중심선처럼 버퍼링하지 않는다.
-    assert "function roadPolygonsFromRealWidth(rwFeatures,manageFeatures)" in html
-    rw0 = html.index("function roadPolygonsFromRealWidth(rwFeatures,manageFeatures)")
-    rw1 = html.index("function roadPolygonsFromCenterlines(manageFeatures)", rw0)
-    rw_block = html[rw0:rw1]
-    assert "annotateRoadWidths(polygonFeatures,manageFeatures" in rw_block
-    assert "turf.buffer(mf,w/2" not in rw_block  # 중심선 버퍼링 로직을 그대로 복붙하지 않았는지
-
-    # 안전마진: 추정치가 8m/20m 경계값에 바짝 붙으면 has8/has20Width를 단정하지 않는다
-    # (ROAD_BT 같은 공부상 속성값에는 이 마진을 적용하지 않음 — width_estimated 조건 필수).
-    assert "const ROAD_WIDTH_SAFETY_MARGIN_M=0.5" in html
-    assert "function isNearRoadWidthThreshold(widthM,thresholdM)" in html
-    stats0 = html.index("function siteRoadNetworkStats(site,roads)")
-    stats1 = html.index("function setRoadNetworkAutoValue", stats0)
-    stats_block = html[stats0:stats1]
-    assert "g.width_estimated&&isNearRoadWidthThreshold(Number(g.width),8)" in stats_block
-    assert "g.width_estimated&&isNearRoadWidthThreshold(Number(g.width),20)" in stats_block
-    assert "has8Uncertain?null:faceCountAt(8)>0" in stats_block
-    assert "has20Uncertain?null:faceCountAt(20)>0" in stats_block
-
-
 def main() -> None:
     _run("measurement", check_measurement)
     _run("renewal spatial", check_renewal_server_intersection)
@@ -2179,7 +2057,6 @@ def main() -> None:
     _run("redevelopment boolean gate", check_redevelopment_boolean_gate)
     _run("centerline width buffer", check_centerline_width_buffer)
     _run("bundled road dataset", check_bundled_road_dataset)
-    _release_heavy_spatial_cache("road")
     _run("age annotation reference", check_age_annotation_reference_only)
     _run("feedback + UI", check_feedback_and_ui)
     _run("four independent modules", check_four_independent_scheme_modules)
@@ -2220,7 +2097,6 @@ def main() -> None:
     _run("r24 candidate feasibility density ui", check_r24_candidate_feasibility_density_ui)
     _run("r22 growth frontage engine", check_r22_growth_frontage_engine)
     _run("three legal road groups", check_three_legal_road_groups)
-    _run("r31 road local width safety margin", check_r31_road_local_width_safety_margin)
     _run("release files", check_release_files)
     print("v2.5.0 regression checks: PASS")
 

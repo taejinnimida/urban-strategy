@@ -98,6 +98,25 @@ vm.runInContext(sourceBetween('showCandidateBasis', 'scrollToSchemeDetail'), sho
 showContext.showCandidateBasis('safe');
 assert(commonRouteName === 'safe', '안심주택 카드가 공통 팝업 함수를 호출하지 않음');
 
+// '결과 정교화 — 선택사항'이 비어 있어도 안심주택 Rule Fact는 생성·보존한다.
+let evaluationCount = 0;
+const moduleContext = {
+  console, schemeNames: { safe: '안심주택' }, schemeResults: {}, latestSchemeModuleResults: {}, activeRuleScheme: '',
+  purposeEngineGate: () => ({ enabled: false, reason: '주거(임대) 선택 시 추천 반영' }),
+  schemeRunIssue: () => ({}), schemeModuleReviewResult: () => ({ overall: 'REVIEW' }),
+};
+vm.createContext(moduleContext);
+vm.runInContext(sourceBetween('evaluateSchemeModulesSafely', 'runAllSchemeChecks'), moduleContext);
+const optionFreeStore = { scheme_specific: {} };
+moduleContext.evaluateSchemeModulesSafely(optionFreeStore, ['safe'], (_name, store) => {
+  evaluationCount += 1;
+  store.scheme_specific.safe = { generated: true };
+  return { overall: 'REVIEW', rows: [], facts: store.scheme_specific.safe };
+});
+assert(evaluationCount === 1, '선택사항 미입력 시 안심주택 Rule Module이 실행되지 않음');
+assert(optionFreeStore.scheme_specific.safe?.generated, '선택사항 미입력 시 안심주택 Fact가 삭제됨');
+assert(moduleContext.schemeResults.safe?.purpose_refinement_required === true, '추천 정교화 조건 표시 누락');
+
 // 실제 상세 렌더 함수가 출입구·250m·350m 값을 오류 없이 출력하는지 확인한다.
 const popupBody = { innerHTML: '' };
 const popupTitle = { textContent: '' };
@@ -117,7 +136,7 @@ const popupFacts = {
 };
 const popupContext = {
   document: { getElementById: id => id === 'schemeDetailPopupTitle' ? popupTitle : id === 'schemeDetailPopupBody' ? popupBody : null },
-  schemeResults: { safe: { overall: 'REVIEW', rows: [], facts: popupFacts } },
+  schemeResults: { safe: { overall: 'REVIEW', rows: [], facts: popupFacts, purpose_refinement_required: true, purpose_refinement_reason: '주거(임대) 선택 시 추천 반영' } },
   latestSchemeModuleResults: {}, latestSiteFactStore: { site: { address: '서울시 테스트' }, scheme_specific: { safe: popupFacts } }, analysisState: {},
   escHtml: v => String(v ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;'),
   fmtSchemeArea: v => v == null ? '-' : `${v}㎡`, fmtSchemePct: v => v == null ? '-' : `${Number(v).toFixed(1)}%`,
@@ -130,5 +149,6 @@ popupContext.renderSafeHousingDetailPopup();
 assert(popupBody.innerHTML.includes('250m 일반경로 포함률'), '팝업 250m 포함률 누락');
 assert(popupBody.innerHTML.includes('350m 예외 포함률'), '팝업 350m 포함률 누락');
 assert(popupBody.innerHTML.includes('72.1%') && popupBody.innerHTML.includes('출입구 연결'), '팝업 출입구 Fact 출력 누락');
+assert(popupBody.innerHTML.includes('결과 정교화 선택사항'), '선택사항 안내와 기초검토서가 함께 표시되지 않음');
 
-console.log('safe housing popup + entrance 350m regression: PASS');
+console.log('base review independent of options + safe housing popup + entrance 350m regression: PASS');
