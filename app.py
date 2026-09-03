@@ -1086,25 +1086,70 @@ def _resolve_medical_facility_boundary(item: Dict[str, Any], site_wgs) -> Dict[s
         point_parcel = {"status": "error", "feature": None, "pnu": None}
 
     if category == "public_health_center":
-        if point_parcel.get("status") != "resolved" or not point_parcel.get("feature"):
-            note = "공식 위치점이 지적경계에 걸려 필지 확정 불가" if point_parcel.get("status") == "ambiguous" else "공식 위치점 소재 지적필지 미확인"
-            if point_error: note = f"공식 위치점 소재 지적필지 조회 실패: {point_error}"
-            return {"boundary_status": "REVIEW", "boundary_basis": "BOUNDARY_NOT_RESOLVED", "boundary_note": note, "auto_pass_eligible": False, "parcel_lookup_status": point_parcel.get("status")}
-        feature = point_parcel["feature"]
-        pnu = point_parcel.get("pnu")
+        # 1순위는 서울시 공식 위치점의 실제 포함 지적필지다.
+        # 다만 공공데이터 좌표가 건물 출입구/도로경계 쪽에 찍혀 연속지적과 수 m 어긋나는
+        # 사례가 있어, 최신 인허가 자료의 공식 지번주소를 2순위 확정 경로로 사용한다.
+        # 최근접 필지 추정은 하지 않으며, 주소검색 좌표가 실제 포함되는 필지를 다시 확인한다.
+        parcel_basis = "official_point"
+        resolved_parcel = point_parcel
+        address_lookup = None
+        if (point_parcel.get("status") != "resolved" or not point_parcel.get("feature")) and not stale_reference:
+            parcel_address = str(item.get("parcel_address") or item.get("address") or "").strip()
+            if parcel_address:
+                try:
+                    address_lookup = _vworld_parcel_by_address(parcel_address)
+                except Exception as exc:
+                    address_lookup = {"status": "error", "feature": None, "pnu": None, "reason": str(exc)}
+                if address_lookup.get("status") == "resolved" and address_lookup.get("feature"):
+                    resolved_parcel = address_lookup
+                    parcel_basis = "official_license_address"
+
+        if resolved_parcel.get("status") != "resolved" or not resolved_parcel.get("feature"):
+            point_status = point_parcel.get("status")
+            note = "공식 위치점이 지적경계에 걸려 필지 확정 불가" if point_status == "ambiguous" else "공식 위치점 소재 지적필지 미확인"
+            if point_error:
+                note = f"공식 위치점 소재 지적필지 조회 실패: {point_error}"
+            if address_lookup is not None:
+                addr_status = address_lookup.get("status")
+                addr_reason = address_lookup.get("reason")
+                note += f" / 공식 지번주소 보조조회 {addr_status or '실패'}"
+                if addr_reason:
+                    note += f": {addr_reason}"
+            return {
+                "boundary_status": "REVIEW", "boundary_basis": "BOUNDARY_NOT_RESOLVED",
+                "boundary_note": note, "auto_pass_eligible": False,
+                "parcel_lookup_status": point_status,
+                "parcel_address_lookup_status": address_lookup.get("status") if isinstance(address_lookup, dict) else None,
+            }
+
+        feature = resolved_parcel["feature"]
+        pnu = resolved_parcel.get("pnu")
         metrics = _medical_boundary_metrics(site_wgs, feature["geometry"])
         if stale_reference:
             return {
                 "boundary_status": "REVIEW", "boundary_basis": "CADASTRAL_PARCEL_FROM_STALE_REFERENCE_POINT",
                 "boundary_basis_label": "2023 보조 위치점 소재 지적필지(참고)", "facility_boundary_geometry": feature["geometry"],
                 "boundary_note": "2023년 일회성 보조 위치자료이므로 지적경계를 복원해도 법정 PASS에는 사용하지 않음",
-                "primary_pnu": pnu, "parcel_count": 1, "auto_pass_eligible": False, **metrics,
+                "primary_pnu": pnu, "parcel_count": 1, "auto_pass_eligible": False,
+                "parcel_candidate_basis": parcel_basis, **metrics,
             }
+
+        if parcel_basis == "official_license_address":
+            return {
+                "boundary_status": "CONFIRMED", "boundary_basis": "CADASTRAL_PARCEL_FROM_OFFICIAL_ADDRESS",
+                "boundary_basis_label": "보건소 공식 지번주소 소재 지적필지", "facility_boundary_geometry": feature["geometry"],
+                "boundary_note": "공식 위치점의 지적 포함관계가 불명확하여 서울시 최신 인허가 지번주소를 VWorld 주소검색 후 실제 포함 지적필지로 재확인",
+                "primary_pnu": pnu, "parcel_count": 1, "auto_pass_eligible": True,
+                "parcel_candidate_basis": parcel_basis,
+                "point_parcel_lookup_status": point_parcel.get("status"), **metrics,
+            }
+
         return {
             "boundary_status": "CONFIRMED", "boundary_basis": "CADASTRAL_PARCEL_FROM_OFFICIAL_POINT",
             "boundary_basis_label": "보건소 공식 위치점 소재 지적필지", "facility_boundary_geometry": feature["geometry"],
             "boundary_note": "서울시 공식 보건소 위치좌표가 포함되는 연속지적 필지경계를 시설부지로 적용",
-            "primary_pnu": pnu, "parcel_count": 1, "auto_pass_eligible": True, **metrics,
+            "primary_pnu": pnu, "parcel_count": 1, "auto_pass_eligible": True,
+            "parcel_candidate_basis": parcel_basis, **metrics,
         }
 
     parcel_candidates = []

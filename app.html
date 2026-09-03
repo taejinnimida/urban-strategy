@@ -3519,8 +3519,10 @@ function renderSafeMedicalSpatialStatus(){
   }
   set('spSafeMedicalState',safeMedicalAnalysis.loading?'조회 중':errorText?'API 확인필요':within.length?'350m Fact 확정':confirmed.length?'부지경계 확인':'경계 REVIEW');
   try{
-    const fg=L.featureGroup();for(const layer of [ccSafeMedicalBoundary,ccSafeMedicalPoints,ccSafeMedicalFacilitySites])layer.eachLayer(l=>fg.addLayer(l));
-    const b=fg.getBounds();if(b.isValid())ccSafeMedicalMini.fitBounds(b.pad(.18),{animate:false,maxZoom:16});
+    // 시설부지 350m 버퍼도 화면맞춤 범위에 포함한다. 점/부지만 기준으로 fitBounds하면
+    // 버퍼가 정상 생성돼도 미니맵 바깥으로 잘려 '범위가 안 보이는' 것처럼 보일 수 있다.
+    const fg=L.featureGroup();for(const layer of [ccSafeMedicalBoundary,ccSafeMedicalPoints,ccSafeMedicalFacilitySites,ccSafeMedicalBuffers])layer.eachLayer(l=>fg.addLayer(l));
+    const b=fg.getBounds();if(b.isValid())ccSafeMedicalMini.fitBounds(b.pad(.12),{animate:false,maxZoom:16});
   }catch(e){}
   setTimeout(()=>{try{ccSafeMedicalMini.invalidateSize(false);}catch(e){}},0);
 }
