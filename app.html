@@ -10108,9 +10108,6 @@ function purposeEngineGate(name){
   if(name==='safe' && purpose!=='housing_rental')return {enabled:false,reason:'안심주택은 목적사업 주거(임대) 선택 시에만 Rule Module 실행'};
   return {enabled:true,reason:''};
 }
-function purposeDisabledSchemeResult(name,reason){
-  return {module:'purpose_gate',facts:null,rows:[],overall:'REVIEW',density:{zone:'-',far:'-',contribution:'-'},strengths:[],risks:[reason],purpose_disabled:true,purpose_disabled_reason:reason};
-}
 function schemeModuleReviewResult(name,error,store){
   const label=schemeNames[name]||name;
   const message=String(error?.message||error||'알 수 없는 오류');
@@ -10149,9 +10146,14 @@ function evaluateSchemeModulesSafely(store,names=null,evaluator=evaluateSchemeMo
   for(const name of order){
     try{
       const engineGate=purposeEngineGate(name);
-      const result=engineGate.enabled?evaluator(name,store):purposeDisabledSchemeResult(name,engineGate.reason);
+      // '결과 정교화 — 선택사항'은 추천·순위 보정용이다. 선택값과 무관하게
+      // 모든 사업의 기초결과검토서에 필요한 Rule Fact는 항상 생성한다.
+      const result=evaluator(name,store);
+      if(!engineGate.enabled){
+        result.purpose_refinement_required=true;
+        result.purpose_refinement_reason=engineGate.reason;
+      }
       schemeResults[name]=result;
-      if(!engineGate.enabled)delete store.scheme_specific[name];
     }catch(e){
       activeRuleScheme='';
       const issue=schemeRunIssue('module',name,e);moduleErrors.push(issue);
@@ -13076,8 +13078,9 @@ function renderSafeHousingDetailPopup(){
   const store=latestSiteFactStore||analysisState.fact_store||null;
   const f=res?.facts||store?.scheme_specific?.safe||null;
   if(title)title.textContent='안심주택 기초검토서';
-  if(res?.purpose_disabled){body.innerHTML=`<div class="scheme-modal-note"><b>목적사업 필터</b> ${escHtml(res.purpose_disabled_reason||'안심주택은 주거(임대) 목적에서만 검토합니다.')} 현재 안심주택 Rule Module은 실행되지 않았습니다.</div>`;return;}
-  if(!f||!store){body.innerHTML='<div class="scheme-modal-note"><b>현황분석 필요</b> 먼저 검토하기를 실행하여 공간현황 Fact를 생성해 주세요. 팝업에서는 새 현황을 계산하지 않습니다.</div>';return;}
+  const refinementNotice=res?.purpose_refinement_required
+    ?`<div class="scheme-modal-note"><b>결과 정교화 선택사항</b> ${escHtml(res.purpose_refinement_reason||'목적사업을 주거(임대)로 선택하면 추천·우선순위 판정에 반영됩니다.')} 현재 선택값과 무관하게 아래 기초결과검토서는 정상 표시합니다.</div>`:'';
+  if(!f||!store){body.innerHTML=`${refinementNotice}<div class="scheme-modal-note"><b>현황분석 필요</b> 먼저 검토하기를 실행하여 공간현황 Fact를 생성해 주세요. 팝업에서는 새 현황을 계산하지 않습니다.</div>`;return;}
   const selected=f.location?.selected?.label||'입지유형 확인 필요';
   const station=f.location?.station||{};
   const stationName=station.station?.name||'-';
@@ -13096,7 +13099,7 @@ function renderSafeHousingDetailPopup(){
     schemeSpecificPlanRow(res,'공공기여 기준','공공기여 기준',density.contribution||null,'공공임대주택·공공시설 등 운영기준상 공공기여 조건 적용')
   ].join('');
   const steps=schemeSheetSteps([['사업대상지 검토','역세권형·간선도로변형·의료시설 중심지역형을 각각 판정'],['사전 자문','입지유형·용도지역·도로·배제조건 확인'],['촉진지구 지정 검토','규모와 사업유형에 따라 지구 지정·통합심의 경로 검토'],['건축·공급계획 수립','용도지역·밀도·공공기여·안심주택 공급계획 확정'],['통합심의·인허가','건축허가 또는 주택법상 사업계획승인 등'],['착공·공급','인허가 조건 및 공급기준 이행']]);
-  body.innerHTML=`<div class="activation-sheet"><div class="activation-sheet-title"><div><h3>안심주택</h3><p>서울특별시 안심주택 건립 및 운영기준 · 2026.08.03 제2차 개정 기준</p></div><div class="activation-feasibility"><span>추진 가능성</span><b class="${escHtml(res?.overall||'REVIEW')}">${escHtml(schemeSheetFeasibility(res?.overall||'REVIEW'))}</b></div></div>
+  body.innerHTML=`${refinementNotice}<div class="activation-sheet"><div class="activation-sheet-title"><div><h3>안심주택</h3><p>서울특별시 안심주택 건립 및 운영기준 · 2026.08.03 제2차 개정 기준</p></div><div class="activation-feasibility"><span>추진 가능성</span><b class="${escHtml(res?.overall||'REVIEW')}">${escHtml(schemeSheetFeasibility(res?.overall||'REVIEW'))}</b></div></div>
   <section class="activation-section"><h4>1. 현황</h4><table class="activation-table"><tbody>
     <tr><th>위치</th><td>${escHtml(store.site.address||'주소 확인 필요')}</td><th>면적</th><td>${escHtml(fmtSchemeArea(f.area?.m2))}</td></tr>
     <tr><th>용도지역</th><td>${escHtml(f.zoning?.current||'-')}</td><th>적용 입지유형</th><td>${escHtml(selected)}</td></tr>
