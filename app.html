@@ -6018,6 +6018,8 @@ async function applySelectedParcelsAsBoundary(){
   await Promise.allSettled([analyzeLandLedger(),analyzeBuildings()]);
   await analyzeBuildingHub();
   await analyzeRoadAccess();
+  await analyzeSafeMedicalReference();
+  renderSafeMedicalSpatialStatus();
   document.getElementById('result').innerHTML='<div class="empty">선택필지로 구역계를 갱신했습니다. 자동·수기 지표를 확인한 뒤 재개발 검토를 실행하세요.</div>';
 }
 
@@ -6583,30 +6585,21 @@ async function runAllAutoAnalyses(options={}){
     return {status:factComplete?((v.errors||[]).length?'partial':'fulfilled'):'partial',detail:`ROAD_BT ${v.road_count}건 · 접면 ${v.face_count??'-'}개 · 최대폭 ${v.max_width_m==null?'-':Number(v.max_width_m).toFixed(1)+'m'}${factComplete?'':' · 핵심 Fact 일부 미확보'}`};
   }});results.push(roadStep);
 
-  if(roadStep.status==='rejected'){
-    // 선행 도로 Fact가 없으면 60/90초를 더 기다리지 않는다. 미구현이 아니라 '선행자료 실패'로 명확히 종료한다.
-    markAnalysisProgress('노선형 상업지역','rejected','선행 도로 Fact 미확보 · 분석 미실행');
-    markAnalysisProgress('가로구역','rejected','선행 ROAD_BT 미확보 · 분석 미실행');
-    results.push({label:'노선형 상업지역',status:'rejected',reason:'선행 도로 Fact 미확보'});
-    results.push({label:'가로구역',status:'rejected',reason:'선행 ROAD_BT 미확보'});
-  }else{
-    results.push(await safeAnalysisStep('노선형 상업지역',async()=>{await analyzeActivationArterial();const m=activationArterialAnalysis.metadata||{};return {loaded:activationArterialAnalysis.loaded,status:activationArterialAnalysis.status,roads:activationArterialAnalysis.roads?.length||0,zones:activationArterialAnalysis.commercialZones?.length||0,errors:activationArterialAnalysis.errors?.length||0,warnings:activationArterialAnalysis.warnings?.length||0,source_roads:m.source_road_features||0,named_roads:m.named_road_features||0,path:activationArterialAnalysis.path||''};},60000,{classify:v=>{
-      if(!v?.loaded||v?.status==='error'||v?.status==='unavailable'||v?.status==='loading')return {status:'rejected',detail:'노선형 상업지역 Fact 미완료'};
-      if(v.source_roads===0)return {status:'partial',detail:'주변 도로 0건 · 후보 없음으로 확정하지 않음'};
-      if(v.named_roads===0)return {status:'partial',detail:`도로 ${v.source_roads}건 · 도로명 0건 · 자동대조 보류`};
-      const st=(v.errors||v.warnings)?'partial':'fulfilled';
-      return {status:st,detail:`도로 ${v.source_roads}건 · 도로명 ${v.named_roads}건 · 대상노선 ${v.roads}건 · 상업지역 ${v.zones}건${v.errors?` · 오류 ${v.errors}`:''}`};
-    }}));
-    results.push(await safeAnalysisStep('가로구역',analyzeStreetBlock,90000,{onTimeout:cancelStreetBlockAnalysis,classify:v=>{
-      const hasBlock=!!streetBlockAnalysis.blockFeature&&Number.isFinite(Number(streetBlockAnalysis.blockAreaM2))&&Number(streetBlockAnalysis.blockAreaM2)>0;
-      const hasRelation=Number.isFinite(Number(streetBlockAnalysis.siteBlockIntersectionM2))&&Number.isFinite(Number(streetBlockAnalysis.siteShareOfBlockPct))&&Number.isFinite(Number(streetBlockAnalysis.blockCoverageOfSitePct));
-      if(!v||['error','unavailable','unresolved','busy','cancelled','loading'].includes(String(v.status||''))||!hasBlock)return {status:'rejected',detail:`${v?.status||'미응답'} · 가로구역 polygon/면적 미확보`};
-      const partial=v.quality==='PARTIAL'||v.status==='partial'||!hasRelation||(streetBlockAnalysis.errors||[]).length>0;
-      return {status:partial?'partial':'fulfilled',detail:`${v.status} · ${Math.round(streetBlockAnalysis.blockAreaM2).toLocaleString('ko-KR')}㎡ · 대상지점유 ${streetBlockAnalysis.siteShareOfBlockPct==null?'-':Number(streetBlockAnalysis.siteShareOfBlockPct).toFixed(1)+'%'} · 대상지편입 ${streetBlockAnalysis.blockCoverageOfSitePct==null?'-':Number(streetBlockAnalysis.blockCoverageOfSitePct).toFixed(1)+'%'}`};
-    }}));
-    if(activationArterialAnalysis.loaded){try{updateActivationArterialBlockLink();}catch(e){console.warn('[activation-arterial] 가로구역 연계 재계산',e);}}
-  }
-
+  results.push(await safeAnalysisStep('노선형 상업지역',async()=>{await analyzeActivationArterial();const m=activationArterialAnalysis.metadata||{};return {loaded:activationArterialAnalysis.loaded,status:activationArterialAnalysis.status,roads:activationArterialAnalysis.roads?.length||0,zones:activationArterialAnalysis.commercialZones?.length||0,errors:activationArterialAnalysis.errors?.length||0,warnings:activationArterialAnalysis.warnings?.length||0,source_roads:m.source_road_features||0,named_roads:m.named_road_features||0,path:activationArterialAnalysis.path||''};},60000,{classify:v=>{
+    if(!v?.loaded||v?.status==='error'||v?.status==='unavailable'||v?.status==='loading')return {status:'rejected',detail:'노선형 상업지역 Fact 미완료'};
+    if(v.source_roads===0)return {status:'partial',detail:'주변 도로 0건 · 후보 없음으로 확정하지 않음'};
+    if(v.named_roads===0)return {status:'partial',detail:`도로 ${v.source_roads}건 · 도로명 0건 · 자동대조 보류`};
+    const st=(v.errors||v.warnings)?'partial':'fulfilled';
+    return {status:st,detail:`도로 ${v.source_roads}건 · 도로명 ${v.named_roads}건 · 대상노선 ${v.roads}건 · 상업지역 ${v.zones}건${v.errors?` · 오류 ${v.errors}`:''}`};
+  }}));
+  results.push(await safeAnalysisStep('가로구역',analyzeStreetBlock,90000,{onTimeout:cancelStreetBlockAnalysis,classify:v=>{
+    const hasBlock=!!streetBlockAnalysis.blockFeature&&Number.isFinite(Number(streetBlockAnalysis.blockAreaM2))&&Number(streetBlockAnalysis.blockAreaM2)>0;
+    const hasRelation=Number.isFinite(Number(streetBlockAnalysis.siteBlockIntersectionM2))&&Number.isFinite(Number(streetBlockAnalysis.siteShareOfBlockPct))&&Number.isFinite(Number(streetBlockAnalysis.blockCoverageOfSitePct));
+    if(!v||['error','unavailable','unresolved','busy','cancelled','loading'].includes(String(v.status||''))||!hasBlock)return {status:'rejected',detail:`${v?.status||'미응답'} · 가로구역 polygon/면적 미확보`};
+    const partial=v.quality==='PARTIAL'||v.status==='partial'||!hasRelation||(streetBlockAnalysis.errors||[]).length>0;
+    return {status:partial?'partial':'fulfilled',detail:`${v.status} · ${Math.round(streetBlockAnalysis.blockAreaM2).toLocaleString('ko-KR')}㎡ · 대상지점유 ${streetBlockAnalysis.siteShareOfBlockPct==null?'-':Number(streetBlockAnalysis.siteShareOfBlockPct).toFixed(1)+'%'} · 대상지편입 ${streetBlockAnalysis.blockCoverageOfSitePct==null?'-':Number(streetBlockAnalysis.blockCoverageOfSitePct).toFixed(1)+'%'}`};
+  }}));
+  if(activationArterialAnalysis.loaded){try{updateActivationArterialBlockLink();}catch(e){console.warn('[activation-arterial] 가로구역 연계 재계산',e);}}
   results.push(await safeAnalysisStep('주변 공간현황',refreshMiniContextFeatures,45000));
   markAnalysisProgress('사업판정','running');const schemeRun=runAllSchemeChecks();markAnalysisProgress('사업판정',schemeRun?.moduleErrors?.length?'rejected':'fulfilled',schemeRun?.moduleErrors?.length?`${schemeRun.moduleErrors.length}개 모듈 오류`:'독립 Rule Module 판정 완료');
   if(schemeRun?.moduleErrors?.length){const labels=schemeRun.moduleErrors.map(x=>x.label).join('·');results.push({label:`사업판정(${labels})`,status:'rejected',reason:schemeRun.moduleErrors.map(x=>x.message).join(' / ')});}
