@@ -1226,20 +1226,18 @@ def check_r13_criterion_layer1() -> None:
     assert '"scheme_module_api": "2026-09-02-r22-station-area-frontage-no-hierarchy"' in py
 
 def check_r14_street_block_auto() -> None:
-    """가로구역 후보는 기초단위구 + TL_SPRD_MANAGE ROAD_BT만 사용한다."""
+    """사업구역·가로구역 검증 UI와 조작적 공간 Fact가 존재해야 한다."""
     root = Path(app.BASE_DIR)
     html = (root / "app.html").read_text(encoding="utf-8")
-    py = (root / "app.py").read_text(encoding="utf-8")
     assert 'id="ccStreetBlockMiniMap"' in html
-    for dom_id in ("spStreetBlockState","spStreetBlockArea","spStreetBlockIntersection","spStreetBlockSiteShare","spStreetBlockCoverage","spStreetBlockRetainedRoad","spStreetBlockThroughRoad","spStreetBlockShare","spStreetBlockSiteStationShare","spStreetBlockRange","spStreetBlockPath"):
+    for dom_id in ("spStreetBlockState","spProjectAreaM2","spProjectAreaState","spStreetBlockCount","spStreetBlockTotalArea","spProjectEdgeRoads","spProjectEdgeFacilities","spProjectInternalFacilities","spStreetBlockReview","spStreetBlockTable"):
         assert f'id="{dom_id}"' in html
-    assert "async function analyzeStreetBlock(" in html
-    assert "/api/spatial/street-block" in html
-    assert "road_features:roadFeatures" in html
-    assert "TL_SPRD_MANAGE ROAD_BT만 사용" in html
-    assert "deriveStreetBlockAnalysisScope" in html
-    assert "retainedRoadFeatures" in html and "throughRoadCandidates" in html
-    assert "_analyze_street_block_road_fallback" not in py
+    assert "function buildProjectBoundaryCandidate()" in html
+    assert "function buildProjectStreetBlockValidation(projectFeature)" in html
+    assert "도로 최우선 외곽경계" in html
+    assert "1,500㎡를 초과할 때 제척" in html
+    assert "4m 미만 도로는 폐합" in html
+    assert "현재 화면은 범위 추출 가능성 검증용이며 기존 사업 판정엔진에는 아직 연결하지 않습니다" in html
 
 
 def check_r15_street_block_4m_conditional() -> None:
@@ -1249,7 +1247,8 @@ def check_r15_street_block_4m_conditional() -> None:
     py = (root / "app.py").read_text(encoding="utf-8")
     assert "road_min_width_m = 4.0" in py
     assert "TL_SPRD_MANAGE ROAD_BT" in py
-    assert "ROAD_BT의 4m는 자동후보 병합을 위한 엔진 운영기준일 뿐 법정 가로구역 도로요건과 별개" in html
+    assert "4m 미만 도로는 폐합" in html
+    assert "estimatePolygonShortWidthMeters" in html
     assert "철도|하천" in py
     assert "LT_C_UPISUQ151" not in html[html.index("function streetBlockBarrierSpec"):html.index("async function fetchStreetBlockFacilityBarriers")]
 
