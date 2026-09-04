@@ -1,3 +1,29 @@
+# GPT PATCH NOTES — R43 사업구역 건축선 추출·연결 실험
+
+기준본: `urban-strategy-v2.5.0-r42-project-boundary-building-line-ui.zip`
+앱 내부 버전: `2.5.0` 유지
+
+## 이번 수정
+- 가로구역 계산은 r42와 바이트 단위 함수 해시가 동일하도록 동결했다.
+- 사업구역은 가로구역과 별도 함수에서만 계산한다.
+- 검토경계 주변 연속지적 필지는 선택 여부와 무관하게 토지대장 지목을 추가 조회하여 `도로` 필지를 확인한다.
+- 사업구역 후보선은 지적 도로필지의 경계 중 대상지 중심 방향이 도로 밖으로 빠지는 **대지측 경계**를 사용한다.
+- 각 후보선은 검토구역 외곽선과의 거리와 방향차를 비교해 평행성이 낮은 선을 제외한다.
+- 검토구역 외곽 진행순서에 후보 건축선을 투영하고, 후보가 끊긴 구간은 인접 후보점끼리 직선 연결하여 폐합 폴리곤을 만든다.
+- 공원·녹지·광장·주차장·철도 등 도시계획시설은 사업구역 경계 생성에 사용하지 않는다.
+- ROAD_BT·계획도로는 사업구역 경계 생성이 아니라 진단 FACT로만 유지한다.
+- 건축선 후보가 부족하거나 자기교차/중첩검증을 통과하지 못하면 `REVIEW`로 두고 검토요청지를 임시 표시한다.
+- 검증 UI에 `건축선 후보 수 · 연결 수 · 검토경계 투영률`을 표시한다.
+
+## 회귀 확인
+- `buildProjectStreetBlockValidation()`은 r42와 SHA-256 동일: 가로구역 계산 미변경.
+- 인라인 JavaScript `node --check` PASS.
+- `python -m py_compile app.py regression_checks.py` PASS.
+- `check_spatial_evidence_maps`, `check_r14_street_block_auto`, `check_r15_street_block_4m_conditional` PASS.
+- 전체 회귀는 기존 기준본에 없는 사전협상 PDF를 요구하는 r10 검사에서 중단하며, 그 이전 항목은 모두 PASS.
+
+---
+
 # GPT PATCH NOTES — 사업구역·가로구역 완전 분리
 
 기준본: `urban-strategy-v2.5.0-r34-project-area-boundary-network-fix.zip`

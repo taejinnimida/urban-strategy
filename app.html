@@ -1873,7 +1873,7 @@ body.service-layout-ready>.shell{display:none!important}
 </div>
 <div class="spatial-tags" id="spStreetBlockLegend"><span>검은선=검토요청지</span><span>붉은 2점쇄선=사업구역</span><span>주황면=가로구역 후보</span><span>파랑면=가로구역 경계시설</span></div>
 <div class="road-condition-table-wrap" style="max-height:220px"><table class="road-condition-table"><thead><tr><th>가로구역</th><th>면적</th><th>사업구역 대비</th><th>추출근거</th><th>상태</th></tr></thead><tbody id="spStreetBlockTable"><tr><td colspan="5">검증 전</td></tr></tbody></table></div>
-<div class="spatial-caption"><b>공간 FACT 검증용</b> · 어떤 사업을 적용할지 정하기 전 단계이므로 <b>검토요청지 전체를 분석 프레임으로 먼저 유지</b>합니다. <b>사업구역은 가로구역과 별도 연산</b>하며 검토요청지 외곽의 <b>도로와 필지가 만나는 건축선 계열</b>을 따라 하나의 폐합 폴리곤으로 정제합니다. 외곽 도로 FACT 사이의 1m 이내 미세 단절은 GIS topology 오차로 보고 인접 경계를 연결하며, <b>사업구역 내부의 공원·녹지·광장·주차장·철도·학교·하천 등 기반시설은 사업구역 외곽선 생성에 사용하지 않습니다.</b> 가로구역은 <b>확인된 4m 이상 도로 가로망</b>으로 분할하고, 도로 외 도시계획시설은 검토경계 ±1m에 인접한 경우에만 가로구역 경계부 제척 후보로 사용합니다. 검토요청지 내부에 놓인 시설은 가로구역에서 빼지 않고 그대로 포함합니다. 도시계획시설 도로는 <b>도로등급·도로명·도로시설 코드가 확인된 도형만 계획도로 분할선으로 사용</b>하며, ‘기타도시시설’처럼 세부유형이 모호한 도형은 자동분할에서 제외하고 전문가 확인으로 남깁니다. <b>1m는 법정기준이 아니라 SHP·사용자 구역계 정합을 위한 GIS 허용오차</b>입니다. 현재 화면은 범위 추출 가능성 검증용이며 기존 사업 판정엔진에는 아직 연결하지 않습니다.</div>
+<div class="spatial-caption"><b>공간 FACT 검증용</b> · 어떤 사업을 적용할지 정하기 전 단계이므로 <b>검토요청지 전체를 분석 프레임으로 먼저 유지</b>합니다. <b>사업구역은 가로구역과 별도 연산</b>하며 지적상 도로필지의 경계 중 <b>대상지 안쪽 대지측 경계</b>이면서 검토구역 외곽선과 방향이 유사한 선을 <b>건축선 후보</b>로 추출합니다. 후보 건축선이 중간에 끊긴 구간은 검토구역의 진행방향을 기준으로 인접 후보선끼리 연결하여 하나의 폐합 사업구역 폴리곤을 생성하며, <b>사업구역 내부의 공원·녹지·광장·주차장·철도·학교·하천 등 기반시설은 사업구역 외곽선 생성에 사용하지 않습니다.</b> 가로구역은 <b>확인된 4m 이상 도로 가로망</b>으로 분할하고, 도로 외 도시계획시설은 검토경계 ±1m에 인접한 경우에만 가로구역 경계부 제척 후보로 사용합니다. 검토요청지 내부에 놓인 시설은 가로구역에서 빼지 않고 그대로 포함합니다. 도시계획시설 도로는 <b>도로등급·도로명·도로시설 코드가 확인된 도형만 계획도로 분할선으로 사용</b>하며, ‘기타도시시설’처럼 세부유형이 모호한 도형은 자동분할에서 제외하고 전문가 확인으로 남깁니다. <b>가로구역의 ±1m는 법정기준이 아니라 SHP·사용자 구역계 정합을 위한 GIS 허용오차</b>입니다. 현재 화면은 범위 추출 가능성 검증용이며 기존 사업 판정엔진에는 아직 연결하지 않습니다.</div>
 <div class="spatial-caption"><b>향후 판정원칙</b> · 이 화면에서 확보한 사업구역·가로구역 후보는 공통 공간 FACT로 보존하고, 실제 사업 판정에서는 각 제도 모듈이 필요한 범위·도로·면적 관계값만 독립적으로 가져가 RULE을 적용합니다. 자동추출 형상 자체가 법적 구역을 확정하는 것은 아니며 전문가 재확인 단서를 유지합니다.</div>
 <div class="spatial-mini-map" id="ccStreetBlockMiniMap"></div>
 </section>
@@ -2990,6 +2990,274 @@ function streetBlockBoundaryFacilityRelation(feature,site,toleranceM=STREET_BLOC
   }catch(e){}
   return out;
 }
+
+// R43: 사업구역 전용 지적 FACT 보강.
+// 검토구역 경계 주변 필지는 선택필지 여부와 무관하게 지목을 확인한다.
+// 연속지적 도형은 이미 parcelFeatureMap에 있으므로, 여기서는 사업구역 건축선 추출에 필요한
+// '도로' 지목 판별만 보강한다. 가로구역 계산에는 사용하지 않는다.
+function projectParcelLandCategory(feature){
+  const p=feature?.properties||{},l=p.land_ledger||{};
+  const candidates=[
+    l.lndcgrCodeNm,l.lndcgrNm,l.jimokNm,l.jimok,
+    p.lndcgrCodeNm,p.lndcgr_nm,p.LNDCGR_NM,p.jimok,p.jimok_nm,p.JIMOK_NM
+  ];
+  for(const v of candidates){
+    const n=normalizedLandCategory(v);
+    if(n)return n;
+  }
+  return normalizedLandCategory(parseJibunLandCategory(p.jibun||''));
+}
+function projectParcelIsRoad(feature){return projectParcelLandCategory(feature)==='도로';}
+
+async function enrichProjectBoundaryParcelCategories(site){
+  const out={candidate_count:0,requested_count:0,confirmed_count:0,failed_count:0,road_count:0};
+  if(!site?.geometry)return out;
+  let band=null;
+  try{
+    const shell=polygonOuterShellOnly(site)||site;
+    const line=turf.polygonToLine(shell);
+    band=turf.buffer(line,12,{units:'meters'});
+  }catch(e){}
+  const targets=[];
+  for(const [pnu,f] of parcelFeatureMap.entries()){
+    if(!f?.geometry||!/^[0-9]{19}$/.test(String(pnu)))continue;
+    let near=true;
+    if(band){try{near=turf.booleanIntersects(turf.feature(f.geometry),band);}catch(e){near=true;}}
+    if(!near)continue;
+    out.candidate_count++;
+    const p=f.properties||{},ledger=p.land_ledger||{};
+    const known=projectParcelLandCategory(f);
+    if(known && ledger._route!=='LP_PA_CBND_BUBUN'){
+      out.confirmed_count++;
+      if(known==='도로')out.road_count++;
+      continue;
+    }
+    if(p._project_boundary_ledger_checked===true){
+      if(known==='도로')out.road_count++;
+      continue;
+    }
+    targets.push([String(pnu),f]);
+  }
+  out.requested_count=targets.length;
+  if(targets.length){
+    const rows=await mapLimit(targets,5,async ([pnu,f])=>{
+      let rec=null;
+      try{rec=await fetchLandLedgerBrowser(pnu);}catch(e){}
+      const props=f.properties||{};
+      props._project_boundary_ledger_checked=true;
+      if(rec){
+        props.land_ledger=rec;
+        const oa=validPositiveNumber(rec.lndpclAr);
+        if(oa!=null){props.official_area_m2=oa;if(props._analysis_area_m2==null)props._analysis_area_m2=oa;}
+      }
+      f.properties=props;
+      return rec;
+    });
+    for(let i=0;i<targets.length;i++){
+      const f=targets[i][1],cat=projectParcelLandCategory(f);
+      if(rows[i])out.confirmed_count++;else out.failed_count++;
+      if(cat==='도로')out.road_count++;
+    }
+  }
+  return out;
+}
+
+function projectAngleDiff180(a,b){
+  let d=Math.abs(Number(a)-Number(b))%180;
+  if(d>90)d=180-d;
+  return d;
+}
+function projectLineSegmentBearing(seg){
+  try{
+    const c=seg?.geometry?.coordinates||[];
+    if(c.length<2)return null;
+    return turf.bearing(turf.point(c[0]),turf.point(c[c.length-1]));
+  }catch(e){return null;}
+}
+function projectCyclicDistance(a,b,total){
+  if(!(total>0))return Math.abs(Number(a||0)-Number(b||0));
+  const d=Math.abs(Number(a||0)-Number(b||0))%total;
+  return Math.min(d,total-d);
+}
+function projectPointToward(fromCoord,toCoord,meters){
+  try{
+    const a=turf.point(fromCoord),b=turf.point(toCoord);
+    const br=turf.bearing(a,b);
+    return turf.destination(a,meters,br,{units:'meters'});
+  }catch(e){return null;}
+}
+function projectBoundaryReference(site){
+  const shell=polygonOuterShellOnly(site)||site;
+  if(!shell?.geometry||shell.geometry.type!=='Polygon')return null;
+  const ring=(shell.geometry.coordinates?.[0]||[]).map(c=>[Number(c[0]),Number(c[1])]);
+  if(ring.length<4)return null;
+  const line=turf.lineString(ring);
+  const segments=turf.lineSegment(line).features||[];
+  const perimeterKm=turf.length(line,{units:'kilometers'});
+  return {shell,line,segments,perimeter_km:perimeterKm,perimeter_m:perimeterKm*1000};
+}
+function projectNearestBoundarySegmentInfo(point,ref){
+  const out={distance_m:Infinity,location_km:null,index:-1,bearing:null};
+  if(!point||!ref?.line)return out;
+  try{
+    const np=turf.nearestPointOnLine(ref.line,point,{units:'kilometers'});
+    out.distance_m=turf.distance(point,np,{units:'kilometers'})*1000;
+    out.location_km=Number(np?.properties?.location);
+    const idx=Number(np?.properties?.index);
+    if(Number.isFinite(idx)&&ref.segments[idx]){
+      out.index=idx;out.bearing=projectLineSegmentBearing(ref.segments[idx]);
+    }else{
+      let best=Infinity,bestIdx=-1;
+      for(let i=0;i<ref.segments.length;i++){
+        try{
+          const d=turf.pointToLineDistance(point,ref.segments[i],{units:'kilometers'})*1000;
+          if(d<best){best=d;bestIdx=i;}
+        }catch(e){}
+      }
+      if(bestIdx>=0){out.index=bestIdx;out.bearing=projectLineSegmentBearing(ref.segments[bestIdx]);}
+    }
+  }catch(e){}
+  return out;
+}
+
+// R43: 지목상 도로필지의 '대상지 안쪽 면'만 건축선 후보로 추출한다.
+// 도로필지 바깥쪽 경계가 아니라, 도로에서 대상지 내부 토지로 넘어가는 측의 필지경계를 고른다.
+function extractProjectBuildingLineCandidates(site){
+  const ref=projectBoundaryReference(site);
+  if(!ref)return {features:[],road_parcel_count:0,parallel_rejected:0,outer_edge_rejected:0,max_distance_m:null,ref:null};
+  let center=null;try{center=turf.centerOfMass(ref.shell);}catch(e){try{center=turf.centroid(ref.shell);}catch(e2){}}
+  const requestArea=Math.max(1,turf.area(ref.shell));
+  const maxDist=Math.max(18,Math.min(45,Math.sqrt(requestArea)*0.32));
+  const angleLimit=38;
+  const candidates=[];
+  let roadCount=0,parallelRejected=0,outerRejected=0;
+  for(const [pnu,src] of parcelFeatureMap.entries()){
+    if(!src?.geometry||!projectParcelIsRoad(src))continue;
+    const road=turf.feature(src.geometry,Object.assign({},src.properties||{}));
+    let near=false;
+    try{
+      const bb=turf.buffer(ref.line,maxDist+8,{units:'meters'});
+      near=!!bb&&turf.booleanIntersects(road,bb);
+    }catch(e){near=true;}
+    if(!near)continue;
+    roadCount++;
+    let segs=[];
+    try{
+      const lines=turf.polygonToLine(road);
+      segs=turf.lineSegment(lines).features||[];
+    }catch(e){continue;}
+    for(const seg of segs){
+      let len=0;try{len=turf.length(seg,{units:'kilometers'})*1000;}catch(e){}
+      if(!(len>=0.8))continue;
+      const coords=seg.geometry?.coordinates||[];
+      if(coords.length<2)continue;
+      let mid=null;try{mid=turf.midpoint(turf.point(coords[0]),turf.point(coords[coords.length-1]));}catch(e){continue;}
+      const nearInfo=projectNearestBoundarySegmentInfo(mid,ref);
+      if(!(nearInfo.distance_m<=maxDist))continue;
+      const sb=projectLineSegmentBearing(seg);
+      if(sb==null||nearInfo.bearing==null)continue;
+      const ad=projectAngleDiff180(sb,nearInfo.bearing);
+      if(ad>angleLimit){parallelRejected++;continue;}
+
+      // 대상지 중심 방향으로 1m 이동했을 때 여전히 도로필지 내부면, 이 선은 도로의 바깥쪽 경계일 가능성이 높다.
+      // 중심 방향이 도로필지 밖으로 빠지는 선을 '도로-대지 측 건축선 후보'로 본다.
+      let innerSide=true;
+      if(center){
+        const probe=projectPointToward(mid.geometry.coordinates,center.geometry.coordinates,1.0);
+        if(probe){
+          try{innerSide=!turf.booleanPointInPolygon(probe,road,{ignoreBoundary:true});}catch(e){}
+        }
+      }
+      if(!innerSide){outerRejected++;continue;}
+
+      const f=cloneFeature(seg);
+      f.properties=Object.assign({},f.properties||{}, {
+        _project_building_line:true,_project_road_pnu:String(pnu),_project_length_m:len,
+        _project_site_distance_m:nearInfo.distance_m,_project_site_location_km:nearInfo.location_km,
+        _project_parallel_angle_deg:ad,_project_site_segment_index:nearInfo.index
+      });
+      candidates.push(f);
+    }
+  }
+  return {features:candidates,road_parcel_count:roadCount,parallel_rejected:parallelRejected,outer_edge_rejected:outerRejected,max_distance_m:maxDist,ref};
+}
+
+// 건축선 후보를 검토구역 진행방향에 투영하고, 후보가 끊긴 구간은 인접 후보점끼리 직선으로 연결한다.
+// 사업구역과 가로구역은 독립이며, 이 함수는 street_blocks/separators를 참조하지 않는다.
+function buildProjectPolygonFromBuildingLines(site,candidateResult){
+  const candidates=candidateResult?.features||[],ref=candidateResult?.ref||projectBoundaryReference(site);
+  const out={feature:null,connector_count:0,long_connector_count:0,candidate_count:candidates.length,snap_coverage_pct:0,status:'REVIEW',note:''};
+  if(!ref||candidates.length<2){out.note='건축선 후보 부족';return out;}
+  const perimeterM=Math.max(1,ref.perimeter_m||0);
+  const stepM=Math.max(2.5,Math.min(5,perimeterM/180));
+  const sampleCount=Math.max(8,Math.ceil(perimeterM/stepM));
+  const snapped=[];
+  const alongWindowM=Math.max(18,Math.min(55,perimeterM*.08));
+  for(let i=0;i<sampleCount;i++){
+    const locM=i/sampleCount*perimeterM;
+    let sample=null;try{sample=turf.along(ref.line,locM/1000,{units:'kilometers'});}catch(e){continue;}
+    let best=null,bestD=Infinity;
+    for(const c of candidates){
+      const cLocM=Number(c.properties?._project_site_location_km)*1000;
+      if(Number.isFinite(cLocM)&&projectCyclicDistance(locM,cLocM,perimeterM)>alongWindowM+Number(c.properties?._project_length_m||0))continue;
+      try{
+        const np=turf.nearestPointOnLine(c,sample,{units:'kilometers'});
+        const d=turf.distance(sample,np,{units:'kilometers'})*1000;
+        if(d<bestD){bestD=d;best=np;}
+      }catch(e){}
+    }
+    const maxSnap=Math.max(20,Math.min(48,Number(candidateResult?.max_distance_m||35)+5));
+    if(best&&bestD<=maxSnap)snapped.push({loc_m:locM,coord:best.geometry.coordinates,distance_m:bestD});
+    else snapped.push({loc_m:locM,coord:null,distance_m:null});
+  }
+  const valid=snapped.filter(x=>Array.isArray(x.coord));
+  out.snap_coverage_pct=snapped.length?valid.length/snapped.length*100:0;
+  if(valid.length<4||out.snap_coverage_pct<28){out.note=`건축선 투영 범위 부족 ${out.snap_coverage_pct.toFixed(1)}%`;return out;}
+
+  // null 구간은 제거한다. 남은 인접점 사이 직선이 곧 단절 건축선의 작위적 연결선이다.
+  const ring=[];
+  let prev=null;
+  const minMove=.25;
+  for(const v of valid){
+    if(!prev){ring.push(v.coord);prev=v;continue;}
+    let d=0;try{d=turf.distance(turf.point(prev.coord),turf.point(v.coord),{units:'kilometers'})*1000;}catch(e){}
+    if(d>=minMove){
+      const expectedAlong=projectCyclicDistance(prev.loc_m,v.loc_m,perimeterM);
+      // 후보가 없는 구간을 건너뛴 연결선. 12m를 넘으면 진단용 장거리 연결로 표시한다.
+      if(expectedAlong>stepM*1.8){out.connector_count++;if(d>12)out.long_connector_count++;}
+      ring.push(v.coord);
+      prev=v;
+    }
+  }
+  if(ring.length<3){out.note='건축선 연결점 부족';return out;}
+  let closeD=0;try{closeD=turf.distance(turf.point(ring[ring.length-1]),turf.point(ring[0]),{units:'kilometers'})*1000;}catch(e){}
+  if(closeD>=minMove){out.connector_count++;if(closeD>12)out.long_connector_count++;ring.push(ring[0]);}
+  else ring[ring.length-1]=ring[0];
+
+  let poly=null;
+  try{poly=turf.polygon([ring],{_project_building_line_polygon:true});}catch(e){out.note='건축선 폐합 폴리곤 생성 실패';return out;}
+  let area=0,overlap=0,kinkCount=0;
+  try{area=turf.area(poly);}catch(e){}
+  try{const x=turf.intersect(poly,site);if(x)overlap=turf.area(x);}catch(e){}
+  try{kinkCount=(turf.kinks(poly)?.features||[]).length;}catch(e){}
+  const requestArea=Math.max(1,turf.area(site));
+  const overlapPct=Math.min(100,overlap/requestArea*100);
+  if(!(area>20)||overlapPct<45||kinkCount>0){
+    out.note=`폐합 검증 REVIEW · 중첩 ${overlapPct.toFixed(1)}%${kinkCount?` · 자기교차 ${kinkCount}건`:''}`;
+    return out;
+  }
+  const shell=polygonOuterShellOnly(poly)||poly;
+  shell.properties=Object.assign({},shell.properties||{}, {
+    _project_building_line_polygon:true,_project_building_line_candidates:candidates.length,
+    _project_connector_count:out.connector_count,_project_long_connector_count:out.long_connector_count,
+    _project_snap_coverage_pct:out.snap_coverage_pct,_project_overlap_request_pct:overlapPct
+  });
+  out.feature=shell;
+  out.status=out.snap_coverage_pct>=55&&out.long_connector_count<=2?'CANDIDATE':'REVIEW';
+  out.note=`도로필지-대지측 건축선 ${candidates.length}개 · 검토경계 투영 ${out.snap_coverage_pct.toFixed(1)}% · 연결 ${out.connector_count}건${out.long_connector_count?`(장거리 ${out.long_connector_count})`:''}`;
+  return out;
+}
+
 function projectBoundaryRelation(feature,site,bandM=6){
   const out={clip:null,clip_area_m2:0,boundary_band_area_m2:0,boundary_share:0,touches_boundary:false};
   if(!feature?.geometry||!site?.geometry)return out;
@@ -3037,133 +3305,92 @@ function koreanBlockName(i){
 }
 
 function buildIndependentProjectAreaCandidate(site){
-  // R42: 사업구역은 가로구역과 완전히 독립 연산한다.
-  // 핵심 원칙: 검토요청지 외곽에서 '도로-필지 접면'을 이루는 외곽도로 FACT만 경계 정제에 사용한다.
-  // 공원·녹지·광장·주차장·철도·학교·하천 등 비도로 기반시설은 사업구역 내부/외곽 경계 생성에 사용하지 않는다.
+  // R43: 사업구역은 가로구역과 완전히 독립 연산한다.
+  // 1) 지적상 도로필지 경계에서 대상지 안쪽(대지측) 건축선 후보를 추출
+  // 2) 검토구역 외곽선과 방향이 유사한 후보만 사용
+  // 3) 검토구역 진행방향에 후보를 투영하고 끊긴 구간은 인접 건축선끼리 직선 연결
+  // 4) 공원·녹지·광장·주차장·철도 등 내부 기반시설은 사업구역 외곽선 생성에 사용하지 않음
   // street_blocks / separators / 가로구역 결과를 절대 참조하지 않는다.
-  if(!site?.geometry)return {feature:null,request_area_m2:null,boundary_cutters:[],boundary_excluded_area_m2:0,component_count:0,selected_component_index:-1,road_diagnostics:[],facility_diagnostics:[],status:'unavailable',note:'검토요청지 미확보'};
-  const requestArea=Math.max(0,turf.area(site));
-  const boundaryCutters=[],roadDiagnostics=[],facilityDiagnostics=[];
-  const cutterKeys=new Set();
-  const addBoundaryCutter=(clip,key,meta={})=>{
-    if(!clip?.geometry)return;
-    if(key&&cutterKeys.has(key))return;
-    if(key)cutterKeys.add(key);
-    const x=cloneFeature(clip);
-    x.properties=Object.assign({},x.properties||{},meta,{_project_boundary_cutter:true,_project_boundary_basis:'road_parcel_interface'});
-    boundaryCutters.push(x);
+  if(!site?.geometry)return {
+    feature:null,request_area_m2:null,boundary_cutters:[],boundary_excluded_area_m2:0,
+    component_count:0,selected_component_index:-1,road_diagnostics:[],facility_diagnostics:[],
+    building_line_candidates:[],building_line_count:0,connector_count:0,long_connector_count:0,
+    snap_coverage_pct:0,status:'unavailable',note:'검토요청지 미확보'
   };
+  const requestArea=Math.max(0,turf.area(site));
+  const candidateResult=extractProjectBuildingLineCandidates(site);
+  const polygonResult=buildProjectPolygonFromBuildingLines(site,candidateResult);
+  const contributedRoadPnus=new Set((candidateResult.features||[]).map(f=>String(f.properties?._project_road_pnu||'')).filter(Boolean));
 
-  // 1) 연속지적: 지목상 '도로'만 외곽 사업구역 경계 정제 후보로 사용한다.
-  // 철도용지 등 비도로 기반시설은 사업구역계 생성에서 제외한다.
+  const roadDiagnostics=[];
   for(const [pnu,src] of parcelFeatureMap.entries()){
-    if(!src?.geometry)continue;
-    const ledger=src.properties?.land_ledger||{};
-    const cat=normalizedLandCategory(ledger.lndcgrCodeNm||parseJibunLandCategory(src.properties?.jibun||''));
-    if(cat!=='도로')continue;
-    const f=turf.feature(src.geometry,Object.assign({},src.properties||{}));
-    const d=projectRoadIsExternal(f,site);
-    if(!d.clip||d.clip_area_m2<0.5)continue;
-    roadDiagnostics.push({source:'cadastral',pnu:String(pnu),kind:'road',boundary_share:d.boundary_share,is_external:d.is_external,clip_area_m2:d.clip_area_m2,basis:'지적 도로-필지 접면'});
-    if(d.is_external)addBoundaryCutter(d.clip,`cad:${pnu}`,{_project_cutter_kind:'cadastral_road',_project_cutter_name:'지목상 도로'});
+    if(!src?.geometry||!projectParcelIsRoad(src))continue;
+    let clip=null;try{clip=turf.intersect(turf.feature(src.geometry,src.properties||{}),site);}catch(e){}
+    if(!clip||turf.area(clip)<0.1)continue;
+    const used=contributedRoadPnus.has(String(pnu));
+    roadDiagnostics.push({
+      source:'cadastral',pnu:String(pnu),kind:'road',is_external:used,
+      clip_area_m2:Math.max(0,turf.area(clip)),basis:used?'도로필지 대지측 건축선 후보 사용':'사업구역 건축선 후보 미사용'
+    });
   }
 
-  // 2) ROAD_BT 현황도로: 외곽 경계를 따라가는 확인도로만 보강 FACT로 사용한다.
-  // 내부 통과도로/쿨데삭은 사업구역 안에 그대로 포함한다.
+  // ROAD_BT·계획도로는 현황 진단에는 남기되 사업구역 경계 생성에는 사용하지 않는다.
+  // 사업구역 외곽은 지적 도로필지-대지측 경계선으로만 생성한다.
   for(const rf of currentRoadWidthFeatures||[]){
     if(!rf?.geometry)continue;
     const rp=rf.properties||{},w=Number(rp._width_m);
     if(!Number.isFinite(w)||w<4)continue;
-    const f=turf.feature(rf.geometry,Object.assign({},rp));
-    const d=projectRoadIsExternal(f,site);
-    if(!d.clip||d.clip_area_m2<0.5)continue;
-    const nm=rp._road_name||rp.road_name||rp.ROAD_NM||rp.road_nm||'ROAD_BT 도로';
-    roadDiagnostics.push({source:'ROAD_BT',name:nm,width_m:w,boundary_share:d.boundary_share,is_external:d.is_external,clip_area_m2:d.clip_area_m2,basis:'현황도로-필지 접면 보강'});
-    if(d.is_external)addBoundaryCutter(d.clip,`roadbt:${nm}:${w.toFixed(2)}:${Math.round(d.clip_area_m2)}`,{_project_cutter_kind:'roadbt_road',_project_cutter_name:nm,_project_cutter_width_m:w});
+    let clip=null;try{clip=turf.intersect(turf.feature(rf.geometry,rp),site);}catch(e){}
+    if(!clip||turf.area(clip)<0.5)continue;
+    roadDiagnostics.push({source:'ROAD_BT',name:rp._road_name||rp.road_name||rp.ROAD_NM||rp.road_nm||'ROAD_BT 도로',width_m:w,is_external:false,clip_area_m2:turf.area(clip),basis:'도로폭 현황 FACT · 사업구역 건축선 생성 미사용'});
   }
-
-  // 3) 도시계획시설은 '확인된 계획도로'만 외곽도로 보강자료로 사용한다.
-  // 기타도시시설·철도·공원·녹지·광장·주차장·학교·하천 등은 사업구역 경계를 설정할 때 고려하지 않는다.
+  const facilityDiagnostics=[];
   for(const row of planningAnalysis?.facilities||[]){
     if(!row?.feature?.geometry)continue;
-    const evidence=streetBlockPlanningRoadEvidence(row);
-    const kind=classifyProjectFacility(row);
-    const f=turf.feature(row.feature.geometry,Object.assign({},row.feature.properties||{}));
-    let clip=null;try{clip=turf.intersect(f,site);}catch(e){}
+    let clip=null;try{clip=turf.intersect(turf.feature(row.feature.geometry,row.feature.properties||{}),site);}catch(e){}
     if(!clip||turf.area(clip)<0.5)continue;
-    const nm=row.name||row.category||kind||'도시계획시설';
-    if(!evidence.confirmed){
-      facilityDiagnostics.push({source:'planning',kind,name:nm,layer:row.layer||'',is_external:false,ignored_for_project_boundary:true,basis:'비도로 기반시설 또는 도로유형 미확정 · 사업구역 경계 미사용'});
-      continue;
-    }
-    const d=projectRoadIsExternal(f,site);
-    facilityDiagnostics.push({source:'planning',kind:'road',name:nm,layer:row.layer||'',boundary_share:d.boundary_share,is_external:d.is_external,clip_area_m2:d.clip_area_m2,ignored_for_project_boundary:false,basis:`확인 계획도로 · ${evidence.basis}`});
-    if(d.is_external)addBoundaryCutter(d.clip,`planroad:${row.layer||''}:${nm}:${Math.round(d.clip_area_m2)}`,{_project_cutter_kind:'planning_road',_project_cutter_name:nm,_project_cutter_layer:row.layer||''});
+    const kind=classifyProjectFacility(row),nm=row.name||row.category||kind||'도시계획시설';
+    facilityDiagnostics.push({source:'planning',kind,name:nm,layer:row.layer||'',is_external:false,ignored_for_project_boundary:true,basis:'도시계획시설 현황 FACT · 사업구역 건축선 생성 미사용'});
   }
 
-  // 외곽도로 FACT 사이의 미세한 GIS 단절은 1m 이내에서만 연결한다.
-  // 이는 법적 기준이 아니라 도로·필지 경계의 좌표/레이어 정합 오차를 보정하는 표시·추출용 topology tolerance다.
-  const PROJECT_BOUNDARY_JOIN_TOLERANCE_M=1.0;
-  let cutterUnion=safeUnionPolygons(boundaryCutters);
-  if(cutterUnion?.geometry&&boundaryCutters.length>1){
-    try{
-      const grown=turf.buffer(cutterUnion,PROJECT_BOUNDARY_JOIN_TOLERANCE_M,{units:'meters'});
-      const closed=grown?turf.buffer(grown,-PROJECT_BOUNDARY_JOIN_TOLERANCE_M,{units:'meters'}):null;
-      if(closed?.geometry)cutterUnion=closed;
-    }catch(e){console.warn('[project-area] 외곽도로 topology 연결 보정 실패',e);}
-  }
-
-  let remaining=cutterUnion?safeDifferencePolygons(site,[cutterUnion]):cloneFeature(site);
-  if(!remaining?.geometry)remaining=cloneFeature(site);
-
-  // 외곽도로가 검토요청지 안쪽을 따라가며 복수 조각을 만들 수 있으므로,
-  // 가로구역 결과가 아니라 선택된 비도로 필지 중첩 + 면적 + 중심점으로 사업구역 본체 1개를 고른다.
-  const minPart=Math.max(20,requestArea*.001);
-  const parts=polygonParts(remaining,minPart);
-  const selectedLand=[...selectedParcelPnus].map(k=>parcelFeatureMap.get(String(k))).filter(f=>{
-    if(!f?.geometry)return false;
-    const ledger=f.properties?.land_ledger||{};
-    const cat=normalizedLandCategory(ledger.lndcgrCodeNm||parseJibunLandCategory(f.properties?.jibun||''));
-    return cat!=='도로';
-  });
-  let requestCenter=null;try{requestCenter=turf.centroid(site);}catch(e){}
-  const scored=parts.map((part,index)=>{
-    let selectedOverlap=0;
-    for(const pf of selectedLand){
-      try{const x=turf.intersect(part,turf.feature(pf.geometry,pf.properties||{}));if(x)selectedOverlap+=Math.max(0,turf.area(x));}catch(e){}
-    }
-    let centerInside=false;try{centerInside=!!(requestCenter&&turf.booleanPointInPolygon(requestCenter,part));}catch(e){}
-    const area=Math.max(0,turf.area(part));
-    const score=selectedOverlap*20 + area + (centerInside?requestArea*.20:0);
-    return {part,index,area,selected_overlap_m2:selectedOverlap,center_inside:centerInside,score};
-  }).sort((a,b)=>b.score-a.score||b.area-a.area);
-
-  let chosen=scored.length?cloneFeature(scored[0].part):cloneFeature(remaining);
-  if(!chosen?.geometry)chosen=cloneFeature(site);
-
-  // 내부 기반시설/내부가로망으로 인한 hole은 사업구역 외곽선에 반영하지 않는다.
-  // 최외곽 shell만 남겨 하나의 연속·폐합 사업구역 폴리곤으로 유지한다.
-  const shell=polygonOuterShellOnly(chosen);
-  if(shell?.geometry)chosen=shell;
-
+  let chosen=polygonResult.feature?.geometry?cloneFeature(polygonResult.feature):cloneFeature(site);
   let area=0;try{area=Math.max(0,turf.area(chosen));}catch(e){}
   if(!(area>0)){chosen=cloneFeature(site);area=requestArea;}
 
-  const excludedArea=cutterUnion?Math.max(0,turf.area(cutterUnion)):0;
+  // 검토요청지 안에서 사업구역 건축선 바깥으로 남는 면만 '경계부 제외' 검증도형으로 만든다.
+  // 사업구역 생성 실패(REVIEW) 시에는 검토구역을 임시표시하므로 경계부 제외를 만들지 않는다.
+  let excluded=null,boundaryCutters=[],excludedArea=0;
+  if(polygonResult.feature?.geometry){
+    try{excluded=turf.difference(site,polygonResult.feature);}catch(e){}
+    if(excluded?.geometry){
+      excludedArea=Math.max(0,turf.area(excluded));
+      boundaryCutters=polygonParts(excluded,0.5).map((f,i)=>{
+        const x=cloneFeature(f);x.properties=Object.assign({},x.properties||{}, {_project_boundary_cutter:true,_project_cutter_kind:'building_line_outside',_project_cutter_name:`건축선 외측 ${i+1}`});return x;
+      });
+    }
+  }
+
+  const status=polygonResult.feature?.geometry?(polygonResult.status||'REVIEW'):'REVIEW';
   chosen.properties=Object.assign({},chosen.properties||{}, {
     _project_boundary_candidate:true,_project_independent:true,area_m2:area,request_area_m2:requestArea,
-    _project_component_count:parts.length||1,_project_selected_component_index:scored.length?scored[0].index:0,
-    _project_selected_parcel_overlap_m2:scored.length?scored[0].selected_overlap_m2:0,
-    _project_boundary_excluded_area_m2:excludedArea,_project_boundary_join_tolerance_m:PROJECT_BOUNDARY_JOIN_TOLERANCE_M,
-    _project_boundary_basis:'road_parcel_interface',
-    basis:'검토요청지 + 외곽 도로-필지 접면 FACT 기반 독립 사업구역 추출 · 내부 기반시설 미반영'
+    _project_boundary_excluded_area_m2:excludedArea,_project_boundary_basis:'cadastral_road_building_line',
+    _project_building_line_count:Number(candidateResult.features?.length||0),
+    _project_road_parcel_count:Number(candidateResult.road_parcel_count||0),
+    _project_connector_count:Number(polygonResult.connector_count||0),
+    _project_long_connector_count:Number(polygonResult.long_connector_count||0),
+    _project_snap_coverage_pct:Number(polygonResult.snap_coverage_pct||0),
+    _project_fallback_review_boundary:!polygonResult.feature?.geometry,
+    basis:'지적 도로필지-대지측 건축선 + 검토경계 평행성 + 인접 건축선 연결 기반 독립 사업구역 추출'
   });
   return {
     feature:chosen,request_area_m2:requestArea,boundary_cutters:boundaryCutters,boundary_excluded_area_m2:excludedArea,
-    component_count:parts.length||1,selected_component_index:scored.length?scored[0].index:0,
-    selected_parcel_overlap_m2:scored.length?scored[0].selected_overlap_m2:0,
-    road_diagnostics:roadDiagnostics,facility_diagnostics:facilityDiagnostics,status:'CANDIDATE',
-    note:boundaryCutters.length?`외곽 도로-필지 접면 ${boundaryCutters.length}건으로 경계 정제 · 내부 기반시설은 사업구역 경계에서 제외`:'외곽 도로-필지 접면 미검출 · 검토요청지 형상 유지'
+    component_count:1,selected_component_index:0,selected_parcel_overlap_m2:null,
+    road_diagnostics:roadDiagnostics,facility_diagnostics:facilityDiagnostics,
+    building_line_candidates:candidateResult.features||[],building_line_count:Number(candidateResult.features?.length||0),
+    road_parcel_count:Number(candidateResult.road_parcel_count||0),parallel_rejected:Number(candidateResult.parallel_rejected||0),
+    outer_edge_rejected:Number(candidateResult.outer_edge_rejected||0),connector_count:Number(polygonResult.connector_count||0),
+    long_connector_count:Number(polygonResult.long_connector_count||0),snap_coverage_pct:Number(polygonResult.snap_coverage_pct||0),
+    status,note:polygonResult.feature?.geometry?polygonResult.note:`${polygonResult.note||'건축선 폐합 실패'} · 검토요청지 임시표시`
   };
 }
 
@@ -3198,27 +3425,35 @@ function buildProjectBoundaryCandidate(){
     if(d.is_external)edgeFacility++;else internalFacility++;
   }
 
+  const projectStatus=result?.status==='CANDIDATE'?'CANDIDATE':'REVIEW';
   candidate.properties=Object.assign({},candidate.properties||{},{
     _project_boundary_candidate:true,_project_independent:true,area_m2:area,request_area_m2:requestArea,
     internal_road_parcels:internalRoad,external_road_parcels:externalRoad,planning_road_features:planningRoads,
     edge_facility_count:edgeFacility,internal_facility_count:internalFacility,small_edge_facility_count:smallEdgeFacility,
     boundary_excluded_area_m2:Number(result?.boundary_excluded_area_m2||0),boundary_cutter_count:Number(result?.boundary_cutters?.length||0),
     component_count:Number(result?.component_count||1),auto_closure:true,
-    basis:'외곽 도로-필지 접면 FACT 기반 독립 사업구역 폴리곤 · 내부 기반시설 미반영'
+    building_line_count:Number(result?.building_line_count||0),road_parcel_count:Number(result?.road_parcel_count||0),
+    connector_count:Number(result?.connector_count||0),long_connector_count:Number(result?.long_connector_count||0),
+    snap_coverage_pct:Number(result?.snap_coverage_pct||0),project_status:projectStatus,
+    basis:'지적 도로필지-대지측 건축선 + 검토경계 평행성 + 인접 건축선 연결 기반 독립 사업구역'
   });
 
   projectBoundaryCandidate={
     geometry:candidate.geometry,area_m2:area,request_area_m2:requestArea,internal_road_parcels:internalRoad,external_road_parcels:externalRoad,
     planning_road_features:planningRoads,edge_facility_count:edgeFacility,internal_facility_count:internalFacility,small_edge_facility_count:smallEdgeFacility,
     boundary_excluded_area_m2:Number(result?.boundary_excluded_area_m2||0),boundary_cutter_count:Number(result?.boundary_cutters?.length||0),
-    component_count:Number(result?.component_count||1),auto_closure:true,status:'CANDIDATE',basis:candidate.properties.basis,
+    component_count:Number(result?.component_count||1),auto_closure:true,status:projectStatus,basis:candidate.properties.basis,
+    building_line_count:Number(result?.building_line_count||0),road_parcel_count:Number(result?.road_parcel_count||0),
+    connector_count:Number(result?.connector_count||0),long_connector_count:Number(result?.long_connector_count||0),
+    snap_coverage_pct:Number(result?.snap_coverage_pct||0),parallel_rejected:Number(result?.parallel_rejected||0),outer_edge_rejected:Number(result?.outer_edge_rejected||0),
+    building_line_candidates:result?.building_line_candidates||[],
     road_diagnostics:result?.road_diagnostics||[],facility_diagnostics:result?.facility_diagnostics||[],boundary_cutters:result?.boundary_cutters||[],note:result?.note||''
   };
   if(show)projectBoundaryCandidateLayer.addData(candidate);
-  if(metric)metric.textContent=`${fmt(area,0)}㎡`;
+  if(metric)metric.textContent=`${fmt(area,0)}㎡${projectStatus==='REVIEW'?' · REVIEW':''}`;
   if(analysisState?.metrics){
     analysisState.metrics.project_boundary_candidate=Object.assign({},projectBoundaryCandidate);
-    analysisState.metrics.project_area={geometry:candidate.geometry,area_m2:area,request_area_m2:requestArea,status:'CANDIDATE',basis:'independent_road_parcel_interface_fact',boundary_excluded_area_m2:Number(result?.boundary_excluded_area_m2||0)};
+    analysisState.metrics.project_area={geometry:candidate.geometry,area_m2:area,request_area_m2:requestArea,status:projectStatus,basis:'independent_cadastral_building_line_fact',boundary_excluded_area_m2:Number(result?.boundary_excluded_area_m2||0)};
   }
   return projectBoundaryCandidate;
 }
@@ -4527,7 +4762,7 @@ function renderStreetBlockSpatialStatus(){
   if(v?.planningFacilityReviews?.length){ccStreetBlockRetained.addData({type:'FeatureCollection',features:v.planningFacilityReviews.map(cloneFeature)});}
   if(v?.blocks?.length)ccStreetBlockPolygon.addData({type:'FeatureCollection',features:v.blocks});
   set('spProjectAreaM2',p?.area_m2==null?'-':`${Number(p.area_m2).toLocaleString('ko-KR',{maximumFractionDigits:0})}㎡`);
-  set('spProjectAreaState',p?.status==='CANDIDATE'?'독립 사업구역 추출 · 검증용':'REVIEW');
+  set('spProjectAreaState',p?.status==='CANDIDATE'?'건축선 기반 사업구역 후보 · 검증용':'건축선 연결 REVIEW');
   set('spStreetBlockCount',v?.blocks?.length?`${v.blocks.length}개`:'0개');
   const total=(v?.blocks||[]).reduce((a,f)=>a+Number(f.properties?.area_m2||0),0);set('spStreetBlockTotalArea',`${Math.round(total).toLocaleString('ko-KR')}㎡${Number(v?.separatorAreaM2||0)>0?` + 분할시설 ${Math.round(Number(v.separatorAreaM2)).toLocaleString('ko-KR')}㎡`:''}`);
   const confirmedPlanningRoads=Number((v?.separators||[]).filter(f=>f?.properties?._separator_kind==='planning_road').length);
@@ -4538,11 +4773,11 @@ function renderStreetBlockSpatialStatus(){
   const reviewCount=Number(v?.reviewRoads?.length||0)+Number(v?.planningFacilityReviews?.length||0);
   const internalFacilityCount=Number(v?.internalPlanningFacilities?.length||0);
   set('spStreetBlockReview',reviewCount?`${v?.planningFacilityReviews?.length?`시설분류 ${v.planningFacilityReviews.length}건 · `:''}${v?.reviewRoads?.length?`폭원 ${v.reviewRoads.length}건 · `:''}전문가 확인`:`범위 후보 확인${internalFacilityCount?` · 내부시설 ${internalFacilityCount}건 포함`:''}`);
-  const state=document.getElementById('spStreetBlockState');if(state)state.textContent=p?.geometry?(v?.blocks?.length?'사업구역·가로구역 후보 생성':'사업구역 생성 · 가로구역 REVIEW'):'사업구역 REVIEW';
+  const state=document.getElementById('spStreetBlockState');if(state)state.textContent=p?.status==='CANDIDATE'?(v?.blocks?.length?'건축선 사업구역 + 가로구역 · 검증중':'건축선 사업구역 · 가로구역 REVIEW'):'사업구역 건축선 REVIEW';
   const tb=document.getElementById('spStreetBlockTable');if(tb){
     tb.innerHTML=(v?.blocks?.length?v.blocks.map(f=>{const q=f.properties||{};return `<tr><td><b>${escHtml(q._block_name||'-')}</b></td><td>${Number(q.area_m2||0).toLocaleString('ko-KR',{maximumFractionDigits:0})}㎡</td><td>${Number(q.project_share_pct||0).toFixed(1)}%</td><td>도로 분할 + 경계부 시설 제척 / 4m 미만 도로 제한</td><td><span class="scheme-tag REVIEW">전문가 확인</span></td></tr>`;}).join(''):'<tr><td colspan="5">가로구역 후보 미생성 · 시설/도로 경계 확인 필요</td></tr>');
   }
-  const legend=document.getElementById('spStreetBlockLegend');if(legend)legend.innerHTML=`<span style="border-color:#f97066;background:#fff1f0">분홍면=경계부 제외 ${Math.round(Number(p?.boundary_excluded_area_m2||0)).toLocaleString('ko-KR')}㎡</span><span style="border-color:#175cd3;background:#eaf2ff">진한파랑=내부가로망 ${Math.round(internalDisplayAreaM2).toLocaleString('ko-KR')}㎡</span><span style="border-color:#fec84b;background:#fffaeb">주황면=가로구역 ${(v?.blocks||[]).length}개</span><span style="border-color:#d92d20;background:#fff">붉은 2점쇄선=사업구역 ${p?.area_m2==null?'-':Math.round(p.area_m2).toLocaleString('ko-KR')+'㎡'}</span><span>검은선=검토요청지 ${Math.round(turf.area(turf.feature(activeGeometry))).toLocaleString('ko-KR')}㎡</span><span style="border-color:#98a2b3;background:#f2f4f7">회색=시설분류/폭원 확인</span><span>사업구역·가로구역 독립연산</span><span>색분리는 검증도면 표시용</span>`;
+  const legend=document.getElementById('spStreetBlockLegend');if(legend)legend.innerHTML=`<span style="border-color:#f97066;background:#fff1f0">분홍면=경계부 제외 ${Math.round(Number(p?.boundary_excluded_area_m2||0)).toLocaleString('ko-KR')}㎡</span><span style="border-color:#175cd3;background:#eaf2ff">진한파랑=내부가로망 ${Math.round(internalDisplayAreaM2).toLocaleString('ko-KR')}㎡</span><span style="border-color:#fec84b;background:#fffaeb">주황면=가로구역 ${(v?.blocks||[]).length}개</span><span style="border-color:#d92d20;background:#fff">붉은 2점쇄선=사업구역 ${p?.area_m2==null?'-':Math.round(p.area_m2).toLocaleString('ko-KR')+'㎡'}</span><span>검은선=검토요청지 ${Math.round(turf.area(turf.feature(activeGeometry))).toLocaleString('ko-KR')}㎡</span><span style="border-color:#98a2b3;background:#f2f4f7">회색=시설분류/폭원 확인</span><span>건축선 후보 ${Number(p?.building_line_count||0)}개 · 연결 ${Number(p?.connector_count||0)}건 · 검토경계 투영 ${Number(p?.snap_coverage_pct||0).toFixed(0)}%</span><span>사업구역·가로구역 독립연산</span><span>색분리는 검증도면 표시용</span>`;
   try{ccStreetBlockPolygon.eachLayer(l=>l.bringToBack?.());}catch(e){}
   try{ccStreetBlockBoundaryExcluded.eachLayer(l=>l.bringToFront?.());}catch(e){}
   try{ccStreetBlockFacility.eachLayer(l=>l.bringToFront?.());}catch(e){}
@@ -13203,6 +13438,22 @@ async function analyzeLandLedger(){
     summary.innerHTML=`선택필지 ${pnus.length}개 · 공식면적 <b>${official}/${pnus.length}</b> · 연속지적 계산면적 보완 <b>${geometryFallback}필지</b> · 90㎡ 미만 <b>${small}필지 (${ratio.toFixed(1)}%, 초기검토)</b>.`;
     document.getElementById('parcelStatus').innerHTML=`<b>과소필지 AUTO(초기검토):</b> 공식면적 우선 + 미확인 필지 연속지적 계산면적 보완으로 90㎡ 미만 ${small}/${pnus.length}필지 = ${ratio.toFixed(1)}%.`;
   }
+
+  // R43: 사업구역은 선택필지 외곽의 지적 도로필지까지 알아야 건축선을 만들 수 있다.
+  // 선택필지 판정/가로구역에는 영향을 주지 않고, 검토경계 주변 PNU의 지목만 추가 확인한다.
+  let projectBoundaryLedgerStats=null;
+  if(activeGeometry){
+    try{
+      conn.textContent='사업구역 건축선 지적 확인 중';
+      conn.className='conn planned';
+      projectBoundaryLedgerStats=await enrichProjectBoundaryParcelCategories(turf.feature(activeGeometry));
+      if(projectBoundaryLedgerStats?.requested_count){
+        summary.innerHTML+=` · 사업구역 경계주변 지목 <b>${projectBoundaryLedgerStats.confirmed_count}/${projectBoundaryLedgerStats.candidate_count}</b> 확인 · 도로필지 <b>${projectBoundaryLedgerStats.road_count}</b>건`;
+      }
+    }catch(e){console.warn('[project-area] 경계주변 지목 보강 실패',e);}
+  }
+  conn.textContent=official===pnus.length?'과소필지 AUTO':'과소필지 AUTO(예비)';
+  conn.className=official===pnus.length?'conn auto':'conn planned';
   refreshAnalysisLayers();
   updateCompactInfoRail();
   updateSiteStatusCard();
