@@ -1849,15 +1849,15 @@ body.service-layout-ready>.shell{display:none!important}
 <div><span>사업구역 상태</span><b id="spProjectAreaState">-</b></div>
 <div><span>가로구역 수</span><b id="spStreetBlockCount">-</b></div>
 <div><span>가로구역 합계</span><b id="spStreetBlockTotalArea">-</b></div>
-<div><span>외곽 제척 도로</span><b id="spProjectEdgeRoads">-</b></div>
-<div><span>외곽 제척 시설</span><b id="spProjectEdgeFacilities">-</b></div>
-<div><span>내부 포함 시설</span><b id="spProjectInternalFacilities">-</b></div>
+<div><span>도로 FACT</span><b id="spProjectEdgeRoads">-</b></div>
+<div><span>경계부 시설</span><b id="spProjectEdgeFacilities">-</b></div>
+<div><span>내부 시설</span><b id="spProjectInternalFacilities">-</b></div>
 <div><span>전문가 확인</span><b id="spStreetBlockReview">-</b></div>
 </div>
 <div class="spatial-tags" id="spStreetBlockLegend"><span>검은선=검토요청지</span><span>붉은 2점쇄선=사업구역</span><span>주황면=가로구역 후보</span><span>파랑면=가로구역 경계시설</span></div>
 <div class="road-condition-table-wrap" style="max-height:220px"><table class="road-condition-table"><thead><tr><th>가로구역</th><th>면적</th><th>사업구역 대비</th><th>추출근거</th><th>상태</th></tr></thead><tbody id="spStreetBlockTable"><tr><td colspan="5">검증 전</td></tr></tbody></table></div>
-<div class="spatial-caption"><b>플랫폼 조작적 정의(검증용)</b> · 사업구역은 검토요청지 안에서 <b>도로를 최우선 외곽경계</b>로 삼고, 철도·하천은 외곽에서 제척합니다. 공원·녹지·광장·공공공지·공용주차장·학교 등은 <b>검토요청지 단부에 위치하면서 공식 시설면적이 1,500㎡를 초과할 때 제척</b>하고, 내부시설 또는 1,500㎡ 이하 소규모 단부시설은 사업구역에 포함합니다. 내부가로는 사업구역 생성 시 인위적으로 폐합하며 미폐합 단부는 지적경계·최단 직선으로 닫습니다. 가로구역은 사업구역 안에서 도로 또는 공용주차장·광장·공원·녹지·공공공지·하천·철도·학교로 분할하되, <b>4m 미만 도로는 폐합</b>합니다. 현재 화면은 범위 추출 가능성 검증용이며 기존 사업 판정엔진에는 아직 연결하지 않습니다.</div>
-<div class="spatial-caption"><b>향후 판정원칙</b> · 모든 제도 판정의 공간기준은 사업구역을 사용합니다. 가로구역 정의 적합성 자체는 전문가 확인사항으로 유보하되, 자동추출 가로구역의 면적·역세권 포함범위 등 정량기준이 충족하면 초기검토에서는 긍정적으로 충족 처리하고 결과서에 전문가 재확인 단서를 남깁니다.</div>
+<div class="spatial-caption"><b>공간 FACT 검증용</b> · 어떤 사업을 적용할지 정하기 전 단계이므로 <b>검토요청지 전체를 먼저 유지</b>합니다. 연속지적의 도로필지와 도시계획시설 도로·철도·하천·공원·녹지·광장·공공공지·주차장·학교를 별도 공간 FACT로 읽어 구획 후보를 분리합니다. 도시계획시설의 개별 명칭이 ‘기타도시시설’처럼 내려와도 <b>조회 레이어와 시설분류가 도로이면 도로로 복원</b>합니다. <b>4m 미만 도로는 구획 분할선에서 제외</b>하고 폭원 미확정 도로는 전문가 확인으로 남깁니다. 현재 화면은 범위 추출 가능성 검증용이며 기존 사업 판정엔진에는 아직 연결하지 않습니다.</div>
+<div class="spatial-caption"><b>향후 판정원칙</b> · 이 화면에서 확보한 사업구역·가로구역 후보는 공통 공간 FACT로 보존하고, 실제 사업 판정에서는 각 제도 모듈이 필요한 범위·도로·면적 관계값만 독립적으로 가져가 RULE을 적용합니다. 자동추출 형상 자체가 법적 구역을 확정하는 것은 아니며 전문가 재확인 단서를 유지합니다.</div>
 <div class="spatial-mini-map" id="ccStreetBlockMiniMap"></div>
 </section>
 <section class="spatial-module" id="siteDetail_activationArterial">
@@ -2900,8 +2900,12 @@ function polygonOuterShellOnly(feature){
   return null;
 }
 function classifyProjectFacility(row){
-  const nm=String(row?.name||row?.category||row?.feature?.properties?._planning_name||'').replace(/\s+/g,'');
-  if(/도로/.test(nm))return 'road';
+  // VWorld 일부 도시계획시설은 개별 명칭이 '기타도시시설'처럼 내려와도
+  // 조회 레이어/카테고리 자체는 '도로'처럼 명확한 경우가 있다.
+  // FACT 단계에서는 name 하나만 믿지 않고 name + category + layer를 함께 본다.
+  const layer=String(row?.layer||row?.feature?.properties?._planning_layer||'').trim();
+  const nm=[row?.name,row?.category,row?.feature?.properties?._planning_name].filter(Boolean).join(' ').replace(/\s+/g,'');
+  if(layer==='LT_C_UPISUQ151'||/도로/.test(nm))return 'road';
   if(/철도|궤도/.test(nm))return 'rail';
   if(/하천/.test(nm))return 'river';
   if(/주차장/.test(nm))return 'parking';
@@ -2973,87 +2977,56 @@ function buildProjectBoundaryCandidate(){
   projectBoundaryCandidateLayer.clearLayers();
   const metric=document.getElementById('mCandidateBoundary');
   const show=document.getElementById('lyProjectBoundaryCandidate')?.checked!==false;
-  if(!activeGeometry||!selectedParcelPnus.size){
+  if(!activeGeometry){
     projectBoundaryCandidate={geometry:null,area_m2:null,internal_road_parcels:0,external_road_parcels:0,planning_road_features:0,edge_facility_count:0,internal_facility_count:0,small_edge_facility_count:0,auto_closure:false,status:'unavailable'};
-    projectStreetBlockValidation={projectArea:null,blocks:[],separators:[],reviewRoads:[],status:'unavailable',note:'필지 또는 검토요청지 미확보'};
+    projectStreetBlockValidation={projectArea:null,blocks:[],separators:[],reviewRoads:[],status:'unavailable',note:'검토요청지 미확보'};
     if(metric)metric.textContent='-';
     if(analysisState?.metrics)analysisState.metrics.project_boundary_candidate=projectBoundaryCandidate;
     try{renderStreetBlockSpatialStatus();}catch(e){}
     return projectBoundaryCandidate;
   }
-  const site=turf.feature(activeGeometry);
-  const include=[];let internalRoad=0,externalRoad=0;
-  const roadDiagnostics=[];
-  for(const pnu of selectedParcelPnus){
-    const src=parcelFeatureMap.get(String(pnu));if(!src?.geometry)continue;
-    let f=turf.feature(src.geometry,Object.assign({},src.properties||{}));
-    const ledger=f.properties?.land_ledger||{},cat=normalizedLandCategory(ledger.lndcgrCodeNm||parseJibunLandCategory(f.properties?.jibun||''));
-    const isRoad=cat==='도로',isRail=/철도/.test(String(cat||''));
-    let clip=null;try{clip=turf.intersect(f,site);}catch(e){};if(!clip)continue;
-    if(isRoad||isRail){
-      const d=projectRoadIsExternal(f,site);
-      roadDiagnostics.push({pnu:String(pnu),kind:isRoad?'road':'rail',boundary_share:d.boundary_share,is_external:d.is_external});
-      if(d.is_external){externalRoad++;continue;}
-      if(isRoad)internalRoad++;
-      clip.properties=Object.assign({},clip.properties||{},{_project_internal_corridor:true,_project_internal_kind:isRoad?'road':'rail',_project_boundary_share:d.boundary_share});
-    }
-    include.push(clip);
-  }
-  if(!include.length){
-    projectBoundaryCandidate={geometry:null,area_m2:null,internal_road_parcels:internalRoad,external_road_parcels:externalRoad,planning_road_features:0,edge_facility_count:0,internal_facility_count:0,small_edge_facility_count:0,auto_closure:false,status:'REVIEW'};
-    if(metric)metric.textContent='REVIEW';try{renderStreetBlockSpatialStatus();}catch(e){};return projectBoundaryCandidate;
-  }
-  let base=safeUnionPolygons(include);if(!base)base=include[0];
-  try{base=turf.intersect(base,site)||base;}catch(e){}
 
-  const edgeCuts=[];let edgeFacility=0,internalFacility=0,smallEdgeFacility=0,planningRoads=0;
+  // FACT 페이지 원칙: 어떤 사업을 할지 아직 정하지 않았으므로 사업별 제척 규칙으로
+  // 검토요청지를 먼저 잘라내지 않는다. 사용자가 확정한 검토요청지 전체를 project_area
+  // 후보 프레임으로 유지하고, 도로·도시계획시설은 다음 단계의 공간분할 Fact로 사용한다.
+  const site=turf.feature(activeGeometry);
+  let shell=cloneFeature(site);
+  const roadDiagnostics=[];let internalRoad=0,externalRoad=0;
+  for(const [pnu,src] of parcelFeatureMap.entries()){
+    if(!src?.geometry)continue;
+    const ledger=src.properties?.land_ledger||{},cat=normalizedLandCategory(ledger.lndcgrCodeNm||parseJibunLandCategory(src.properties?.jibun||''));
+    const isRoad=cat==='도로',isRail=/철도/.test(String(cat||''));
+    if(!isRoad&&!isRail)continue;
+    const f=turf.feature(src.geometry,Object.assign({},src.properties||{}));
+    let clip=null;try{clip=turf.intersect(f,site);}catch(e){};if(!clip||turf.area(clip)<0.5)continue;
+    const d=projectRoadIsExternal(f,site);
+    roadDiagnostics.push({pnu:String(pnu),kind:isRoad?'road':'rail',boundary_share:d.boundary_share,is_external:d.is_external});
+    if(d.is_external)externalRoad++;else if(isRoad)internalRoad++;
+  }
+
+  let edgeFacility=0,internalFacility=0,smallEdgeFacility=0,planningRoads=0;
   const facilityDiagnostics=[];
   for(const row of planningAnalysis?.facilities||[]){
     if(!row?.feature?.geometry)continue;
     const kind=classifyProjectFacility(row);if(kind==='other')continue;
     const ff=turf.feature(row.feature.geometry,Object.assign({},row.feature.properties||{}));
-    let clip=null;try{clip=turf.intersect(ff,site);}catch(e){};if(!clip||turf.area(clip)<1)continue;
+    let clip=null;try{clip=turf.intersect(ff,site);}catch(e){};if(!clip||turf.area(clip)<0.5)continue;
     const fullArea=Math.max(0,turf.area(ff));
-    const hard=['road','rail','river'].includes(kind);
-    const soft=projectFacilitySoftEdge(kind);
+    const hard=['road','rail','river'].includes(kind),soft=projectFacilitySoftEdge(kind);
     const d=hard?projectRoadIsExternal(ff,site):projectSoftFacilityIsExternal(ff,site,fullArea);
-    facilityDiagnostics.push({kind,name:row.name||row.category||kind,full_area_m2:fullArea,boundary_share:d.boundary_share,is_external:d.is_external});
-    if(d.is_external && (hard||soft)){
-      clip.properties=Object.assign({},clip.properties||{},{_project_edge_cut:true,_facility_kind:kind,_facility_name:row.name||row.category||kind,_facility_area_m2:fullArea,_boundary_share:d.boundary_share});
-      edgeCuts.push(clip);edgeFacility++;if(kind==='road')planningRoads++;
-    }else{
-      internalFacility++;
-      if(soft&&fullArea<=1500)smallEdgeFacility++;
-    }
+    facilityDiagnostics.push({kind,name:row.name||row.category||kind,layer:row.layer||'',full_area_m2:fullArea,boundary_share:d.boundary_share,is_external:d.is_external});
+    if(kind==='road')planningRoads++;
+    if(d.is_external&&(hard||soft))edgeFacility++;else internalFacility++;
+    if(soft&&fullArea<=1500)smallEdgeFacility++;
   }
 
-  let merged=safeDifferencePolygons(base,edgeCuts),autoClosure=false;
-  // 내부가로는 사업구역을 분할하지 않는다. 지적·계획시설 정합 오차로 여러 조각이 남으면
-  // 검토요청지 안에서 직선 폐합(볼록외피)을 허용한 뒤 외곽 제척시설만 다시 뺀다.
-  if(merged?.geometry?.type==='MultiPolygon'){
-    try{
-      const hull=turf.convex(turf.explode(merged));
-      if(hull){let closed=turf.intersect(hull,site)||hull;closed=safeDifferencePolygons(closed,edgeCuts);if(closed){merged=closed;autoClosure=true;}}
-    }catch(e){}
-  }
-  // 내부 도로·내부 공공시설 때문에 생긴 hole은 메우되, MultiPolygon의 다른 토지군을 버리지 않는다.
-  let shell=fillPolygonHolesPreserveParts(merged)||merged;
-  if(shell&&edgeCuts.length){shell=safeDifferencePolygons(shell,edgeCuts)||shell;}
-  // 외곽 제척 후 다시 여러 조각이 된 경우에도 큰 한 조각만 선택하지 않는다.
-  if(shell?.geometry?.type==='MultiPolygon'){
-    try{
-      const hull=turf.convex(turf.explode(shell));
-      if(hull){let closed=turf.intersect(hull,site)||hull;closed=safeDifferencePolygons(closed,edgeCuts);if(closed){shell=fillPolygonHolesPreserveParts(closed)||closed;autoClosure=true;}}
-    }catch(e){}
-  }
-  if(!shell?.geometry){if(metric)metric.textContent='REVIEW';return projectBoundaryCandidate;}
   const area=Math.max(0,turf.area(shell));
   shell.properties=Object.assign({},shell.properties||{}, {
     _project_boundary_candidate:true,area_m2:area,internal_road_parcels:internalRoad,external_road_parcels:externalRoad,planning_road_features:planningRoads,
-    edge_facility_count:edgeFacility,internal_facility_count:internalFacility,small_edge_facility_count:smallEdgeFacility,auto_closure:autoClosure,
-    basis:'도로 최우선 외곽경계 + 내부 관통도로 사업구역 포함 + 철도·하천 외곽 제척 + 공원·녹지·광장·공공공지·주차장·학교 단부 1,500㎡ 초과 제척 + 내부시설/소규모 단부시설 포함 + 미폐합 단부 직선폐합'
+    edge_facility_count:edgeFacility,internal_facility_count:internalFacility,small_edge_facility_count:smallEdgeFacility,auto_closure:false,
+    basis:'검토요청지 전체 유지 + 도로·도시계획시설 공간분할 Fact 별도 적용'
   });
-  projectBoundaryCandidate={geometry:shell.geometry,area_m2:area,internal_road_parcels:internalRoad,external_road_parcels:externalRoad,planning_road_features:planningRoads,edge_facility_count:edgeFacility,internal_facility_count:internalFacility,small_edge_facility_count:smallEdgeFacility,auto_closure:autoClosure,status:'CANDIDATE',road_diagnostics:roadDiagnostics,facility_diagnostics:facilityDiagnostics};
+  projectBoundaryCandidate={geometry:shell.geometry,area_m2:area,internal_road_parcels:internalRoad,external_road_parcels:externalRoad,planning_road_features:planningRoads,edge_facility_count:edgeFacility,internal_facility_count:internalFacility,small_edge_facility_count:smallEdgeFacility,auto_closure:false,status:'CANDIDATE',road_diagnostics:roadDiagnostics,facility_diagnostics:facilityDiagnostics};
   if(show)projectBoundaryCandidateLayer.addData(shell);
   if(metric)metric.textContent=`${fmt(area,0)}㎡`;
   if(analysisState?.metrics)analysisState.metrics.project_boundary_candidate=Object.assign({},projectBoundaryCandidate);
@@ -3067,20 +3040,34 @@ function buildProjectStreetBlockValidation(projectFeature){
   const sepKeys=new Set();
   const addSeparator=(f,key)=>{if(!f?.geometry)return;if(key&&sepKeys.has(key))return;if(key)sepKeys.add(key);separators.push(f);};
 
-  // 1) 지목상 내부 도로. 사업구역에서는 포함하지만 가로구역에서는 4m 이상이면 분할선으로 복원한다.
-  for(const pnu of selectedParcelPnus){
-    const src=parcelFeatureMap.get(String(pnu));if(!src?.geometry)continue;
+  // 1) 지목상 도로 FACT. 자동포함(selectedParcelPnus) 여부와 무관하게 검토요청지와
+  // 실제 교차하는 모든 연속지적 도로필지를 본다. 경계후보 필지를 빼면 내부 가로가 통째로 누락될 수 있다.
+  for(const [pnu,src] of parcelFeatureMap.entries()){
+    if(!src?.geometry)continue;
     const ledger=src.properties?.land_ledger||{},cat=normalizedLandCategory(ledger.lndcgrCodeNm||parseJibunLandCategory(src.properties?.jibun||''));
     if(cat!=='도로')continue;
     const f=turf.feature(src.geometry,Object.assign({},src.properties||{}));let clip=null;try{clip=turf.intersect(f,projectFeature);}catch(e){};if(!clip||turf.area(clip)<2)continue;
-    // 사업구역 외곽을 따라가는 도로는 이미 project_area에서 제척됐으므로 여기 남는 도로는 내부/관통 도로다.
+    // project_area는 검토요청지 전체를 유지한다. 외곽을 스치는 도로는 면을 일부 깎을 수 있지만, 실제로 내부를 관통해야 복수 구획을 만든다.
     const w=estimatePolygonShortWidthMeters(clip);
     clip.properties=Object.assign({},clip.properties||{},{_block_separator:true,_separator_kind:'cadastral_road',_separator_name:'지목상 도로',_separator_width_est_m:w,_separator_width_basis:'지적도로 도형폭 검증값'});
     if(w==null){reviewRoads.push(clip);continue;}
     if(w>=4)addSeparator(clip,`cad:${pnu}`);
   }
 
-  // 2) 도시계획시설. 내부 도로는 4m 이상이면 분할하고, 그 외 정의시설은 폭과 무관하게 분할한다.
+  // 2) ROAD_BT 현황도로 FACT. 도로·접도 단계에서 폭원이 확보된 실제 도로면도 독립 분할선으로 사용한다.
+  // 지목/도시계획시설 자료 중 하나가 누락되어도 화면에 확보된 도로 FACT를 버리지 않는다.
+  for(const rf of currentRoadWidthFeatures||[]){
+    if(!rf?.geometry)continue;
+    const rp=rf.properties||{},w=Number(rp._width_m);
+    if(!Number.isFinite(w)||w<4)continue;
+    const f=turf.feature(rf.geometry,Object.assign({},rp));let clip=null;try{clip=turf.intersect(f,projectFeature);}catch(e){};if(!clip||turf.area(clip)<2)continue;
+    const nm=rp._road_name||rp.road_name||rp.ROAD_NM||rp.road_nm||'ROAD_BT 도로';
+    clip.properties=Object.assign({},clip.properties||{},{_block_separator:true,_separator_kind:'roadbt_road',_separator_name:nm,_separator_width_est_m:w,_separator_width_basis:rp._width_source||'TL_SPRD_MANAGE ROAD_BT'});
+    addSeparator(clip,`roadbt:${nm}:${w.toFixed(2)}:${Math.round(turf.area(clip))}`);
+  }
+
+  // 3) 도시계획시설 FACT. 개별 명칭이 '기타도시시설'이어도 LT_C_UPISUQ151/카테고리가 도로면 도로로 복원한다.
+  // 내부 도로는 4m 이상이면 분할하고, 그 외 정의시설은 폭과 무관하게 분할한다.
   for(const row of planningAnalysis?.facilities||[]){
     if(!row?.feature?.geometry)continue;
     const kind=classifyProjectFacility(row);if(!projectFacilityIsStreetBlockSeparator(kind))continue;
@@ -3089,7 +3076,7 @@ function buildProjectStreetBlockValidation(projectFeature){
     if(kind==='road'){
       const w=estimatePolygonShortWidthMeters(clip);
       clip.properties=Object.assign({},clip.properties||{},{_block_separator:true,_separator_kind:'planning_road',_separator_name:nm,_separator_width_est_m:w,_separator_width_basis:'도시계획시설 도로경계 도형폭 검증값'});
-      if(w==null){reviewRoads.push(clip);addSeparator(clip,`plan:${nm}:${Math.round(turf.area(clip))}`);}else if(w>=4)addSeparator(clip,`plan:${nm}:${Math.round(turf.area(clip))}`);
+      if(w==null){reviewRoads.push(clip);addSeparator(clip,`plan:${row.layer||''}:${nm}:${Math.round(turf.area(clip))}`);}else if(w>=4)addSeparator(clip,`plan:${row.layer||''}:${nm}:${Math.round(turf.area(clip))}`);
     }else{
       clip.properties=Object.assign({},clip.properties||{},{_block_separator:true,_separator_kind:kind,_separator_name:nm});addSeparator(clip,`fac:${kind}:${nm}:${Math.round(turf.area(clip))}`);
     }
@@ -3102,7 +3089,7 @@ function buildProjectStreetBlockValidation(projectFeature){
   const blocks=parts.map((f,i)=>{const a=turf.area(f);f.properties=Object.assign({},f.properties||{},{_block_index:i,_block_name:koreanBlockName(i),area_m2:a,project_share_pct:a/projectArea*100,_street_block_candidate:true,_expert_review:true});return f;});
   const separatorArea=sepUnion?Math.max(0,turf.area(sepUnion)):0;
   const blockArea=blocks.reduce((sum,f)=>sum+Number(f.properties?.area_m2||0),0);
-  projectStreetBlockValidation={projectArea:projectFeature,blocks,separators,reviewRoads,separatorAreaM2:separatorArea,blockAreaM2:blockArea,status:blocks.length?'CANDIDATE':'REVIEW',note:reviewRoads.length?`폭원 미확정 도로 ${reviewRoads.length}건 전문가 확인`:'자동범위 후보 생성'};
+  projectStreetBlockValidation={projectArea:projectFeature,blocks,separators,reviewRoads,separatorAreaM2:separatorArea,blockAreaM2:blockArea,status:blocks.length?'CANDIDATE':'REVIEW',note:reviewRoads.length?`폭원 미확정 도로 ${reviewRoads.length}건 전문가 확인`:'검토요청지 전체 + 도로·시설 FACT 기반 공간구획 후보 생성'};
   if(analysisState?.metrics){
     analysisState.metrics.project_area={geometry:projectFeature.geometry,area_m2:projectArea,status:'CANDIDATE'};
     analysisState.metrics.street_blocks=blocks.map(f=>({name:f.properties._block_name,area_m2:f.properties.area_m2,project_share_pct:f.properties.project_share_pct,status:'CANDIDATE_EXPERT_REVIEW'}));
@@ -4262,10 +4249,10 @@ function renderStreetBlockSpatialStatus(){
   if(v?.reviewRoads?.length){ccStreetBlockRetained.addData({type:'FeatureCollection',features:v.reviewRoads.map(f=>{const x=cloneFeature(f);x.properties=Object.assign({},x.properties||{},{_retained_kind:'road',_retained_name:'4m 여부 확인도로'});return x;})});}
   if(v?.blocks?.length)ccStreetBlockPolygon.addData({type:'FeatureCollection',features:v.blocks});
   set('spProjectAreaM2',p?.area_m2==null?'-':`${Number(p.area_m2).toLocaleString('ko-KR',{maximumFractionDigits:0})}㎡`);
-  set('spProjectAreaState',p?.status==='CANDIDATE'?'자동후보 · 검증용':'REVIEW');
+  set('spProjectAreaState',p?.status==='CANDIDATE'?'검토요청지 기반 · 검증용':'REVIEW');
   set('spStreetBlockCount',v?.blocks?.length?`${v.blocks.length}개`:'0개');
   const total=(v?.blocks||[]).reduce((a,f)=>a+Number(f.properties?.area_m2||0),0);set('spStreetBlockTotalArea',`${Math.round(total).toLocaleString('ko-KR')}㎡${Number(v?.separatorAreaM2||0)>0?` + 분할시설 ${Math.round(Number(v.separatorAreaM2)).toLocaleString('ko-KR')}㎡`:''}`);
-  set('spProjectEdgeRoads',`${Number(p?.external_road_parcels||0)}필지 · 계획도로 ${Number(p?.planning_road_features||0)}건`);
+  set('spProjectEdgeRoads',`지적도로 ${Number(p?.road_diagnostics?.length||0)}필지 · ROAD_BT ${Number((currentRoadWidthFeatures||[]).filter(f=>Number(f?.properties?._width_m)>=4).length)}건 · 계획도로 ${Number(p?.planning_road_features||0)}건`);
   set('spProjectEdgeFacilities',`${Number(p?.edge_facility_count||0)}건`);
   set('spProjectInternalFacilities',`${Number(p?.internal_facility_count||0)}건${p?.small_edge_facility_count?` · 단부 소규모 ${p.small_edge_facility_count}건 포함`:''}`);
   set('spStreetBlockReview',v?.reviewRoads?.length?`폭원 ${v.reviewRoads.length}건 확인`:'범위 후보 확인');

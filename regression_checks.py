@@ -1226,7 +1226,7 @@ def check_r13_criterion_layer1() -> None:
     assert '"scheme_module_api": "2026-09-02-r22-station-area-frontage-no-hierarchy"' in py
 
 def check_r14_street_block_auto() -> None:
-    """사업구역·가로구역 검증 UI와 조작적 공간 Fact가 존재해야 한다."""
+    """사업구역·가로구역 FACT 검증 UI와 공간구획 추출 원칙이 존재해야 한다."""
     root = Path(app.BASE_DIR)
     html = (root / "app.html").read_text(encoding="utf-8")
     assert 'id="ccStreetBlockMiniMap"' in html
@@ -1234,16 +1234,22 @@ def check_r14_street_block_auto() -> None:
         assert f'id="{dom_id}"' in html
     assert "function buildProjectBoundaryCandidate()" in html
     assert "function buildProjectStreetBlockValidation(projectFeature)" in html
-    assert "function projectBoundaryRelation(feature,site,bandM=6)" in html
-    assert "function projectRoadIsExternal(feature,site)" in html
-    assert "boundary_share>=0.55" in html
-    assert "내부 관통도로 사업구역 포함" in html
-    assert "도로 최우선 외곽경계" in html
-    assert "1,500㎡를 초과할 때 제척" in html
-    assert "4m 미만 도로는 폐합" in html
+    assert "function classifyProjectFacility(row)" in html
+    classify = html[html.index("function classifyProjectFacility(row)"):html.index("function projectFacilityIsStreetBlockSeparator", html.index("function classifyProjectFacility(row)"))]
+    assert "row?.name,row?.category" in classify
+    assert "layer==='LT_C_UPISUQ151'" in classify
     project_block=html[html.index("function buildProjectBoundaryCandidate()"):html.index("function buildProjectStreetBlockValidation(projectFeature)")]
-    assert "polygonOuterShellOnly(merged)" not in project_block
-    assert "fillPolygonHolesPreserveParts(merged)" in project_block
+    assert "if(!activeGeometry)" in project_block
+    assert "if(!activeGeometry||!selectedParcelPnus.size)" not in project_block
+    assert "let shell=cloneFeature(site)" in project_block
+    assert "검토요청지 전체 유지 + 도로·도시계획시설 공간분할 Fact 별도 적용" in project_block
+    street_block=html[html.index("function buildProjectStreetBlockValidation(projectFeature)"):html.index("function finalizeAnalysisGeometryFromSelectedParcels()") ]
+    assert "for(const [pnu,src] of parcelFeatureMap.entries())" in street_block
+    assert "selectedParcelPnus" in street_block  # 주석에 자동포함과 무관함을 명시
+    assert "for(const rf of currentRoadWidthFeatures||[])" in street_block
+    assert "_separator_kind:'roadbt_road'" in street_block
+    assert "4m 미만 도로" in html
+    assert "공간 FACT 검증용" in html
     assert "현재 화면은 범위 추출 가능성 검증용이며 기존 사업 판정엔진에는 아직 연결하지 않습니다" in html
 
 
@@ -1254,7 +1260,7 @@ def check_r15_street_block_4m_conditional() -> None:
     py = (root / "app.py").read_text(encoding="utf-8")
     assert "road_min_width_m = 4.0" in py
     assert "TL_SPRD_MANAGE ROAD_BT" in py
-    assert "4m 미만 도로는 폐합" in html
+    assert "4m 미만 도로는 구획 분할선에서 제외" in html
     assert "estimatePolygonShortWidthMeters" in html
     assert "철도|하천" in py
     assert "LT_C_UPISUQ151" not in html[html.index("function streetBlockBarrierSpec"):html.index("async function fetchStreetBlockFacilityBarriers")]
