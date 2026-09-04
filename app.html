@@ -14,7 +14,7 @@
     header h1{font-size:22px;margin:0 0 4px}header .sub{font-size:12px;color:var(--muted)}
     .shell{display:grid;grid-template-columns:minmax(520px,1.35fr) minmax(420px,.95fr);gap:16px;padding:16px;min-height:calc(100vh - 78px)}
     .panel{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}.panel-head{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:10px}.panel-head h2{font-size:16px;margin:0}
-    #map{height:520px;width:100%;background:#e8eaed}.map-foot{padding:12px 16px;border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.metric{padding:10px;border:1px solid var(--line);border-radius:10px}.metric .k{font-size:11px;color:var(--muted)}.metric .v{font-weight:800;font-size:17px;margin-top:2px}
+    #map{height:520px;width:100%;background:#e8eaed}.map-foot{padding:12px 16px;border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.metric{padding:10px;border:1px solid var(--line);border-radius:10px}.metric .k{font-size:11px;color:var(--muted)}.metric .v{font-weight:800;font-size:17px;margin-top:2px}
     .form-wrap{padding:14px 16px}.section-title{font-size:13px;font-weight:800;margin:4px 0 10px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.field label{display:block;font-size:11px;color:#475467;font-weight:700;margin-bottom:4px}.field input{width:100%;padding:9px 10px;border:1px solid #cfd5dc;border-radius:8px;font-size:14px;background:#fff}.field input:focus{outline:2px solid #c7d7fe;border-color:#84adff}.field small{color:var(--muted);font-size:10px}
     .checkline{display:flex;gap:8px;align-items:center;font-size:12px;margin-top:9px}.checkline input{width:auto}.actions{display:flex;gap:8px;margin-top:14px}.btn{padding:11px 13px;border-radius:9px;border:1px solid var(--line);font-weight:800;cursor:pointer;background:white}.btn.primary{background:var(--dark);color:white;border-color:var(--dark);flex:1}.btn:disabled{opacity:.45;cursor:not-allowed}
     .hint{margin-top:10px;padding:9px 10px;border-radius:8px;background:#f8fafc;border:1px dashed #d0d5dd;font-size:11px;color:#475467;line-height:1.5}
@@ -1718,6 +1718,7 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="metric"><div class="k">도형면적(참고)</div><div class="v" id="mArea">-</div></div>
 <div class="metric"><div class="k">면적(ha)</div><div class="v" id="mHa">-</div></div>
 <div class="metric"><div class="k">둘레</div><div class="v" id="mPerimeter">-</div></div>
+<div class="metric"><div class="k">사업구역 후보계</div><div class="v" id="mCandidateBoundary">-</div></div>
 </div>
 </div>
 <div class="renewal-spatial-column">
@@ -1975,7 +1976,7 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="spatial-mini-map" id="ccSchemeRoadMiniMap"></div>
 <div class="spatial-module-head" style="margin-top:10px"><b>도정법 접도율 검토</b><span>재개발·주거환경개선 · 건축물 비율 기준</span></div>
 <div class="station-scheme-list" id="urbanRenewalFrontageSummary"><div class="station-scheme-row head"><b>사업방식</b><span>산정상태</span><span>접도율 근거</span></div><div class="station-scheme-row"><b>분석 전</b><span class="scheme-tag INFO">-</span><span>구역계를 설정하고 검토하기를 눌러야 계산됩니다.</span></div></div>
-<div class="spatial-caption">재개발과 주거환경개선의 주택접도율은 모두 폭 6m 이상 도로에 대지경계가 연속 4m 이상 접한 대지의 건축물 수를 전체 건축물 수로 나눈 비율(%)로 산정합니다. 계산식은 같고 적용 기준비율은 재개발 40% 이하, 주거환경개선 20% 이하로 각각 판정합니다.</div>
+<div class="spatial-caption">주택접도율은 법정 세부항목으로 원자료·수기입력 기능은 유지하되, 재개발·주거환경개선의 1차 사업후보 자동판정 변수에서는 제외합니다. 정비계획 단계에서 현장조사·도로대장·도면으로 추후검토합니다.</div>
 <div class="spatial-module-head" style="margin-top:10px"><b>소정법 가로구역·통과도로 검토</b><span>가로주택정비 · 폐합·통과도로 기준</span></div>
 <div class="station-scheme-list" id="smallscaleBlockSummary"><div class="station-scheme-row head"><b>검토항목</b><span>판정</span><span>가로구역·통과도로 근거</span></div><div class="station-scheme-row"><b>분석 전</b><span class="scheme-tag INFO">-</span><span>구역계를 설정하고 검토하기를 눌러야 계산됩니다.</span></div></div>
 <div class="spatial-caption">소규모주택정비법상 가로주택정비의 가로구역 폐합과 내부 통과도로를 분리해 표시합니다. 소규모주택정비 관리지역은 현재 엔진의 기존 Fact대로 통과도로 요건 적용 제외를 표시하며, 면적·노후도·기존주택수까지 합친 사업 전체 판정과 혼합하지 않습니다.</div>
@@ -2108,6 +2109,7 @@ body.service-layout-ready>.shell{display:none!important}
 <label><input checked="" id="lyAllParcels" onchange="refreshAnalysisLayers()" type="checkbox"/> 전체필지</label>
 <label><input checked="" id="lySmall" onchange="refreshAnalysisLayers()" type="checkbox"/> 90㎡ 미만 필지</label>
 <label><input checked="" id="lyOld" onchange="refreshAnalysisLayers()" type="checkbox"/> 건축물 경과연수 참고필지</label>
+<label><input checked="" id="lyProjectBoundaryCandidate" onchange="refreshAnalysisLayers()" type="checkbox"/> 사업구역 후보계</label>
 <div class="analysis-layer-summary" id="analysisLayerSummary">필지·건축물 원장은 향후 역세권·지구단위·복합개발 검토에 재사용합니다.</div>
 </div>
 <div class="boundary-box">
@@ -2867,6 +2869,13 @@ const frontageFailLayer=L.geoJSON(null,{style:{weight:2.2,color:'#b42318',fillCo
 
 const roadLayer=L.geoJSON(null,{style:f=>{const p=f.properties||{};const q=p._qualifies6===true;return {weight:q?2:1,color:q?'#7a5af8':'#98a2b3',fillColor:q?'#d9d6fe':'#eaecf0',fillOpacity:q?.28:.10};},onEachFeature:(f,l)=>{const p=f.properties||{};const w=p._width_m==null?'폭원 미확인':Number(p._width_m).toFixed(1)+'m';l.bindTooltip(`도로중심선 기반 개략범위 · ${w} · ${p._width_source||''}`);}}).addTo(map);
 
+// 사용자가 그린 검토요청지를 변경하지 않고, 지적·도로 Fact로 정제한 별도 사업구역 후보계를 표시한다.
+const projectBoundaryCandidateLayer=L.geoJSON(null,{
+  style:{weight:3.2,color:'#d92d20',fillColor:'#fecdca',fillOpacity:.025,dashArray:'10,4,2,4'},
+  onEachFeature:(f,l)=>{const p=f.properties||{};l.bindTooltip(`사업구역 후보계 · ${p.area_m2==null?'-':Number(p.area_m2).toLocaleString('ko-KR',{maximumFractionDigits:0})+'㎡'} · 내부 도로 ${p.internal_road_parcels||0}필지 폐쇄 · 외곽 도로 ${p.external_road_parcels||0}필지 제외${p.auto_closure?' · 단부 직선폐합':''}`);}
+}).addTo(map);
+let projectBoundaryCandidate={geometry:null,area_m2:null,internal_road_parcels:0,external_road_parcels:0,planning_road_features:0,auto_closure:false,status:'unavailable'};
+
 let activeGeometry=null;
 // R22 FIX: 사용자가 지도·지번·SHP로 확정한 구역계가 모든 공간분석의 기준경계다.
 // 연속지적 자동선정은 현황 Fact 수집용이며 구역계를 임의로 필지 union으로 바꾸지 않는다.
@@ -2877,6 +2886,81 @@ let boundaryReferenceMetrics={area_m2:null,area_ha:null,perimeter_m:null};
 function currentSpatialGeometry(){return activeGeometry;}
 function currentSpatialFeature(){const g=activeGeometry;return g?turf.feature(g):null;}
 function currentSpatialAreaM2(){try{const f=currentSpatialFeature();return f?Math.max(0,turf.area(f)):0;}catch(e){return 0;}}
+function polygonOuterShellOnly(feature){
+  if(!feature?.geometry)return null;
+  const g=feature.geometry,p=feature.properties||{};
+  if(g.type==='Polygon'&&g.coordinates?.[0])return turf.polygon([g.coordinates[0]],p);
+  if(g.type==='MultiPolygon'){
+    const polys=(g.coordinates||[]).filter(x=>x?.[0]).map(c=>turf.polygon([c[0]],p));
+    if(!polys.length)return null;
+    polys.sort((a,b)=>turf.area(b)-turf.area(a));
+    return polys[0];
+  }
+  return null;
+}
+function buildProjectBoundaryCandidate(){
+  projectBoundaryCandidateLayer.clearLayers();
+  const metric=document.getElementById('mCandidateBoundary');
+  const show=document.getElementById('lyProjectBoundaryCandidate')?.checked!==false;
+  if(!activeGeometry||!selectedParcelPnus.size){
+    projectBoundaryCandidate={geometry:null,area_m2:null,internal_road_parcels:0,external_road_parcels:0,planning_road_features:0,auto_closure:false,status:'unavailable'};
+    if(metric)metric.textContent='-';
+    if(analysisState?.metrics)analysisState.metrics.project_boundary_candidate=projectBoundaryCandidate;
+    return projectBoundaryCandidate;
+  }
+  const site=turf.feature(activeGeometry);
+  let boundaryBand=null;
+  try{boundaryBand=turf.buffer(turf.polygonToLine(site),1.0,{units:'meters'});}catch(e){}
+  const include=[];let internalRoad=0,externalRoad=0;
+  for(const pnu of selectedParcelPnus){
+    const src=parcelFeatureMap.get(String(pnu));if(!src?.geometry)continue;
+    const f=turf.feature(src.geometry,Object.assign({},src.properties||{}));
+    const ledger=f.properties?.land_ledger||{};
+    const cat=normalizedLandCategory(ledger.lndcgrCodeNm||parseJibunLandCategory(f.properties?.jibun||''));
+    const isRoad=cat==='도로';
+    let touchesOuter=false;
+    if(isRoad&&boundaryBand){try{touchesOuter=turf.booleanIntersects(f,boundaryBand);}catch(e){}}
+    // 검토요청지 외곽에 걸린 도로필지는 후보계에서 빼 도로의 대지측 경계를 따라가고, 내부도로는 포함하여 막는다.
+    if(isRoad&&touchesOuter){externalRoad++;continue;}
+    if(isRoad)internalRoad++;
+    include.push(f);
+  }
+  if(!include.length){
+    if(metric)metric.textContent='REVIEW';
+    projectBoundaryCandidate={geometry:null,area_m2:null,internal_road_parcels:internalRoad,external_road_parcels:externalRoad,planning_road_features:0,auto_closure:false,status:'REVIEW'};
+    if(analysisState?.metrics)analysisState.metrics.project_boundary_candidate=projectBoundaryCandidate;
+    return projectBoundaryCandidate;
+  }
+  let merged=null,autoClosure=false;
+  try{merged=safeUnionPolygons(include);}catch(e){}
+  if(!merged){merged=include[0];for(let i=1;i<include.length;i++){try{merged=turf.union(merged,include[i])||merged;}catch(e){}}}
+  // 떨어진 필지군 때문에 MultiPolygon이 남으면 단부를 지적 꼭짓점 사이의 직선으로 폐합한다.
+  if(merged?.geometry?.type==='MultiPolygon'){
+    try{
+      const hull=turf.convex(turf.explode(merged));
+      if(hull){
+        const guard=turf.buffer(site,30,{units:'meters'});
+        const clipped=turf.intersect(hull,guard);
+        merged=clipped||hull;autoClosure=true;
+      }
+    }catch(e){}
+  }
+  // 내부 도로·틈은 후보구역을 다시 자르지 않도록 외곽 shell만 사용한다.
+  const shell=polygonOuterShellOnly(merged)||merged;
+  if(!shell?.geometry){if(metric)metric.textContent='REVIEW';return projectBoundaryCandidate;}
+  let planningRoads=0;
+  try{planningRoads=(planningAnalysis?.facilities||[]).filter(x=>x.layer==='LT_C_UPISUQ151'&&x.feature?.geometry&&turf.booleanIntersects(site,turf.feature(x.feature.geometry))).length;}catch(e){}
+  const area=Math.max(0,turf.area(shell));
+  shell.properties=Object.assign({},shell.properties||{},{
+    _project_boundary_candidate:true,area_m2:area,internal_road_parcels:internalRoad,external_road_parcels:externalRoad,planning_road_features:planningRoads,auto_closure:autoClosure,
+    basis:'검토요청지 내부가로 폐쇄 + 도시계획시설/지목 도로 외곽 우선 + 지적경계 + 미폐합 단부 직선폐합'
+  });
+  projectBoundaryCandidate={geometry:shell.geometry,area_m2:area,internal_road_parcels:internalRoad,external_road_parcels:externalRoad,planning_road_features:planningRoads,auto_closure:autoClosure,status:'CANDIDATE'};
+  if(show)projectBoundaryCandidateLayer.addData(shell);
+  if(metric)metric.textContent=`${fmt(area,0)}㎡`;
+  if(analysisState?.metrics)analysisState.metrics.project_boundary_candidate=Object.assign({},projectBoundaryCandidate);
+  return projectBoundaryCandidate;
+}
 function finalizeAnalysisGeometryFromSelectedParcels(){
   const fs=[...selectedParcelPnus].map(k=>parcelFeatureMap.get(String(k))).filter(f=>f?.geometry);
   // 분석경계는 항상 사용자 확정 구역계. 필지 union은 비교·통계 참고값으로만 계산한다.
@@ -4617,6 +4701,7 @@ function renderPlanningFacilitiesImmediate(){
   }
   try{setTimeout(()=>ccPlanningMini.invalidateSize(false),0);}catch(e){}
   // 도시계획시설은 정보표시용이 아니라 순대지 계산의 현황제약이므로 즉시 재계산.
+  buildProjectBoundaryCandidate();
   updateCompactInfoRail();
   updateSiteStatusCard();
   if(document.getElementById('planningSimulationModal')?.classList.contains('open'))updatePlanningAlternatives();
@@ -4976,7 +5061,7 @@ enforceLocationMapBoundaryOnly();
 
 map.on(L.Draw.Event.CREATED, async e=>{addressPreviewFeatures=[];addressPreviewLayer.clearLayers();drawnItems.clearLayers(); if(e.layer.setStyle)e.layer.setStyle({weight:4,color:'#d92d20',fillColor:'#fecdca',fillOpacity:.04}); drawnItems.addLayer(e.layer); activeGeometry=e.layer.toGeoJSON().geometry; updateCompactMapRole(); enforceLocationMapBoundaryOnly(); await measureAndSync(); updateCompactInfoRail(); refreshCompactMiniMaps(); updateCandidateSchemes();});
 map.on(L.Draw.Event.EDITED, async e=>{e.layers.eachLayer(layer=>{activeGeometry=layer.toGeoJSON().geometry;if(layer.setStyle)layer.setStyle({weight:4,color:'#d92d20',fillColor:'#fecdca',fillOpacity:.04});}); updateCompactMapRole(); enforceLocationMapBoundaryOnly(); await measureAndSync(); updateCompactInfoRail(); refreshCompactMiniMaps(); updateCandidateSchemes();});
-map.on(L.Draw.Event.DELETED, ()=>{activeGeometry=null; parcelLayer.clearLayers(); buildingLayer.clearLayers(); roadLayer.clearLayers(); smallParcelLayer.clearLayers(); oldParcelLayer.clearLayers(); frontagePassLayer.clearLayers(); frontageFailLayer.clearLayers(); stationBoundaryLayer.clearLayers();stationBuffer250Layer.clearLayers();stationBuffer350Layer.clearLayers();stationBuffer500Layer.clearLayers(); parcelFeatureMap.clear(); selectedParcelPnus.clear(); renderParcelSelectionList(); resetMeasure(); document.getElementById('result').innerHTML='<div class="empty">왼쪽 지도에서 대상구역을 먼저 그리세요.</div>'; resetPlanningAnalysis(); updateCompactMapRole(); updateCompactInfoRail(); refreshCompactMiniMaps(); updateSiteStatusCard(); updateCandidateSchemes();});
+map.on(L.Draw.Event.DELETED, ()=>{activeGeometry=null; parcelLayer.clearLayers(); buildingLayer.clearLayers(); roadLayer.clearLayers(); projectBoundaryCandidateLayer.clearLayers(); projectBoundaryCandidate={geometry:null,area_m2:null,internal_road_parcels:0,external_road_parcels:0,planning_road_features:0,auto_closure:false,status:'unavailable'}; const cbm=document.getElementById('mCandidateBoundary');if(cbm)cbm.textContent='-'; smallParcelLayer.clearLayers(); oldParcelLayer.clearLayers(); frontagePassLayer.clearLayers(); frontageFailLayer.clearLayers(); stationBoundaryLayer.clearLayers();stationBuffer250Layer.clearLayers();stationBuffer350Layer.clearLayers();stationBuffer500Layer.clearLayers(); parcelFeatureMap.clear(); selectedParcelPnus.clear(); renderParcelSelectionList(); resetMeasure(); document.getElementById('result').innerHTML='<div class="empty">왼쪽 지도에서 대상구역을 먼저 그리세요.</div>'; resetPlanningAnalysis(); updateCompactMapRole(); updateCompactInfoRail(); refreshCompactMiniMaps(); updateSiteStatusCard(); updateCandidateSchemes();});
 
 function num(id){const v=document.getElementById(id).value.trim(); return v===''?null:Number(v)}
 function ratio(id){const v=num(id); return v===null?null:v/100}
@@ -5053,9 +5138,11 @@ function refreshAnalysisLayers(){
     if(!map.hasLayer(roadLayer))roadLayer.addTo(map);
   }else if(map.hasLayer(roadLayer))map.removeLayer(roadLayer);
 
+  const candidate=buildProjectBoundaryCandidate();
   const s=document.getElementById('analysisLayerSummary');
-  if(s)s.textContent=`선택필지 ${selectedParcelPnus.size} · 90㎡ 미만 ${small.length}필지 · 노후건축물 소재필지 ${old.length} · 필지·건축물 원장은 향후 사업방식 비교에 재사용`;
+  if(s)s.textContent=`선택필지 ${selectedParcelPnus.size} · 90㎡ 미만 ${small.length}필지 · 노후건축물 소재필지 ${old.length} · 사업구역 후보계 ${candidate?.area_m2==null?'-':fmt(candidate.area_m2,0)+'㎡'}${candidate?.auto_closure?' · 단부 직선폐합':''}`;
   updateAnalysisState();
+  if(analysisState?.metrics)analysisState.metrics.project_boundary_candidate=Object.assign({},projectBoundaryCandidate);
   updateRedevelopmentStrategySignal();
   enforceLocationMapBoundaryOnly();
   refreshCompactMiniMaps();
@@ -8990,15 +9077,15 @@ function redevelopmentSpatialFacts(store){
     else if(area>=5000){areaStatus='PASS';areaConditional=!c.areaExceptionApproved;areaNote=c.areaExceptionApproved?'5,000㎡ 이상 예외 인정 확인 입력':'5,000~10,000㎡ · 조례상 위원회 인정 등 예외경로를 사업가능 경로로 반영';}
     else{areaStatus='FAIL';areaNote='5,000㎡ 미만으로 서울시 조례상 면적 예외 하한에도 미달';}
   }
-  const small=family.raw_metrics.small_parcel_pct,hd=family.raw_metrics.house_density,fr=frontage?.ratio_pct;
+  const small=family.raw_metrics.small_parcel_pct,hd=family.raw_metrics.house_density;
   const smallStatus=small==null?'REVIEW':small>=40?'PASS':'FAIL';
   const densityStatus=hd==null?'REVIEW':hd>=60?'PASS':'FAIL';
-  const frontageThreshold=fr==null?null:fr<=40;
-  const frontageStatus=fr==null?'REVIEW':frontageThreshold?'PASS':'FAIL';
-  let extraStatus='REVIEW',extraNote='과소필지·주택접도율·호수밀도 중 1개 이상 확인 필요';
-  if(smallStatus==='PASS'||densityStatus==='PASS'){extraStatus='PASS';extraNote=`확정 가능한 추가요건 충족: ${[smallStatus==='PASS'?'과소필지':null,densityStatus==='PASS'?'호수밀도':null].filter(Boolean).join('·')}`;}
-  else if(frontageThreshold){extraStatus='PASS';extraNote='6m 기준 주택접도율 40% 이하 충족 · 최종 결정도서·현장조서 재확인';}
-  else if([smallStatus,densityStatus,frontageStatus].every(x=>x==='FAIL')){extraStatus='FAIL';extraNote='확인된 추가 입안요건이 모두 미달';}
+  // 주택접도율은 법정 세부항목으로 기록은 유지하되 1차 사업후보 자동판정 변수에서는 제외한다.
+  // 실제 정비계획 단계에서 현장조사·도로대장·도면으로 추후검토한다.
+  const frontageStatus='INFO';
+  let extraStatus='REVIEW',extraNote='1차 자동판정은 과소필지·호수밀도만 사용 · 주택접도율은 추후검토';
+  if(smallStatus==='PASS'||densityStatus==='PASS'){extraStatus='PASS';extraNote=`1차 자동판정 충족: ${[smallStatus==='PASS'?'과소필지':null,densityStatus==='PASS'?'호수밀도':null].filter(Boolean).join('·')} · 접도율 추후검토`;}
+  else if([smallStatus,densityStatus].every(x=>x==='FAIL')){extraStatus='FAIL';extraNote='1차 자동판정 항목(과소필지·호수밀도)이 모두 미달 · 접도율은 추후검토';}
   const fact={
     official:{loaded:store.site.renewal.loaded,hits:officialHits,value:officialHits.length?officialHits.map(x=>x.name).join(' / '):(store.site.renewal.loaded?'공식 중첩 없음':'정비구역 GIS 미확인')},
     area:{m2:area,status:areaStatus,note:areaNote,exception_confirmed:!!c.areaExceptionApproved,conditional:areaConditional},
@@ -9017,7 +9104,7 @@ function redevelopmentSpatialFacts(store){
     spatialFactRow('과소필지율',fmtSchemePct(small),small==null?'REVIEW':'CONFIRMED','추가 입안요건 기준 40% 이상',
       {criterionStatus:smallStatus,criterionRule:'과소필지 40% 이상',criterionNote:smallStatus==='FAIL'&&small!=null?`기준 대비 ${(40-Number(small)).toFixed(1)}%p 부족`:'',criterionItem:'과소필지'}),
     spatialFactRow('주택접도율(6m 기준)',frontage?.value||'산정자료 미확보',frontage?.status||'REVIEW',frontage?.note||'도로중심선 기반 개략산정',
-      {criterionStatus:frontageStatus,criterionRule:'폭 6m 이상 도로에 4m 이상 접한 대지의 건축물 비율 40% 이하',criterionItem:'주택접도율'}),
+      {criterionStatus:'INFO',criterionRule:'법정 세부항목이나 본 플랫폼 1차 사업후보 자동판정에서는 제외',criterionNote:'정비계획 단계에서 현장조사·도로대장·도면으로 추후검토',criterionItem:'주택접도율'}),
     spatialFactRow('호수밀도',hd==null?'-':`${Number(hd).toFixed(1)}호/ha`,hd==null?'REVIEW':'CONFIRMED','추가 입안요건 기준 60호/ha 이상',
       {criterionStatus:densityStatus,criterionRule:'60호/ha 이상',criterionNote:densityStatus==='FAIL'&&hd!=null?`기준 대비 ${(60-Number(hd)).toFixed(2)}호/ha 부족`:'',criterionItem:'호수밀도'})
   ];
@@ -9028,9 +9115,9 @@ function checkRedevelopmentFromFacts(store,f){
   rows.push(schemeRow('정비유형·정비구역','주택정비형 재개발 정비구역·예정구역의 공식 중첩 여부를 현황으로 확인',f.official.value,f.official.loaded?'INFO':'REVIEW','기존 지정 여부는 신규 입안요건과 별개',false,{sourceId:'RENEWAL_GIS',locator:'서울시 정비구역·정비예정구역 공식 공간자료 / 결정고시 재확인'}));
   rows.push(schemeRow('구역면적','10,000㎡ 이상 원칙 · 5,000㎡ 이상은 조례상 위원회 인정 등 예외 검토',fmtSchemeArea(f.area.m2),f.area.status,f.area.note,true,{sourceId:'RENEWAL_ORD',locator:'제6조제1항제2호',conditional:f.area.conditional===true,caveat:f.area.conditional?'위원회 인정 등 조례상 예외요건 확보 필요':'',decisionPath:f.area.conditional?'committee_exception':'base'}));
   rows.push(schemeRow('노후도','노후·불량건축물 수 60% 이상',ageFactValue(f.aging.assessment),f.aging.assessment?.status||'REVIEW',ageFactNote(f.aging.assessment),true,{sourceId:'RENEWAL_ORD',locator:'제6조제1항제2호 / 제4조·별표1'}));
-  rows.push(schemeRow('추가 입안요건','과소필지 40% 이상 또는 주택접도율 40% 이하 또는 호수밀도 60호/ha 이상 중 1개 이상',f.entry.additional_note,f.entry.additional_status,f.entry.additional_note,true,{sourceId:'RENEWAL_ORD',locator:'제6조제1항제2호 가목~다목'}));
+  rows.push(schemeRow('추가 입안요건','1차 자동판정: 과소필지 40% 이상 또는 호수밀도 60호/ha 이상 · 주택접도율은 추후검토',f.entry.additional_note,f.entry.additional_status,f.entry.additional_note,true,{sourceId:'RENEWAL_ORD',locator:'제6조제1항제2호 가목~다목 · 접도율 항목은 후속 현장검토'}));
   rows.push(schemeRow('과소필지','과소필지 40% 이상',fmtSchemePct(f.entry.small_parcel_pct),f.entry.small_status,'추가 입안요건 세부항목',false,{sourceId:'RENEWAL_ORD',locator:'제6조제1항제2호가목'}));
-  rows.push(schemeRow('주택접도율','폭 6m 이상 도로에 4m 이상 접한 대지의 건축물 비율 40% 이하',f.entry.frontage?.value||'-',f.entry.frontage_status,f.entry.frontage?.note||'사업진입조건 확인을 위한 개략적 추정치로, 현장조서 및 도면검토를 통해 보완될 수 있음',false,{sourceId:'RENEWAL_ORD',locator:'제2조제10호·제6조제1항제2호나목'}));
+  rows.push(schemeRow('주택접도율(추후검토)','법정 세부항목 · 1차 사업후보 자동판정 변수에서 제외',f.entry.frontage?.value||'미산정','INFO','현장조사·도로대장·정비계획 도면으로 추후검토',false,{sourceId:'RENEWAL_ORD',locator:'제2조제10호·제6조제1항제2호나목'}));
   rows.push(schemeRow('호수밀도','60호/ha 이상',f.entry.house_density==null?'-':`${Number(f.entry.house_density).toFixed(1)}호/ha`,f.entry.density_status,'추가 입안요건 세부항목',false,{sourceId:'RENEWAL_ORD',locator:'제2조제5호·제6조제1항제2호다목'}));
   rows.push(schemeRow('용적률·계획기준','2030 기본계획 및 정비계획의 용도지역·기준/허용/상한용적률을 적용',f.planning.density.far,'INFO',f.planning.density.contribution,false,{sourceId:'RENEWAL_PLAN',locator:'주택정비형 재개발사업 부문 · 역세권 정비사업 용도지역 상향기준'}));
   return rows;
@@ -9078,15 +9165,14 @@ function residentialEnvironmentSpatialFacts(store){
   const officialHits=renewalHitsByType(store,['housing_district']).filter(x=>/주거환경|환경개선/.test(`${x.name||''}`));
   const methodRaw=c.resenvMethod||'auto',management=['management','smallscale'].includes(methodRaw);
   const methodLabels={auto:'자동분기/미선택',management:'관리형(기반시설 정비+자력개량)',smallscale:'관리형(기반시설 정비+자력개량)',acquisition:'수용 후 주택건설',landreadjustment:'환지',disposition:'관리처분'};
-  const hd=family.raw_metrics.house_density,small=family.raw_metrics.small_parcel_pct,fr=frontage?.ratio_pct;
+  const hd=family.raw_metrics.house_density,small=family.raw_metrics.small_parcel_pct;
   const densityStatus=hd==null?'REVIEW':hd>=80?'PASS':'FAIL';
   const ageStatus=age?.status||'REVIEW';
-  const frontageThreshold=fr==null?null:fr<=20,frontageStatus=fr==null?'REVIEW':frontageThreshold?'PASS':'FAIL';
+  const frontageStatus='INFO';
   const smallStatus=small==null?'REVIEW':small>=50?'PASS':'FAIL';
-  let extraStatus='REVIEW',extraNote='노후도·주택접도율·과소필지 중 1개 이상 확인 필요';
-  if(ageStatus==='PASS'||smallStatus==='PASS'){extraStatus='PASS';extraNote=`확정 가능한 추가요건 충족: ${[ageStatus==='PASS'?'노후도':null,smallStatus==='PASS'?'과소필지':null].filter(Boolean).join('·')}`;}
-  else if(frontageThreshold){extraStatus='PASS';extraNote='6m 기준 주택접도율 20% 이하 충족 · 최종 결정도서·현장조서 재확인';}
-  else if([ageStatus,frontageStatus,smallStatus].every(x=>x==='FAIL')){extraStatus='FAIL';extraNote='확인된 추가 입안요건이 모두 미달';}
+  let extraStatus='REVIEW',extraNote='1차 자동판정은 노후도·과소필지만 사용 · 주택접도율은 추후검토';
+  if(ageStatus==='PASS'||smallStatus==='PASS'){extraStatus='PASS';extraNote=`1차 자동판정 충족: ${[ageStatus==='PASS'?'노후도':null,smallStatus==='PASS'?'과소필지':null].filter(Boolean).join('·')} · 접도율 추후검토`;}
+  else if([ageStatus,smallStatus].every(x=>x==='FAIL')){extraStatus='FAIL';extraNote='1차 자동판정 항목(노후도·과소필지)이 모두 미달 · 접도율은 추후검토';}
   const fact={
     method:{raw:methodRaw,label:methodLabels[methodRaw]||methodRaw,management,selected:methodRaw!=='auto'},
     official:{loaded:store.site.renewal.loaded,hits:officialHits,value:officialHits.length?officialHits.map(x=>x.name).join(' / '):(store.site.renewal.loaded?'관련 공식 중첩 없음':'정비구역 GIS 미확인')},
@@ -9097,7 +9183,7 @@ function residentialEnvironmentSpatialFacts(store){
     spatialFactRow('주거환경개선 시행방법',fact.method.label,fact.method.selected?'CONFIRMED':'REVIEW','도시정비법 제23조 시행방법 중 적용경로 선택'),
     spatialFactRow('호수밀도',hd==null?'-':`${Number(hd).toFixed(1)}호/ha`,hd==null?'REVIEW':'CONFIRMED','비관리형 입안요건 80호/ha 이상'),
     spatialFactRow('노후도',ageFactValue(age),age?.status==='PASS'||age?.status==='FAIL'?'CONFIRMED':'REVIEW',ageFactNote(age)),
-    spatialFactRow('주택접도율(6m 기준)',frontage?.value||'산정자료 미확보',frontage?.status||'REVIEW',frontage?.note||'도로중심선 기반 개략추정'),
+    spatialFactRow('주택접도율(추후검토)',frontage?.value||'미산정','INFO','1차 사업후보 자동판정 변수에서 제외 · 현장조사·도로대장·도면으로 추후검토'),
     spatialFactRow('과소필지율',fmtSchemePct(small),small==null?'REVIEW':'CONFIRMED','비관리형 추가요건 50% 이상')
   ];
   store.scheme_specific.residential_environment=fact;return fact;
@@ -9110,9 +9196,9 @@ function checkResidentialEnvironmentFromFacts(store,f){
     rows.push(schemeRow('관리형 사업구조','공공이 정비기반시설·공동이용시설을 설치·확대하고 토지등소유자가 주택을 보전·정비·개량','정비계획·현장조사 필요','REVIEW','초기 플랫폼에서는 기반시설 열악도·주민개량 가능성을 참고하고 세부계획에서 확정',true,{sourceId:'RENEWAL_ACT',locator:'제23조제1항제1호·제24조'}));
   }else{
     rows.push(schemeRow('호수밀도','80호/ha 이상',f.density.house_per_ha==null?'-':`${Number(f.density.house_per_ha).toFixed(1)}호/ha`,f.density.status,'비관리형 주거환경개선구역 입안요건',true,{sourceId:'RENEWAL_ORD',locator:'제2조제5호·제6조제1항제1호'}));
-    rows.push(schemeRow('추가 입안요건','노후·불량건축물 60% 이상 또는 주택접도율 20% 이하 또는 과소필지 50% 이상 중 1개 이상',f.additional.note,f.additional.status,f.additional.note,true,{sourceId:'RENEWAL_ORD',locator:'제6조제1항제1호 가목~다목'}));
+    rows.push(schemeRow('추가 입안요건','1차 자동판정: 노후·불량건축물 60% 이상 또는 과소필지 50% 이상 · 주택접도율은 추후검토',f.additional.note,f.additional.status,f.additional.note,true,{sourceId:'RENEWAL_ORD',locator:'제6조제1항제1호 가목~다목 · 접도율 항목은 후속 현장검토'}));
     rows.push(schemeRow('노후도','노후·불량건축물 60% 이상',ageFactValue(f.aging.assessment),f.aging.assessment?.status||'REVIEW',ageFactNote(f.aging.assessment),false,{sourceId:'RENEWAL_ORD',locator:'제6조제1항제1호가목·제4조·별표1'}));
-    rows.push(schemeRow('주택접도율','폭 6m 이상 도로에 4m 이상 접한 대지의 건축물 비율 20% 이하',f.frontage?.value||'-',f.frontage?.ratio_pct==null?'REVIEW':f.frontage.ratio_pct<=20?'PASS':'FAIL',f.frontage?.note||'공개 GIS 초기분석 결과이며 최종 결정도서·현장조서로 재확인',false,{sourceId:'RENEWAL_ORD',locator:'제2조제10호·제6조제1항제1호나목'}));
+    rows.push(schemeRow('주택접도율(추후검토)','법정 세부항목 · 1차 사업후보 자동판정 변수에서 제외',f.frontage?.value||'미산정','INFO','현장조사·도로대장·정비계획 도면으로 추후검토',false,{sourceId:'RENEWAL_ORD',locator:'제2조제10호·제6조제1항제1호나목'}));
     rows.push(schemeRow('과소필지','과소필지 50% 이상',fmtSchemePct(f.small_parcel.pct),f.small_parcel.status,'추가 입안요건 세부항목',false,{sourceId:'RENEWAL_ORD',locator:'제6조제1항제1호다목'}));
   }
   rows.push(schemeRow('정비구역 현황','기정 주거환경개선 정비구역 중첩 여부 확인',f.official.value,f.official.loaded?'INFO':'REVIEW','신규 입안 가능성과 별개인 현황 Fact',false,{sourceId:'RENEWAL_GIS',locator:'서울시 정비구역 공식 공간자료 / 결정고시'}));
@@ -9314,9 +9400,9 @@ function checkPriorNegotiationFromFacts(store,f){
 }
 
 const SCHEME_MODULES={
-  redevelopment:{id:'redevelopment',version:'2026-05-18-seoul-ordinance',collectFacts:redevelopmentSpatialFacts,evaluate(store,facts){const rows=checkRedevelopmentFromFacts(store,facts),overall=overallScheme(rows),density=facts.planning.density,sr=moduleStrengthRisk(rows,['주택접도율은 도로중심선 기반 개략추정치로 현장조서·도면검토 보완']);return {module:'redevelopment',facts,rows,overall,density,...sr};}},
+  redevelopment:{id:'redevelopment',version:'2026-05-18-seoul-ordinance',collectFacts:redevelopmentSpatialFacts,evaluate(store,facts){const rows=checkRedevelopmentFromFacts(store,facts),overall=overallScheme(rows),density=facts.planning.density,sr=moduleStrengthRisk(rows,['주택접도율은 1차 사업후보 자동판정 변수에서 제외하고 정비계획 단계에서 추후검토']);return {module:'redevelopment',facts,rows,overall,density,...sr};}},
   reconstruction:{id:'reconstruction',version:'2026-07-01-renewal-act',collectFacts:reconstructionSpatialFacts,evaluate(store,facts){const rows=checkReconstructionFromFacts(store,facts),overall=overallScheme(rows),density=facts.planning.density,sr=moduleStrengthRisk(rows,['정비계획 입안대상 세부요건·재건축진단 결과를 결정도서로 확인']);return {module:'reconstruction',facts,rows,overall,density,...sr};}},
-  residential_environment:{id:'residential_environment',version:'2026-05-18-seoul-ordinance',collectFacts:residentialEnvironmentSpatialFacts,evaluate(store,facts){const rows=checkResidentialEnvironmentFromFacts(store,facts),overall=overallScheme(rows),density=facts.planning.density,sr=moduleStrengthRisk(rows,['관리형/비관리형 시행방법 확정 및 6m 주택접도율 도면검토']);return {module:'residential_environment',facts,rows,overall,density,...sr};}},
+  residential_environment:{id:'residential_environment',version:'2026-05-18-seoul-ordinance',collectFacts:residentialEnvironmentSpatialFacts,evaluate(store,facts){const rows=checkResidentialEnvironmentFromFacts(store,facts),overall=overallScheme(rows),density=facts.planning.density,sr=moduleStrengthRisk(rows,['관리형/비관리형 시행방법 확정 · 주택접도율은 후속 현장검토']);return {module:'residential_environment',facts,rows,overall,density,...sr};}},
   general_housing:{id:'general_housing',version:'2026-08-04-housing-decree',collectFacts:generalHousingSpatialFacts,evaluate(store,facts){const rows=checkGeneralHousingFromFacts(store,facts),overall=overallScheme(rows),density=facts.planning.density,sr=moduleStrengthRisk(rows,['건축설계·주차·일조·주택건설기준은 후속 설계단계 확인']);return {module:'general_housing',facts,rows,overall,density,...sr};}},
   smallscale:{id:'smallscale',version:'2026-08-20-seoul-5-routes',collectFacts:smallscaleSpatialFacts,evaluate(store,facts){const rows=checkSmallscaleFromFacts(store,facts),overall=overallScheme(rows),density=facts.planning.density,sr=moduleStrengthRisk(rows,['가로구역·주택단지·모아타운 관리계획은 공식 도면·인가도서로 최종 확인']);return {module:'smallscale',facts,rows,overall,density,...sr};}},
   prior_negotiation:{id:'prior_negotiation',version:'2026-06-29-guideline-11',collectFacts:priorNegotiationSpatialFacts,evaluate(store,facts){const rows=checkPriorNegotiationFromFacts(store,facts),overall=overallScheme(rows),density=facts.planning.density,sr=moduleStrengthRisk(rows,['대상지 선정·협상안·공공기여는 서울시 사전협상 절차에서 확정']);return {module:'prior_negotiation',facts,rows,overall,density,...sr};}},
@@ -13351,11 +13437,11 @@ function renderRemainingSchemeDetailPopup(name){
   const configs={
     redevelopment:{
       subtitle:'서울시 정비조례 제6조 주택정비형 재개발 입안요건',feasibility:'사업진입 가능성',
-      status:[['면적',fmtSchemeArea(f.area?.m2)],['노후도',ageFactValue(f.aging?.assessment)],['과소필지',fmtSchemePct(f.entry?.small_parcel_pct)],['주택접도율(6m)',f.entry?.frontage?.value||'-'],['호수밀도',f.entry?.house_density==null?'-':`${Number(f.entry.house_density).toFixed(1)}호/ha`],['정비구역 현황',f.official?.value||'-']],
+      status:[['면적',fmtSchemeArea(f.area?.m2)],['노후도',ageFactValue(f.aging?.assessment)],['과소필지',fmtSchemePct(f.entry?.small_parcel_pct)],['주택접도율', '추후검토'],['호수밀도',f.entry?.house_density==null?'-':`${Number(f.entry.house_density).toFixed(1)}호/ha`],['정비구역 현황',f.official?.value||'-']],
       groups:[{label:'기본 입안요건',items:['구역면적','노후도']},{label:'추가 입안요건',items:['추가 입안요건','과소필지','주택접도율','호수밀도']}],
       planItems:['용적률·계획기준'],
       steps:[['공간현황·입안요건 확인','면적·노후도·과소필지·주택접도율·호수밀도 Fact 확인'],['정비계획 입안 준비','토지이용·기반시설·밀도·공공성 계획'],['주민공람·의견청취','관련부서 협의 및 법정 의견청취'],['도시계획위원회 심의·고시','정비구역 지정 및 정비계획 결정'],['조합·사업시행 절차','조합설립·사업시행인가·관리처분 등']],
-      note:'주택접도율은 도로중심선 ROAD_BT 폭원으로 산정한 사업진입조건 확인용 개략추정치이며 현장조서 및 도면검토로 보완될 수 있습니다.'
+      note:'주택접도율은 법정 세부항목이지만 본 플랫폼의 1차 재개발 사업후보 자동판정 변수에서는 제외하며 정비계획 단계에서 현장조사·도로대장·도면으로 추후검토합니다.'
     },
     reconstruction:{
       subtitle:'도시정비법 제12조·시행령 별표1·2030 기본계획 재건축사업 부문',feasibility:'사업진입 가능성',
@@ -13366,10 +13452,10 @@ function renderRemainingSchemeDetailPopup(name){
     },
     residential_environment:{
       subtitle:'도시정비법 제23조·제24조 + 서울시 정비조례 제6조',feasibility:'사업진입 가능성',
-      status:[['시행방법',f.method?.label||'-'],['호수밀도',f.density?.house_per_ha==null?'-':`${Number(f.density.house_per_ha).toFixed(1)}호/ha`],['노후도',ageFactValue(f.aging?.assessment)],['주택접도율(6m)',f.frontage?.value||'-'],['과소필지',fmtSchemePct(f.small_parcel?.pct)],['정비구역 현황',f.official?.value||'-']],
+      status:[['시행방법',f.method?.label||'-'],['호수밀도',f.density?.house_per_ha==null?'-':`${Number(f.density.house_per_ha).toFixed(1)}호/ha`],['노후도',ageFactValue(f.aging?.assessment)],['주택접도율','추후검토'],['과소필지',fmtSchemePct(f.small_parcel?.pct)],['정비구역 현황',f.official?.value||'-']],
       groups:[{label:'시행방법',items:['시행방법','관리형 정량요건 적용','관리형 사업구조']},{label:'비관리형 입안요건',items:['호수밀도','추가 입안요건','노후도','주택접도율','과소필지']}],planItems:['정비구역 현황','계획기준·사업구조'],
       steps:[['시행방법 결정','관리형·수용·환지·관리처분 등 법정 사업방식 선택'],['정비계획 입안요건 확인','비관리형은 호수밀도와 추가요건, 관리형은 기반시설·자력개량 구조 확인'],['정비계획 수립','기반시설·주택개량·공급계획 수립'],['법정 의견청취·심의','주민공람·관계기관 협의·위원회 심의'],['사업시행','선정 시행방법에 따라 공공시행·개량·주택건설 등']],
-      note:'주거환경개선은 관리형과 비관리형의 입안기준을 섞지 않습니다. 6m 도로 기준 주택접도율은 도로중심선 기반 개략추정치입니다.'
+      note:'주거환경개선은 관리형과 비관리형의 입안기준을 섞지 않습니다. 주택접도율은 1차 사업후보 자동판정 변수에서 제외하고 후속 현장검토로 둡니다.'
     },
     general_housing:{
       subtitle:'민간 주택개발 Family · 주택법 제15조·시행령 제27조 + 건축법·서울시 도시계획 조례',feasibility:'독립 개발 가능성',

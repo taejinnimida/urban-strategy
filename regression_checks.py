@@ -122,10 +122,10 @@ def check_redevelopment_boolean_gate() -> None:
     html = Path(app.STATIC_DIR, "app.html").read_text(encoding="utf-8")
     block = html[html.index("function redevelopmentSpatialFacts(store)"):html.index("function reconstructionSpatialFacts(store)")]
     assert "smallStatus==='PASS'||densityStatus==='PASS'" in block
-    assert "frontageThreshold" in block and "extraStatus='REVIEW'" in block
-    assert "[smallStatus,densityStatus,frontageStatus].every(x=>x==='FAIL')" in block
+    assert "const frontageStatus='INFO'" in block and "주택접도율은 추후검토" in block
+    assert "[smallStatus,densityStatus].every(x=>x==='FAIL')" in block
     assert "노후·불량건축물 수 60% 이상" in block
-    assert "과소필지 40% 이상 또는 주택접도율 40% 이하 또는 호수밀도 60호/ha 이상" in block
+    assert "1차 자동판정: 과소필지 40% 이상 또는 호수밀도 60호/ha 이상" in block
 
 
 def check_centerline_width_buffer() -> None:
@@ -493,6 +493,7 @@ def check_spatial_evidence_maps() -> None:
     for marker in (
         'id="ccZoningMiniMap"', 'id="ccSchemeRoadMiniMap"', 'id="ccSafeMedicalMiniMap"',
         'function compactParcelBaseFeatures()', 'function refreshCommonParcelBases()',
+        'function buildProjectBoundaryCandidate()', 'projectBoundaryCandidateLayer', 'auto_closure',
         'function renderZoningSpatialStatus()', 'function renderSchemeRoadEvidence()',
         'function renderSafeMedicalSpatialStatus()',
     ):
@@ -529,7 +530,7 @@ def check_spatial_evidence_maps() -> None:
         assert fact_key in html, fact_key
     for dom_id in ('spRoadFrontageLabel','spRoadFrontageValue','spRoadFrontageBasis','spRoadFrontageContact','spRoadFrontageStatus'):
         assert f'id="{dom_id}"' in html, dom_id
-    assert '사업진입조건 확인을 위한 개략적 추정치로, 현장조서 및 도면검토를 통해 보완될 수 있음' in html
+    assert '1차 사업후보 자동판정 변수에서 제외' in html
     assert "key:'redevelopment'" in html
     # 용도지역 지도는 용도지역별 실제 색상과 동일 색 범례를 제공한다.
     assert 'function zoningColorSpec(name)' in html
@@ -802,7 +803,7 @@ def check_purpose_filter_and_frontage_facts() -> None:
     assert "const SHELL_SCHEMES=new Set(['urban_innovation_zone','facility_complex_zone','mixed_use_zone'])" in html
     assert "fact_key:'redevelopmentFrontage6Fact'" in html
     assert "trySpatialLayerCandidates(['TL_SPRD_MANAGE','LT_C_SPRD_MANAGE']" in html
-    assert "사업진입조건 확인을 위한 개략적 추정치로, 현장조서 및 도면검토를 통해 보완될 수 있음" in html
+    assert "1차 사업후보 자동판정 변수에서 제외" in html
     assert "const roadQuality='ESTIMATE'" in html
     assert "analysisState.quality.road=roadQuality" in html
     assert 'function checkRedevelopment(' not in html
