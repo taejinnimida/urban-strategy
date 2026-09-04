@@ -1242,12 +1242,20 @@ def check_r14_street_block_auto() -> None:
     assert "if(!activeGeometry)" in project_block
     assert "if(!activeGeometry||!selectedParcelPnus.size)" not in project_block
     assert "let shell=cloneFeature(site)" in project_block
-    assert "검토요청지 전체 유지 + 도로·도시계획시설 공간분할 Fact 별도 적용" in project_block
+    assert "const validation=buildProjectStreetBlockValidation(shell)" in project_block
+    assert "가로구역 후보 + 사이 가로망·분할시설 통합 상위 폴리곤" in project_block
     street_block=html[html.index("function buildProjectStreetBlockValidation(projectFeature)"):html.index("function finalizeAnalysisGeometryFromSelectedParcels()") ]
     assert "for(const [pnu,src] of parcelFeatureMap.entries())" in street_block
     assert "selectedParcelPnus" in street_block  # 주석에 자동포함과 무관함을 명시
     assert "for(const rf of currentRoadWidthFeatures||[])" in street_block
     assert "_separator_kind:'roadbt_road'" in street_block
+    # 사업구역은 가로구역 면만 취하는 것이 아니라 가로구역 + 사이 가로망/분할시설을 다시 union한 상위 폴리곤이다.
+    assert "safeUnionPolygons([rawBlocks,sepUnion].filter(Boolean))" in street_block
+    assert "_project_integrated:true" in street_block
+    assert "basis:'street_blocks_plus_internal_network'" in street_block
+    assert "쿨데삭도 이 단계에서 다시 채워지므로 외곽 사업구역계가 닫힌다" in street_block
+    assert "ccStreetBlockProject.eachLayer(l=>l.bringToFront?.())" in html
+    assert "사업구역=가로구역+사이 가로망 통합" in html
     assert "4m 미만 도로" in html
     assert "공간 FACT 검증용" in html
     assert "현재 화면은 범위 추출 가능성 검증용이며 기존 사업 판정엔진에는 아직 연결하지 않습니다" in html
