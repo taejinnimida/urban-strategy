@@ -1234,9 +1234,16 @@ def check_r14_street_block_auto() -> None:
         assert f'id="{dom_id}"' in html
     assert "function buildProjectBoundaryCandidate()" in html
     assert "function buildProjectStreetBlockValidation(projectFeature)" in html
+    assert "function projectBoundaryRelation(feature,site,bandM=6)" in html
+    assert "function projectRoadIsExternal(feature,site)" in html
+    assert "boundary_share>=0.55" in html
+    assert "내부 관통도로 사업구역 포함" in html
     assert "도로 최우선 외곽경계" in html
     assert "1,500㎡를 초과할 때 제척" in html
     assert "4m 미만 도로는 폐합" in html
+    project_block=html[html.index("function buildProjectBoundaryCandidate()"):html.index("function buildProjectStreetBlockValidation(projectFeature)")]
+    assert "polygonOuterShellOnly(merged)" not in project_block
+    assert "fillPolygonHolesPreserveParts(merged)" in project_block
     assert "현재 화면은 범위 추출 가능성 검증용이며 기존 사업 판정엔진에는 아직 연결하지 않습니다" in html
 
 
