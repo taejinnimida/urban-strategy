@@ -1226,36 +1226,58 @@ def check_r13_criterion_layer1() -> None:
     assert '"scheme_module_api": "2026-09-02-r22-station-area-frontage-no-hierarchy"' in py
 
 def check_r14_street_block_auto() -> None:
-    """사업구역·가로구역 FACT 검증 UI와 공간구획 추출 원칙이 존재해야 한다."""
+    """사업구역과 가로구역이 완전히 독립 연산되고, r32 가로구역 FACT 추출 로직이 유지되어야 한다."""
     root = Path(app.BASE_DIR)
     html = (root / "app.html").read_text(encoding="utf-8")
     assert 'id="ccStreetBlockMiniMap"' in html
     for dom_id in ("spStreetBlockState","spProjectAreaM2","spProjectAreaState","spStreetBlockCount","spStreetBlockTotalArea","spProjectEdgeRoads","spProjectEdgeFacilities","spProjectInternalFacilities","spStreetBlockReview","spStreetBlockTable"):
         assert f'id="{dom_id}"' in html
+
+    assert "function buildIndependentProjectAreaCandidate(site)" in html
     assert "function buildProjectBoundaryCandidate()" in html
     assert "function buildProjectStreetBlockValidation(projectFeature)" in html
     assert "function classifyProjectFacility(row)" in html
+
     classify = html[html.index("function classifyProjectFacility(row)"):html.index("function projectFacilityIsStreetBlockSeparator", html.index("function classifyProjectFacility(row)"))]
     assert "row?.name,row?.category" in classify
     assert "layer==='LT_C_UPISUQ151'" in classify
+
+    # 사업구역: 원천 FACT만 사용하고 가로구역 결과를 호출/참조하지 않는다.
+    project_helper = html[html.index("function buildIndependentProjectAreaCandidate(site)"):html.index("function buildProjectBoundaryCandidate()", html.index("function buildIndependentProjectAreaCandidate(site)"))]
+    assert "street_blocks" in project_helper  # 독립 원칙 설명 주석
+    assert "projectStreetBlockValidation" not in project_helper
+    assert "buildProjectStreetBlockValidation" not in project_helper
+    assert "rawBlocks" not in project_helper
+    assert "for(const [pnu,src] of parcelFeatureMap.entries())" in project_helper
+    assert "for(const rf of currentRoadWidthFeatures||[])" in project_helper
+    assert "for(const row of planningAnalysis?.facilities||[])" in project_helper
+    assert "safeDifferencePolygons(site,[cutterUnion])" in project_helper
+    assert "_project_independent:true" in project_helper
+    assert "원천 도로·도시계획시설 FACT 기반 독립 사업구역" in project_helper
+
     project_block=html[html.index("function buildProjectBoundaryCandidate()"):html.index("function buildProjectStreetBlockValidation(projectFeature)")]
-    assert "if(!activeGeometry)" in project_block
-    assert "if(!activeGeometry||!selectedParcelPnus.size)" not in project_block
-    assert "let shell=cloneFeature(site)" in project_block
-    assert "const validation=buildProjectStreetBlockValidation(shell)" in project_block
-    assert "가로구역 후보 + 사이 가로망·분할시설 통합 상위 폴리곤" in project_block
-    street_block=html[html.index("function buildProjectStreetBlockValidation(projectFeature)"):html.index("function finalizeAnalysisGeometryFromSelectedParcels()") ]
+    assert "buildIndependentProjectAreaCandidate(site)" in project_block
+    assert "buildProjectStreetBlockValidation" not in project_block
+    assert "projectStreetBlockValidation" not in project_block
+    assert "basis:'independent_raw_road_facility_fact'" in project_block
+
+    # 가로구역: r32의 정상 추출 구조를 고정하고 project_area를 생성/수정하지 않는다.
+    street_block=html[html.index("function buildProjectStreetBlockValidation(projectFeature)"):html.index("function finalizeAnalysisGeometryFromSelectedParcels()")]
+    assert "R35 FREEZE" in street_block
     assert "for(const [pnu,src] of parcelFeatureMap.entries())" in street_block
-    assert "selectedParcelPnus" in street_block  # 주석에 자동포함과 무관함을 명시
+    assert "selectedParcelPnus" in street_block
     assert "for(const rf of currentRoadWidthFeatures||[])" in street_block
     assert "_separator_kind:'roadbt_road'" in street_block
-    # 사업구역은 가로구역 면만 취하는 것이 아니라 가로구역 + 사이 가로망/분할시설을 다시 union한 상위 폴리곤이다.
-    assert "safeUnionPolygons([rawBlocks,sepUnion].filter(Boolean))" in street_block
-    assert "_project_integrated:true" in street_block
-    assert "basis:'street_blocks_plus_internal_network'" in street_block
-    assert "쿨데삭도 이 단계에서 다시 채워지므로 외곽 사업구역계가 닫힌다" in street_block
+    assert "const sepUnion=safeUnionPolygons(separators)" in street_block
+    assert "const rawBlocks=sepUnion?safeDifferencePolygons(projectFeature,[sepUnion]):projectFeature" in street_block
+    assert "analysisState.metrics.project_area" not in street_block
+    assert "safeUnionPolygons([rawBlocks" not in street_block
+    assert "_project_integrated" not in street_block
+
+    # 호출도 서로 독립: 같은 activeGeometry FACT를 각각 받는다.
+    assert "buildProjectBoundaryCandidate();\n  if(activeGeometry)buildProjectStreetBlockValidation(turf.feature(activeGeometry));" in html
+    assert "사업구역·가로구역 독립연산" in html
     assert "ccStreetBlockProject.eachLayer(l=>l.bringToFront?.())" in html
-    assert "사업구역=가로구역+사이 가로망 통합" in html
     assert "4m 미만 도로" in html
     assert "공간 FACT 검증용" in html
     assert "현재 화면은 범위 추출 가능성 검증용이며 기존 사업 판정엔진에는 아직 연결하지 않습니다" in html

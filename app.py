@@ -74,6 +74,32 @@ def _data_path(name: str) -> str:
     return os.path.join(BASE_DIR, name)
 
 
+def _json_property(value: Any) -> Any:
+    """SHP/DBF 속성값을 JSON 안전형으로 정규화한다.
+
+    비오톱·산지구분도·기초단위구 로더가 같은 변환기를 공유한다.
+    이 함수가 없으면 레코드별 예외가 내부에서 무시되어 모든 SHP가
+    0건으로 읽히는 회귀가 발생하므로 공통 유틸로 고정한다.
+    """
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    if isinstance(value, (bytes, bytearray)):
+        raw = bytes(value)
+        for encoding in ("utf-8", "cp949"):
+            try:
+                return raw.decode(encoding)
+            except Exception:
+                pass
+        return raw.decode("latin1", errors="replace")
+    try:
+        json.dumps(value, ensure_ascii=False)
+        return value
+    except Exception:
+        return str(value)
+
+
 @lru_cache(maxsize=1)
 def _index_html() -> str:
     with open(STATIC_HTML_PATH, encoding="utf-8") as fp:
