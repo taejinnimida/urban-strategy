@@ -1237,10 +1237,15 @@ def check_r14_street_block_auto() -> None:
     assert "function buildProjectBoundaryCandidate()" in html
     assert "function buildProjectStreetBlockValidation(projectFeature)" in html
     assert "function classifyProjectFacility(row)" in html
+    assert "function streetBlockPlanningRoadEvidence(row)" in html
 
     classify = html[html.index("function classifyProjectFacility(row)"):html.index("function projectFacilityIsStreetBlockSeparator", html.index("function classifyProjectFacility(row)"))]
     assert "row?.name,row?.category" in classify
     assert "layer==='LT_C_UPISUQ151'" in classify
+    road_evidence = html[html.index("function streetBlockPlanningRoadEvidence(row)"):html.index("function projectFacilityIsStreetBlockSeparator", html.index("function streetBlockPlanningRoadEvidence(row)"))]
+    assert "기타도시시설" in road_evidence
+    assert "UQS(?:11[1-9]|12[0-3]|190)" in road_evidence
+    assert "ambiguous:layer==='LT_C_UPISUQ151'&&!confirmed" in road_evidence
 
     # 사업구역: 원천 FACT만 사용하고 가로구역 결과를 호출/참조하지 않는다.
     project_helper = html[html.index("function buildIndependentProjectAreaCandidate(site)"):html.index("function buildProjectBoundaryCandidate()", html.index("function buildIndependentProjectAreaCandidate(site)"))]
@@ -1268,6 +1273,9 @@ def check_r14_street_block_auto() -> None:
     assert "selectedParcelPnus" in street_block
     assert "for(const rf of currentRoadWidthFeatures||[])" in street_block
     assert "_separator_kind:'roadbt_road'" in street_block
+    assert "streetBlockPlanningRoadEvidence(row)" in street_block
+    assert "if(!roadEvidence.confirmed)" in street_block
+    assert "planningFacilityReviews.push(review)" in street_block
     assert "const sepUnion=safeUnionPolygons(separators)" in street_block
     assert "const rawBlocks=sepUnion?safeDifferencePolygons(projectFeature,[sepUnion]):projectFeature" in street_block
     assert "analysisState.metrics.project_area" not in street_block
