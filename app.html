@@ -1231,7 +1231,16 @@ body.review-modal-open{overflow:hidden}
 .candidate-color-legend .blue-1{background:#eaf2ff}.candidate-color-legend .blue-2{background:#b2ddff}.candidate-color-legend .blue-3{background:#7aa7f2}.candidate-color-legend .blue-4{background:#175cd3}
 .candidate-color-legend .red-1{background:#fff1f0}.candidate-color-legend .red-2{background:#fecdca}.candidate-color-legend .red-3{background:#f97066}.candidate-color-legend .red-4{background:#b42318}
 .candidate-legend-note{grid-column:2/6;text-align:center;font-size:7px!important;color:#667085!important}
-@media(max-width:900px){.cc-candidate-head{align-items:flex-start;flex-wrap:wrap}.candidate-color-legend{margin-left:0}}
+.ai-comprehensive-panel{margin-top:9px;border:1px solid #d0d5dd;background:#fcfcfd;padding:10px 11px;box-sizing:border-box}
+.ai-comprehensive-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:7px}
+.ai-comprehensive-head b{display:block;font-size:11px;color:#101828}.ai-comprehensive-head span{display:block;margin-top:2px;font-size:8px;color:#667085;line-height:1.4}
+.ai-comprehensive-badge{flex:0 0 auto;padding:4px 7px;border:1px solid #b2ddff;background:#eff8ff;color:#175cd3;font-size:8px;font-weight:850;white-space:nowrap;font-style:normal}
+.ai-comprehensive-badge.fallback{border-color:#fedf89;background:#fffaeb;color:#b54708}.ai-comprehensive-badge.error{border-color:#fecdca;background:#fef3f2;color:#b42318}
+.ai-comprehensive-body{display:grid;gap:4px;padding:8px 9px;border:1px solid #eaecf0;background:#fff;min-height:72px}
+.ai-comprehensive-line{font-size:9px;line-height:1.55;color:#344054}.ai-comprehensive-line:before{content:'·';font-weight:900;margin-right:5px;color:#175cd3}
+.ai-comprehensive-loading{font-size:9px;line-height:1.55;color:#667085}.ai-comprehensive-foot{display:flex;justify-content:space-between;gap:8px;margin-top:6px;font-size:7px;line-height:1.45;color:#667085}
+.ai-comprehensive-foot b{color:#475467}.ai-comprehensive-foot button{border:1px solid #d0d5dd;background:#fff;color:#344054;font-size:7px;padding:3px 6px;cursor:pointer}
+@media(max-width:900px){.cc-candidate-head{align-items:flex-start;flex-wrap:wrap}.candidate-color-legend{margin-left:0}.ai-comprehensive-head{flex-direction:column}.ai-comprehensive-badge{align-self:flex-start}}
 .density-basis-badge{background:#eff8ff!important;border-color:#b2ddff!important;color:#1849a9!important}
 
 
@@ -1650,6 +1659,14 @@ body.service-layout-ready>.shell{display:none!important}
 <button data-family="special_development" data-scheme="facility_complex_zone" onclick="showCandidateBasis('facility_complex_zone')"><i>⊞</i><span>도시계획시설입체복합</span><em>추후보완예정</em></button>
 <button data-family="special_development" data-scheme="mixed_use_zone" onclick="showCandidateBasis('mixed_use_zone')"><i>◫</i><span>복합용도구역</span><em>추후보완예정</em></button>
 </div>
+<section class="ai-comprehensive-panel" id="aiComprehensivePanel" aria-live="polite">
+  <div class="ai-comprehensive-head">
+    <div><b>AI 종합분석</b><span>현재 FACT와 사업별 RULE 판정결과를 설명·비교합니다. AI가 사업을 새로 판정하지 않습니다.</span></div>
+    <em class="ai-comprehensive-badge" id="aiComprehensiveBadge">분석 대기</em>
+  </div>
+  <div class="ai-comprehensive-body" id="aiComprehensiveBody"><div class="ai-comprehensive-loading">검토하기를 실행하면 사업방식 색상 요약 결과를 기준으로 약 10줄의 종합의견을 생성합니다.</div></div>
+  <div class="ai-comprehensive-foot"><span><b>입력범위</b> 대상지 FACT · 사업별 PASS/CONDITIONAL/FAIL/REVIEW · gap · 계획가능용적률</span><button type="button" onclick="requestAiComprehensiveAnalysis(true)">다시 분석</button></div>
+</section>
 <div class="cc-scheme-basis" id="ccSchemeBasis">
 <b>사업방식 선택근거</b>
 <span>위 아이콘을 클릭하면 해당 제도의 적용근거·현재 판정·용적률·공공기여를 표시합니다.</span>
@@ -6249,6 +6266,7 @@ function clearBoundaryAnalysisForNewGeometry(){
     safeMedicalAnalysis.loaded=false;safeMedicalAnalysis.loading=false;safeMedicalAnalysis.status='unavailable';safeMedicalAnalysis.items=[];safeMedicalAnalysis.metadata={};safeMedicalAnalysis.errors=[];safeMedicalAnalysis.warnings=[];safeMedicalAnalysis.sourceStats={};safeMedicalAnalysis.nearbyCounts={};safeMedicalAnalysis.message='';
   }
   latestSiteFactStore=null;latestSchemeModuleResults={};schemeResults={};
+  try{resetAiComprehensiveAnalysis();}catch(e){}
   // 구역계 입력 직후 검토버튼 활성화가 사업엔진/UI 초기화 오류에 막히지 않도록 reset 자체를 방어한다.
   try{resetMeasure();}catch(e){console.error('[site-review] 새 구역계 초기화',e);}
   try{renderParcelSelectionList();}catch(e){}
@@ -10688,6 +10706,7 @@ function runAllSchemeChecks(){
     safeSchemeUiStep('scheme-spatial',()=>renderSchemeSpecificSpatialStatus(store),uiErrors);
   }
   safeSchemeUiStep('candidate',()=>updateCandidateSchemes(),uiErrors);
+  safeSchemeUiStep('ai-analysis',()=>scheduleAiComprehensiveAnalysis(),uiErrors);
   safeSchemeUiStep('comparison',()=>renderSchemeComparison(),uiErrors);
   safeSchemeUiStep('sheets',()=>renderAllSchemeSheets(),uiErrors);
   safeSchemeUiStep('station-scheme-summary',()=>renderStationSchemeJudgments(),uiErrors);
@@ -11642,6 +11661,117 @@ function autoRecommendationTop3(){
     const display=candidateDisplayState(n,st);
     return display.kind==='available'||display.kind==='adjustable';
   }).slice(0,3);
+}
+
+// ---------- AI 종합분석: 기존 FACT/RULE 결과의 설명 전용 ----------
+let aiComprehensiveTimer=null;
+let aiComprehensiveRequestId=0;
+let aiComprehensiveFingerprint='';
+let aiComprehensiveLastResult=null;
+function aiCompactText(v,limit=220){return String(v??'').replace(/\s+/g,' ').trim().slice(0,limit);}
+function aiDecisionStatus(name,res,st,display){
+  if(display?.kind==='available')return 'PASS';
+  if(display?.kind==='adjustable')return 'CONDITIONAL';
+  if(SHELL_SCHEMES.has(name)||res?.overall==='REVIEW'||st?.regulatory==='REVIEW'||st?.structural==='REVIEW'||st?.areaGate==='REVIEW')return 'REVIEW';
+  return 'FAIL';
+}
+function aiAgeProfiles(store){
+  const age=store?.derived?.age||{};
+  return AGE_SPATIAL_FACT_META.map(([key,label])=>{
+    const a=age[key];if(!a)return null;
+    return {key,label,status:a.status||'REVIEW',lower_pct:Number.isFinite(Number(a.calculated_lower_pct))?Number(a.calculated_lower_pct):null,upper_pct:Number.isFinite(Number(a.calculated_upper_pct))?Number(a.calculated_upper_pct):null,threshold_pct:Number.isFinite(Number(a.threshold_pct))?Number(a.threshold_pct):null,value:aiCompactText(a.value,100)};
+  }).filter(Boolean);
+}
+function buildAiComprehensiveSummary(){
+  const store=latestSiteFactStore;
+  if(!store||analysisState.fact_store_error)return null;
+  const c=store.common||{},site=store.site||{},base=selectedParcelLandBase();
+  const streetBlocks=Array.isArray(analysisState.metrics?.street_blocks)?analysisState.metrics.street_blocks:[];
+  const businessResults=Object.keys(schemeNames).map(name=>{
+    const res=schemeResults[name]||latestSchemeModuleResults[name]||null;if(!res)return null;
+    const st=safeCandidateState(name),display=candidateDisplayState(name,st),den=res.density||{};
+    const rows=(res.rows||[]);
+    const gaps=rows.filter(r=>r?.required!==false&&(r?.status==='FAIL'||r?.status==='REVIEW')).slice(0,6).map(r=>({
+      item:aiCompactText(r.item,80),status:r.status||'REVIEW',value:aiCompactText(r.value,100),gap:aiCompactText(r.gap,100),action:aiCompactText(r.action,120),note:aiCompactText(r.note||r.caveat,120)
+    }));
+    const legal=[];
+    for(const r of rows){
+      if(!r?.sourceTitle)continue;
+      const text=[r.sourceType,r.sourceTitle,r.sourceLocator].filter(Boolean).map(x=>aiCompactText(x,100)).join(' · ');
+      if(text&&!legal.includes(text))legal.push(text);
+      if(legal.length>=3)break;
+    }
+    return {
+      scheme:name,business:schemeNames[name],family:schemeFamilyLabel(name),status:aiDecisionStatus(name,res,st,display),engine_status:res.overall||'REVIEW',display_label:aiCompactText(display.label,100),condition_change:display.kind==='adjustable'?aiCompactText(display.action,140):'',
+      strengths:(res.strengths||[]).slice(0,3).map(x=>aiCompactText(x,120)),risks:(res.risks||[]).slice(0,3).map(x=>aiCompactText(x,120)),followups:(res.followups||[]).slice(0,3).map(x=>aiCompactText(x,120)),gaps,
+      far:aiCompactText(den.far||'',120),zoning_up:aiCompactText(den.zone||'',100),public_contribution:aiCompactText(den.contribution||'',120),legal_basis:legal
+    };
+  }).filter(Boolean);
+  const top=autoRecommendationTop3();
+  const recInfo=(name)=>{
+    if(!name)return null;const res=businessResults.find(x=>x.scheme===name),st=safeCandidateState(name),display=candidateDisplayState(name,st);
+    return {scheme:name,business:schemeNames[name],status:res?.status||aiDecisionStatus(name,schemeResults[name],st,display),display_label:display.label||'',reason:aiCompactText(rankingReason(name),320),far:res?.far||''};
+  };
+  const unknown=[];
+  if(!stationAnalysis.loaded)unknown.push({type:'spatial',text:'역세권 자료 추가 확인 필요'});
+  if(!planningAnalysis.loaded||(planningAnalysis.errors||[]).length)unknown.push({type:'spatial',text:`도시계획 GIS ${planningAnalysis.loaded?'일부 오류':'추가 확인 필요'}`});
+  if(!analysisState.road_network||String(analysisState.quality?.road||'')!=='AUTO')unknown.push({type:'spatial',text:`도로·접도 자료 ${analysisState.quality?.road||'REVIEW'} · 추가 확인 필요`});
+  if(!streetBlockAnalysis.loaded||String(streetBlockAnalysis.quality||'')==='NONE')unknown.push({type:'spatial',text:'가로구역 자료 추가 확인 필요'});
+  for(const b of businessResults){
+    for(const g of b.gaps||[]){if(g.status==='REVIEW'){unknown.push({type:'business',business:b.business,text:`${b.business} · ${g.item||'판정항목'} 추가 확인 필요`});if(unknown.length>=20)break;}}
+    if(unknown.length>=20)break;
+  }
+  return {
+    site_summary:{
+      area_m2:Number.isFinite(Number(site.area_m2??c.area))?Number(site.area_m2??c.area):null,parcel_area_m2:Number.isFinite(Number(c.parcelArea))?Number(c.parcelArea):null,parcel_count:Number(base.parcelCount||site.parcel_count||0)||0,small_parcel_ratio_pct:Number.isFinite(Number(c.smallParcelRatio))?Number(c.smallParcelRatio):null,
+      building_count:Number(analysisState.metrics?.total_buildings||site.building?.total||0)||0,old_building_count:Number(analysisState.metrics?.old_count||0)||0,old_building_ratio_pct:Number.isFinite(Number(analysisState.metrics?.old_ratio))?Number(analysisState.metrics.old_ratio)*100:null,
+      zoning:site.zoning||c.zoning||'',zoning_mixed:!!site.zoning_mixed,aging:aiAgeProfiles(store)
+    },
+    spatial_facts:{
+      station:{name:site.station?.name||'',distance_m:Number.isFinite(Number(site.station?.distance_m))?Number(site.station.distance_m):null,line_count:Number.isFinite(Number(site.station?.line_count))?Number(site.station.line_count):null,coverage_250:Number.isFinite(Number(site.station?.coverage_250))?Number(site.station.coverage_250):null,coverage_350:Number.isFinite(Number(site.station?.coverage_350))?Number(site.station.coverage_350):null},
+      center:{value:site.center?.value||'',type:site.center?.type||'',label:site.center?.label||'',coverage_pct:Number.isFinite(Number(site.center?.coverage_pct))?Number(site.center.coverage_pct):null},
+      road:{quality:site.road?.quality||'REVIEW',face_count:Number.isFinite(Number(site.road?.face_count))?Number(site.road.face_count):null,max_width_m:Number.isFinite(Number(site.road?.max_width_m))?Number(site.road.max_width_m):null,road6_frontage_pct:Number.isFinite(Number(site.road?.road6_frontage_pct))?Number(site.road.road6_frontage_pct):null,road20_frontage_pct:Number.isFinite(Number(site.road?.road20_frontage_pct))?Number(site.road.road20_frontage_pct):null},
+      street_block:{loaded:streetBlocks.length>0||!!streetBlockAnalysis.loaded,block_count:streetBlocks.length||null,block_area_sum_m2:streetBlocks.length?streetBlocks.reduce((a,x)=>a+(Number(x.area_m2)||0),0):null,separator_area_m2:Number.isFinite(Number(analysisState.metrics?.street_block_separator_area_m2))?Number(analysisState.metrics.street_block_separator_area_m2):null,quality:streetBlockAnalysis.quality||'REVIEW'},
+      overlaps:{renewal:(site.renewal?.overlaps||[]).slice(0,6).map(x=>({name:x.name,type:x.type,overlap_pct:x.overlap_pct})),district_plans:(site.development?.district_plans||[]).slice(0,6).map(x=>({name:x.name,area_m2:x.area_m2})),planning_facilities:(site.development?.planning_facilities||[]).slice(0,8).map(x=>({name:x.name,category:x.category,area_m2:x.area_m2}))}
+    },
+    business_results:businessResults,
+    recommended_business:recInfo(top[0]),alternative_businesses:top.slice(1,3).map(recInfo).filter(Boolean),unknown_items:unknown,
+    analysis_policy:{role:'existing_engine_explanation_only',unknown_rule:'REVIEW/UNKNOWN은 충족·미충족으로 단정하지 않음',legal_rule:'입력에 없는 법적 기준·수치 생성 금지',design_caveat:'대지형상·문화재·높이·경관·건축배치 등은 별도 전문검토'}
+  };
+}
+function renderAiComprehensiveState(result=null,state='idle',message=''){
+  const body=document.getElementById('aiComprehensiveBody'),badge=document.getElementById('aiComprehensiveBadge');if(!body||!badge)return;
+  badge.className='ai-comprehensive-badge';
+  if(state==='loading'){badge.textContent='AI 분석 중';body.innerHTML='<div class="ai-comprehensive-loading">현재 FACT와 사업별 판정결과만 요약해 종합의견을 생성하고 있습니다.</div>';return;}
+  if(state==='empty'){badge.textContent='분석 대기';body.innerHTML=`<div class="ai-comprehensive-loading">${escHtml(message||'검토하기를 실행하면 AI 종합분석을 생성합니다.')}</div>`;return;}
+  if(state==='error'){badge.textContent='추가 확인';badge.classList.add('error');body.innerHTML=`<div class="ai-comprehensive-loading">${escHtml(message||'AI 설명을 불러오지 못했습니다. 기존 사업판정 결과는 그대로 유지됩니다.')}</div>`;return;}
+  const lines=(result?.sentences||[]).filter(Boolean).slice(0,12);
+  if(result?.mode==='rules_fallback'){badge.textContent='판정엔진 요약';badge.classList.add('fallback');}else badge.textContent=`AI 설명${result?.model?' · '+result.model:''}`;
+  body.innerHTML=lines.length?lines.map(x=>`<div class="ai-comprehensive-line">${escHtml(x)}</div>`).join(''):'<div class="ai-comprehensive-loading">종합분석 문장이 없습니다.</div>';
+}
+async function requestAiComprehensiveAnalysis(force=false){
+  const summary=buildAiComprehensiveSummary();
+  if(!summary){renderAiComprehensiveState(null,'empty',activeGeometry?'사업별 판정이 완료된 뒤 생성됩니다.':'구역계를 설정하고 검토하기를 실행하세요.');return;}
+  const fingerprint=JSON.stringify(summary);
+  if(!force&&fingerprint===aiComprehensiveFingerprint&&aiComprehensiveLastResult){renderAiComprehensiveState(aiComprehensiveLastResult,'done');return;}
+  const requestId=++aiComprehensiveRequestId;renderAiComprehensiveState(null,'loading');
+  try{
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),60000);
+    const response=await fetch('/api/ai/comprehensive-analysis',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({summary}),signal:controller.signal});
+    clearTimeout(timer);if(!response.ok)throw new Error(`HTTP ${response.status}`);
+    const result=await response.json();if(requestId!==aiComprehensiveRequestId)return;
+    if(!Array.isArray(result?.sentences)||result.sentences.length<8)throw new Error('AI 종합분석 응답 형식 오류');
+    aiComprehensiveFingerprint=fingerprint;aiComprehensiveLastResult=result;analysisState.ai_comprehensive={summary,result};renderAiComprehensiveState(result,'done');
+  }catch(e){
+    if(requestId!==aiComprehensiveRequestId)return;console.error('[ai-comprehensive]',e);renderAiComprehensiveState(null,'error',e?.name==='AbortError'?'AI 분석 응답시간이 초과되었습니다. 기존 판정결과는 정상 유지됩니다.':'AI 분석 연결을 확인하세요. 기존 판정결과는 정상 유지됩니다.');
+  }
+}
+function scheduleAiComprehensiveAnalysis(){
+  if(aiComprehensiveTimer)clearTimeout(aiComprehensiveTimer);
+  aiComprehensiveTimer=setTimeout(()=>{aiComprehensiveTimer=null;requestAiComprehensiveAnalysis(false);},300);
+}
+function resetAiComprehensiveAnalysis(){
+  if(aiComprehensiveTimer){clearTimeout(aiComprehensiveTimer);aiComprehensiveTimer=null;}aiComprehensiveRequestId+=1;aiComprehensiveFingerprint='';aiComprehensiveLastResult=null;analysisState.ai_comprehensive=null;renderAiComprehensiveState(null,'empty','검토하기를 실행하면 사업별 판정결과를 종합해 설명합니다.');
 }
 function numOrNull(v){
   if(v===null||v===undefined||String(v).trim()==='')return null;

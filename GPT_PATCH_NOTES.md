@@ -127,3 +127,12 @@ r34에서는 가로구역 분할결과(`rawBlocks`, `separators`)를 다시 이�
 - 인라인 JavaScript 5개 블록 `node --check` PASS.
 - 기존 `regression_checks.py`는 r9까지 PASS 후, 기준본에 없는 사전협상 PDF를 요구하는 기존 r10 검사에서 중단(이번 수정과 무관).
 - 정적 확인: 내부 비도로 시설은 `addSeparator()` 호출 없이 보존되고, 경계 ±1m 인접 시설만 `boundary_*` separator로 전달됨.
+
+## r41 · AI 종합분석 설명 레이어 (2026-09-04)
+- 기존 사업방식 색상 요약과 독립 Rule 판정은 그대로 유지하고, 색상 요약 하단/상세검토 상단에 `AI 종합분석` 영역을 추가했다.
+- 프론트는 `buildAiComprehensiveSummary()`에서 대상지 FACT, 공간 FACT, 사업별 PASS/CONDITIONAL/FAIL/REVIEW, gap, 계획가능용적률, 기존 추천순서만 JSON으로 축약한다.
+- 원본 코드·전체 원시 GIS·법령 전문은 AI 요청에 전달하지 않는다.
+- `/api/ai/comprehensive-analysis`는 설명 전용 endpoint이며 OpenAI Responses API를 사용할 때도 입력 JSON 밖의 법적 기준·수치·현황을 새로 판정하지 않도록 지시한다.
+- REVIEW/UNKNOWN은 충족/미충족으로 단정하지 않고 추가 확인 필요로 표현하도록 고정했다.
+- `OPENAI_API_KEY`가 없거나 AI 호출이 실패하면 기존 판정엔진 결과만 문장화한 `판정엔진 요약`으로 자동 fallback하며, AI 결과인 것처럼 표시하지 않는다.
+- 앱 내부 버전은 v2.5.0을 유지한다.

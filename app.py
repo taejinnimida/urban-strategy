@@ -3448,11 +3448,192 @@ class FeedbackStatusInput(BaseModel):
     status: str = Field(..., pattern="^(open|checking|done)$")
 
 
+class AIComprehensiveAnalysisInput(BaseModel):
+    # 프론트에서 정리한 FACT + 사업별 RULE 결과 요약만 받는다.
+    # 원본 코드·원시 공간자료·법령 전문은 이 API로 전달하지 않는다.
+    summary: Dict[str, Any]
+
+
+def _compact_text(value: Any, limit: int = 280) -> str:
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    return text[:limit]
+
+
+def _fallback_ai_comprehensive_sentences(summary: Dict[str, Any]) -> List[str]:
+    """AI 키가 없거나 호출이 실패했을 때 FACT/RULE 요약만으로 만드는 안전한 설명.
+
+    이 함수는 새 판정을 하지 않고 입력 JSON의 값·판정·추천순서만 문장화한다.
+    UI에서는 반드시 '판정엔진 요약'으로 표시한다.
+    """
+    site = summary.get("site_summary") or {}
+    spatial = summary.get("spatial_facts") or {}
+    businesses = summary.get("business_results") or []
+    rec = summary.get("recommended_business") or {}
+    alternatives = summary.get("alternative_businesses") or []
+    unknowns = summary.get("unknown_items") or []
+
+    area = site.get("area_m2")
+    zoning = _compact_text(site.get("zoning")) or "용도지역 미확인"
+    parcels = site.get("parcel_count")
+    buildings = site.get("building_count")
+    old_count = site.get("old_building_count")
+    old_ratio = site.get("old_building_ratio_pct")
+
+    s1 = f"대상지는 {area:,.0f}㎡ 규모이며 주용도지역은 '{zoning}'으로 확인됩니다." if isinstance(area, (int, float)) else f"대상지 면적은 추가 확인이 필요하며 주용도지역은 '{zoning}'으로 확인됩니다."
+    if isinstance(buildings, (int, float)) and isinstance(old_count, (int, float)):
+        age_tail = f"({old_ratio:.1f}%)" if isinstance(old_ratio, (int, float)) else ""
+        s2 = f"현재 수집된 건축물은 {int(buildings)}동이고 노후건축물은 {int(old_count)}동{age_tail}이며, 필지는 {int(parcels)}필지입니다." if isinstance(parcels, (int, float)) else f"현재 수집된 건축물은 {int(buildings)}동이고 노후건축물은 {int(old_count)}동{age_tail}입니다."
+    else:
+        s2 = "필지·건축물·노후도 중 일부는 자료가 충분하지 않아 추가 확인이 필요합니다."
+
+    station = spatial.get("station") or {}
+    center = spatial.get("center") or {}
+    station_bits = []
+    if station.get("name"): station_bits.append(f"최근접역 {station.get('name')}")
+    if isinstance(station.get("distance_m"), (int, float)): station_bits.append(f"거리 {station.get('distance_m'):,.0f}m")
+    if isinstance(station.get("line_count"), (int, float)): station_bits.append(f"{int(station.get('line_count'))}개 노선")
+    center_text = _compact_text(center.get("label") or center.get("value"))
+    s3 = ("역세권·중심지 FACT는 " + " · ".join(station_bits + ([f"중심지 {center_text}"] if center_text else [])) + "로 정리됩니다.") if (station_bits or center_text) else "역세권·중심지 FACT는 현재 자료만으로 확정하기 어려워 추가 확인이 필요합니다."
+
+    road = spatial.get("road") or {}
+    sb = spatial.get("street_block") or {}
+    road_bits = []
+    if isinstance(road.get("max_width_m"), (int, float)): road_bits.append(f"최대 확인 도로폭 {road.get('max_width_m'):g}m")
+    if isinstance(road.get("face_count"), (int, float)): road_bits.append(f"접도면 {int(road.get('face_count'))}면")
+    if sb.get("loaded") is True:
+        cnt = sb.get("block_count")
+        road_bits.append(f"가로구역 {int(cnt)}개" if isinstance(cnt, (int, float)) else "가로구역 FACT 확보")
+    s4 = ("도로·가로구역 현황은 " + " · ".join(road_bits) + "로 확인됩니다.") if road_bits else "도로·가로구역 자료는 REVIEW 항목을 포함해 후속 확인이 필요합니다."
+
+    overlaps = spatial.get("overlaps") or {}
+    overlap_names = []
+    for key in ("renewal", "district_plans", "planning_facilities"):
+        for item in overlaps.get(key) or []:
+            nm = _compact_text(item.get("name") if isinstance(item, dict) else item, 60)
+            if nm and nm not in overlap_names: overlap_names.append(nm)
+    s5 = f"지구단위·정비구역·도시계획시설 중첩은 {', '.join(overlap_names[:4])} 등이 현재 현황자료에 잡혀 있습니다." if overlap_names else "지구단위·정비구역 등 중첩현황은 현재 확보된 자료 범위에서 별도 중첩이 확인되지 않았거나 추가 확인이 필요합니다."
+
+    rec_name = _compact_text(rec.get("business") or rec.get("name"), 80)
+    rec_status = _compact_text(rec.get("status") or rec.get("display_label"), 80)
+    rec_reason = _compact_text(rec.get("reason"), 220)
+    if rec_name:
+        s6 = f"현재 조건에서 우선 검토할 사업은 {rec_name}이며, 판정엔진의 상대비교 결과는 {rec_status or '우선순위 후보'}입니다."
+        s7 = f"우선순위 근거는 {rec_reason}입니다." if rec_reason else "우선순위는 기존 PASS·CONDITIONAL·REVIEW 결과와 계획가능용적률 비교순서를 그대로 따른 것입니다."
+    else:
+        s6 = "현재 판정엔진 결과만으로 우선 추천할 사업을 확정하기 어렵습니다."
+        s7 = "사업별 미충족 조건과 REVIEW 항목을 보완한 뒤 상대비교를 다시 수행하는 것이 필요합니다."
+
+    alt_names = [_compact_text(x.get("business") if isinstance(x, dict) else x, 80) for x in alternatives]
+    alt_names = [x for x in alt_names if x]
+    s8 = f"차순위 대안은 {', '.join(alt_names[:2])}이며, 우선사업과 제도조건·사업성 가정을 함께 비교하는 것이 적절합니다." if alt_names else "차순위 대안은 현재 판정결과에서 뚜렷하게 도출되지 않았습니다."
+
+    rec_business = next((b for b in businesses if _compact_text(b.get("business"),80)==rec_name), None) if rec_name else None
+    gap_texts = []
+    for item in (rec_business or {}).get("gaps") or []:
+        if isinstance(item, dict):
+            t = _compact_text(item.get("gap") or item.get("item") or item.get("action"), 100)
+        else: t = _compact_text(item, 100)
+        if t and t not in gap_texts: gap_texts.append(t)
+    s9 = f"우선사업의 주요 미충족·제약사항은 {', '.join(gap_texts[:3])}로 정리되며, 확정판정이 아니라 보완대상으로 봐야 합니다." if gap_texts else "우선사업에서 현재 확인된 명시적 미충족 gap은 크지 않지만 REVIEW 항목은 별도 확인해야 합니다."
+
+    change = _compact_text((rec_business or {}).get("condition_change"), 180)
+    s10 = f"개선 가능사항으로는 {change}를 우선 검토할 수 있습니다." if change else "구역확대·기간경과·사업조건 변경 가능성은 기존 판정표에 계산된 항목이 있을 때만 후속 대안으로 검토합니다."
+
+    unknown_texts=[]
+    for x in unknowns:
+        t=_compact_text(x.get("text") if isinstance(x, dict) else x, 100)
+        if t and t not in unknown_texts: unknown_texts.append(t)
+    s11 = f"추가 확인이 필요한 항목은 {', '.join(unknown_texts[:3])} 등이며, 이 항목은 충족 또는 미충족으로 단정하지 않습니다." if unknown_texts else "API 실패나 미확보 자료가 새로 발생하면 해당 항목은 충족·미충족이 아니라 추가 확인 필요로 처리해야 합니다."
+    s12 = "본 결과는 초기 사업전략 비교용이며 대지형상·문화재·높이·경관·건축배치 등 설계·인허가 변수는 별도 전문검토가 필요합니다."
+    return [s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11,s12]
+
+
+def _openai_ai_comprehensive(summary: Dict[str, Any]) -> Dict[str, Any]:
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    if not api_key:
+        return {"mode": "rules_fallback", "model": "", "sentences": _fallback_ai_comprehensive_sentences(summary), "note": "OPENAI_API_KEY 미설정"}
+
+    model = os.getenv("OPENAI_AI_MODEL", "gpt-5-mini").strip() or "gpt-5-mini"
+    timeout_s = max(10, min(90, int(os.getenv("OPENAI_AI_TIMEOUT_SECONDS", "45") or 45)))
+    input_json = json.dumps(summary, ensure_ascii=False, separators=(",", ":"))
+    if len(input_json.encode("utf-8")) > 80_000:
+        raise HTTPException(status_code=413, detail="AI 분석 요약 JSON이 너무 큽니다.")
+
+    instructions = (
+        "당신은 서울 정비·개발사업 초기검토 플랫폼의 설명 전용 AI다. "
+        "사업을 새로 판정하지 말고, 입력 JSON에 이미 존재하는 FACT와 RULE 결과와 추천순서만 설명한다. "
+        "입력에 없는 법적 기준·수치·현황·사실을 절대 추가하거나 추정하지 않는다. "
+        "REVIEW 또는 UNKNOWN은 충족/미충족으로 단정하지 말고 '추가 확인 필요'로 표현한다. "
+        "PASS도 인허가 확정으로 표현하지 말고 '초기 검토상 적용 가능성이 높음' 또는 '법·제도상 우선 검토 가능'처럼 표현한다. "
+        "사업별 상대비교를 중심으로 8~12개의 한국어 문장을 작성한다. "
+        "대상지 핵심 특성, 정비 특성, 역세권·중심지·도로 잠재력, 우선사업, 추천이유, 차순위, gap/제약, 개선 가능사항, 미확인사항, 설계·인허가 별도검토, 초기 전략 의견을 가능한 범위에서 포함한다. "
+        "법령 전문을 쓰지 말고 입력에 있는 법적 근거명도 꼭 필요한 경우에만 짧게 언급한다. "
+        "숫자는 입력 JSON에 있는 숫자만 사용한다."
+    )
+    payload = {
+        "model": model,
+        "instructions": instructions,
+        "input": input_json,
+        "store": False,
+        "max_output_tokens": 900,
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "urban_strategy_ai_comprehensive",
+                "strict": True,
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "sentences": {"type": "array", "minItems": 8, "maxItems": 12, "items": {"type": "string"}}
+                    },
+                    "required": ["sentences"],
+                    "additionalProperties": False
+                }
+            },
+            "verbosity": "low"
+        }
+    }
+    try:
+        response = requests.post(
+            "https://api.openai.com/v1/responses",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json=payload, timeout=timeout_s
+        )
+        response.raise_for_status()
+        data = response.json()
+        output_text = data.get("output_text")
+        if not output_text:
+            texts=[]
+            for item in data.get("output") or []:
+                if item.get("type") != "message":
+                    continue
+                for content in item.get("content") or []:
+                    if content.get("type") == "output_text" and content.get("text"):
+                        texts.append(content.get("text"))
+            output_text = "\n".join(texts)
+        parsed = json.loads(output_text or "{}")
+        sentences = [_compact_text(x, 500) for x in (parsed.get("sentences") or []) if _compact_text(x, 500)]
+        if not 8 <= len(sentences) <= 12:
+            raise ValueError("AI 문장 수가 8~12 범위를 벗어남")
+        return {"mode": "openai", "model": model, "sentences": sentences, "note": "FACT/RULE 요약 객체만 전달"}
+    except Exception as exc:
+        logging.warning("AI comprehensive analysis fallback: %s", exc)
+        return {"mode": "rules_fallback", "model": model, "sentences": _fallback_ai_comprehensive_sentences(summary), "note": f"AI 호출 실패 · 판정엔진 요약 사용: {_compact_text(exc, 160)}"}
+
+
 def _user_agent_group(request: Request) -> str:
     ua = request.headers.get("user-agent", "").lower()
     device = "mobile" if any(x in ua for x in ("android", "iphone", "mobile")) else "desktop"
     browser = "edge" if "edg/" in ua else "chrome" if "chrome/" in ua else "safari" if "safari/" in ua else "firefox" if "firefox/" in ua else "other"
     return f"{device}/{browser}"
+
+
+@app.post("/api/ai/comprehensive-analysis")
+def ai_comprehensive_analysis(payload: AIComprehensiveAnalysisInput):
+    summary = payload.summary or {}
+    if not isinstance(summary, dict) or not summary:
+        raise HTTPException(status_code=400, detail="AI 분석용 FACT/RULE 요약 객체가 없습니다.")
+    return _openai_ai_comprehensive(summary)
 
 
 @app.post("/api/analytics/events")

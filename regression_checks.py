@@ -2073,6 +2073,42 @@ def check_r24_candidate_feasibility_density_ui() -> None:
     assert "st.purposeGate==='off'||st.structural==='FAIL'||st.stage==='LEGAL_ENTRY'" in opportunity
     assert "개발제한|공익용산지|비오톱|문화재|군사" in opportunity
 
+def check_ai_comprehensive_explainer() -> None:
+    """AI 종합분석은 기존 FACT/RULE 요약만 사용하고 기존 판정 UI와 분리되어야 한다."""
+    html = Path(app.BASE_DIR, "app.html").read_text(encoding="utf-8")
+    py = Path(app.BASE_DIR, "app.py").read_text(encoding="utf-8")
+    for marker in (
+        'id="aiComprehensivePanel"', 'id="aiComprehensiveBody"', 'AI 종합분석',
+        'function buildAiComprehensiveSummary()', 'function requestAiComprehensiveAnalysis(force=false)',
+        "existing_engine_explanation_only", "REVIEW/UNKNOWN은 충족·미충족으로 단정하지 않음",
+        "safeSchemeUiStep('ai-analysis',()=>scheduleAiComprehensiveAnalysis(),uiErrors)",
+        "business_results:businessResults", "recommended_business:recInfo(top[0])",
+        "alternative_businesses:top.slice(1,3).map(recInfo).filter(Boolean)",
+    ):
+        assert marker in html, marker
+    for marker in (
+        'class AIComprehensiveAnalysisInput(BaseModel):',
+        '@app.post("/api/ai/comprehensive-analysis")',
+        '"https://api.openai.com/v1/responses"',
+        '"existing"' if False else 'FACT와 RULE 결과와 추천순서만 설명한다',
+        'REVIEW 또는 UNKNOWN은 충족/미충족으로 단정하지 말고',
+        '"mode": "rules_fallback"',
+        '"gpt-5-mini"',
+    ):
+        assert marker in py, marker
+    sample={
+        "site_summary":{"area_m2":10000,"zoning":"제3종일반주거","parcel_count":10,"building_count":8,"old_building_count":5,"old_building_ratio_pct":62.5},
+        "spatial_facts":{"station":{"name":"테스트역","distance_m":250,"line_count":2},"center":{},"road":{"max_width_m":20,"face_count":2},"street_block":{"loaded":True,"block_count":3},"overlaps":{}},
+        "business_results":[{"business":"역세권활성화사업","status":"PASS","gaps":[],"condition_change":""}],
+        "recommended_business":{"business":"역세권활성화사업","status":"PASS","reason":"현재 판정엔진 우선순위"},
+        "alternative_businesses":[],"unknown_items":[]
+    }
+    lines=app._fallback_ai_comprehensive_sentences(sample)
+    assert 8 <= len(lines) <= 12
+    assert all(isinstance(x,str) and x.strip() for x in lines)
+    assert any("우선 검토" in x for x in lines)
+
+
 def check_three_legal_road_groups() -> None:
     html = Path(app.BASE_DIR, "app.html").read_text(encoding="utf-8")
     for marker in (
@@ -2146,6 +2182,7 @@ def main() -> None:
     _run("biotope bundled exact fact", check_biotope_bundled_exact_fact)
     _run("public forest bundled exact fact", check_public_forest_bundled_exact_fact)
     _run("r24 candidate feasibility density ui", check_r24_candidate_feasibility_density_ui)
+    _run("AI comprehensive explainer", check_ai_comprehensive_explainer)
     _run("r22 growth frontage engine", check_r22_growth_frontage_engine)
     _run("three legal road groups", check_three_legal_road_groups)
     _run("release files", check_release_files)
