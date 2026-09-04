@@ -1,29 +1,3 @@
-# GPT PATCH NOTES — R43 사업구역 건축선 추출·연결 실험
-
-기준본: `urban-strategy-v2.5.0-r42-project-boundary-building-line-ui.zip`
-앱 내부 버전: `2.5.0` 유지
-
-## 이번 수정
-- 가로구역 계산은 r42와 바이트 단위 함수 해시가 동일하도록 동결했다.
-- 사업구역은 가로구역과 별도 함수에서만 계산한다.
-- 검토경계 주변 연속지적 필지는 선택 여부와 무관하게 토지대장 지목을 추가 조회하여 `도로` 필지를 확인한다.
-- 사업구역 후보선은 지적 도로필지의 경계 중 대상지 중심 방향이 도로 밖으로 빠지는 **대지측 경계**를 사용한다.
-- 각 후보선은 검토구역 외곽선과의 거리와 방향차를 비교해 평행성이 낮은 선을 제외한다.
-- 검토구역 외곽 진행순서에 후보 건축선을 투영하고, 후보가 끊긴 구간은 인접 후보점끼리 직선 연결하여 폐합 폴리곤을 만든다.
-- 공원·녹지·광장·주차장·철도 등 도시계획시설은 사업구역 경계 생성에 사용하지 않는다.
-- ROAD_BT·계획도로는 사업구역 경계 생성이 아니라 진단 FACT로만 유지한다.
-- 건축선 후보가 부족하거나 자기교차/중첩검증을 통과하지 못하면 `REVIEW`로 두고 검토요청지를 임시 표시한다.
-- 검증 UI에 `건축선 후보 수 · 연결 수 · 검토경계 투영률`을 표시한다.
-
-## 회귀 확인
-- `buildProjectStreetBlockValidation()`은 r42와 SHA-256 동일: 가로구역 계산 미변경.
-- 인라인 JavaScript `node --check` PASS.
-- `python -m py_compile app.py regression_checks.py` PASS.
-- `check_spatial_evidence_maps`, `check_r14_street_block_auto`, `check_r15_street_block_4m_conditional` PASS.
-- 전체 회귀는 기존 기준본에 없는 사전협상 PDF를 요구하는 r10 검사에서 중단하며, 그 이전 항목은 모두 PASS.
-
----
-
 # GPT PATCH NOTES — 사업구역·가로구역 완전 분리
 
 기준본: `urban-strategy-v2.5.0-r34-project-area-boundary-network-fix.zip`
@@ -178,53 +152,39 @@ r34에서는 가로구역 분할결과(`rawBlocks`, `separators`)를 다시 이�
   - 사업구역 붉은선 3.2 → 1.6 (50%)
   - 내부가로망 파란 경계선 1.8 → 0.9 (50%)
 
-## r43 — 선택필지 구역계 갱신 시 안심주택 의료시설 재분석 호출 누락 보완 (2026-09-04)
+## r42-roadfact branch — TL_SPRD_RW 실폭도로 + TL_SPRD_MANAGE ROAD_BT 독립 FACT 결합 (2026-09-04)
 
-### 원인
-- `applySelectedParcelsAsBoundary()`에서 선택필지 병합 geometry로 `activeGeometry`를 갱신한 뒤 `analyzeLandLedger()`, `analyzeBuildings()`, `analyzeBuildingHub()`, `analyzeRoadAccess()`만 재호출하고 있었음.
-- 이 경로에서 `analyzeSafeMedicalReference()`가 호출되지 않아, 필지를 대상지로 지정한 경우 `안심주택 의료시설 현황` 카드가 이전 구역계 결과 또는 `구역 설정 전` 상태에 남을 수 있었음.
+### 원인 / 목적
+- 재개발·주거환경개선 접도율의 기존 `analyzeRoadAccess()` / `fetchRoadNetwork()` 중심선 버퍼 모듈은 더 이상 개선하지 않는다.
+- 가로구역과 역세권활성화 분석은 위 모듈의 성공 여부와 분리하여 서울 원본 도로자료를 직접 소비하도록 한다.
+- `TL_SPRD_RW`는 실제 도로면 Polygon, `TL_SPRD_MANAGE`는 `ROAD_BT`·도로명·관리번호를 가진 중심선이며, 둘은 1:1이 아니라 다대다 관계로 보존한다.
 
-### 수정범위
-- `applySelectedParcelsAsBoundary()` 함수 내부의 기존 호출 순서·구조는 그대로 유지함.
-- 기존 `Promise.allSettled([analyzeLandLedger(), analyzeBuildings()])` → `analyzeBuildingHub()` → `analyzeRoadAccess()` 뒤에 `await analyzeSafeMedicalReference();`를 추가함.
-- 호출 완료 후 `renderSafeMedicalSpatialStatus();`를 명시적으로 실행해 새 선택필지 경계 기준 결과를 즉시 렌더함.
-- `runAllAutoAnalyses()`, `runSiteReview()`, Draw CREATED/EDITED 핸들러, `safeAnalysisStep('의료시설', ...)`, 의료시설 350m 판정기준·대상시설·대표필지 산출 로직은 수정하지 않음.
-- 이번 수정과 무관한 사업구역/가로구역, 역세권, 상생주택 보전환경, 기존 UI·도면·팝업 로직은 수정하지 않음.
+### 수정 범위
+1. `data/road_shp_seoul/`에 서울 전체 `TL_SPRD_RW`와 `TL_SPRD_MANAGE`의 SHP/SHX/DBF만 탑재했다. 접도분석과 무관한 `TL_SPRD_INTRVL`은 포함하지 않았다.
+2. 서버에 `/api/spatial/road-facts`를 추가했다.
+   - 요청 대상지 주변 bbox만 pyshp로 읽는다(cp949).
+   - 원자료 CRS는 DATA_SUMMARY 기준 EPSG:5179로 처리한다.
+   - RW invalid geometry는 `buffer(0)` 보정을 시도하고 품질 상태를 FACT에 남긴다.
+   - RW↔MANAGE는 `intersects` 다대다 관계를 그대로 저장하고 대표 ROAD_BT 하나로 축약하지 않는다.
+   - 매칭 0건, 복수 ROAD_BT, geometry repair 여부는 REVIEW 사유로 남긴다.
+   - 임의 nearest 거리 threshold는 새로 만들지 않았다.
+3. 가로구역 `analyzeStreetBlock()`은 독립 도로 FACT의 MANAGE `ROAD_BT`를 폭원 근거로 사용하고, 폭원이 확인된 구간은 RW 실제 도로면과 MANAGE의 관계구간을 barrier 형상으로 우선 사용한다. 새 RW FACT가 없을 때만 기존 중심선 기반 방식으로 fallback한다.
+4. 역세권활성화 `analyzeActivationArterial()`은 재개발용 도로접도 결과가 아니라 독립 도로 FACT의 MANAGE를 직접 사용한다. 기존 노선형 상업지역 RULE 자체는 변경하지 않았다.
+5. `runAllAutoAnalyses()`에서 재개발용 `roadStep` 실패가 위 두 독립 분석의 호출 자체를 막지 않도록 의존 게이트를 제거했다. `roadStep` 상태 자체는 기존처럼 결과 목록에 남는다.
+6. `analyzeRoadAccess()`, `fetchRoadNetwork()`, `roadPolygonsFromCenterlines()` 내부 로직은 변경하지 않았다.
 
-### 회귀검증
-1. `python -m py_compile app.py regression_checks.py` PASS.
-2. 인라인 JavaScript 추출 후 `node --check` PASS.
-3. 직접 그린 폴리곤의 기존 `검토하기` 의료시설 분석 경로는 코드 변경이 없어 기존 동작 유지 확인.
-4. 선택필지 구역계 갱신 경로는 `analyzeRoadAccess()` 이후 `analyzeSafeMedicalReference()`와 `renderSafeMedicalSpatialStatus()`가 실행되도록 정적 호출순서 확인.
-5. 선택필지 갱신 함수 단위 harness를 2회 연속 실행해 매 회 `analyzeSafeMedicalReference()`가 1회만 호출되고, `spSafeMedicalState`/`spSafeMedicalNearest` 대응 상태가 새 경계 기준 값으로 갱신되는 호출경로를 확인. 명시 렌더는 동일 상태의 재표시이며 네트워크 분석 중복 호출은 없음.
-6. 수정 전후 `app.html` diff는 `applySelectedParcelsAsBoundary()` 내부 2줄 추가만 존재함을 확인. `runAllAutoAnalyses()`, `runSiteReview()`, Draw CREATED/EDITED 핸들러, `analyzeSafeMedicalReference()`, `renderSafeMedicalSpatialStatus()`, 사업구역/가로구역 및 상생주택 보전환경 함수 해시 동일.
-7. 전체 `python regression_checks.py`는 safe medical API/boundary, spatial evidence maps 등 r9까지 PASS 후, 기준본에 포함되지 않은 사전협상 PDF를 요구하는 기존 r10 검사에서 중단됨. 이번 2줄 수정과 무관.
+### 로컬 기술검증
+- `python -m py_compile app.py regression_checks.py` PASS.
+- 인라인 JavaScript 추출본 `node --check` PASS.
+- 서울시청 인근 임의 소구역으로 `/api/spatial/road-facts` 핵심 함수를 로컬 실행:
+  - 상태 `resolved`
+  - RW 38건 / MANAGE 42건 / RW-MANAGE surface association 151건
+  - RW unmatched 4건 / 복수 ROAD_BT RW 22건
+  - 첫 호출 약 0.5초(로컬 환경 기준; Render 성능 보장값 아님)
+- 동일 소구역에서 독립 road FACT를 `analyze_street_block()`에 전달해 `resolved`, 복수 가로구역 후보 산출을 확인했다.
+- 기존 전체 `regression_checks.py`는 과거 `roadStep rejected → 가로구역/노선형 상업지역 분석 미실행` 동작을 강제하는 r21 assertion에서 중단한다. 이번 결정과 반대인 구 검사이므로 제품 로직을 되돌리지 않았으며, 해당 테스트 갱신은 별도 작업으로 남긴다.
 
-## r43 추가 — 도로·접도 실패와 노선형 상업지역·가로구역 실행 의존관계 제거 (2026-09-04)
-
-### 원인
-- `runAllAutoAnalyses()`에서 재개발·주거환경개선용 `analyzeRoadAccess()`의 `roadStep.status`가 `rejected`이면, 서로 독립적으로 원시 도로중심선 `TL_SPRD_MANAGE`/`LT_C_SPRD_MANAGE`를 호출하는 `analyzeActivationArterial()`과 `analyzeStreetBlock()`의 호출 자체를 생략하고 있었음.
-- 따라서 재개발용 접도율 모듈의 `NO_DATA`/`rejected` 상태가 무관한 노선형 상업지역·가로구역 분석까지 `선행 도로 Fact 미확보`로 자동 `rejected` 처리하는 잘못된 실행 의존관계가 있었음.
-
-### 수정범위
-- 직전 배포본 `urban-strategy-v2.5.0-r43-safe-medical-selection-refresh.zip`을 기준으로 수정함.
-- `runAllAutoAnalyses()` 내부의 `if(roadStep.status==='rejected'){...}else{...}` 게이트만 제거함.
-- `results.push(roadStep);`은 그대로 유지하여 재개발용 도로·접도 결과의 `rejected`/`partial` 상태 표시는 계속 남김.
-- 기존 `safeAnalysisStep('노선형 상업지역', ...)` 호출의 함수 본문·timeout 60000·classify 로직은 변경하지 않고 조건문 밖으로 이동함.
-- 기존 `safeAnalysisStep('가로구역', analyzeStreetBlock, 90000, ...)` 호출의 함수·timeout·onTimeout·classify 로직은 변경하지 않고 조건문 밖으로 이동함.
-- `if(activationArterialAnalysis.loaded){try{updateActivationArterialBlockLink();}catch...}`는 두 스텝 실행 뒤에 기존 그대로 유지함.
-- `analyzeRoadAccess()`, `fetchRoadNetwork()`, `roadPolygonsFromCenterlines()`, `analyzeActivationArterial()`, `analyzeStreetBlock()`, `buildProjectStreetBlockValidation()` 내부 로직은 수정하지 않음.
-- 접도율 판정의 숫자·기준·거리값은 추가/변경하지 않음.
-- 이번 변경과 무관한 사업구역/가로구역 폴리곤 계산, r38~r42 검증도면 색분리, 상생주택 보전환경, 기존 UI·도면·팝업은 수정하지 않음.
-
-### 회귀검증
-1. `python -m py_compile app.py regression_checks.py` PASS.
-2. `app.html` 인라인 JavaScript 추출 후 `node --check` PASS.
-3. 수정 전후 `app.html` diff 확인: `runAllAutoAnalyses()`의 위 게이트 제거와 기존 else 내부 호출부의 들여쓰기 이동 외 변경 없음.
-4. 정적 실행순서 확인: `도로·접도` 실행 → `results.push(roadStep)` → `노선형 상업지역` 실행 → `가로구역` 실행 → `updateActivationArterialBlockLink()` → `주변 공간현황` 순서를 유지함. `roadStep.status==='rejected'` 분기 및 `선행 ... 미확보 · 분석 미실행` 자동 상태주입 문구는 제거됨.
-5. 독립 원자료 호출 확인: `analyzeActivationArterial()`과 `analyzeStreetBlock()` 모두 기존대로 `trySpatialLayerCandidates(['TL_SPRD_MANAGE','LT_C_SPRD_MANAGE'], ...)`를 자체 호출하며 해당 함수 내부는 수정 전후 동일함.
-6. 보호대상 함수 정적 비교: `analyzeStreetBlock()`, `analyzeActivationArterial()`, `buildProjectStreetBlockValidation()`, `roadPolygonsFromCenterlines()`, `fetchRoadNetwork()`, `analyzeRoadAccess()` 본문은 수정 전후 동일함.
-7. 서버 가로구역 독립산출 확인: 내장 SGIS 기초단위구가 존재하는 서울 테스트 geometry와 ROAD_BT=8m 중심선 1건을 `analyze_street_block()`에 직접 입력하여 `status=resolved`, `block` polygon 산출, `metadata.road_count=1` 확인. 재개발용 `analyzeRoadAccess()` 상태를 입력으로 요구하지 않음을 확인함.
-8. `roadStep` 정상/실패 공통 경로 확인: `runAllAutoAnalyses()`에 더 이상 `roadStep.status`에 따른 노선형 상업지역·가로구역 호출 분기가 없으므로, 도로·접도 결과가 fulfilled/partial/rejected 어느 상태이든 두 독립 스텝이 각각 자기 `safeAnalysisStep` 결과를 생성함. 자동 `선행 도로 Fact 미확보` rejected 항목은 생성되지 않음.
-9. 사업구역/가로구역 폴리곤 계산, 검증도면 색분리, 상생주택 보전환경 등 무관 코드의 회귀 여부는 수정 전후 파일 diff가 `runAllAutoAnalyses()` 게이트에만 한정됨을 통해 확인함.
-10. 기존 전체 `python regression_checks.py` 실행은 종전 `r21 single boundary + sequential diagnostics` 검사에서 제거 대상 문구 `선행 ROAD_BT 미확보 · 분석 미실행`의 존재를 요구하는 구형 assertion 때문에 중단됨. 이번 요구사항과 정반대인 기존 테스트 기대값이며, 수정범위를 지키기 위해 `regression_checks.py`는 변경하지 않음. 그 이전 검사들은 PASS.
+### 배포서버 확인 필요
+- 실제 대상지별 RW/MANAGE 후보 건수, 매칭 링크, ROAD_BT 혼재, REVIEW 사유를 확인한다.
+- VWorld 연속지적과의 실제 접촉/면수 판정은 배포환경 API키·네트워크에서 별도 검증한다.
+- 재개발·주거환경개선 접도율 NO_DATA/rejected는 이번 변경의 성공/실패 판단 대상이 아니다.
