@@ -256,3 +256,33 @@ r34에서는 가로구역 분할결과(`rawBlocks`, `separators`)를 다시 이�
 5. VWorld 좌표/주소 조회를 모두 실패로 강제했을 때 오프라인 폴백이 동작하고 `boundary_basis/source_type = OFFLINE_CADASTRAL_SNAPSHOT_202012`로 구분되는 것 확인 PASS.
 6. 오프라인 91필지 GeoJSON 색인: 91건, 최초 로드 약 0.005초(현 분석환경 측정). 전체 서울 SHP 런타임 적재를 피하도록 구성함.
 7. 기존 `regression_checks.py` 전체 실행은 기준본 `r43-road-gate-decoupled`에 남아 있는 과거 assertion(`선행 ROAD_BT 미확보 · 분석 미실행`)이 현재의 도로 게이트 분리 결정과 충돌하여 해당 지점에서 중단됨. 이번 의료시설 수정과 무관하며 테스트 파일은 변경하지 않음.
+
+## r45 — 정확성 우선 검토 대기시간 확대 (2026-09-07)
+
+### 원인
+- Render 콜드스타트, 외부 공식 API 응답 지연, SHP 공간연산이 겹치는 대상지에서 기존 단계별 45~180초 제한이 먼저 만료되어, 실제 분석이 끝나기 전에 `시간초과`/`REVIEW`로 전환될 가능성이 있었음.
+- 사용자는 분석 속도보다 정확성과 완료 가능성을 우선하며, 진행률 UI에서 실제 경과시간을 이미 확인할 수 있으므로 단계별 대기시간을 충분히 늘리는 방향으로 조정함.
+
+### 수정범위
+- 판정식·공간연산·API 호출순서·UI 구조는 변경하지 않고 `safeAnalysisStep()`의 검토 단계 timeout 값만 확대함.
+- 기본 timeout: 60초 → 180초.
+- 역세권 경계: 45초 → 120초.
+- 연속지적: 60초 → 180초.
+- 토지대장 / 건축물 공간: 60초 → 180초.
+- 도시계획 GIS: 90초 → 240초.
+- 상생주택 보전환경: 180초 → 300초.
+- 정비사업 GIS / 개발사업 GIS: 60초 → 180초.
+- 의료시설: 60초 → 240초.
+- 건축HUB: 120초 → 300초.
+- 도로·접도: 60초 → 180초.
+- 노선형 상업지역: 60초 → 180초.
+- 가로구역: 90초 → 240초.
+- 주변 공간현황: 45초 → 120초.
+- 브라우저 내부에서 즉시 계산되는 도형면적 5초 제한은 유지함.
+- 저수준 API 요청 자체의 timeout, 판정기준, REVIEW/UNKNOWN 처리방식은 변경하지 않음.
+
+### 회귀검증
+1. `python -m py_compile app.py regression_checks.py` PASS.
+2. 인라인 JavaScript 추출 후 `node --check` PASS.
+3. 수정 전후 `app.html` diff 확인: `safeAnalysisStep` 기본값 및 각 검토 단계 timeout 숫자 변경만 존재하며 분석 함수 본문·호출순서·classify/onTimeout 로직은 변경 없음.
+4. 기존 전체 `python regression_checks.py`는 measurement~progress truth 항목까지 PASS 후, 기준본에 이미 존재하는 구형 r21 assertion(`선행 ROAD_BT 미확보 · 분석 미실행`)에서 중단됨. 이번 timeout 변경과 무관함.
