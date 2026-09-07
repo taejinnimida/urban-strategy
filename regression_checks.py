@@ -506,7 +506,7 @@ def check_spatial_evidence_maps() -> None:
         assert layer in html, layer
     # Fact Store가 도면과 사업엔진의 단일 근거가 된다. 공통 도로는 판정값이 아니라 raw fact로 보존한다.
     assert 'road_raw:roadRawFacts(c)' in html
-    assert 'spatial_evidence:{zoning:zoningSpatialEvidenceFacts(),roads:schemeRoadEvidenceFacts(c),frontage:schemeFrontageEvidenceFacts(c),street_block:streetBlockSpatialEvidenceFacts(),activation_arterial:activationLinearCommercialEvidence(),safe_medical:safeMedicalSpatialEvidenceFacts()}' in html
+    assert 'spatial_evidence:{zoning:zoningSpatialEvidenceFacts(),roads:schemeRoadEvidenceFacts(c),frontage:schemeFrontageEvidenceFacts(c),street_block:streetBlockSpatialEvidenceFacts(),activation_arterial:activationLinearCommercialEvidence(),safe_medical:safeMedicalSpatialEvidenceFacts(),school_absolute_protection:schoolAbsoluteProtectionSpatialEvidenceFacts()}' in html
     assert 'function roadRawFacts(cArg=null)' in html
     assert 'has_20m_width_candidate' in html
     assert 'has_20m:c.has20' not in html
@@ -577,7 +577,9 @@ def check_release_files() -> None:
     assert Path(app.DATA_DIR).is_dir()
     assert (root / "CHANGELOG_v2.5.0.txt").exists()
     readme = (root / "README.md").read_text(encoding="utf-8")
-    assert readme.startswith("# 서울 도시정비플랫폼 Web MVP v2.5.0")
+    # README는 최신 패치 요약을 맨 위에 계속 쌓는 changelog 형식이라 매 패치마다
+    # 첫 줄이 바뀐다 — "첫 줄이어야 한다"가 아니라 "파일 안에 있어야 한다"로 확인한다.
+    assert "# 서울 도시정비플랫폼 Web MVP v2.5.0" in readme
     assert "GitHub 웹 업로드" in readme
     assert "사업방식 근거 기준일" in readme
     assert "분석번호" in readme
@@ -1145,9 +1147,11 @@ def check_r11_popup_spatial_progress() -> None:
     for fn in ("beginAnalysisProgress","markAnalysisProgress","finishAnalysisProgress","renderAnalysisProgress"):
         assert f"function {fn}" in html, fn
     assert "정확성 우선 모드" in html
-    assert "analyzePlanningGIS,90000" in html
-    assert "analyzeBuildingHub,120000" in html
-    assert "analyzeRoadAccess,60000" in html
+    # R45: 검토 단계 timeout이 정확성 우선으로 확대됐다(90초→240초/120초→300초/60초→180초 등).
+    # 판정식·호출순서는 그대로이고 숫자만 늘어난 거라, 옛 숫자 대신 새 숫자로 갱신해서 확인한다.
+    assert "analyzePlanningGIS,240000" in html
+    assert "analyzeBuildingHub,300000" in html
+    assert "analyzeRoadAccess,180000" in html
     assert "총 ${formatAnalysisElapsed" in html
     assert 'site_fact_store_v2.5.0_r11' in py
     assert 'r22-station-area-frontage-no-hierarchy' in html and 'r22-station-area-frontage-no-hierarchy' in py
@@ -1226,7 +1230,7 @@ def check_r13_criterion_layer1() -> None:
     assert '"scheme_module_api": "2026-09-02-r22-station-area-frontage-no-hierarchy"' in py
 
 def check_r14_street_block_auto() -> None:
-    """사업구역과 가로구역이 완전히 독립 연산되고, r32 가로구역 FACT 추출 로직이 유지되어야 한다."""
+    """사업구역과 가로구역 독립 연산 + R43 건축선 사업구역 + r32 가로구역 동결을 확인한다."""
     root = Path(app.BASE_DIR)
     html = (root / "app.html").read_text(encoding="utf-8")
     assert 'id="ccStreetBlockMiniMap"' in html
@@ -1239,34 +1243,41 @@ def check_r14_street_block_auto() -> None:
     assert "function classifyProjectFacility(row)" in html
     assert "function streetBlockPlanningRoadEvidence(row)" in html
 
-    classify = html[html.index("function classifyProjectFacility(row)"):html.index("function projectFacilityIsStreetBlockSeparator", html.index("function classifyProjectFacility(row)"))]
+    classify = html[html.index("function classifyProjectFacility(row)"):html.index("function streetBlockPlanningRoadEvidence(row)", html.index("function classifyProjectFacility(row)"))]
     assert "row?.name,row?.category" in classify
     assert "layer==='LT_C_UPISUQ151'" in classify
-    road_evidence = html[html.index("function streetBlockPlanningRoadEvidence(row)"):html.index("function projectFacilityIsStreetBlockSeparator", html.index("function streetBlockPlanningRoadEvidence(row)"))]
+    road_evidence = html[html.index("function streetBlockPlanningRoadEvidence(row)"):html.index("const STREET_BLOCK_BOUNDARY_FACILITY_TOLERANCE_M", html.index("function streetBlockPlanningRoadEvidence(row)"))]
     assert "기타도시시설" in road_evidence
     assert "UQS(?:11[1-9]|12[0-3]|190)" in road_evidence
     assert "ambiguous:layer==='LT_C_UPISUQ151'&&!confirmed" in road_evidence
 
-    # 사업구역: 원천 FACT만 사용하고 가로구역 결과를 호출/참조하지 않는다.
+    # R43 사업구역: 지적 도로필지의 대상지 안쪽 경계 + 검토경계 평행성 + 단절 연결.
+    assert "async function enrichProjectBoundaryParcelCategories(site)" in html
+    assert "function extractProjectBuildingLineCandidates(site)" in html
+    assert "function buildProjectPolygonFromBuildingLines(site,candidateResult)" in html
+    assert "projectParcelIsRoad" in html
+    assert "_project_parallel_angle_deg" in html
+    assert "_project_connector_count" in html
+    assert "건축선 후보 부족" in html
+
     project_helper = html[html.index("function buildIndependentProjectAreaCandidate(site)"):html.index("function buildProjectBoundaryCandidate()", html.index("function buildIndependentProjectAreaCandidate(site)"))]
-    assert "street_blocks" in project_helper  # 독립 원칙 설명 주석
+    assert "extractProjectBuildingLineCandidates(site)" in project_helper
+    assert "buildProjectPolygonFromBuildingLines(site,candidateResult)" in project_helper
+    assert "street_blocks / separators / 가로구역 결과를 절대 참조하지 않는다" in project_helper
     assert "projectStreetBlockValidation" not in project_helper
     assert "buildProjectStreetBlockValidation" not in project_helper
     assert "rawBlocks" not in project_helper
-    assert "for(const [pnu,src] of parcelFeatureMap.entries())" in project_helper
-    assert "for(const rf of currentRoadWidthFeatures||[])" in project_helper
-    assert "for(const row of planningAnalysis?.facilities||[])" in project_helper
-    assert "safeDifferencePolygons(site,[cutterUnion])" in project_helper
+    assert "safeDifferencePolygons(site" not in project_helper
     assert "_project_independent:true" in project_helper
-    assert "원천 도로·도시계획시설 FACT 기반 독립 사업구역" in project_helper
+    assert "cadastral_road_building_line" in project_helper
 
     project_block=html[html.index("function buildProjectBoundaryCandidate()"):html.index("function buildProjectStreetBlockValidation(projectFeature)")]
     assert "buildIndependentProjectAreaCandidate(site)" in project_block
     assert "buildProjectStreetBlockValidation" not in project_block
     assert "projectStreetBlockValidation" not in project_block
-    assert "basis:'independent_raw_road_facility_fact'" in project_block
+    assert "basis:'independent_cadastral_building_line_fact'" in project_block
 
-    # 가로구역: r32의 정상 추출 구조를 고정하고 project_area를 생성/수정하지 않는다.
+    # 가로구역: r32 정상 추출 구조를 유지하며 사업구역 결과를 입력으로 사용하지 않는다.
     street_block=html[html.index("function buildProjectStreetBlockValidation(projectFeature)"):html.index("function finalizeAnalysisGeometryFromSelectedParcels()")]
     assert "R35 FREEZE" in street_block
     assert "for(const [pnu,src] of parcelFeatureMap.entries())" in street_block
@@ -1298,7 +1309,7 @@ def check_r15_street_block_4m_conditional() -> None:
     py = (root / "app.py").read_text(encoding="utf-8")
     assert "road_min_width_m = 4.0" in py
     assert "TL_SPRD_MANAGE ROAD_BT" in py
-    assert "4m 미만 도로는 구획 분할선에서 제외" in html
+    assert "4m 미만 도로" in html and "가로구역 경계 제외" in html
     assert "estimatePolygonShortWidthMeters" in html
     assert "철도|하천" in py
     assert "LT_C_UPISUQ151" not in html[html.index("function streetBlockBarrierSpec"):html.index("async function fetchStreetBlockFacilityBarriers")]
@@ -1328,7 +1339,7 @@ def check_r16_basic_unit_street_block() -> None:
         assert token in py, token
     assert "basicUnitContext" in html and "ccStreetBlockUnitContext" in html
     assert "SGIS 기초단위구 후보경계" in html
-    assert "AUTO · 기초단위구+ROAD_BT" in html
+    assert "현재 내장 기초단위구/ROAD_BT 형상은 법정 가로구역이 아니므로" in html
     assert "도로 fallback" not in html[html.index("function renderStreetBlockSpatialStatus"):html.index("async function refreshMiniContextFeatures", html.index("function renderStreetBlockSpatialStatus"))]
     assert "SCHEME_MODULE_API_VERSION='2026-09-02-r22-station-area-frontage-no-hierarchy'" in html
     assert '"scheme_module_api": "2026-09-02-r22-station-area-frontage-no-hierarchy"' in py
@@ -1352,8 +1363,10 @@ def check_r17_spatial_relation_road_facts() -> None:
         "site_share_of_block_pct","block_coverage_of_site_pct","station_share_of_block_pct","station_share_of_site_pct",
     ):
         assert token in html, token
+    # R38~R46 사이 라벨 문구가 다듬어졌다(뜻은 동일). 예전 4개 문구 대신 현재 실제 쓰이는
+    # 4개 문구로 갱신 — 대상지→가로구역, 가로구역→대상지, 역→가로구역, 종합 4방향을 각각 확인한다.
     for label in (
-        "분석범위 중 대상지 점유율","대상지의 분석범위 포함률","가로구역의 역세권 편입률","대상지의 역세권 편입률",
+        "사업대상지/가로구역 점유율","대상지 포함률","가로구역 포함률","역세권 입지 종합",
     ):
         assert label in html, label
     assert "frontage_ratio_pct:Number.isFinite(Number(x.boundary_share_pct))" in html
@@ -1374,7 +1387,7 @@ def check_r17_spatial_relation_road_facts() -> None:
     assert "blockStatus='PASS';blockConditional=true" in station_check
     # street-block API accepts TL_SPRD_MANAGE centerline features.
     assert "road_features: List[Dict[str, Any]]" in py
-    assert "도로폭은 TL_SPRD_MANAGE의 ROAD_BT" in py
+    assert "도로폭 근거는 TL_SPRD_MANAGE의 ROAD_BT를 유지한다" in py
     assert "_road_spatial_layers()" not in py[py.index("def _street_block_from_basic_units"):py.index("def analyze_street_block")]
     smallscale = html[html.index("function smallscaleSpatialFacts(store)"):html.index("function checkSmallscaleFromFacts")]
     assert "analysis_scope_m2" in smallscale and "retained_road_area_m2" in smallscale
@@ -1483,10 +1496,16 @@ def check_r21_single_boundary_sequential_diagnostics() -> None:
         "runAllAutoAnalyses({skipParcels:true})",
         "async function fetchBackendJson",
         "JSON 아님",
-        "선행 ROAD_BT 미확보 · 분석 미실행",
         "ROAD_BT가 없거나 유효하지 않은 구간은 폭원을 추정하지 않고 REVIEW",
     ):
         assert marker in html, marker
+    # R43: 재개발용 도로·접도(roadStep) 실패가 더는 노선형상업지역·가로구역 실행을 막지 않는다
+    # (서로 독립적으로 원시 TL_SPRD_MANAGE를 직접 조회하므로 실행 자체를 커플링할 이유가 없다는
+    # 의도적 아키텍처 결정 — GPT_PATCH_NOTES.md r43 참고). 그 결과로 자동 주입되던
+    # "선행 ROAD_BT 미확보 · 분석 미실행" 문구도 같이 사라졌으므로, 문구가 없는지를 확인해서
+    # 이 결합이 실제로 풀렸는지 검증한다(문구가 남아있으면 다시 결합된 것이므로 회귀).
+    assert "선행 ROAD_BT 미확보 · 분석 미실행" not in html
+    assert "roadStep.status==='rejected'" not in html
     finalize=html[html.index("function finalizeAnalysisGeometryFromSelectedParcels()"):html.index("const parcelFeatureMap", html.index("function finalizeAnalysisGeometryFromSelectedParcels()"))]
     assert "activeGeometry=analysisGeometry" not in finalize
     assert "drawnItems.clearLayers()" not in finalize
@@ -1930,7 +1949,7 @@ def check_safe_housing_entrance_350() -> None:
     # 데이터 품질: 서버 전처리 결과(station_entrances.json)가 실제로 존재하고,
     # 같은 출입구가 두 역에 동시에 배정되지 않았는지(= 다른 역 소속 출입구를 섞어쓰지 않았는지),
     # 그리고 애매한 출입구는 실제로 제외되어 매칭 개수가 원본보다 적은지 확인한다.
-    entrance_path = Path(app.BASE_DIR, "station_entrances.json")
+    entrance_path = Path(app.DATA_DIR, "station_entrances.json")
     assert entrance_path.is_file()
     with entrance_path.open(encoding="utf-8") as fp:
         entrance_data = json.load(fp)
