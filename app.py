@@ -1788,12 +1788,10 @@ def _road_shape_dir() -> str:
         return structured
     return os.path.join(BASE_DIR, "road_shp_seoul")
 
-
 def _road_shape_base(stem: str) -> Optional[str]:
     base = os.path.join(_road_shape_dir(), stem)
     required = [base + ext for ext in (".shp", ".shx", ".dbf")]
     return base if all(os.path.isfile(p) and os.path.getsize(p) > 0 for p in required) else None
-
 
 def _road_shape_records(stem: str, bbox_metric: List[float]) -> List[Dict[str, Any]]:
     """SHP 전체를 메모리에 올리지 않고 pyshp bbox 필터로 주변 레코드만 읽는다."""
@@ -1828,11 +1826,9 @@ def _road_shape_records(stem: str, bbox_metric: List[float]) -> List[Dict[str, A
             continue
     return rows
 
-
 def _road_name(properties: Dict[str, Any]) -> str:
     by_upper = {str(k).upper(): v for k, v in (properties or {}).items()}
     return str(by_upper.get("RN") or by_upper.get("ROAD_NM") or by_upper.get("ROAD_NAME") or "").strip()
-
 
 def analyze_local_road_facts(geometry: Dict[str, Any], radius_m: float = 220.0) -> Dict[str, Any]:
     """TL_SPRD_RW 실제 도로면 + TL_SPRD_MANAGE ROAD_BT를 대상지 주변에서만 결합한다.
@@ -2028,6 +2024,156 @@ def analyze_local_road_facts(geometry: Dict[str, Any], radius_m: float = 220.0) 
             "note": "RW 실제 도로면과 MANAGE ROAD_BT는 다대다로 보존하며 대표 폭원으로 강제 축약하지 않음",
         },
     }
+
+
+def _school_absolute_protection_zip_path() -> Optional[str]:
+    """국가공간정보 연속주제도 UO101 서울 교육환경보호구역 원본.
+
+    이번 안심주택 배제 FACT에는 MNUM의 UOA110(절대보호구역)만 사용한다.
+    UOA120 상대보호구역과 UOA100 기타 구역은 자동판정에 섞지 않는다.
+    """
+    path = _data_path("school_protection_seoul_202608.zip")
+    return path if os.path.isfile(path) and os.path.getsize(path) > 0 else None
+
+
+@lru_cache(maxsize=1)
+def _school_absolute_protection_layers() -> Dict[str, Any]:
+    """UO101 중 UOA110 절대보호구역만 WGS84로 변환하고 STRtree로 1회 색인한다."""
+    zip_path = _school_absolute_protection_zip_path()
+    if not zip_path:
+        return {"available": False, "reason": "school_protection_seoul_202608.zip 미설치"}
+    rows: List[Dict[str, Any]] = []
+    repaired = 0
+    try:
+        with zipfile.ZipFile(zip_path) as zf:
+            names = zf.namelist()
+            stem = next((os.path.splitext(n)[0] for n in names if n.lower().endswith(".shp") and "UO101" in os.path.basename(n).upper()), None)
+            if not stem:
+                return {"available": False, "reason": "UO101 SHP를 ZIP에서 찾지 못함"}
+            shp_name = next((n for n in names if os.path.splitext(n)[0] == stem and n.lower().endswith(".shp")), None)
+            shx_name = next((n for n in names if os.path.splitext(n)[0] == stem and n.lower().endswith(".shx")), None)
+            dbf_name = next((n for n in names if os.path.splitext(n)[0] == stem and n.lower().endswith(".dbf")), None)
+            if not (shp_name and shx_name and dbf_name):
+                return {"available": False, "reason": "UO101 SHP/SHX/DBF 구성 불완전"}
+            source_crs = CRS.from_user_input("EPSG:5174")
+            prj_name = next((n for n in names if os.path.splitext(n)[0] == stem and n.lower().endswith(".prj")), None)
+            if prj_name:
+                try:
+                    source_crs = CRS.from_wkt(zf.read(prj_name).decode("utf-8", errors="ignore"))
+                except Exception:
+                    logging.warning("school absolute protection PRJ parse failed; EPSG:5174 fallback used")
+            to_wgs = Transformer.from_crs(source_crs, 4326, always_xy=True).transform
+            reader = shapefile.Reader(
+                shp=io.BytesIO(zf.read(shp_name)),
+                shx=io.BytesIO(zf.read(shx_name)),
+                dbf=io.BytesIO(zf.read(dbf_name)),
+                encoding="cp949",
+                encodingErrors="replace",
+            )
+            fields = [f[0] for f in reader.fields[1:]]
+            for sr in reader.iterShapeRecords():
+                try:
+                    props = {k: _json_property(v) for k, v in zip(fields, list(sr.record))}
+                    mnum = str(props.get("MNUM") or "").upper()
+                    if "UOA110" not in mnum:
+                        continue
+                    geom = shape(sr.shape.__geo_interface__)
+                    if geom.is_empty:
+                        continue
+                    geometry_quality = "valid"
+                    if not geom.is_valid:
+                        geom = geom.buffer(0)
+                        geometry_quality = "repaired_buffer0"
+                        repaired += 1
+                    if geom.is_empty:
+                        continue
+                    geom = geometry_transform(to_wgs, geom)
+                    if geom.is_empty:
+                        continue
+                    props["_zone_type"] = "ABSOLUTE_PROTECTION_UOA110"
+                    props["_geometry_quality"] = geometry_quality
+                    rows.append({"geometry": geom, "properties": props})
+                except Exception:
+                    continue
+        geoms = [r["geometry"] for r in rows]
+        return {
+            "available": bool(rows),
+            "rows": rows,
+            "tree": STRtree(geoms) if geoms else None,
+            "source": "국가공간정보 연속주제도 UO101 · UOA110 절대보호구역",
+            "file": os.path.basename(zip_path),
+            "count": len(rows),
+            "repaired_count": repaired,
+        }
+    except Exception as exc:
+        logging.exception("school absolute protection SHP load failed")
+        return {"available": False, "reason": str(exc)}
+
+
+def analyze_school_absolute_protection_intersections(geometry: Dict[str, Any]) -> Dict[str, Any]:
+    """안심주택 학교 출입문 50m 배제 FACT용 절대보호구역 공간중첩.
+
+    UO101의 UOA110 원본 도형을 그대로 사용하며 별도의 50m 버퍼를 새로 생성하지 않는다.
+    즉 이미 공시된 절대보호구역과 대상지의 실제 중첩만 계산한다.
+    """
+    layers = _school_absolute_protection_layers()
+    if not layers.get("available"):
+        raise FileNotFoundError(str(layers.get("reason") or "학교 절대보호구역 원본 미설치"))
+    site = shape(geometry)
+    if site.geom_type not in {"Polygon", "MultiPolygon"} or site.is_empty or not site.is_valid:
+        raise ValueError("유효한 Polygon 또는 MultiPolygon 구역계가 필요합니다.")
+    rows = layers.get("rows") or []
+    tree = layers.get("tree")
+    hit_features: List[Dict[str, Any]] = []
+    overlap_features: List[Dict[str, Any]] = []
+    overlap_geoms = []
+    if tree is not None:
+        for idx in tree.query(site, predicate="intersects"):
+            row = rows[int(idx)]
+            try:
+                inter_parts = _polygonal_only(site.intersection(row["geometry"]))
+            except Exception:
+                inter_parts = []
+            if not inter_parts:
+                continue
+            inter_geom = unary_union(inter_parts)
+            if inter_geom.is_empty:
+                continue
+            props = dict(row.get("properties") or {})
+            hit_features.append({"type": "Feature", "geometry": mapping(row["geometry"]), "properties": props})
+            overlap_features.append({"type": "Feature", "geometry": mapping(inter_geom), "properties": props})
+            overlap_geoms.append(inter_geom)
+    union_wgs = unary_union(overlap_geoms) if overlap_geoms else None
+    to_metric = Transformer.from_crs(4326, 5174, always_xy=True).transform
+    site_m2 = float(geometry_transform(to_metric, site).area)
+    overlap_m2 = float(geometry_transform(to_metric, union_wgs).area) if union_wgs is not None and not union_wgs.is_empty else 0.0
+    overlap_pct = (overlap_m2 / site_m2 * 100.0) if site_m2 > 0 else None
+    schools = []
+    for f in hit_features:
+        p = f.get("properties") or {}
+        name = str(p.get("REMARK") or p.get("ALIAS") or "절대보호구역").strip()
+        if name and name not in schools:
+            schools.append(name)
+    return {
+        "status": "matched" if hit_features else "none",
+        "fact_status": "EXCLUDED_AREA_PRESENT" if hit_features else "NO_OVERLAP",
+        "known": True,
+        "present": bool(hit_features),
+        "overlap_area_m2": overlap_m2,
+        "overlap_pct": overlap_pct,
+        "zone_count": len(hit_features),
+        "school_names": schools,
+        "features": hit_features,
+        "overlap_features": overlap_features,
+        "source": layers.get("source"),
+        "source_type": "OFFLINE_SHP_LSMD_CONT_UO101_UOA110",
+        "file": layers.get("file"),
+        "record_count": layers.get("count", 0),
+        "repaired_count": layers.get("repaired_count", 0),
+        "criterion": "학교 출입문으로부터 50m 이내 사업대상지 제외 · UO101 UOA110 절대보호구역 도형 사용",
+        "note": "절대보호구역 원본 도형과 대상지의 중첩을 계산하며, 상대보호구역(UOA120)은 이 판정에 사용하지 않음",
+    }
+
 
 def _biotope_zip_path() -> Optional[str]:
     """서울시 개별비오톱(2025 기준) 중 1등급 폴리곤 묶음."""
@@ -3337,6 +3483,89 @@ def _safe_medical_reference_data() -> Dict[str, Any]:
         logger.error("safe medical reference load failed path=%s error=%s", path, exc)
         return {"health_centers": [], "municipal_hospitals": [], "sources": {}, "load_error": str(exc)}
 
+
+@lru_cache(maxsize=1)
+def _safe_medical_offline_parcel_index() -> Dict[str, Any]:
+    """VWorld 실패 시에만 쓰는 안심주택 의료시설 대표필지 스냅샷 색인.
+
+    서울 전체 2020-12 연속지적도 934,780필지를 런타임에 적재하지 않고,
+    사전 검증된 의료시설 91개 대표필지만 WGS84 GeoJSON으로 번들한다.
+    """
+    path = _data_path("safe_medical_parcels_202012.geojson")
+    if not os.path.isfile(path):
+        return {"available": False, "reason": "data/safe_medical_parcels_202012.geojson 미설치", "features": [], "geometries": [], "tree": None}
+    try:
+        with open(path, encoding="utf-8") as fp:
+            payload = json.load(fp)
+        features = []
+        geometries = []
+        for raw in payload.get("features") or []:
+            if not isinstance(raw, dict) or not raw.get("geometry"):
+                continue
+            try:
+                geom = shape(raw["geometry"])
+            except Exception:
+                continue
+            if geom.is_empty:
+                continue
+            feature = {
+                "type": "Feature",
+                "geometry": raw["geometry"],
+                "properties": dict(raw.get("properties") or {}),
+            }
+            features.append(feature)
+            geometries.append(geom)
+        return {
+            "available": bool(features),
+            "reason": None if features else "오프라인 의료시설 대표필지 스냅샷이 비어 있습니다.",
+            "features": features,
+            "geometries": geometries,
+            "tree": STRtree(geometries) if geometries else None,
+            "metadata": dict(payload.get("metadata") or {}),
+        }
+    except Exception as exc:
+        logger.warning("safe medical offline cadastral snapshot load failed path=%s error=%s", path, exc)
+        return {"available": False, "reason": str(exc), "features": [], "geometries": [], "tree": None}
+
+
+def _safe_medical_offline_parcel_at_point(lon: float, lat: float) -> Dict[str, Any]:
+    """공식 의료시설 좌표를 2020-12 오프라인 대표필지 스냅샷에 point-in-polygon 매칭한다."""
+    index = _safe_medical_offline_parcel_index()
+    if not index.get("available") or index.get("tree") is None:
+        return {"status": "unavailable", "feature": None, "pnu": None, "reason": index.get("reason") or "오프라인 대표필지 스냅샷 미사용 가능"}
+    point = shape({"type": "Point", "coordinates": [float(lon), float(lat)]})
+    hits = []
+    try:
+        candidate_indexes = index["tree"].query(point, predicate="intersects")
+    except Exception:
+        candidate_indexes = index["tree"].query(point)
+    for idx in candidate_indexes:
+        try:
+            i = int(idx)
+            geom = index["geometries"][i]
+            if geom.covers(point):
+                hits.append(index["features"][i])
+        except Exception:
+            continue
+    unique: Dict[str, Dict[str, Any]] = {}
+    for feature in hits:
+        pnu = str((feature.get("properties") or {}).get("pnu") or "").strip()
+        if pnu:
+            unique[pnu] = feature
+    hits = list(unique.values())
+    if len(hits) == 1:
+        feature = hits[0]
+        return {
+            "status": "resolved",
+            "feature": feature,
+            "pnu": str((feature.get("properties") or {}).get("pnu") or ""),
+            "source_type": "OFFLINE_CADASTRAL_SNAPSHOT_202012",
+            "snapshot_date": "2020-12",
+        }
+    if len(hits) > 1:
+        return {"status": "ambiguous", "feature": None, "pnu": None, "candidate_pnus": sorted(unique), "source_type": "OFFLINE_CADASTRAL_SNAPSHOT_202012"}
+    return {"status": "not_found", "feature": None, "pnu": None, "candidate_pnus": [], "source_type": "OFFLINE_CADASTRAL_SNAPSHOT_202012"}
+
 def _safe_medical_name_match(name: str, ref: Dict[str, Any]) -> bool:
     nk = _name_key(name)
     if not nk:
@@ -3394,26 +3623,55 @@ def _row_wgs84_point(row: Dict[str, Any]) -> Optional[tuple[float, float]]:
 
 @lru_cache(maxsize=512)
 def _representative_parcel_cached(lon_key: Optional[float], lat_key: Optional[float], address: str) -> Dict[str, Any]:
-    """Resolve one representative parcel and cache the result for repeated analyses."""
+    """Resolve one representative parcel and cache the result for repeated analyses.
+
+    Source chain: VWorld coordinate -> VWorld address -> bundled 2020-12
+    cadastral snapshot -> unresolved/REVIEW. The snapshot never overrides a live
+    VWorld result.
+    """
     point_result = None
+    addr_result = None
     if lon_key is not None and lat_key is not None:
         try:
             point_result = _vworld_parcel_at_point(float(lon_key), float(lat_key))
         except Exception as exc:
             point_result = {"status": "error", "feature": None, "pnu": None, "reason": str(exc)}
         if point_result.get("status") == "resolved" and point_result.get("feature"):
-            return {**point_result, "basis": "official_coordinate"}
+            return {**point_result, "basis": "official_coordinate", "source_type": "VWORLD_LIVE_CADASTRAL"}
     if address:
         try:
             addr_result = _vworld_parcel_by_address(address)
         except Exception as exc:
             addr_result = {"status": "error", "feature": None, "pnu": None, "reason": str(exc)}
         if addr_result.get("status") == "resolved" and addr_result.get("feature"):
-            return {**addr_result, "basis": "official_address"}
+            return {**addr_result, "basis": "official_address", "source_type": "VWORLD_LIVE_CADASTRAL"}
+
+    # VWorld 좌표조회와 주소조회가 모두 해결되지 않았을 때만 폴백한다.
+    if lon_key is not None and lat_key is not None:
+        try:
+            offline_result = _safe_medical_offline_parcel_at_point(float(lon_key), float(lat_key))
+        except Exception as exc:
+            offline_result = {"status": "error", "feature": None, "pnu": None, "reason": str(exc), "source_type": "OFFLINE_CADASTRAL_SNAPSHOT_202012"}
+        if offline_result.get("status") == "resolved" and offline_result.get("feature"):
+            return {
+                **offline_result,
+                "basis": "offline_cadastral_snapshot_202012",
+                "boundary_note": "오프라인 연속지적도 스냅샷(기준일 2020-12), 최신 분할·합병 미반영 가능",
+            }
+    else:
+        offline_result = None
+
+    if addr_result is not None:
+        result = dict(addr_result)
         if point_result:
-            return {**addr_result, "point_status": point_result.get("status"), "point_reason": point_result.get("reason")}
-        return addr_result
-    return point_result or {"status": "not_found", "feature": None, "pnu": None, "reason": "좌표·주소 없음"}
+            result.update({"point_status": point_result.get("status"), "point_reason": point_result.get("reason")})
+    else:
+        result = dict(point_result or {"status": "not_found", "feature": None, "pnu": None, "reason": "좌표·주소 없음"})
+    if offline_result is not None:
+        result["offline_fallback_status"] = offline_result.get("status")
+        if offline_result.get("reason"):
+            result["offline_fallback_reason"] = offline_result.get("reason")
+    return result
 
 
 def _representative_parcel_for_facility(*, lon: Optional[float], lat: Optional[float], address: str) -> Dict[str, Any]:
@@ -3616,13 +3874,17 @@ def _safe_medical_reference(geometry: Dict[str, Any]) -> Dict[str, Any]:
                 "boundary_note":f"대표필지 geometry 처리 실패: {exc}", "auto_pass_eligible":False,
             })
             continue
+        is_offline_snapshot = parcel.get("basis") == "offline_cadastral_snapshot_202012"
         items.append({**base,
             "distance_boundary_m":metrics.get("distance_boundary_m"), "within_350":metrics.get("within_350"),
             "buffer_350_geometry":metrics.get("buffer_350_geometry"), "facility_boundary_geometry":feature["geometry"],
             "primary_pnu":parcel.get("pnu"), "parcel_count":1,
-            "boundary_status":"CONFIRMED", "boundary_basis":"REPRESENTATIVE_CADASTRAL_PARCEL",
-            "boundary_basis_label":"대표지번 연속지적 필지", "parcel_candidate_basis":parcel.get("basis"),
-            "boundary_note":"공식 좌표가 포함되는 대표지번 1필지를 초기검토용 의료시설 부지로 적용",
+            "boundary_status":"CONFIRMED",
+            "boundary_basis":"OFFLINE_CADASTRAL_SNAPSHOT_202012" if is_offline_snapshot else "REPRESENTATIVE_CADASTRAL_PARCEL",
+            "boundary_basis_label":"오프라인 연속지적도 스냅샷(2020-12)" if is_offline_snapshot else "대표지번 연속지적 필지",
+            "parcel_candidate_basis":parcel.get("basis"),
+            "source_type":"OFFLINE_CADASTRAL_SNAPSHOT_202012" if is_offline_snapshot else str(parcel.get("source_type") or "VWORLD_LIVE_CADASTRAL"),
+            "boundary_note":parcel.get("boundary_note") if is_offline_snapshot else "공식 좌표가 포함되는 대표지번 1필지를 초기검토용 의료시설 부지로 적용",
             "auto_pass_eligible":True,
         })
 
@@ -3674,7 +3936,6 @@ class GeometryInput(BaseModel):
 class RoadFactInput(BaseModel):
     geometry: Dict[str, Any]
     radius_m: float = Field(220.0, ge=0.0, le=1000.0)
-
 
 class StreetBlockInput(BaseModel):
     geometry: Dict[str, Any]
@@ -4450,6 +4711,84 @@ def seoul_space_catalog(keyword: str = "구릉지"):
     return _seoul_space_catalog_keyword(keyword)
 
 
+@app.get("/api/reference/heritage-wms-map")
+def heritage_wms_map(
+    min_lon: float,
+    min_lat: float,
+    max_lon: float,
+    max_lat: float,
+    width: int = 760,
+    height: int = 520,
+):
+    """Display-only proxy for the National Heritage Spatial Information WMS.
+
+    r48 UI addition.  Analysis/decision Facts remain the existing VWorld
+    LT_C_UO301 vector intersections.  The WMS image is only a visual
+    cross-check layer, so a WMS outage never becomes a PASS/FAIL Fact.
+
+    The public WMS request labels its local Korea 2000 unified coordinates as
+    EPSG:9020203.  Those numeric coordinates correspond to the EPSG:5179
+    coordinate space used here for bbox transformation.
+    """
+    if not (-180 <= min_lon < max_lon <= 180 and -90 <= min_lat < max_lat <= 90):
+        raise HTTPException(status_code=400, detail="invalid WGS84 bbox")
+    width = max(320, min(int(width), 1200))
+    height = max(220, min(int(height), 900))
+    try:
+        tf = Transformer.from_crs(4326, 5179, always_xy=True)
+        pts = [
+            tf.transform(min_lon, min_lat),
+            tf.transform(min_lon, max_lat),
+            tf.transform(max_lon, min_lat),
+            tf.transform(max_lon, max_lat),
+        ]
+        xs = [x for x, _ in pts]
+        ys = [y for _, y in pts]
+        bbox = f"{min(xs):.3f},{min(ys):.3f},{max(xs):.3f},{max(ys):.3f}"
+        params = {
+            "domain": "https://gis-heritage.go.kr/",
+            "service": "WMS",
+            "version": "1.3.0",
+            "request": "GetMap",
+            "LAYERS": "TB_ODTR_MID,TB_OUSR_MID,TB_MDQT_MID,TB_MUSQ_MID,TB_HRNR_MID,TB_SHOV_MID,TB_ERHT_MID,TB_THFS_MID",
+            "styles": "default,default,default,default,default,default,default,default",
+            "bBox": bbox,
+            "width": str(width),
+            "height": str(height),
+            "format": "image/png",
+            "crs": "EPSG:9020203",
+            "exceptions": "INIMAGE",
+        }
+        r = requests.get(
+            "https://gis-heritage.go.kr/checkKey.do",
+            params=params,
+            timeout=12,
+            headers={
+                "User-Agent": "urban-strategy/2.5.0 heritage-WMS-display",
+                "Referer": "https://gis-heritage.go.kr/",
+                "Accept": "image/png,image/*;q=0.8,*/*;q=0.5",
+            },
+        )
+        content_type = str(r.headers.get("content-type") or "").lower()
+        if r.status_code != 200 or not r.content:
+            raise HTTPException(status_code=502, detail=f"heritage WMS HTTP {r.status_code}")
+        # Some WMS servers return an exception image with image/png; show it so
+        # the map itself communicates the source-side problem.  Non-image text
+        # is not passed through to the browser as a map.
+        if "image" not in content_type and not r.content.startswith(b"\x89PNG"):
+            raise HTTPException(status_code=502, detail="heritage WMS non-image response")
+        return Response(
+            content=r.content,
+            media_type="image/png",
+            headers={"Cache-Control": "public, max-age=900"},
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logging.warning("heritage WMS proxy failed: %s", exc)
+        raise HTTPException(status_code=502, detail="heritage WMS unavailable") from exc
+
+
 @app.get("/api/reference/hill-status")
 def hill_status():
     fc=_hill_reference_data()
@@ -4518,6 +4857,39 @@ def safe_medical_nearby(inp: GeometryInput):
         return {"status": "error", "items": [], "errors": [str(exc)], "message": "의료시설 공식 위치자료 조회 실패 · 공식자료 확인 필요"}
 
 
+@app.get("/api/spatial/school-absolute-protection-data-status")
+def school_absolute_protection_data_status():
+    """내장 UO101 UOA110 학교 절대보호구역 SHP 로드상태 진단."""
+    path = _school_absolute_protection_zip_path()
+    if not path:
+        return {"available": False, "fact_status": "MISSING", "message": "학교 절대보호구역 원본 없음"}
+    layers = _school_absolute_protection_layers()
+    if layers.get("available"):
+        return {
+            "available": True,
+            "fact_status": "SCHOOL_ABSOLUTE_PROTECTION_READY",
+            "message": f"UOA110 절대보호구역 {layers.get('count', 0)}건 사용 가능",
+            "file": layers.get("file"),
+            "source": layers.get("source"),
+            "repaired_count": layers.get("repaired_count", 0),
+        }
+    return {"available": False, "fact_status": "LOAD_FAILED", "message": str(layers.get("reason") or "학교 절대보호구역 SHP 로드 실패")}
+
+
+@app.post("/api/spatial/school-absolute-protection-intersections")
+def school_absolute_protection_intersections(inp: GeometryInput):
+    """UO101 UOA110 학교 절대보호구역과 대상지를 실제 공간교차한다."""
+    try:
+        return analyze_school_absolute_protection_intersections(inp.geometry)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logging.exception("school absolute protection intersection failed")
+        raise HTTPException(status_code=500, detail=f"학교 절대보호구역 중첩분석 오류: {exc}") from exc
+
+
 @app.get("/api/spatial/biotope-data-status")
 def biotope_data_status():
     """내장 비오톱1등급 SHP 로드상태 진단."""
@@ -4578,7 +4950,6 @@ def forest_classification_intersections(inp: GeometryInput):
         raise HTTPException(status_code=500, detail=f"산지구분도 중첩분석 오류: {exc}") from exc
 
 
-@app.post("/api/spatial/road-facts")
 def road_facts(inp: RoadFactInput):
     """서울 원본 RW 실폭도로 + MANAGE ROAD_BT의 대상지 주변 다대다 도로 FACT."""
     try:
@@ -4588,7 +4959,6 @@ def road_facts(inp: RoadFactInput):
     except Exception as exc:
         logging.exception("road fact analysis failed")
         raise HTTPException(status_code=500, detail=f"도로 FACT 분석 실패: {exc}") from exc
-
 
 @app.post("/api/spatial/street-block")
 def street_block(inp: StreetBlockInput):
