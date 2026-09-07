@@ -201,7 +201,7 @@ def check_feedback_and_ui() -> None:
         "최신 공식 시행본 미확보 · 계획용적률 자동입력 금지",
         "시행령 별표 1 제2호·제4호 / 조례 제6조제1항제2·3호",
         "도로중심선 ROAD_BT 기반 개략범위",
-        "정비사업 관련 현황도", "도시계획·개발사업 현황도",
+        "정비구역 현황", "도시계획(개발)구역",
         "공공주택지구", "기타 정비",
         "대중교통 중심지역 · 간선도로변", "의료시설 중심지역",
         "1-3-1 가목", "1-3-1 나목", "운영기준 1-3-2",
@@ -241,7 +241,7 @@ def check_feedback_and_ui() -> None:
     assert "aging:{route:route.route,assessment:schemeAgeFact(store,'activation',route.route)}" in html
     assert "도시계획계 노후도" in html and "도정법계 노후도" in html
     # 사업별 판정에 쓰이는 노후도 파생현황은 공간현황 박스에서 모두 보여야 한다.
-    assert "제도별 노후도 현황" in html
+    assert ">노후도</b>" in html
     assert 'id="spAgeFactList"' in html and "AGE_SPATIAL_FACT_META" in html
     assert "사업판정은 이 현황 Fact를 그대로 호출합니다" in html
     assert '사용승인일 확인</span><b id="ccBuildingOld"' in html

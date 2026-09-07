@@ -350,3 +350,22 @@ r34에서는 가로구역 분할결과(`rawBlocks`, `separators`)를 다시 이�
 4. UOA110 첫 번째 실제 도형을 대상지로 넣은 서버 함수 실연산: `present=true`, `zone_count=1`, 중첩면적 양수, 중첩률 100% 확인.
 5. 보호기능 함수 해시 비교: `buildProjectStreetBlockValidation()`, `analyzeStreetBlock()`, `buildIndependentProjectAreaCandidate()`, `analyzeActivationArterial()`, `renderStreetBlockSpatialStatus()`가 r46과 동일함을 확인.
 6. 기존 `python regression_checks.py`는 progress truth까지 PASS 후, 기준본에 남아 있는 과거 r21 assertion `선행 ROAD_BT 미확보 · 분석 미실행`에서 중단. 현재 도로 게이트 분리 결정과 충돌하는 기존 테스트이며 이번 학교 절대보호구역 변경과 무관하여 테스트 파일은 수정하지 않음.
+
+## r48 — 사이트 분석 UI 재구성 (2026-09-07)
+
+- 기준본: `urban-strategy-v2_5_0-r47-reorganized`
+- 원칙: 기존 r47의 사업 판정 Rule, 가로구역/사업구역 연산, 데이터 경로는 변경하지 않음.
+- 서비스 화면의 `공간현황 도면`을 `사이트 분석`으로 변경하고 다음 6개 흐름으로 재배치:
+  1. 토지 / 용도지역 / 용도지구 / 도시계획시설
+  2. 정비구역 현황 / 도시계획(개발)구역 / 문화재관련 현황 / 자연환경분석
+  3. 건축물 / 노후도 / 건축물 용도 / 공장용도
+  4. 역세권 / 가로구역 및 사업구역 / 간선도로 / 중심지
+  5. 의료시설(안심주택) / 절대보호구역 50m(안심주택)
+  6. 접도현황 / 접도진단
+- 용도지구: 기존 VWorld `LT_C_UQ121·123·124·125·126·128·129·130` Fact를 별도 카드/도면으로 노출.
+- 건축물 용도: 기존 건축HUB 주용도 Fact를 사용해 동수/비율과 안전한 필지-동 매칭 범위에서 도면화.
+- 노후도: 기존 사업별 노후도 Fact는 그대로 유지하고, 공통 도면과 20년/30년 참고값만 별도 시각화.
+- 문화재관련 현황: 면적/비율은 기존 `LT_C_UO301` 벡터 Fact 유지. 국가유산공간정보 WMS는 시각적 교차확인 전용 프록시를 추가했으며 WMS 응답은 PASS/FAIL 판정에 사용하지 않음. WFS 속성 연계는 후속 고도화로 보류.
+- 접도현황: 기존 TL_SPRD_MANAGE `ROAD_BT` 원 Fact를 별도 도면으로 추가. 접도진단 Rule은 기존 로직 유지.
+- 도면 유형: 일반 현황형 / 광역·입지형 / 진단형 3종으로 높이를 통일. 데스크톱 4열, 중간폭 2열, 모바일 1열 반응형.
+- 회귀검사: `v2.5.0 regression checks: PASS`.

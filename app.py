@@ -4711,6 +4711,84 @@ def seoul_space_catalog(keyword: str = "구릉지"):
     return _seoul_space_catalog_keyword(keyword)
 
 
+@app.get("/api/reference/heritage-wms-map")
+def heritage_wms_map(
+    min_lon: float,
+    min_lat: float,
+    max_lon: float,
+    max_lat: float,
+    width: int = 760,
+    height: int = 520,
+):
+    """Display-only proxy for the National Heritage Spatial Information WMS.
+
+    r48 UI addition.  Analysis/decision Facts remain the existing VWorld
+    LT_C_UO301 vector intersections.  The WMS image is only a visual
+    cross-check layer, so a WMS outage never becomes a PASS/FAIL Fact.
+
+    The public WMS request labels its local Korea 2000 unified coordinates as
+    EPSG:9020203.  Those numeric coordinates correspond to the EPSG:5179
+    coordinate space used here for bbox transformation.
+    """
+    if not (-180 <= min_lon < max_lon <= 180 and -90 <= min_lat < max_lat <= 90):
+        raise HTTPException(status_code=400, detail="invalid WGS84 bbox")
+    width = max(320, min(int(width), 1200))
+    height = max(220, min(int(height), 900))
+    try:
+        tf = Transformer.from_crs(4326, 5179, always_xy=True)
+        pts = [
+            tf.transform(min_lon, min_lat),
+            tf.transform(min_lon, max_lat),
+            tf.transform(max_lon, min_lat),
+            tf.transform(max_lon, max_lat),
+        ]
+        xs = [x for x, _ in pts]
+        ys = [y for _, y in pts]
+        bbox = f"{min(xs):.3f},{min(ys):.3f},{max(xs):.3f},{max(ys):.3f}"
+        params = {
+            "domain": "https://gis-heritage.go.kr/",
+            "service": "WMS",
+            "version": "1.3.0",
+            "request": "GetMap",
+            "LAYERS": "TB_ODTR_MID,TB_OUSR_MID,TB_MDQT_MID,TB_MUSQ_MID,TB_HRNR_MID,TB_SHOV_MID,TB_ERHT_MID,TB_THFS_MID",
+            "styles": "default,default,default,default,default,default,default,default",
+            "bBox": bbox,
+            "width": str(width),
+            "height": str(height),
+            "format": "image/png",
+            "crs": "EPSG:9020203",
+            "exceptions": "INIMAGE",
+        }
+        r = requests.get(
+            "https://gis-heritage.go.kr/checkKey.do",
+            params=params,
+            timeout=12,
+            headers={
+                "User-Agent": "urban-strategy/2.5.0 heritage-WMS-display",
+                "Referer": "https://gis-heritage.go.kr/",
+                "Accept": "image/png,image/*;q=0.8,*/*;q=0.5",
+            },
+        )
+        content_type = str(r.headers.get("content-type") or "").lower()
+        if r.status_code != 200 or not r.content:
+            raise HTTPException(status_code=502, detail=f"heritage WMS HTTP {r.status_code}")
+        # Some WMS servers return an exception image with image/png; show it so
+        # the map itself communicates the source-side problem.  Non-image text
+        # is not passed through to the browser as a map.
+        if "image" not in content_type and not r.content.startswith(b"\x89PNG"):
+            raise HTTPException(status_code=502, detail="heritage WMS non-image response")
+        return Response(
+            content=r.content,
+            media_type="image/png",
+            headers={"Cache-Control": "public, max-age=900"},
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logging.warning("heritage WMS proxy failed: %s", exc)
+        raise HTTPException(status_code=502, detail="heritage WMS unavailable") from exc
+
+
 @app.get("/api/reference/hill-status")
 def hill_status():
     fc=_hill_reference_data()

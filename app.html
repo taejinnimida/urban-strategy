@@ -1446,6 +1446,7 @@ body.review-modal-open{overflow:hidden}
 .service-visual-maps{padding:8px;background:#eef0f3;border-top:1px solid #dfe3e8}
 .service-visual-maps>.service-block-title{margin-bottom:7px}
 .service-visual-maps .renewal-spatial-column{border-radius:9px;overflow:hidden}
+.service-visual-maps .renewal-spatial-column>.workspace-column-title{display:none}
 .service-visual-maps .spatial-module-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
 .service-visual-maps .spatial-mini-map{height:210px}
 .service-visual-maps .renewal-status-column{margin-top:8px;border-radius:9px;overflow:hidden}
@@ -1739,9 +1740,9 @@ body.service-layout-ready>.shell{display:none!important}
 </div>
 </div>
 <div class="renewal-spatial-column">
-<div class="workspace-column-title"><b>공간현황</b><span>도면으로 자동판정 검증</span></div>
+<div class="workspace-column-title"><b>사이트 분석</b><span>토지·도시계획·건축물·제도별 입지 현황</span></div>
 <div class="spatial-module-grid">
-<section class="spatial-module" id="siteDetail_land">
+<section class="spatial-module site-analysis-card site-analysis-local" id="siteDetail_land">
 <div class="spatial-module-head"><b>토지</b><div class="spatial-module-head-actions"><span id="ccLandState">구역 설정 전</span><button class="spatial-mini-action" type="button" onclick="openParcelStatusModal()">필지목록</button></div></div>
 <div class="spatial-metrics">
 <div><span>선택필지면적</span><b id="ccLandArea">-</b></div>
@@ -1757,43 +1758,8 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="spatial-caption">도면정보 · 구역 내 필지 진하게 / 구역 밖 주변지적 얇게 / 90㎡ 미만 강조</div>
 <div class="spatial-mini-map" id="ccLandMiniMap"></div>
 </section>
-<section class="spatial-module" id="siteDetail_building">
-<div class="spatial-module-head"><b>건축물</b><span id="ccBuildingState">구역 설정 전</span></div>
-<div class="spatial-metrics">
-<div><span>건축물</span><b id="ccBuildingTotal">-</b></div>
-<div><span>사용승인일 확인</span><b id="ccBuildingOld">-</b></div>
-<div><span>20년 경과(참고)</span><b id="ccBuildingOldRatio">-</b></div>
-<div><span>총연면적</span><b id="ccBuildingFloorArea">-</b></div>
-</div>
-<div class="spatial-tags" id="ccBuildingLegend"><span>건축HUB 조회 전</span></div>
-<div class="spatial-caption">도면정보 · 구역 내 건축물 진하게 / 구역 밖 주변건축물 얇게 · 법정 노후도 판정은 아래 제도별 현황을 사용</div>
-<div class="spatial-mini-map" id="ccBuildingMiniMap"></div>
-</section>
-<section class="spatial-module" id="siteDetail_factoryUsage">
-<div class="spatial-module-head"><b>공장용도 현황</b><span id="ccFactoryState">건축HUB 조회 전</span></div>
-<div class="spatial-metrics">
-<div><span>전체 건축물</span><b id="spFactoryTotal">-</b></div>
-<div><span>공장용도 건축물</span><b id="spFactoryCount">-</b></div>
-<div><span>공장건축물 비율</span><b id="spFactoryRatio">-</b></div>
-<div><span>산정기준</span><b id="spFactorySource">-</b></div>
-</div>
-<div class="spatial-caption" id="spFactoryMismatch" style="color:#b54708"></div>
-<div class="spatial-tags"><span class="map-legend-chip" style="--zone-fill:#f04438;--zone-border:#b42318">공장용도(동 특정)</span><span class="map-legend-chip" style="--zone-fill:#fec84b;--zone-border:#b54708">공장용도(필지단위)</span><span>일반건축물</span></div>
-<div class="spatial-caption">도면정보 · 건축물 관리번호가 확실히 일치하거나, 같은 필지에 건물·공장레코드가 각 1개뿐일 때만 개별 동을 강조합니다. 그 외에는 필지 단위로만 '공장용도 존재'를 표시하고 특정 동을 임의로 확정하지 않습니다.</div>
-<div class="spatial-mini-map" id="ccFactoryMiniMap"></div>
-<div class="road-condition-table-wrap">
-  <table class="road-condition-table"><thead><tr><th>순번</th><th>지번(PNU)</th><th>건물명</th><th>주용도</th><th>기타용도</th><th>사용승인일</th><th>매칭상태</th></tr></thead><tbody id="spFactoryTableBody"><tr><td colspan="7">건축HUB 조회 후 공장용도 건축물이 표시됩니다.</td></tr></tbody></table>
-</div>
-<button class="btn" id="spFactoryToggleBtn" type="button" onclick="toggleFactoryTableShowAll()" style="margin-top:6px">전체 건축물 보기</button>
-<div class="spatial-caption">산정기준 · 공장건축물 비율(동수 기준 초기검토) = 공장용도 건축물 수 ÷ 전체 건축물 수 × 100. 연면적·대지면적 비율이 아닙니다. 이 값은 역세권 장기전세(준공업 공장비율 10% 미만)와 도심복합개발 주거중심형(준공업 공장비율 10% 미만)이 동일하게 참조하는 공통 Fact입니다 — 여기서는 10% 충족/미충족을 판정하지 않습니다.</div>
-</section>
-<section class="spatial-module" id="siteDetail_age">
-<div class="spatial-module-head"><b>제도별 노후도 현황</b><span id="spAgeState">건축HUB 조회 전</span></div>
-<div class="spatial-age-list" id="spAgeFactList"><div class="spatial-age-row"><div class="spatial-age-name"><b>분석 전</b><span>사업별 노후도 기준</span></div><div class="spatial-age-value"><strong>-</strong><small>건축물 사용승인일·구조·용도를 먼저 조회합니다.</small></div><em class="spatial-age-status REVIEW">확인필요</em></div></div>
-<div class="spatial-age-caption">사업판정은 이 현황 Fact를 그대로 호출합니다. 동일 대상지라도 적용 법령·조례·운영기준에 따라 노후도 결과가 다를 수 있습니다.</div>
-</section>
-<section class="spatial-module" id="siteDetail_zoning">
-<div class="spatial-module-head"><b>용도지역 현황</b><span id="spZoningState">VWorld LT_C_UQ111</span></div>
+<section class="spatial-module site-analysis-card site-analysis-local" id="siteDetail_zoning">
+<div class="spatial-module-head"><b>용도지역</b><span id="spZoningState">VWorld LT_C_UQ111</span></div>
 <div class="spatial-metrics">
 <div><span>주용도지역</span><b id="spZoningPrimary">-</b></div>
 <div><span>주용도 비율</span><b id="spZoningPrimaryRatio">-</b></div>
@@ -1804,8 +1770,20 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="spatial-caption">도면정보 · 공통 지적 베이스 + 대상구역계 + 용도지역 경계 · 면적구성은 판정 Fact와 동일</div>
 <div class="spatial-mini-map" id="ccZoningMiniMap"></div>
 </section>
-<section class="spatial-module" id="siteDetail_planningFacility">
-<div class="spatial-module-head"><b>도시계획시설 현황도</b><span id="spPlanningFacilityState">VWorld 도시계획시설</span></div>
+<section class="spatial-module site-analysis-card site-analysis-local" id="siteDetail_district">
+<div class="spatial-module-head"><b>용도지구</b><span id="spDistrictState">VWorld 용도지구</span></div>
+<div class="spatial-metrics">
+<div><span>중첩 지구</span><b id="spDistrictCount">-</b></div>
+<div><span>중첩면적</span><b id="spDistrictArea">-</b></div>
+<div><span>대상지 중첩률</span><b id="spDistrictPct">-</b></div>
+<div><span>주요 용도지구</span><b id="spDistrictNames">-</b></div>
+</div>
+<div class="spatial-tags" id="spDistrictLegend"><span>경관·고도·방화·방재·보호·취락·개발진흥·특정용도제한지구</span></div>
+<div class="spatial-caption">도면정보 · 기존 VWorld LT_C_UQ121·123·124·125·126·128·129·130 벡터 Fact를 재사용합니다. 자연환경 관련 구역은 별도 자연환경분석 카드에서 표시합니다.</div>
+<div class="spatial-mini-map" id="ccDistrictMiniMap"></div>
+</section>
+<section class="spatial-module site-analysis-card site-analysis-local" id="siteDetail_planningFacility">
+<div class="spatial-module-head"><b>도시계획시설</b><span id="spPlanningFacilityState">VWorld 도시계획시설</span></div>
 <div class="spatial-metrics">
 <div><span>중첩 도형</span><b id="spPlanningFacilityCount">-</b></div>
 <div><span>중첩면적 합계</span><b id="spPlanningFacilityArea">-</b></div>
@@ -1816,8 +1794,45 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="spatial-caption">도면정보 · VWorld 도시계획시설 9개 레이어의 대상지 실제 교차도형만 표시 · 순수대지 및 사업별 현황 Fact와 동일 자료 사용</div>
 <div class="spatial-mini-map" id="ccPlanningFacilityMiniMap"></div>
 </section>
-<section class="spatial-module" id="siteDetail_sharedConservation">
-<div class="spatial-module-head"><b>상생주택 보전·규제환경도</b><span id="spSharedConservationState">공식자료 조회 전</span></div>
+<section class="spatial-module site-analysis-card site-analysis-local" id="siteDetail_renewal">
+<div class="spatial-module-head"><b>정비구역 현황</b><span id="spRenewalMapState">구역 설정 전</span></div>
+<div class="spatial-metrics">
+<div><span>법정 정비구역</span><b id="spRenewalLegalCount">-</b></div>
+<div><span>예정·후보·사업구역</span><b id="spRenewalProjectCount">-</b></div>
+<div><span>재정비촉진</span><b id="spRenewalPromotionCount">-</b></div>
+<div><span>최대 중첩률</span><b id="spRenewalMaxOverlap">-</b></div>
+</div>
+<div class="spatial-tags"><span class="map-legend-chip lg-renewal-housing">주택정비형</span><span class="map-legend-chip lg-renewal-urban">도시정비형</span><span class="map-legend-chip lg-renewal-reconstruction">재건축</span><span class="map-legend-chip dashed lg-renewal-housing">예정·후보·사업</span><span class="map-legend-chip dashed lg-renewal-promotion">재정비촉진</span><span class="map-legend-chip dashed">기타 정비</span></div>
+<div class="spatial-caption">도면정보 · 공식 SHP 전체 경계는 옅게 / 대상지 중첩부분 진하게 · 결정고시 재확인</div>
+<div class="spatial-mini-map" id="ccRenewalStatusMiniMap"></div>
+</section>
+<section class="spatial-module site-analysis-card site-analysis-local" id="siteDetail_development">
+<div class="spatial-module-head"><b>도시계획(개발)구역</b><span id="spDevelopmentMapState">구역 설정 전</span></div>
+<div class="spatial-metrics">
+<div><span>지구단위계획</span><b id="spDevelopmentDistrictPlan">-</b></div>
+<div><span>도시개발구역</span><b id="spDevelopmentUrban">-</b></div>
+<div><span>공공주택지구</span><b id="spDevelopmentHousing">-</b></div>
+<div><span>기타 사업구역</span><b id="spDevelopmentOther">-</b></div>
+</div>
+<div class="spatial-tags"><span class="map-legend-chip lg-district-plan">지구단위계획</span><span class="map-legend-chip lg-urban-development">도시개발구역</span><span class="map-legend-chip lg-public-housing">공공주택지구</span><span class="map-legend-chip dashed lg-other-project">기타 사업구역</span></div>
+<div class="spatial-caption">도면정보 · 자료가 미응답이면 ‘중첩 없음’으로 확정하지 않고 공식자료 확인 필요로 표시</div>
+<div class="spatial-mini-map" id="ccDevelopmentStatusMiniMap"></div>
+</section>
+<section class="spatial-module site-analysis-card site-analysis-local" id="siteDetail_heritage">
+<div class="spatial-module-head"><b>문화재관련 현황</b><span id="spHeritageState">국가유산 자료 조회 전</span></div>
+<div class="spatial-metrics">
+<div><span>보호구역 중첩</span><b id="spHeritageCount">-</b></div>
+<div><span>중첩면적</span><b id="spHeritageArea">-</b></div>
+<div><span>대상지 중첩률</span><b id="spHeritagePct">-</b></div>
+<div><span>관련 국가유산</span><b id="spHeritageNames">-</b></div>
+</div>
+<div class="spatial-tags"><span class="map-legend-chip lg-heritage-vector">VWorld 국가유산보호구역</span><span class="map-legend-chip lg-heritage-wms">국가유산공간정보 WMS</span><span>WFS 속성연계는 후속 고도화</span></div>
+<div class="spatial-caption">도면정보 · 면적·비율은 기존 VWorld LT_C_UO301 벡터 중첩값을 사용하고, 국가유산공간정보 WMS는 보호·허용기준 등 원도를 시각적으로 교차확인합니다.</div>
+<div class="shared-conservation-note" id="spHeritageWmsState">국가유산공간정보 WMS 연결 대기</div>
+<div class="spatial-mini-map" id="ccHeritageMiniMap"></div>
+</section>
+<section class="spatial-module site-analysis-card site-analysis-local" id="siteDetail_sharedConservation">
+<div class="spatial-module-head"><b>자연환경분석</b><span id="spSharedConservationState">공식자료 조회 전</span></div>
 <div class="spatial-metrics">
 <div><span>도시자연공원구역</span><b id="spSharedUrbanPark">-</b></div>
 <div><span>개발제한구역</span><b id="spSharedGreenbelt">-</b></div>
@@ -1830,20 +1845,62 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="shared-conservation-note" id="spSharedConservationErrorDetail" style="display:none"></div>
 <div class="spatial-mini-map" id="ccSharedConservationMiniMap"></div>
 </section>
-<section class="spatial-module" id="siteDetail_hill" style="display:none">
-<div class="spatial-module-head"><b>구릉지 현황도</b><span id="spHillState">공개 SHP 미확보</span></div>
+<section class="spatial-module site-analysis-card site-analysis-local" id="siteDetail_building">
+<div class="spatial-module-head"><b>건축물</b><span id="ccBuildingState">구역 설정 전</span></div>
 <div class="spatial-metrics">
-<div><span>공식 SHP</span><b id="spHillSource">-</b></div>
-<div><span>대상지 중첩</span><b id="spHillOverlap">-</b></div>
-<div><span>중첩 비율</span><b id="spHillPct">-</b></div>
-<div><span>최근접 거리</span><b id="spHillDistance">-</b></div>
+<div><span>건축물</span><b id="ccBuildingTotal">-</b></div>
+<div><span>사용승인일 확인</span><b id="ccBuildingOld">-</b></div>
+<div><span>20년 경과(참고)</span><b id="ccBuildingOldRatio">-</b></div>
+<div><span>총연면적</span><b id="ccBuildingFloorArea">-</b></div>
 </div>
-<div class="spatial-tags"><span class="map-legend-chip" style="--zone-fill:#d6bbfb;--zone-border:#6938ef">구릉지 원도형</span><span>대상지 경계</span></div>
-<div class="spatial-caption">도면정보 · 구릉지 공개 SHP 원본을 확보하지 못했습니다. 현재 자동 판정에 사용하지 않습니다.</div>
-<div class="shared-conservation-note">정확성 단서 · 구릉지는 공개 SHP 미확보 항목으로 남기며 수동검토(REVIEW)만 합니다.</div>
-<div class="spatial-mini-map" id="ccHillMiniMap"></div>
+<div class="spatial-tags" id="ccBuildingLegend"><span>건축HUB 조회 전</span></div>
+<div class="spatial-caption">도면정보 · 구역 내 건축물 진하게 / 구역 밖 주변건축물 얇게 · 법정 노후도 판정은 아래 제도별 현황을 사용</div>
+<div class="spatial-mini-map" id="ccBuildingMiniMap"></div>
 </section>
-<section class="spatial-module" id="siteDetail_station">
+<section class="spatial-module site-analysis-card site-analysis-local" id="siteDetail_age">
+<div class="spatial-module-head"><b>노후도</b><span id="spAgeState">건축HUB 조회 전</span></div>
+<div class="spatial-metrics">
+<div><span>분석 건축물</span><b id="spAgeTotal">-</b></div>
+<div><span>20년 경과</span><b id="spAge20">-</b></div>
+<div><span>30년 경과</span><b id="spAge30">-</b></div>
+<div><span>사용승인일 미확인</span><b id="spAgeUnknown">-</b></div>
+</div>
+<div class="spatial-tags"><span class="map-legend-chip lg-age-old">노후/노후후보</span><span class="map-legend-chip lg-age-notold">비노후</span><span class="map-legend-chip lg-age-review">개별동 확인필요</span></div>
+<div class="spatial-caption">도면정보 · 건축HUB 사용승인일·구조·용도를 공간건물과 연결하여 노후 현황을 표시합니다. 사업별 법정 노후도 판정은 아래 상세기준을 그대로 사용합니다.</div>
+<div class="spatial-mini-map" id="ccAgeMiniMap"></div>
+<details class="site-analysis-details"><summary>제도별 노후도 판정기준 상세</summary><div class="spatial-age-list" id="spAgeFactList"><div class="spatial-age-row"><div class="spatial-age-name"><b>분석 전</b><span>사업별 노후도 기준</span></div><div class="spatial-age-value"><strong>-</strong><small>건축물 사용승인일·구조·용도를 먼저 조회합니다.</small></div><em class="spatial-age-status REVIEW">확인필요</em></div></div><div class="spatial-age-caption">사업판정은 이 현황 Fact를 그대로 호출합니다. 동일 대상지라도 적용 법령·조례·운영기준에 따라 노후도 결과가 다를 수 있습니다.</div></details>
+</section>
+<section class="spatial-module site-analysis-card site-analysis-local" id="siteDetail_buildingUse">
+<div class="spatial-module-head"><b>건축물 용도</b><span id="spBuildingUseState">건축HUB 조회 전</span></div>
+<div class="spatial-metrics">
+<div><span>주요 용도</span><b id="spBuildingUseMain">-</b></div>
+<div><span>주거용</span><b id="spBuildingUseResidential">-</b></div>
+<div><span>비주거용</span><b id="spBuildingUseNonResidential">-</b></div>
+<div><span>용도 미확인</span><b id="spBuildingUseUnknown">-</b></div>
+</div>
+<div class="spatial-tags" id="spBuildingUseLegend"><span>건축HUB 주용도 조회 후 표시</span></div>
+<div class="spatial-caption">도면정보 · 건축HUB 주용도를 공통 Fact로 사용합니다. 공간건물과 대장 동의 직접 식별자가 없으면 같은 필지의 용도구성이 동일한 경우까지만 도면에 색상화하고, 혼합용도 필지는 임의로 특정 동을 확정하지 않습니다.</div>
+<div class="spatial-mini-map" id="ccBuildingUseMiniMap"></div>
+</section>
+<section class="spatial-module site-analysis-card site-analysis-local" id="siteDetail_factoryUsage">
+<div class="spatial-module-head"><b>공장용도</b><span id="ccFactoryState">건축HUB 조회 전</span></div>
+<div class="spatial-metrics">
+<div><span>전체 건축물</span><b id="spFactoryTotal">-</b></div>
+<div><span>공장용도 건축물</span><b id="spFactoryCount">-</b></div>
+<div><span>공장건축물 비율</span><b id="spFactoryRatio">-</b></div>
+<div><span>산정기준</span><b id="spFactorySource">-</b></div>
+</div>
+<div class="spatial-caption" id="spFactoryMismatch" style="color:#b54708"></div>
+<div class="spatial-tags"><span class="map-legend-chip" style="--zone-fill:#f04438;--zone-border:#b42318">공장용도(동 특정)</span><span class="map-legend-chip" style="--zone-fill:#fec84b;--zone-border:#b54708">공장용도(필지단위)</span><span>일반건축물</span></div>
+<div class="spatial-caption">도면정보 · 건축물 관리번호가 확실히 일치하거나, 같은 필지에 건물·공장레코드가 각 1개뿐일 때만 개별 동을 강조합니다. 그 외에는 필지 단위로만 '공장용도 존재'를 표시하고 특정 동을 임의로 확정하지 않습니다.</div>
+<div class="spatial-mini-map" id="ccFactoryMiniMap"></div>
+<details class="site-analysis-details"><summary>공장용도 건축물 상세목록</summary><div class="road-condition-table-wrap">
+  <table class="road-condition-table"><thead><tr><th>순번</th><th>지번(PNU)</th><th>건물명</th><th>주용도</th><th>기타용도</th><th>사용승인일</th><th>매칭상태</th></tr></thead><tbody id="spFactoryTableBody"><tr><td colspan="7">건축HUB 조회 후 공장용도 건축물이 표시됩니다.</td></tr></tbody></table>
+</div>
+<button class="btn" id="spFactoryToggleBtn" type="button" onclick="toggleFactoryTableShowAll()" style="margin:6px">전체 건축물 보기</button></details>
+<div class="spatial-caption">산정기준 · 공장건축물 비율(동수 기준 초기검토) = 공장용도 건축물 수 ÷ 전체 건축물 수 × 100. 연면적·대지면적 비율이 아닙니다. 이 값은 역세권 장기전세(준공업 공장비율 10% 미만)와 도심복합개발 주거중심형(준공업 공장비율 10% 미만)이 동일하게 참조하는 공통 Fact입니다 — 여기서는 10% 충족/미충족을 판정하지 않습니다.</div>
+</section>
+<section class="spatial-module site-analysis-card site-analysis-context" id="siteDetail_station">
 <div class="spatial-module-head"><b>역세권</b><span>행안부 역사경계</span></div>
 <div class="spatial-metrics">
 <div><span>최근접역</span><b id="spStationName">-</b></div>
@@ -1859,8 +1916,8 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="spatial-caption">도면정보 · 이 표는 사업 전체 적합성이 아니라 각 제도의 역세권 입지경로만 검토합니다. 충족(초록)=해당 역세권 경로 충족, 미충족(빨강)=확보된 공식 Fact 기준 해당 역세권 경로 불충족, 확인필요(노랑)=노선·가로구역·포함률 등 필수 Fact 미확정, 역세권 경로 미사용(회색)=같은 사업의 다른 입지경로를 적용한 경우입니다. 성장거점형은 환승결절 500m 경로만 표시하고 중심지+간선도로 경로는 이 표에서 판정하지 않습니다. 최종 인허가 판정이 아니라 초기 검토엔진입니다.</div>
 <div class="spatial-mini-map" id="ccStationMiniMap"></div>
 </section>
-<section class="spatial-module" id="siteDetail_streetBlock">
-<div class="spatial-module-head"><b>사업구역·가로구역 검토</b><span id="spStreetBlockState">검증 전</span></div>
+<section class="spatial-module site-analysis-card site-analysis-context" id="siteDetail_streetBlock">
+<div class="spatial-module-head"><b>가로구역 및 사업구역</b><span id="spStreetBlockState">검증 전</span></div>
 <div class="spatial-metrics">
 <div><span>사업구역 면적</span><b id="spProjectAreaM2">-</b></div>
 <div><span>사업구역 상태</span><b id="spProjectAreaState">-</b></div>
@@ -1877,8 +1934,8 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="spatial-caption"><b>향후 판정원칙</b> · 이 화면에서 확보한 사업구역·가로구역 후보는 공통 공간 FACT로 보존하고, 실제 사업 판정에서는 각 제도 모듈이 필요한 범위·도로·면적 관계값만 독립적으로 가져가 RULE을 적용합니다. 자동추출 형상 자체가 법적 구역을 확정하는 것은 아니며 전문가 재확인 단서를 유지합니다.</div>
 <div class="spatial-mini-map" id="ccStreetBlockMiniMap"></div>
 </section>
-<section class="spatial-module" id="siteDetail_activationArterial">
-<div class="spatial-module-head"><b>간선도로 검토</b><span id="spActivationArterialState">자동분석 전</span></div>
+<section class="spatial-module site-analysis-card site-analysis-context" id="siteDetail_activationArterial">
+<div class="spatial-module-head"><b>간선도로</b><span id="spActivationArterialState">자동분석 전</span></div>
 <div class="spatial-metrics">
 <div><span>대상 노선</span><b id="spActivationArterialRoad">-</b></div>
 <div><span>노선형 상업지역 후보</span><b id="spActivationArterialZone">-</b></div>
@@ -1897,7 +1954,7 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="station-scheme-list" id="widthRoadSchemeSummary"><div class="station-scheme-row head"><b>사업방식</b><span>판정</span><span>간선도로 근거</span></div><div class="station-scheme-row"><b>분석 전</b><span class="scheme-tag INFO">-</span><span>구역계를 설정하고 검토하기를 눌러야 계산됩니다.</span></div></div>
 <div class="spatial-caption">안심주택·성장잠재권·역세권 장기전세·도심복합 성장거점형·주거중심형의 폭원·위계·접면·거리 기준을 서로 독립적으로 판정합니다. 역세권활성화 간선가로형은 도로폭 기준이 아니라 위 도면의 노선형 상업지역 편입 여부로 별도 판정합니다.</div>
 </section>
-<section class="spatial-module" id="siteDetail_center">
+<section class="spatial-module site-analysis-card site-analysis-context" id="siteDetail_center">
 <div class="spatial-module-head"><b>중심지</b><span>서울 중심지체계</span></div>
 <div class="spatial-metrics">
 <div><span>중심지 위계</span><b id="spCenterType">-</b></div>
@@ -1909,32 +1966,34 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="spatial-caption">도면정보 · 중심지 전체는 옅게 / 대상지 중첩부분 진하게</div>
 <div class="spatial-mini-map" id="ccCenterMiniMap"></div>
 </section>
-<section class="spatial-module" id="siteDetail_renewal">
-<div class="spatial-module-head"><b>정비사업 관련 현황도</b><span id="spRenewalMapState">구역 설정 전</span></div>
+<section class="spatial-module site-analysis-card site-analysis-context site-analysis-wide" id="siteDetail_safeMedical">
+<div class="spatial-module-head"><b>의료시설(안심주택)</b><span id="spSafeMedicalState">공식자료 조회 전</span></div>
 <div class="spatial-metrics">
-<div><span>법정 정비구역</span><b id="spRenewalLegalCount">-</b></div>
-<div><span>예정·후보·사업구역</span><b id="spRenewalProjectCount">-</b></div>
-<div><span>재정비촉진</span><b id="spRenewalPromotionCount">-</b></div>
-<div><span>최대 중첩률</span><b id="spRenewalMaxOverlap">-</b></div>
+<div><span>최근접 의료시설</span><b id="spSafeMedicalNearest">-</b></div>
+<div><span>부지경계 거리</span><b id="spSafeMedicalDistance">-</b></div>
+<div><span>350m 확정 후보</span><b id="spSafeMedicalCandidates">-</b></div>
+<div><span>부지경계 산정</span><b id="spSafeMedicalBoundary">미확보</b></div>
 </div>
-<div class="spatial-tags"><span class="map-legend-chip lg-renewal-housing">주택정비형</span><span class="map-legend-chip lg-renewal-urban">도시정비형</span><span class="map-legend-chip lg-renewal-reconstruction">재건축</span><span class="map-legend-chip dashed lg-renewal-housing">예정·후보·사업</span><span class="map-legend-chip dashed lg-renewal-promotion">재정비촉진</span><span class="map-legend-chip dashed">기타 정비</span></div>
-<div class="spatial-caption">도면정보 · 공식 SHP 전체 경계는 옅게 / 대상지 중첩부분 진하게 · 결정고시 재확인</div>
-<div class="spatial-mini-map" id="ccRenewalStatusMiniMap"></div>
+<div class="spatial-tags"><span>종합병원·시립병원·보건소: 대표지번 1필지</span><span>서울시 공식/API 기준자료</span><span>연속지적 대표필지 경계</span><span>대표필지 경계 350m</span></div>
+<div class="spatial-caption">도면정보 · 인정 의료시설은 종합병원·서울시립병원·25개 자치구 보건소입니다. 서울시 병의원 위치정보와 공식 기준목록으로 시설 point를 먼저 구성하고 대상지 1.5km 이내 후보만 선별한 뒤, 해당 좌표가 포함되는 대표지번 1필지의 연속지적 경계를 시설부지로 사용합니다. 각 시설부지 경계에서 350m 범위를 생성하여 대상지와 중첩되는 모든 시설을 표시하며, 대표필지 미확정은 REVIEW입니다.</div>
+<div class="spatial-caption" id="spSafeMedicalApiInfo">서울 열린데이터광장 API 연결상태 확인 전</div>
+<div class="spatial-mini-map" id="ccSafeMedicalMiniMap"></div>
 </section>
-<section class="spatial-module" id="siteDetail_development">
-<div class="spatial-module-head"><b>도시계획·개발사업 현황도</b><span id="spDevelopmentMapState">구역 설정 전</span></div>
+<section class="spatial-module site-analysis-card site-analysis-context site-analysis-wide" id="siteDetail_schoolAbsoluteProtection">
+<div class="spatial-module-head"><b>절대보호구역 50m(안심주택)</b><span id="spSchoolAbsoluteState">공식 SHP 조회 전</span></div>
 <div class="spatial-metrics">
-<div><span>지구단위계획</span><b id="spDevelopmentDistrictPlan">-</b></div>
-<div><span>도시개발구역</span><b id="spDevelopmentUrban">-</b></div>
-<div><span>공공주택지구</span><b id="spDevelopmentHousing">-</b></div>
-<div><span>기타 사업구역</span><b id="spDevelopmentOther">-</b></div>
+<div><span>절대보호구역 중첩</span><b id="spSchoolAbsoluteOverlap">-</b></div>
+<div><span>대상지 중첩률</span><b id="spSchoolAbsolutePct">-</b></div>
+<div><span>중첩 구역</span><b id="spSchoolAbsoluteCount">-</b></div>
+<div><span>배제판정</span><b id="spSchoolAbsoluteDecision">미확인</b></div>
 </div>
-<div class="spatial-tags"><span class="map-legend-chip lg-district-plan">지구단위계획</span><span class="map-legend-chip lg-urban-development">도시개발구역</span><span class="map-legend-chip lg-public-housing">공공주택지구</span><span class="map-legend-chip dashed lg-other-project">기타 사업구역</span></div>
-<div class="spatial-caption">도면정보 · 자료가 미응답이면 ‘중첩 없음’으로 확정하지 않고 공식자료 확인 필요로 표시</div>
-<div class="spatial-mini-map" id="ccDevelopmentStatusMiniMap"></div>
+<div class="spatial-tags"><span>국가공간정보 UO101</span><span>UOA110 절대보호구역만 사용</span><span>상대보호구역 UOA120 제외</span><span>안심주택 학교 50m 배제 Fact</span></div>
+<div class="spatial-caption">도면정보 · 교육환경보호구역 연속주제도 UO101 중 UOA110 절대보호구역 원본만 사용합니다. 별도 50m 버퍼를 새로 만들지 않고 공시된 절대보호구역 도형과 대상지의 실제 중첩을 계산합니다. 중첩부는 안심주택 사업대상지에서 제외가 필요한 공간 Fact로 표시하며, 자료 미확보 시 임의 판정하지 않고 REVIEW를 유지합니다.</div>
+<div class="spatial-caption" id="spSchoolAbsoluteSource">국가공간정보 SHP 연결상태 확인 전</div>
+<div class="spatial-mini-map" id="ccSchoolAbsoluteMiniMap"></div>
 </section>
-<section class="spatial-module" id="siteDetail_roadCondition">
-<div class="spatial-module-head"><b>도로·접도 현황 진단</b><span id="spRoadConditionState">도로 분석 전</span></div>
+<section class="spatial-module site-analysis-card site-analysis-diagnostic site-analysis-wide" id="siteDetail_roadCondition">
+<div class="spatial-module-head"><b>접도현황</b><span id="spRoadConditionState">도로 분석 전</span></div>
 <div class="road-condition-box">
   <div class="road-condition-head"><b>대상지 경계 기준 도로 현황</b><span>사업방식 판정과 분리된 공간 Fact</span></div>
   <div class="road-condition-diag-box">
@@ -1976,10 +2035,11 @@ body.service-layout-ready>.shell{display:none!important}
   </div>
   <div class="road-condition-note" id="rcRoadNote"><b>분석 원칙</b> · ROAD_BT는 폭원·접도 공간현황에만 사용합니다. 4m 미만 여부와 폭원별 접도연장·접도율은 자동산정하지만, 건축법상 도로 인정 여부·사도/현황도로·도로위계는 별도 공부와 현장확인이 필요합니다.</div>
 </div>
+<div class="spatial-caption">도면정보 · 대상지 경계와 TL_SPRD_MANAGE ROAD_BT 폭원 Fact를 함께 표시합니다. 법정 도로 인정 여부는 기존 단서와 같이 별도 확인합니다.</div>
+<div class="spatial-mini-map" id="ccRoadConditionMiniMap"></div>
 </section>
-
-<section class="spatial-module" id="siteDetail_schemeRoad">
-<div class="spatial-module-head"><b>제도별 도로·접도 현황</b><div class="spatial-module-head-actions"><span id="spRoadRuleState">도로중심선 조회 전</span><select id="spRoadRuleSelect" onchange="renderSchemeRoadEvidence()" style="max-width:160px;font-size:8px"><option value="redevelopment">재개발 접도율(6m)</option><option value="activation">역세권활성화</option><option value="safe">안심주택</option><option value="growth">성장잠재권</option><option value="longterm">역세권 장기전세</option><option value="station_complex">역세권복합개발</option><option value="innovation_growth">도심복합 성장거점형</option><option value="innovation_housing">도심복합 주거중심형</option><option value="public_complex">도심공공주택복합</option></select></div></div>
+<section class="spatial-module site-analysis-card site-analysis-diagnostic site-analysis-wide" id="siteDetail_schemeRoad">
+<div class="spatial-module-head"><b>접도진단</b><div class="spatial-module-head-actions"><span id="spRoadRuleState">도로중심선 조회 전</span><select id="spRoadRuleSelect" onchange="renderSchemeRoadEvidence()" style="max-width:160px;font-size:8px"><option value="redevelopment">재개발 접도율(6m)</option><option value="activation">역세권활성화</option><option value="safe">안심주택</option><option value="growth">성장잠재권</option><option value="longterm">역세권 장기전세</option><option value="station_complex">역세권복합개발</option><option value="innovation_growth">도심복합 성장거점형</option><option value="innovation_housing">도심복합 주거중심형</option><option value="public_complex">도심공공주택복합</option></select></div></div>
 <div class="spatial-metrics">
 <div><span id="spRoadFrontageLabel">선택 제도 접도기준</span><b id="spRoadFrontageValue">-</b></div>
 <div><span>산정 기준</span><b id="spRoadFrontageBasis">-</b></div>
@@ -2001,37 +2061,25 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="station-scheme-list" id="frontageSchemeSummary"><div class="station-scheme-row head"><b>사업방식</b><span>판정</span><span>접도 근거</span></div><div class="station-scheme-row"><b>분석 전</b><span class="scheme-tag INFO">-</span><span>구역계를 설정하고 검토하기를 눌러야 계산됩니다.</span></div></div>
 <div class="spatial-caption">역세권활성화·역세권복합개발·도심공공주택복합의 대상지 경계 접도 면수 기준을 비교합니다. 도정법 접도율과 간선도로 폭원 기준은 이 표에 섞지 않습니다.</div>
 </section>
-<section class="spatial-module" id="siteDetail_safeMedical">
-<div class="spatial-module-head"><b>안심주택 의료시설 현황</b><span id="spSafeMedicalState">공식자료 조회 전</span></div>
+<section class="spatial-module site-analysis-hidden" id="siteDetail_hill" style="display:none">
+<div class="spatial-module-head"><b>구릉지 현황도</b><span id="spHillState">공개 SHP 미확보</span></div>
 <div class="spatial-metrics">
-<div><span>최근접 의료시설</span><b id="spSafeMedicalNearest">-</b></div>
-<div><span>부지경계 거리</span><b id="spSafeMedicalDistance">-</b></div>
-<div><span>350m 확정 후보</span><b id="spSafeMedicalCandidates">-</b></div>
-<div><span>부지경계 산정</span><b id="spSafeMedicalBoundary">미확보</b></div>
+<div><span>공식 SHP</span><b id="spHillSource">-</b></div>
+<div><span>대상지 중첩</span><b id="spHillOverlap">-</b></div>
+<div><span>중첩 비율</span><b id="spHillPct">-</b></div>
+<div><span>최근접 거리</span><b id="spHillDistance">-</b></div>
 </div>
-<div class="spatial-tags"><span>종합병원·시립병원·보건소: 대표지번 1필지</span><span>서울시 공식/API 기준자료</span><span>연속지적 대표필지 경계</span><span>대표필지 경계 350m</span></div>
-<div class="spatial-caption">도면정보 · 인정 의료시설은 종합병원·서울시립병원·25개 자치구 보건소입니다. 서울시 병의원 위치정보와 공식 기준목록으로 시설 point를 먼저 구성하고 대상지 1.5km 이내 후보만 선별한 뒤, 해당 좌표가 포함되는 대표지번 1필지의 연속지적 경계를 시설부지로 사용합니다. 각 시설부지 경계에서 350m 범위를 생성하여 대상지와 중첩되는 모든 시설을 표시하며, 대표필지 미확정은 REVIEW입니다.</div>
-<div class="spatial-caption" id="spSafeMedicalApiInfo">서울 열린데이터광장 API 연결상태 확인 전</div>
-<div class="spatial-mini-map" id="ccSafeMedicalMiniMap"></div>
+<div class="spatial-tags"><span class="map-legend-chip" style="--zone-fill:#d6bbfb;--zone-border:#6938ef">구릉지 원도형</span><span>대상지 경계</span></div>
+<div class="spatial-caption">도면정보 · 구릉지 공개 SHP 원본을 확보하지 못했습니다. 현재 자동 판정에 사용하지 않습니다.</div>
+<div class="shared-conservation-note">정확성 단서 · 구릉지는 공개 SHP 미확보 항목으로 남기며 수동검토(REVIEW)만 합니다.</div>
+<div class="spatial-mini-map" id="ccHillMiniMap"></div>
 </section>
-<section class="spatial-module" id="siteDetail_schoolAbsoluteProtection">
-<div class="spatial-module-head"><b>안심주택 학교 절대보호구역 현황</b><span id="spSchoolAbsoluteState">공식 SHP 조회 전</span></div>
-<div class="spatial-metrics">
-<div><span>절대보호구역 중첩</span><b id="spSchoolAbsoluteOverlap">-</b></div>
-<div><span>대상지 중첩률</span><b id="spSchoolAbsolutePct">-</b></div>
-<div><span>중첩 구역</span><b id="spSchoolAbsoluteCount">-</b></div>
-<div><span>배제판정</span><b id="spSchoolAbsoluteDecision">미확인</b></div>
-</div>
-<div class="spatial-tags"><span>국가공간정보 UO101</span><span>UOA110 절대보호구역만 사용</span><span>상대보호구역 UOA120 제외</span><span>안심주택 학교 50m 배제 Fact</span></div>
-<div class="spatial-caption">도면정보 · 교육환경보호구역 연속주제도 UO101 중 UOA110 절대보호구역 원본만 사용합니다. 별도 50m 버퍼를 새로 만들지 않고 공시된 절대보호구역 도형과 대상지의 실제 중첩을 계산합니다. 중첩부는 안심주택 사업대상지에서 제외가 필요한 공간 Fact로 표시하며, 자료 미확보 시 임의 판정하지 않고 REVIEW를 유지합니다.</div>
-<div class="spatial-caption" id="spSchoolAbsoluteSource">국가공간정보 SHP 연결상태 확인 전</div>
-<div class="spatial-mini-map" id="ccSchoolAbsoluteMiniMap"></div>
-</section>
-<section class="spatial-module" id="siteDetail_schemeSpecific">
+<section class="spatial-module site-analysis-extra" id="siteDetail_schemeSpecific">
 <div class="spatial-module-head"><b>사업별 추가 현황</b><span id="spSchemeFactState">독립모듈 연계</span></div>
 <div class="spatial-age-list" id="spSchemeFactList"><div class="spatial-age-row"><div class="spatial-age-name"><b>분석 전</b><span>사업방식별 추가 공간·현황조건</span></div><div class="spatial-age-value"><strong>-</strong><small>사업별 독립모듈이 필요한 현황을 이 영역에 등록합니다.</small></div><em class="spatial-age-status REVIEW">미확인</em></div></div>
 <div class="spatial-age-caption">공통 현황에 없는 사업별 판정자료도 반드시 이 공간현황에 먼저 등록한 뒤 Rule Module이 호출합니다. 팝업에서 새 현황을 임의 생성하지 않습니다.</div>
 </section>
+
 </div>
 </div>
 <aside class="renewal-status-column" id="mobileStatusSection">
@@ -3697,13 +3745,7 @@ const ccLandMiniParcels=L.geoJSON(null,{style:f=>{
 const ccLandMiniBoundary=L.geoJSON(null,{style:{weight:2.8,color:'#101828',fillOpacity:0}}).addTo(ccLandMini);
 
 const ccBuildingMiniContext=L.geoJSON(null,{style:{weight:.45,color:'#98a2b3',fillColor:'#f2f4f7',fillOpacity:.06,opacity:.70}}).addTo(ccBuildingMini);
-const ccBuildingMiniBuildings=L.geoJSON(null,{style:f=>{
-  const p=f.properties||{};
-  if(p._age_status==='OLD')return {weight:1.55,color:'#b42318',fillColor:'#f04438',fillOpacity:.62};
-  if(p._parcel_old_any===true)return {weight:1.35,color:'#b54708',fillColor:'#fec84b',fillOpacity:.48};
-  if(p._age_status==='NOT_OLD')return {weight:1.05,color:'#475467',fillColor:'#d0d5dd',fillOpacity:.40};
-  return {weight:1.0,color:'#475467',fillColor:'#e4e7ec',fillOpacity:.42};
-}}).addTo(ccBuildingMini);
+const ccBuildingMiniBuildings=L.geoJSON(null,{style:{weight:1.15,color:'#475467',fillColor:'#d0d5dd',fillOpacity:.48}}).addTo(ccBuildingMini);
 const ccBuildingMiniBoundary=L.geoJSON(null,{style:{weight:2.8,color:'#101828',fillOpacity:0}}).addTo(ccBuildingMini);
 
 const ccFactoryMini=L.map('ccFactoryMiniMap',{
@@ -3717,6 +3759,36 @@ const ccFactoryMiniBuildings=L.geoJSON(null,{style:f=>{
   return {weight:.9,color:'#98a2b3',fillColor:'#eaecf0',fillOpacity:.35};
 }}).addTo(ccFactoryMini);
 const ccFactoryMiniBoundary=L.geoJSON(null,{style:{weight:2.8,color:'#101828',fillOpacity:0}}).addTo(ccFactoryMini);
+
+// r48 Site Analysis additional maps. Display-only: existing r47 Fact/Rule logic is not changed.
+const ccAgeMini=L.map('ccAgeMiniMap',{zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,doubleClickZoom:false,boxZoom:false,keyboard:false,touchZoom:false}).setView([37.5665,126.9780],15);
+const ccAgeParcelBase=L.geoJSON(null,{style:compactParcelBaseStyle}).addTo(ccAgeMini);
+const ccAgeBuildings=L.geoJSON(null,{style:f=>{const p=f.properties||{};if(p._age_status==='OLD')return {weight:1.55,color:'#b42318',fillColor:'#f04438',fillOpacity:.62};if(p._parcel_old_any===true)return {weight:1.35,color:'#b54708',fillColor:'#fec84b',fillOpacity:.48};if(p._age_status==='NOT_OLD')return {weight:1.05,color:'#067647',fillColor:'#75e0a7',fillOpacity:.34};return {weight:1,color:'#667085',fillColor:'#e4e7ec',fillOpacity:.35};}}).addTo(ccAgeMini);
+const ccAgeBoundary=L.geoJSON(null,{style:{weight:2.8,color:'#101828',fillOpacity:0}}).addTo(ccAgeMini);
+
+const ccBuildingUseMini=L.map('ccBuildingUseMiniMap',{zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,doubleClickZoom:false,boxZoom:false,keyboard:false,touchZoom:false}).setView([37.5665,126.9780],15);
+const ccBuildingUseParcelBase=L.geoJSON(null,{style:compactParcelBaseStyle}).addTo(ccBuildingUseMini);
+const BUILDING_USE_STYLE={housing:['#067647','#abefc6'],neighborhood:['#175cd3','#b2ddff'],commercial:['#b54708','#fedf89'],office:['#7a5af8','#d9d6fe'],factory:['#b42318','#fecdca'],education_medical:['#026aa2','#b9e6fe'],lodging:['#c11574','#fcceee'],other:['#475467','#d0d5dd'],mixed:['#667085','#eaecf0'],unknown:['#98a2b3','#f2f4f7']};
+const ccBuildingUseBuildings=L.geoJSON(null,{style:f=>{const k=String((f.properties||{})._site_use_category||'unknown'),c=BUILDING_USE_STYLE[k]||BUILDING_USE_STYLE.unknown;return {weight:1.2,color:c[0],fillColor:c[1],fillOpacity:.55};}}).addTo(ccBuildingUseMini);
+const ccBuildingUseBoundary=L.geoJSON(null,{style:{weight:2.8,color:'#101828',fillOpacity:0}}).addTo(ccBuildingUseMini);
+
+const ccDistrictMini=L.map('ccDistrictMiniMap',{zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,doubleClickZoom:false,boxZoom:false,keyboard:false,touchZoom:false}).setView([37.5665,126.9780],15);
+const ccDistrictParcelBase=L.geoJSON(null,{style:compactParcelBaseStyle}).addTo(ccDistrictMini);
+const ccDistrictLayer=L.geoJSON(null,{style:f=>{const n=String((f.properties||{})._planning_name||'');let c='#7a5af8',fill='#d9d6fe';if(/고도/.test(n)){c='#b42318';fill='#fecdca';}else if(/경관/.test(n)){c='#b54708';fill='#fedf89';}else if(/방화|방재/.test(n)){c='#175cd3';fill='#b2ddff';}else if(/보호/.test(n)){c='#067647';fill='#abefc6';}return {weight:1.6,color:c,fillColor:fill,fillOpacity:.28,dashArray:'5,3'};},onEachFeature:(f,l)=>l.bindTooltip(escHtml((f.properties||{})._planning_name||'용도지구'))}).addTo(ccDistrictMini);
+const ccDistrictBoundary=L.geoJSON(null,{style:{weight:2.8,color:'#101828',fillOpacity:0}}).addTo(ccDistrictMini);
+
+const ccHeritageMini=L.map('ccHeritageMiniMap',{zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,doubleClickZoom:false,boxZoom:false,keyboard:false,touchZoom:false}).setView([37.5665,126.9780],15);
+const ccHeritageParcelBase=L.geoJSON(null,{style:compactParcelBaseStyle}).addTo(ccHeritageMini);
+let ccHeritageWmsOverlay=null;
+let ccHeritageWmsKey='';
+const ccHeritageVector=L.geoJSON(null,{style:{weight:2,color:'#7a5af8',fillColor:'#d9d6fe',fillOpacity:.24,dashArray:'4,3'},onEachFeature:(f,l)=>l.bindTooltip(escHtml((f.properties||{})._planning_name||'국가유산보호구역'))}).addTo(ccHeritageMini);
+const ccHeritageBoundary=L.geoJSON(null,{style:{weight:2.8,color:'#101828',fillOpacity:0}}).addTo(ccHeritageMini);
+
+const ccRoadConditionMini=L.map('ccRoadConditionMiniMap',{zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,doubleClickZoom:false,boxZoom:false,keyboard:false,touchZoom:false}).setView([37.5665,126.9780],16);
+const ccRoadConditionParcelBase=L.geoJSON(null,{style:compactParcelBaseStyle}).addTo(ccRoadConditionMini);
+const ccRoadConditionRoads=L.geoJSON(null,{style:f=>{const w=Number((f.properties||{})._width_m);let c='#98a2b3',fill='#eaecf0';if(Number.isFinite(w)&&w>=8){c='#175cd3';fill='#b2ddff';}else if(Number.isFinite(w)&&w>=6){c='#067647';fill='#abefc6';}else if(Number.isFinite(w)&&w>=4){c='#b54708';fill='#fedf89';}else if(Number.isFinite(w)){c='#b42318';fill='#fecdca';}return {weight:1.2,color:c,fillColor:fill,fillOpacity:.42};},onEachFeature:(f,l)=>{const p=f.properties||{},w=Number(p._width_m);l.bindTooltip(`${escHtml(p._road_name||p.ROAD_NM||'도로')} · ${Number.isFinite(w)?w.toFixed(1)+'m':'폭원 미확인'}`);}}).addTo(ccRoadConditionMini);
+const ccRoadConditionBoundary=L.geoJSON(null,{style:{weight:2.8,color:'#101828',fillOpacity:0}}).addTo(ccRoadConditionMini);
+
 
 
 let centerReferenceFeatures=[];
@@ -3948,7 +4020,7 @@ function compactParcelBaseFeatures(){
 }
 function refreshCommonParcelBases(){
   const fs=compactParcelBaseFeatures();
-  const layers=[ccBuildingParcelBase,ccStationParcelBase,ccCenterParcelBase,ccRenewalParcelBase,ccDevelopmentParcelBase,ccPlanningParcelBase,ccZoningParcelBase,ccPlanningFacilityParcelBase,ccSharedConservationParcelBase,ccSchemeRoadParcelBase,ccSafeMedicalParcelBase,ccSchoolAbsoluteParcelBase];
+  const layers=[ccBuildingParcelBase,ccAgeParcelBase,ccBuildingUseParcelBase,ccDistrictParcelBase,ccHeritageParcelBase,ccRoadConditionParcelBase,ccStationParcelBase,ccCenterParcelBase,ccRenewalParcelBase,ccDevelopmentParcelBase,ccPlanningParcelBase,ccZoningParcelBase,ccPlanningFacilityParcelBase,ccSharedConservationParcelBase,ccSchemeRoadParcelBase,ccSafeMedicalParcelBase,ccSchoolAbsoluteParcelBase];
   for(const lyr of layers){
     try{lyr.clearLayers();if(fs.length)lyr.addData({type:'FeatureCollection',features:fs});if(lyr.bringToBack)lyr.bringToBack();}catch(e){}
   }
@@ -4175,6 +4247,72 @@ function renderPlanningFacilitySpatialStatus(){
   set('spPlanningFacilityQuality',planningAnalysis.facilityErrors?.length?`일부 미응답 ${planningAnalysis.facilityErrors.length}개`:(planningAnalysis.loaded?'완료':'미조회'));set('spPlanningFacilityState',planningAnalysis.facilityErrors?.length?'일부 자료 확인 필요':planningAnalysis.loaded?'GIS 조회 완료':'GIS 미조회');
   fitCompactMiniMap(ccPlanningFacilityMini,ccPlanningFacilityBoundary,ccPlanningFacilityLayer);
 }
+
+const SITE_DISTRICT_LAYER_IDS=new Set(['LT_C_UQ121','LT_C_UQ123','LT_C_UQ124','LT_C_UQ125','LT_C_UQ126','LT_C_UQ128','LT_C_UQ129','LT_C_UQ130']);
+function siteBuildingUseCategory(r){
+  const t=`${r?.main_use||r?.mainPurpsCdNm||''} ${r?.other_use||r?.etcPurps||''}`;
+  if(/공장/.test(t))return 'factory';
+  if(/공동주택|아파트|연립주택|다세대주택|단독주택|다가구주택/.test(t))return 'housing';
+  if(/근린생활/.test(t))return 'neighborhood';
+  if(/판매|상업|시장|운수|자동차관련/.test(t))return 'commercial';
+  if(/업무시설|오피스텔/.test(t))return 'office';
+  if(/의료|교육|연구|노유자|수련/.test(t))return 'education_medical';
+  if(/숙박/.test(t))return 'lodging';
+  return t.trim()?'other':'unknown';
+}
+function siteBuildingUseLabel(k){return ({housing:'주거',neighborhood:'근린생활',commercial:'판매·상업',office:'업무',factory:'공장',education_medical:'의료·교육',lodging:'숙박',other:'기타',mixed:'혼합용도',unknown:'미확인'})[k]||k;}
+function renderBuildingUseSpatialStatus(){
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
+  ccBuildingUseBuildings.clearLayers();ccBuildingUseBoundary.clearLayers();
+  if(!activeGeometry){set('spBuildingUseMain','-');set('spBuildingUseResidential','-');set('spBuildingUseNonResidential','-');set('spBuildingUseUnknown','-');set('spBuildingUseState','구역 설정 전');const lg=document.getElementById('spBuildingUseLegend');if(lg)lg.innerHTML='<span>건축HUB 주용도 조회 후 표시</span>';return;}
+  ccBuildingUseBoundary.addData(turf.feature(activeGeometry));
+  const records=buildingRawFacts(),counts=new Map();
+  for(const r of records){const k=siteBuildingUseCategory(r);counts.set(k,(counts.get(k)||0)+1);}
+  assignBuildingsToParcels();
+  const recordsByPnu=new Map();for(const r of records){const p=String(r.pnu||'');if(!recordsByPnu.has(p))recordsByPnu.set(p,[]);recordsByPnu.get(p).push(r);}
+  const fs=(currentBuildingFeatures||[]).map(f=>{const x=cloneFeature(f),pnu=String((x.properties||{})._parcel_pnu||(x.properties||{}).pnu||''),rs=recordsByPnu.get(pnu)||[],cats=[...new Set(rs.map(siteBuildingUseCategory).filter(Boolean))];x.properties=Object.assign({},x.properties||{},{_site_use_category:cats.length===1?cats[0]:(cats.length>1?'mixed':'unknown')});return x;});
+  if(fs.length)ccBuildingUseBuildings.addData({type:'FeatureCollection',features:fs});
+  const total=records.length,res=counts.get('housing')||0,unknown=counts.get('unknown')||0,non=Math.max(0,total-res-unknown),sorted=[...counts.entries()].filter(([k])=>k!=='unknown').sort((a,b)=>b[1]-a[1]);
+  set('spBuildingUseMain',sorted.length?`${siteBuildingUseLabel(sorted[0][0])} ${sorted[0][1]}동`:'-');
+  set('spBuildingUseResidential',total?`${res}동 · ${(res/total*100).toFixed(1)}%`:'-');
+  set('spBuildingUseNonResidential',total?`${non}동 · ${(non/total*100).toFixed(1)}%`:'-');
+  set('spBuildingUseUnknown',total?`${unknown}동`:'-');set('spBuildingUseState',total?`건축HUB ${total}동`:'건축HUB 조회 전');
+  const lg=document.getElementById('spBuildingUseLegend');if(lg)lg.innerHTML=sorted.slice(0,7).map(([k,v])=>`<span>${escHtml(siteBuildingUseLabel(k))} <b>${v}동</b></span>`).join('')||'<span>건축HUB 주용도 조회 후 표시</span>';
+  fitCompactMiniMap(ccBuildingUseMini,ccBuildingUseBoundary,ccBuildingUseBuildings);
+}
+function renderAgeMapStatus(){
+  ccAgeBuildings.clearLayers();ccAgeBoundary.clearLayers();
+  if(!activeGeometry)return;
+  ccAgeBoundary.addData(turf.feature(activeGeometry));if(currentBuildingFeatures?.length)ccAgeBuildings.addData({type:'FeatureCollection',features:currentBuildingFeatures.map(cloneFeature)});fitCompactMiniMap(ccAgeMini,ccAgeBoundary,ccAgeBuildings);
+}
+function renderDistrictSpatialStatus(){
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};ccDistrictLayer.clearLayers();ccDistrictBoundary.clearLayers();
+  if(!activeGeometry){for(const id of ['spDistrictCount','spDistrictArea','spDistrictPct','spDistrictNames'])set(id,'-');set('spDistrictState','구역 설정 전');const lg=document.getElementById('spDistrictLegend');if(lg)lg.innerHTML='<span>용도지구 GIS 조회 전</span>';return;}
+  const site=turf.feature(activeGeometry),rows=(planningAnalysis.districts||[]).filter(x=>SITE_DISTRICT_LAYER_IDS.has(x.layer)&&x.feature?.geometry);ccDistrictBoundary.addData(site);if(rows.length)ccDistrictLayer.addData({type:'FeatureCollection',features:rows.map(x=>cloneFeature(x.feature))});
+  const inter=[];for(const r of rows){try{const x=turf.intersect(site,turf.feature(r.feature.geometry,r.feature.properties||{}));if(x)inter.push(x);}catch(e){}}
+  const union=safeUnionPolygons(inter),area=union?Math.max(0,turf.area(union)):0,siteArea=Math.max(1,turf.area(site)),agg=planningAggregateRows(rows);
+  set('spDistrictCount',planningAnalysis.loaded?`${agg.length}종 · ${rows.length}도형`:'미조회');set('spDistrictArea',planningAnalysis.loaded?`${Math.round(area).toLocaleString('ko-KR')}㎡`:'-');set('spDistrictPct',planningAnalysis.loaded?`${(area/siteArea*100).toFixed(1)}%`:'-');set('spDistrictNames',agg.length?agg.slice(0,3).map(x=>x.name).join(' · '):(planningAnalysis.loaded?'중첩 없음':'-'));
+  const errs=(planningAnalysis.errors||[]).filter(e=>SITE_DISTRICT_LAYER_IDS.has(e.id));set('spDistrictState',errs.length?`일부 자료 확인 필요 ${errs.length}건`:planningAnalysis.loaded?'GIS 조회 완료':'GIS 미조회');const lg=document.getElementById('spDistrictLegend');if(lg)lg.innerHTML=agg.length?agg.slice(0,8).map(x=>`<span>${escHtml(x.name)} <b>${Math.round(x.area||0).toLocaleString('ko-KR')}㎡</b></span>`).join(''):'<span>중첩 용도지구 없음 또는 미조회</span>';fitCompactMiniMap(ccDistrictMini,ccDistrictBoundary,ccDistrictLayer);
+}
+function heritageWmsBounds(){
+  if(!activeGeometry)return null;let b=turf.bbox(turf.feature(activeGeometry));const dx=Math.max((b[2]-b[0])*.35,.0015),dy=Math.max((b[3]-b[1])*.35,.0012);return [[b[1]-dy,b[0]-dx],[b[3]+dy,b[2]+dx]];
+}
+function refreshHeritageWmsOverlay(){
+  const note=document.getElementById('spHeritageWmsState'),bounds=heritageWmsBounds();if(!bounds){if(ccHeritageWmsOverlay){try{ccHeritageMini.removeLayer(ccHeritageWmsOverlay);}catch(e){}ccHeritageWmsOverlay=null;}ccHeritageWmsKey='';if(note)note.textContent='국가유산공간정보 WMS 연결 대기';return;}
+  const sw=bounds[0],ne=bounds[1],key=[sw[1],sw[0],ne[1],ne[0]].map(v=>Number(v).toFixed(6)).join(',');if(ccHeritageWmsOverlay&&ccHeritageWmsKey===key)return;if(ccHeritageWmsOverlay){try{ccHeritageMini.removeLayer(ccHeritageWmsOverlay);}catch(e){}ccHeritageWmsOverlay=null;}ccHeritageWmsKey=key;
+  const url=`/api/reference/heritage-wms-map?min_lon=${encodeURIComponent(sw[1])}&min_lat=${encodeURIComponent(sw[0])}&max_lon=${encodeURIComponent(ne[1])}&max_lat=${encodeURIComponent(ne[0])}&width=760&height=520`;
+  ccHeritageWmsOverlay=L.imageOverlay(url,bounds,{opacity:.55,interactive:false,zIndex:220});ccHeritageWmsOverlay.on('load',()=>{if(note)note.textContent='국가유산공간정보 WMS 원도 교차확인 표시';});ccHeritageWmsOverlay.on('error',()=>{if(note)note.textContent='국가유산공간정보 WMS 응답 확인 필요 · 기존 VWorld 보호구역 Fact는 유지';});ccHeritageWmsOverlay.addTo(ccHeritageMini);try{ccHeritageVector.bringToFront();ccHeritageBoundary.bringToFront();}catch(e){}
+}
+function renderHeritageSpatialStatus(){
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};ccHeritageVector.clearLayers();ccHeritageBoundary.clearLayers();
+  if(!activeGeometry){for(const id of ['spHeritageCount','spHeritageArea','spHeritagePct','spHeritageNames'])set(id,'-');set('spHeritageState','구역 설정 전');refreshHeritageWmsOverlay();return;}
+  const site=turf.feature(activeGeometry),rows=(planningAnalysis.heritage||[]).filter(x=>x.feature?.geometry);ccHeritageBoundary.addData(site);if(rows.length)ccHeritageVector.addData({type:'FeatureCollection',features:rows.map(x=>cloneFeature(x.feature))});const inter=[];for(const r of rows){try{const x=turf.intersect(site,turf.feature(r.feature.geometry,r.feature.properties||{}));if(x)inter.push(x);}catch(e){}}const union=safeUnionPolygons(inter),area=union?Math.max(0,turf.area(union)):0,siteArea=Math.max(1,turf.area(site)),names=[...new Set(rows.filter(x=>Number(x.area||0)>.5).map(x=>x.name).filter(Boolean))];const err=(planningAnalysis.errors||[]).some(e=>e.id==='LT_C_UO301');
+  set('spHeritageCount',planningAnalysis.loaded?`${rows.filter(x=>Number(x.area||0)>.5).length}건`:'미조회');set('spHeritageArea',planningAnalysis.loaded?`${Math.round(area).toLocaleString('ko-KR')}㎡`:'-');set('spHeritagePct',planningAnalysis.loaded?`${(area/siteArea*100).toFixed(1)}%`:'-');set('spHeritageNames',names.length?names.slice(0,3).join(' · '):(planningAnalysis.loaded?'보호구역 중첩 없음':'-'));set('spHeritageState',err?'VWorld 일부 확인 필요 · WMS 교차확인':planningAnalysis.loaded?'VWorld 보호구역 + WMS':'GIS 미조회');refreshHeritageWmsOverlay();fitCompactMiniMap(ccHeritageMini,ccHeritageBoundary,ccHeritageVector);
+}
+function renderRoadConditionMiniMap(){
+  ccRoadConditionRoads.clearLayers();ccRoadConditionBoundary.clearLayers();if(!activeGeometry)return;ccRoadConditionBoundary.addData(turf.feature(activeGeometry));if(currentRoadWidthFeatures?.length)ccRoadConditionRoads.addData({type:'FeatureCollection',features:currentRoadWidthFeatures.map(cloneFeature)});fitCompactMiniMap(ccRoadConditionMini,ccRoadConditionBoundary,ccRoadConditionRoads);
+}
+
 function renderSharedConservationSpatialStatus(){
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
   ccSharedUrbanPark.clearLayers();ccSharedGreenbelt.clearLayers();ccSharedBiotopeParcels.clearLayers();ccSharedForestParcels.clearLayers();ccSharedConservationBoundary.clearLayers();
@@ -4919,21 +5057,31 @@ function refreshCompactMiniMaps(){
   renderActivationArterialSpatialStatus();
   renderIndependentSpatialStatusMaps();
   renderZoningSpatialStatus();
+  renderDistrictSpatialStatus();
   renderPlanningFacilitySpatialStatus();
+  renderHeritageSpatialStatus();
   renderSharedConservationSpatialStatus();
+  renderAgeMapStatus();
+  renderBuildingUseSpatialStatus();
+  renderRoadConditionMiniMap();
   renderSchemeRoadEvidence();
   renderSafeMedicalSpatialStatus();
   setTimeout(()=>invalidateAllSpatialMaps(false),0);
 }
 function invalidateAllSpatialMaps(refresh=true){
-  const maps=[ccLandMini,ccBuildingMini,ccZoningMini,ccPlanningFacilityMini,ccSharedConservationMini,ccHillMini,ccStationMini,ccStreetBlockMini,ccActivationArterialMini,ccCenterMini,ccRenewalStatusMini,ccDevelopmentStatusMini,ccSchemeRoadMini,ccSafeMedicalMini,ccPlanningMini];
+  const maps=[ccLandMini,ccBuildingMini,ccAgeMini,ccBuildingUseMini,ccZoningMini,ccDistrictMini,ccPlanningFacilityMini,ccHeritageMini,ccSharedConservationMini,ccHillMini,ccStationMini,ccStreetBlockMini,ccActivationArterialMini,ccCenterMini,ccRenewalStatusMini,ccDevelopmentStatusMini,ccRoadConditionMini,ccSchemeRoadMini,ccSafeMedicalMini,ccSchoolAbsoluteMini,ccPlanningMini];
   for(const m of maps){try{m.invalidateSize(false);}catch(e){}}
   if(refresh){
     try{refreshCommonParcelBases();}catch(e){}
     try{renderIndependentSpatialStatusMaps();}catch(e){}
     try{renderZoningSpatialStatus();}catch(e){}
+    try{renderDistrictSpatialStatus();}catch(e){}
     try{renderPlanningFacilitySpatialStatus();}catch(e){}
+    try{renderHeritageSpatialStatus();}catch(e){}
     try{renderSharedConservationSpatialStatus();}catch(e){}
+    try{renderAgeMapStatus();}catch(e){}
+    try{renderBuildingUseSpatialStatus();}catch(e){}
+    try{renderRoadConditionMiniMap();}catch(e){}
     try{renderStreetBlockSpatialStatus();}catch(e){}
     try{renderActivationArterialSpatialStatus();}catch(e){}
     try{renderSchemeRoadEvidence();}catch(e){}
@@ -5092,14 +5240,14 @@ function resetPlanningAnalysis(){
   ccPlanningBoundary.clearLayers();ccPlanningZoning.clearLayers();ccPlanningDistrict.clearLayers();ccPlanningFacility.clearLayers();ccPlanningDistrictPlan.clearLayers();ccPlanningRenewal.clearLayers();
   ccRenewalStatusContext.clearLayers();ccRenewalStatusOverlap.clearLayers();ccRenewalStatusBoundary.clearLayers();
   ccDevelopmentStatusContext.clearLayers();ccDevelopmentStatusOverlap.clearLayers();ccDevelopmentStatusBoundary.clearLayers();
-  ccZoningLayer.clearLayers();ccZoningBoundary.clearLayers();ccPlanningFacilityLayer.clearLayers();ccPlanningFacilityBoundary.clearLayers();ccSharedUrbanPark.clearLayers();ccSharedGreenbelt.clearLayers();ccSharedBiotopeParcels.clearLayers();ccSharedForestParcels.clearLayers();ccSharedConservationBoundary.clearLayers();ccHillContext.clearLayers();ccHillOverlap.clearLayers();ccHillBoundary.clearLayers();ccActivationArterialContext.clearLayers();ccActivationArterialStation.clearLayers();ccActivationArterialZone.clearLayers();ccActivationArterialOverlap.clearLayers();ccActivationArterialRoad.clearLayers();ccActivationArterialBlock.clearLayers();ccActivationArterialSite.clearLayers();ccSchemeRoadLayer.clearLayers();ccSchemeRoadInfluence.clearLayers();ccSchemeRoadBoundary.clearLayers();ccSafeMedicalPoints.clearLayers();ccSafeMedicalBuffers.clearLayers();ccSafeMedicalFacilitySites.clearLayers();ccSafeMedicalBoundary.clearLayers();ccSchoolAbsoluteZones.clearLayers();ccSchoolAbsoluteOverlap.clearLayers();ccSchoolAbsoluteBoundary.clearLayers();
+  ccZoningLayer.clearLayers();ccZoningBoundary.clearLayers();ccDistrictLayer.clearLayers();ccDistrictBoundary.clearLayers();ccHeritageVector.clearLayers();ccHeritageBoundary.clearLayers();if(ccHeritageWmsOverlay){try{ccHeritageMini.removeLayer(ccHeritageWmsOverlay);}catch(e){}ccHeritageWmsOverlay=null;}ccHeritageWmsKey='';ccPlanningFacilityLayer.clearLayers();ccPlanningFacilityBoundary.clearLayers();ccSharedUrbanPark.clearLayers();ccSharedGreenbelt.clearLayers();ccSharedBiotopeParcels.clearLayers();ccSharedForestParcels.clearLayers();ccSharedConservationBoundary.clearLayers();ccHillContext.clearLayers();ccHillOverlap.clearLayers();ccHillBoundary.clearLayers();ccActivationArterialContext.clearLayers();ccActivationArterialStation.clearLayers();ccActivationArterialZone.clearLayers();ccActivationArterialOverlap.clearLayers();ccActivationArterialRoad.clearLayers();ccActivationArterialBlock.clearLayers();ccActivationArterialSite.clearLayers();ccSchemeRoadLayer.clearLayers();ccSchemeRoadInfluence.clearLayers();ccSchemeRoadBoundary.clearLayers();ccSafeMedicalPoints.clearLayers();ccSafeMedicalBuffers.clearLayers();ccSafeMedicalFacilitySites.clearLayers();ccSafeMedicalBoundary.clearLayers();ccSchoolAbsoluteZones.clearLayers();ccSchoolAbsoluteOverlap.clearLayers();ccSchoolAbsoluteBoundary.clearLayers();
   const ids=['planningZoneSummary','planningDistrictSummary','planningFacilitySummary','planningDistrictPlanSummary','planningRenewalSummary','planningPromotionSummary'];
   for(const id of ids){const el=document.getElementById(id);if(el)el.textContent='미조회';}
   const dl=document.getElementById('planningDetailList');if(dl)dl.textContent='대상구역을 설정하면 자동 조회합니다.';
   const st=document.getElementById('planningGisStatus');if(st)st.textContent='VWorld 2D Data API 연결 대기';
   const fs=document.getElementById('planningFacilityLiveStatus');if(fs)fs.textContent='구역 설정 후 즉시 조회';
   const fsrc=document.getElementById('planningFacilitySourceStatus');if(fsrc)fsrc.textContent='VWorld 벡터 · 서울 UPIS 원본지도 교차확인';
-  renderIndependentSpatialStatusMaps();renderZoningSpatialStatus();renderPlanningFacilitySpatialStatus();renderSharedConservationSpatialStatus();renderHillSpatialStatus();renderSchemeRoadEvidence();renderSafeMedicalSpatialStatus();
+  renderIndependentSpatialStatusMaps();renderZoningSpatialStatus();renderDistrictSpatialStatus();renderPlanningFacilitySpatialStatus();renderHeritageSpatialStatus();renderSharedConservationSpatialStatus();renderHillSpatialStatus();renderAgeMapStatus();renderBuildingUseSpatialStatus();renderRoadConditionMiniMap();renderSchemeRoadEvidence();renderSafeMedicalSpatialStatus();
 }
 
 async function loadRenewalReference(force=false){
@@ -5914,6 +6062,7 @@ function refreshBuildingAgeClassification(){
   buildingLayer.clearLayers();
   buildingLayer.addData({type:'FeatureCollection',features:currentBuildingFeatures});
   refreshAnalysisLayers();
+  try{renderAgeMapStatus();renderBuildingUseSpatialStatus();}catch(e){}
 }
 
 function parcelKey(f){
@@ -8072,11 +8221,13 @@ function renderAgeSpatialStatus(ageFacts){
   const box=document.getElementById('spAgeFactList'),state=document.getElementById('spAgeState');
   if(!box)return;
   const facts=ageFacts||latestSiteFactStore?.derived?.age||null;
+  const setMetric=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
   if(!facts||!facts.raw_count){
     box.innerHTML='<div class="spatial-age-row"><div class="spatial-age-name"><b>분석 전</b><span>사업별 노후도 기준</span></div><div class="spatial-age-value"><strong>-</strong><small>건축물 사용승인일·구조·용도를 먼저 조회합니다.</small></div><em class="spatial-age-status REVIEW">확인필요</em></div>';
-    if(state)state.textContent='건축HUB 조회 전';
+    if(state)state.textContent='건축HUB 조회 전';for(const id of ['spAgeTotal','spAge20','spAge30','spAgeUnknown'])setMetric(id,'-');
     return;
   }
+  const a20=facts.chronological20||{},a30=facts.chronological30||{};setMetric('spAgeTotal',`${facts.raw_count}동`);setMetric('spAge20',a20.total?`${Number(a20.count||0)}동 · ${Number(a20.calculated_lower_pct||0).toFixed(1)}%`:'-');setMetric('spAge30',a30.total?`${Number(a30.count||0)}동 · ${Number(a30.calculated_lower_pct||0).toFixed(1)}%`:'-');setMetric('spAgeUnknown',`${Number(a20.unknown||0)}동`);
   const rows=[];
   for(const [key,title,usage] of AGE_SPATIAL_FACT_META){
     const a=facts[key];if(!a)continue;
@@ -12517,7 +12668,45 @@ function downloadReportJson(){
 function reportHtmlDocument(r){
   const altRows=r.alternatives.map(x=>`<tr><td>${x.rank}순위<br><b>${escHtml(x.schemeName)}</b></td><td>${fmtPlan(x.grossSite,0,'㎡')}</td><td>${fmtPlan(x.plannedFacilityLand,0,'㎡')}</td><td>${fmtPlan(x.netBurden,0,'㎡')}</td><td>${fmtPlan(x.netSite,0,'㎡')}</td><td>${escHtml(x.farStage)} ${fmtPlan(x.selectedFar,1,'%')}</td><td>${fmtPlan(x.farGfa,0,'㎡')}</td><td>${fmtPlan(x.units,0,'세대')}</td></tr>`).join('');
   const detail=r.alternatives.map(x=>`<section><h3>${x.rank}. ${escHtml(x.schemeName)}</h3><p><b>선정근거</b> ${escHtml(x.recommendationReason)}</p><p><b>현황대지</b> 선택필지 ${fmtPlan(x.parcelArea,0,'㎡')} - 지목 기반시설 ${fmtPlan(x.landCategoryInfrastructureArea,0,'㎡')} - 도시계획시설 추가제외 ${fmtPlan(x.planningFacilityAdditionalArea,0,'㎡')} = 기초 순수대지 ${fmtPlan(x.baseNetSite,0,'㎡')} · 도시계획시설 지형도면 중첩면적(GIS) ${fmtPlan(x.planningFacilityArea,0,'㎡')} · 국공유지 ${fmtPlan(x.existingPublicFacilityArea,0,'㎡')}</p><p><b>추가 기반시설·기부채납</b> 도로확폭 ${fmtPlan(x.roadLength,1,'m')} × ${fmtPlan(x.roadWideningWidth,1,'m')} = ${fmtPlan(x.roadDeductionArea,0,'㎡')}, 신규공원 ${fmtPlan(x.parkPlanArea,0,'㎡')} (${x.parkType==='structured'?'입체공원':'평면공원'}), 기타 기반시설 ${fmtPlan(x.otherInfrastructureArea,0,'㎡')}, 기타 토지기부채납 ${fmtPlan(x.donationLandArea,0,'㎡')} · 순부담 ${fmtPlan(x.netBurden,0,'㎡')} · 최종 순대지 ${fmtPlan(x.netSite,0,'㎡')}</p><p><b>밀도</b> 기준 ${fmtPlan(x.baseFar,1,'%')} / 허용 ${fmtPlan(x.allowFar,1,'%')} / 상한 ${fmtPlan(x.capFar,1,'%')} / 법적상한 ${fmtPlan(x.legalFar,1,'%')} / 적용 ${fmtPlan(x.selectedFar,1,'%')}</p><p><b>주택</b> 주거비율 ${fmtPlan(x.housingRatio,1,'%')}, 공용률 ${fmtPlan(x.residentialCommonRatio,1,'%')} (전용률 ${fmtPlan(x.exclusiveRatio,1,'%')}), 총 ${fmtPlan(x.units,0,'세대')} (36㎡ ${fmtPlan(x.u36,0)} / 59㎡ ${fmtPlan(x.u59,0)} / 84㎡ ${fmtPlan(x.u84,0)})</p><p><b>분양면적</b> 전용 36㎡ → ${fmtPlan(x.sale36,2,'㎡')}, 전용 59㎡ → ${fmtPlan(x.sale59,2,'㎡')}, 전용 84㎡ → ${fmtPlan(x.sale84,2,'㎡')} · 가중평균 ${fmtPlan(x.avgSale,2,'㎡/세대')}</p>${x.warnings.length?`<p class="warn"><b>확인사항</b> ${escHtml(x.warnings.join(' / '))}</p>`:''}</section>`).join('');
-  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${escHtml(r.title)}</title><style>@page{size:A4;margin:16mm}body{font-family:Arial,"Noto Sans KR",sans-serif;color:#111827;font-size:10pt;line-height:1.55}h1{font-size:20pt;margin:0 0 4mm}h2{font-size:14pt;border-bottom:1px solid #111827;padding-bottom:2mm;margin-top:9mm}h3{font-size:11pt;margin:5mm 0 2mm}.meta{color:#667085;font-size:9pt}.box{border:1px solid #d0d5dd;padding:4mm;margin:3mm 0}table{width:100%;border-collapse:collapse;margin:3mm 0;font-size:8.5pt}th,td{border:1px solid #d0d5dd;padding:2mm;text-align:left;vertical-align:top}th{background:#f2f4f7}.warn{background:#fffaeb;padding:2mm}.foot{margin-top:10mm;color:#667085;font-size:8pt}</style></head><body><h1>${escHtml(r.title)}</h1><div class="meta">${escHtml(r.status)} · 생성 ${escHtml(r.generated_at)}</div><h2>1. 검토 개요</h2><div class="box">목적사업: <b>${escHtml(r.inputs.purpose)}</b> · 토지확보: <b>${escHtml(r.inputs.land_control)}</b> · 추진주체: <b>${escHtml(r.inputs.actor)}</b> · 모아타운/관리지역: <b>${escHtml(r.inputs.moa_status||'-')}</b></div><h2>2. 대상지 현황</h2><div class="box">사업대상 구역계면적 ${fmtPlan(r.site.boundary_area_m2,0,'㎡')} · 사업대상 필지면적 ${fmtPlan(r.site.parcel_area_m2,0,'㎡')} · 지목 기반시설 ${fmtPlan(r.site.land_category_infrastructure_area_m2,0,'㎡')} · 도시계획시설 ${fmtPlan(r.site.planning_facility_area_m2,0,'㎡')} (추가제외 ${fmtPlan(r.site.planning_facility_additional_deduction_m2,0,'㎡')}) · 제외 기반시설 합계 ${fmtPlan(r.site.current_infrastructure_area_m2,0,'㎡')} · 기초 순수대지 ${fmtPlan(r.site.base_net_site_m2,0,'㎡')} · 국공유지 ${fmtPlan(r.site.public_land_area_m2,0,'㎡')} · ${fmtPlan(r.site.parcel_count,0,'필지')} · 건축물 ${fmtPlan(r.site.building_count,0,'동')} · 노후 ${fmtPlan(r.site.old_building_count,0,'동')} · 용도지역 ${escHtml(r.site.zoning||'-')} · 역세권 ${escHtml(r.site.station||'-')} ${fmtPlan(r.site.station_distance_m,1,'m')}</div><h2>3. 사업방식 1·2·3순위</h2><table><thead><tr><th>대안</th><th>필지면적</th><th>추가 제공토지</th><th>순부담</th><th>최종 순대지</th><th>적용용적률</th><th>연면적</th><th>세대수</th></tr></thead><tbody>${altRows}</tbody></table><h2>4. 대안별 계획규모</h2>${detail}<h2>5. 종합의견</h2><div class="box">본 결과는 공개 공간정보와 사용자 계획가정에 따른 초기 사업방식·규모 검토이다. 기반시설 폭원·공원·공공기여·법적상한용적률 및 임대주택 등은 관계기관 협의, 정비계획·지구단위계획 수립 및 위원회 심의 과정에서 변경될 수 있다.</div><div class="foot">서울 도시정비플랫폼 Review Engine · 보고서 초안</div></body></html>`;
+  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${escHtml(r.title)}</title><style>@page{size:A4;margin:16mm}body{font-family:Arial,"Noto Sans KR",sans-serif;color:#111827;font-size:10pt;line-height:1.55}h1{font-size:20pt;margin:0 0 4mm}h2{font-size:14pt;border-bottom:1px solid #111827;padding-bottom:2mm;margin-top:9mm}h3{font-size:11pt;margin:5mm 0 2mm}.meta{color:#667085;font-size:9pt}.box{border:1px solid #d0d5dd;padding:4mm;margin:3mm 0}table{width:100%;border-collapse:collapse;margin:3mm 0;font-size:8.5pt}th,td{border:1px solid #d0d5dd;padding:2mm;text-align:left;vertical-align:top}th{background:#f2f4f7}.warn{background:#fffaeb;padding:2mm}.foot{margin-top:10mm;color:#667085;font-size:8pt}
+
+/* =========================================================
+   r48 Site Analysis UI
+   - r47 Fact/Rule/data paths preserved
+   - requested six-row order, 2 display types + diagnostic wide type
+   ========================================================= */
+.lg-age-old{color:#b42318!important;--legend-fill:#f04438}.lg-age-notold{color:#067647!important;--legend-fill:#75e0a7}.lg-age-review{color:#b54708!important;--legend-fill:#fedf89}
+.lg-heritage-vector{color:#7a5af8!important;--legend-fill:#d9d6fe}.lg-heritage-wms{color:#175cd3!important;--legend-fill:#d1e9ff}
+.site-analysis-details{margin:0 6px 6px;border:1px solid #eaecf0;background:#fcfcfd}.site-analysis-details>summary{cursor:pointer;padding:7px 8px;font-size:8px;font-weight:900;color:#475467}.site-analysis-details[open]>summary{border-bottom:1px solid #eaecf0}
+.site-analysis-card .spatial-mini-map{height:178px}
+.site-analysis-context .spatial-mini-map{height:225px}
+.site-analysis-wide{grid-column:span 2}
+.site-analysis-diagnostic .spatial-mini-map{height:205px}
+.site-analysis-hidden{display:none!important}
+#siteDetail_schemeSpecific{grid-column:1/-1}
+
+@media(min-width:1181px){
+  .renewal-workspace-grid{grid-template-columns:minmax(0,1.5fr) minmax(340px,.62fr)!important;align-items:start!important}
+  .renewal-location-column{grid-column:1!important;grid-row:1!important}
+  .renewal-status-column{grid-column:2!important;grid-row:1!important}
+  .renewal-spatial-column{grid-column:1/-1!important;grid-row:2!important}
+  .renewal-location-column #map{height:610px!important}
+  .spatial-module-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:8px!important;padding:8px!important}
+}
+@media(max-width:1180px) and (min-width:721px){
+  .renewal-workspace-grid{grid-template-columns:minmax(0,1.15fr) minmax(310px,.85fr)!important}
+  .renewal-location-column{grid-column:1!important;grid-row:1!important}
+  .renewal-status-column{grid-column:2!important;grid-row:1!important}
+  .renewal-spatial-column{grid-column:1/-1!important;grid-row:2!important}
+  .renewal-location-column #map{height:500px!important}
+  .spatial-module-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .site-analysis-wide{grid-column:span 1}
+}
+@media(max-width:720px){
+  .site-analysis-wide{grid-column:span 1!important}
+  .site-analysis-card .spatial-mini-map,.site-analysis-context .spatial-mini-map,.site-analysis-diagnostic .spatial-mini-map{height:190px!important}
+}
+</style></head><body><h1>${escHtml(r.title)}</h1><div class="meta">${escHtml(r.status)} · 생성 ${escHtml(r.generated_at)}</div><h2>1. 검토 개요</h2><div class="box">목적사업: <b>${escHtml(r.inputs.purpose)}</b> · 토지확보: <b>${escHtml(r.inputs.land_control)}</b> · 추진주체: <b>${escHtml(r.inputs.actor)}</b> · 모아타운/관리지역: <b>${escHtml(r.inputs.moa_status||'-')}</b></div><h2>2. 대상지 현황</h2><div class="box">사업대상 구역계면적 ${fmtPlan(r.site.boundary_area_m2,0,'㎡')} · 사업대상 필지면적 ${fmtPlan(r.site.parcel_area_m2,0,'㎡')} · 지목 기반시설 ${fmtPlan(r.site.land_category_infrastructure_area_m2,0,'㎡')} · 도시계획시설 ${fmtPlan(r.site.planning_facility_area_m2,0,'㎡')} (추가제외 ${fmtPlan(r.site.planning_facility_additional_deduction_m2,0,'㎡')}) · 제외 기반시설 합계 ${fmtPlan(r.site.current_infrastructure_area_m2,0,'㎡')} · 기초 순수대지 ${fmtPlan(r.site.base_net_site_m2,0,'㎡')} · 국공유지 ${fmtPlan(r.site.public_land_area_m2,0,'㎡')} · ${fmtPlan(r.site.parcel_count,0,'필지')} · 건축물 ${fmtPlan(r.site.building_count,0,'동')} · 노후 ${fmtPlan(r.site.old_building_count,0,'동')} · 용도지역 ${escHtml(r.site.zoning||'-')} · 역세권 ${escHtml(r.site.station||'-')} ${fmtPlan(r.site.station_distance_m,1,'m')}</div><h2>3. 사업방식 1·2·3순위</h2><table><thead><tr><th>대안</th><th>필지면적</th><th>추가 제공토지</th><th>순부담</th><th>최종 순대지</th><th>적용용적률</th><th>연면적</th><th>세대수</th></tr></thead><tbody>${altRows}</tbody></table><h2>4. 대안별 계획규모</h2>${detail}<h2>5. 종합의견</h2><div class="box">본 결과는 공개 공간정보와 사용자 계획가정에 따른 초기 사업방식·규모 검토이다. 기반시설 폭원·공원·공공기여·법적상한용적률 및 임대주택 등은 관계기관 협의, 정비계획·지구단위계획 수립 및 위원회 심의 과정에서 변경될 수 있다.</div><div class="foot">서울 도시정비플랫폼 Review Engine · 보고서 초안</div></body></html>`;
 }
 function printPlanningReport(){
   const r=buildReportDraftData(),w=window.open('','_blank');
@@ -13679,7 +13868,7 @@ function setSpatialModuleCollapsed(el,collapsed){
 }
 function setAllSpatialModulesCollapsed(collapsed){document.querySelectorAll('#serviceVisualMaps .spatial-module').forEach(el=>setSpatialModuleCollapsed(el,collapsed));}
 function enableSpatialModuleCollapsing(){
-  const defaultOpen=new Set(['siteDetail_land','siteDetail_building','siteDetail_zoning','siteDetail_station','siteDetail_planningFacility']);
+  const defaultOpen=new Set(['siteDetail_land','siteDetail_zoning','siteDetail_district','siteDetail_planningFacility','siteDetail_building','siteDetail_age']);
   document.querySelectorAll('#serviceVisualMaps .spatial-module').forEach((el,i)=>{
     const head=el.querySelector(':scope > .spatial-module-head');if(!head||head.dataset.collapseReady==='1')return;head.dataset.collapseReady='1';
     const btn=document.createElement('button');btn.type='button';btn.className='spatial-collapse-btn';btn.setAttribute('aria-label','현황 접기/펼치기');btn.addEventListener('click',e=>{e.stopPropagation();setSpatialModuleCollapsed(el,!el.classList.contains('is-collapsed'));});
@@ -13755,8 +13944,8 @@ function buildServiceLayout(){
           <div class="service-overview-foot">서울 중심지체계·역세권 사업영향</div>
         </button>
       </div>
-      <div class="service-visual-maps" id="serviceVisualMaps"><div class="service-block-title"><b>공간현황 도면</b><span>공식 공간 Fact와 사업별 분석근거를 도면으로 확인</span><div class="service-visual-controls"><button type="button" onclick="setAllSpatialModulesCollapsed(false)">전체 펼치기</button><button type="button" onclick="setAllSpatialModulesCollapsed(true)">전체 접기</button></div></div></div>
-      <div class="service-overview-note"><span>중복 종합현황은 제거했습니다. 상세 판정근거는 아래 공간현황 도면과 사업별 추가현황에서 확인합니다.</span></div>
+      <div class="service-visual-maps" id="serviceVisualMaps"><div class="service-block-title"><b>사이트 분석</b><span>토지·도시계획·건축물 현황 후 제도별 입지조건을 순서대로 확인</span><div class="service-visual-controls"><button type="button" onclick="setAllSpatialModulesCollapsed(false)">전체 펼치기</button><button type="button" onclick="setAllSpatialModulesCollapsed(true)">전체 접기</button></div></div></div>
+      <div class="service-overview-note"><span>중복 종합현황은 제거했습니다. 상세 판정근거는 아래 사이트 분석과 사업별 추가현황에서 확인합니다.</span></div>
     </section>`;
   main.insertAdjacentHTML('beforeend','<div class="service-privacy-note">서비스 개선과 이용통계를 위해 익명 식별자, 분석 실행기록, 검토 대상지의 주소·PNU·면적을 수집합니다. 이름·이메일·원문 IP·원본 구역계는 저장하지 않습니다.</div>');
   header.insertAdjacentElement('afterend',main);
