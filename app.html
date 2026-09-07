@@ -2014,6 +2014,19 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="spatial-caption" id="spSafeMedicalApiInfo">서울 열린데이터광장 API 연결상태 확인 전</div>
 <div class="spatial-mini-map" id="ccSafeMedicalMiniMap"></div>
 </section>
+<section class="spatial-module" id="siteDetail_schoolAbsoluteProtection">
+<div class="spatial-module-head"><b>안심주택 학교 절대보호구역 현황</b><span id="spSchoolAbsoluteState">공식 SHP 조회 전</span></div>
+<div class="spatial-metrics">
+<div><span>절대보호구역 중첩</span><b id="spSchoolAbsoluteOverlap">-</b></div>
+<div><span>대상지 중첩률</span><b id="spSchoolAbsolutePct">-</b></div>
+<div><span>중첩 구역</span><b id="spSchoolAbsoluteCount">-</b></div>
+<div><span>배제판정</span><b id="spSchoolAbsoluteDecision">미확인</b></div>
+</div>
+<div class="spatial-tags"><span>국가공간정보 UO101</span><span>UOA110 절대보호구역만 사용</span><span>상대보호구역 UOA120 제외</span><span>안심주택 학교 50m 배제 Fact</span></div>
+<div class="spatial-caption">도면정보 · 교육환경보호구역 연속주제도 UO101 중 UOA110 절대보호구역 원본만 사용합니다. 별도 50m 버퍼를 새로 만들지 않고 공시된 절대보호구역 도형과 대상지의 실제 중첩을 계산합니다. 중첩부는 안심주택 사업대상지에서 제외가 필요한 공간 Fact로 표시하며, 자료 미확보 시 임의 판정하지 않고 REVIEW를 유지합니다.</div>
+<div class="spatial-caption" id="spSchoolAbsoluteSource">국가공간정보 SHP 연결상태 확인 전</div>
+<div class="spatial-mini-map" id="ccSchoolAbsoluteMiniMap"></div>
+</section>
 <section class="spatial-module" id="siteDetail_schemeSpecific">
 <div class="spatial-module-head"><b>사업별 추가 현황</b><span id="spSchemeFactState">독립모듈 연계</span></div>
 <div class="spatial-age-list" id="spSchemeFactList"><div class="spatial-age-row"><div class="spatial-age-name"><b>분석 전</b><span>사업방식별 추가 공간·현황조건</span></div><div class="spatial-age-value"><strong>-</strong><small>사업별 독립모듈이 필요한 현황을 이 영역에 등록합니다.</small></div><em class="spatial-age-status REVIEW">미확인</em></div></div>
@@ -3841,6 +3854,12 @@ const ccSafeMedicalFacilitySites=L.geoJSON(null,{style:f=>{const p=f.properties|
 const ccSafeMedicalPoints=L.geoJSON(null,{pointToLayer:(f,latlng)=>L.circleMarker(latlng,{radius:4.5,weight:1.5,color:'#7a5af8',fillColor:'#bdb4fe',fillOpacity:.82}),onEachFeature:(f,l)=>{const p=f.properties||{};l.bindTooltip(`${escHtml(p.name||'의료시설')} · ${escHtml(p.category_label||p.category||'')} · 공식 위치점 ${p.distance_point_m==null?'-':Number(p.distance_point_m).toFixed(1)+'m'} · ${escHtml(p.boundary_basis_label||p.boundary_note||'부지경계 미확정')}`);}}).addTo(ccSafeMedicalMini);
 const ccSafeMedicalBoundary=L.geoJSON(null,{style:{weight:3,color:'#101828',fillOpacity:0}}).addTo(ccSafeMedicalMini);
 
+const ccSchoolAbsoluteMini=L.map('ccSchoolAbsoluteMiniMap',{zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,doubleClickZoom:false,boxZoom:false,keyboard:false,touchZoom:false}).setView([37.5665,126.9780],15);
+const ccSchoolAbsoluteParcelBase=L.geoJSON(null,{style:compactParcelBaseStyle}).addTo(ccSchoolAbsoluteMini);
+const ccSchoolAbsoluteZones=L.geoJSON(null,{style:{weight:1.4,color:'#d92d20',fillColor:'#fda29b',fillOpacity:.18},onEachFeature:(f,l)=>{const p=f.properties||{};l.bindTooltip(`${escHtml(p.REMARK||p.ALIAS||'학교 절대보호구역')} · UOA110`);}}).addTo(ccSchoolAbsoluteMini);
+const ccSchoolAbsoluteOverlap=L.geoJSON(null,{style:{weight:1.8,color:'#b42318',fillColor:'#f04438',fillOpacity:.48},onEachFeature:(f,l)=>{const p=f.properties||{};l.bindTooltip(`${escHtml(p.REMARK||p.ALIAS||'학교 절대보호구역')} · 대상지 중첩`);}}).addTo(ccSchoolAbsoluteMini);
+const ccSchoolAbsoluteBoundary=L.geoJSON(null,{style:{weight:3,color:'#101828',fillOpacity:0}}).addTo(ccSchoolAbsoluteMini);
+
 async function loadBuiltInCenterDataset(){
   try{const r=await fetch('/api/reference/centers');if(!r.ok)throw new Error('HTTP '+r.status);const fc=await r.json();centerReferenceFeatures=fc.features||[];refreshStationCenterMiniMaps();}
   catch(e){console.warn('center reference load failed',e);}
@@ -3929,7 +3948,7 @@ function compactParcelBaseFeatures(){
 }
 function refreshCommonParcelBases(){
   const fs=compactParcelBaseFeatures();
-  const layers=[ccBuildingParcelBase,ccStationParcelBase,ccCenterParcelBase,ccRenewalParcelBase,ccDevelopmentParcelBase,ccPlanningParcelBase,ccZoningParcelBase,ccPlanningFacilityParcelBase,ccSharedConservationParcelBase,ccSchemeRoadParcelBase,ccSafeMedicalParcelBase];
+  const layers=[ccBuildingParcelBase,ccStationParcelBase,ccCenterParcelBase,ccRenewalParcelBase,ccDevelopmentParcelBase,ccPlanningParcelBase,ccZoningParcelBase,ccPlanningFacilityParcelBase,ccSharedConservationParcelBase,ccSchemeRoadParcelBase,ccSafeMedicalParcelBase,ccSchoolAbsoluteParcelBase];
   for(const lyr of layers){
     try{lyr.clearLayers();if(fs.length)lyr.addData({type:'FeatureCollection',features:fs});if(lyr.bringToBack)lyr.bringToBack();}catch(e){}
   }
@@ -4231,6 +4250,26 @@ function renderSafeMedicalSpatialStatus(){
   }catch(e){}
   setTimeout(()=>{try{ccSafeMedicalMini.invalidateSize(false);}catch(e){}},0);
 }
+function renderSchoolAbsoluteProtectionSpatialStatus(){
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
+  ccSchoolAbsoluteZones.clearLayers();ccSchoolAbsoluteOverlap.clearLayers();ccSchoolAbsoluteBoundary.clearLayers();
+  if(!activeGeometry){set('spSchoolAbsoluteOverlap','-');set('spSchoolAbsolutePct','-');set('spSchoolAbsoluteCount','-');set('spSchoolAbsoluteDecision','미확인');set('spSchoolAbsoluteState','구역 설정 전');set('spSchoolAbsoluteSource','국가공간정보 SHP 연결상태 확인 전');return;}
+  const site=turf.feature(activeGeometry);ccSchoolAbsoluteBoundary.addData(site);
+  const a=schoolAbsoluteProtectionAnalysis;
+  if((a.features||[]).length)ccSchoolAbsoluteZones.addData({type:'FeatureCollection',features:a.features});
+  if((a.overlapFeatures||[]).length)ccSchoolAbsoluteOverlap.addData({type:'FeatureCollection',features:a.overlapFeatures});
+  set('spSchoolAbsoluteOverlap',a.loaded&&a.known?`${Number(a.overlapAreaM2||0).toLocaleString('ko-KR',{maximumFractionDigits:0})}㎡`:'미조회');
+  set('spSchoolAbsolutePct',a.loaded&&a.known&&Number.isFinite(Number(a.overlapPct))?`${Number(a.overlapPct).toFixed(1)}%`:(a.loaded&&a.known?'0.0%':'-'));
+  set('spSchoolAbsoluteCount',a.loaded&&a.known?`${Number(a.zoneCount||0)}건`:'미조회');
+  set('spSchoolAbsoluteDecision',!a.loaded||!a.known?'REVIEW':a.present?'배제공간 있음':'중첩 없음');
+  set('spSchoolAbsoluteState',a.loading?'조회 중':a.error?'자료 확인 필요':a.loaded?(a.present?'절대보호구역 중첩':'중첩 없음'):'미조회');
+  set('spSchoolAbsoluteSource',a.error?`공식 SHP 확인 필요 · ${a.error}`:(a.loaded?`${a.source||'국가공간정보 UO101'} · ${a.file||''}${a.schoolNames?.length?` · ${a.schoolNames.slice(0,3).join(' / ')}${a.schoolNames.length>3?' 외':''}`:''}`:'국가공간정보 SHP 미조회'));
+  try{
+    const fg=L.featureGroup();for(const layer of [ccSchoolAbsoluteBoundary,ccSchoolAbsoluteZones,ccSchoolAbsoluteOverlap])layer.eachLayer(l=>fg.addLayer(l));
+    const b=fg.getBounds();if(b.isValid())ccSchoolAbsoluteMini.fitBounds(b.pad(.12),{animate:false,maxZoom:17});
+  }catch(e){}
+  setTimeout(()=>{try{ccSchoolAbsoluteMini.invalidateSize(false);}catch(e){}},0);
+}
 function schemeFrontageEvidenceFacts(cArg=null){
   const c=cArg||commonSchemeData(),net=analysisState.road_network||{},quality=analysisState.quality.road||'NO_DATA';
   const analysisCaveat='초기검토용 자동산정 · 지적측량성과도·도로대장·결정도서·현장조사 재확인 필요';
@@ -4531,6 +4570,36 @@ function linearCommercialRoadSearchBufferM(roadFeature){
   // 중심선 기준 도로 반폭 + 노선형 상업지역 최대 추정깊이(18m) + 위치오차(4m)
   return Number.isFinite(w)?Math.max(25,w/2+22):25;
 }
+const independentRoadFactCache={key:'',data:null,promise:null};
+function independentRoadFactKey(geometry,radiusM){
+  try{const f=turf.feature(geometry),b=turf.bbox(f),a=Math.round(turf.area(f));return `${b.map(x=>Number(x).toFixed(6)).join(',')}|${a}|${Number(radiusM)}`;}catch(e){return `${JSON.stringify(geometry||{})}|${Number(radiusM)}`;}
+}
+async function fetchIndependentRoadFacts(radiusM=220){
+  if(!activeGeometry)return {status:'unavailable',rw_features:[],manage_features:[],surface_features:[],metadata:{reason:'구역계 없음'}};
+  const key=independentRoadFactKey(activeGeometry,radiusM);
+  if(independentRoadFactCache.key===key&&independentRoadFactCache.data)return independentRoadFactCache.data;
+  if(independentRoadFactCache.key===key&&independentRoadFactCache.promise)return independentRoadFactCache.promise;
+  const promise=(async()=>{
+    const res=await fetch('/api/spatial/road-facts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry:activeGeometry,radius_m:radiusM})});
+    const data=await res.json();if(!res.ok)throw new Error(data.detail||'도로 FACT 조회 실패');
+    independentRoadFactCache.key=key;independentRoadFactCache.data=data;independentRoadFactCache.promise=null;return data;
+  })().catch(e=>{independentRoadFactCache.promise=null;throw e;});
+  independentRoadFactCache.key=key;independentRoadFactCache.promise=promise;return promise;
+}
+async function independentRoadManageCandidate(searchGeometry,radiusM=220){
+  const errors=[];
+  try{
+    const local=await fetchIndependentRoadFacts(radiusM);
+    if((local.manage_features||[]).length){
+      return {id:'local-rw-manage-road-fact',features:local.manage_features||[],surface_features:local.surface_features||[],road_facts:local,errors};
+    }
+    errors.push('로컬 TL_SPRD_RW/TL_SPRD_MANAGE 도로 FACT 0건');
+  }catch(e){errors.push(`로컬 도로 FACT 조회 실패: ${String(e?.message||e)}`);}
+  if(currentRoadManageFeatures.length)return {id:'road-cache',features:currentRoadManageFeatures,surface_features:[],road_facts:null,errors};
+  const fallback=await trySpatialLayerCandidates(['TL_SPRD_MANAGE','LT_C_SPRD_MANAGE'],searchGeometry,['rds_man_no','RDS_MAN_NO']);
+  return {id:fallback.id||'vworld-road-fallback',features:fallback.features||[],surface_features:[],road_facts:null,errors:[...errors,...(fallback.errors||[])]};
+}
+
 async function analyzeActivationArterial(){
   if(!activeGeometry)return;
   if(activationArterialAnalysis.loading)return;
@@ -4667,16 +4736,17 @@ async function analyzeStreetBlock(signal=null){
     const searchRadiusM=220;let search=null;try{search=turf.buffer(turf.feature(activeGeometry),searchRadiusM,{units:'meters'});}catch(e){}
     setAnalysisProgressDetail('가로구역','기초단위구 + 도로경계 준비');
     const barrierPromise=search?fetchStreetBlockFacilityBarriers(search.geometry):Promise.resolve({features:[],errors:[{id:'buffer',error:'주변 검색범위 생성 실패'}],queried:2});
-    const roadPromise=currentRoadManageFeatures.length?Promise.resolve({id:'road-cache',features:currentRoadManageFeatures,errors:[]}):(search?trySpatialLayerCandidates(['TL_SPRD_MANAGE','LT_C_SPRD_MANAGE'],search.geometry,['rds_man_no','RDS_MAN_NO']):Promise.resolve({features:[],errors:['주변 검색범위 생성 실패']}));
+    const roadPromise=search?independentRoadManageCandidate(search.geometry,searchRadiusM):Promise.resolve({features:[],surface_features:[],road_facts:null,errors:['주변 검색범위 생성 실패']});
     const [barrierResult,roadResult]=await Promise.all([barrierPromise,roadPromise]);
     if(token!==streetBlockAnalysis.requestToken || signal?.aborted)return {status:'cancelled'};
     const roadFeatures=(roadResult.features||[]).filter(f=>Number(cleanNum(pickPropCI(f.properties||{},['ROAD_BT','ROAD_WIDTH','ROAD_W','WIDTH'])))>0);
-    setAnalysisProgressDetail('가로구역',`ROAD_BT ${roadFeatures.length}건 · 철도/하천 ${barrierResult.features?.length||0}건 · 기초단위구 연산`);
+    const roadSurfaceFeatures=roadResult.surface_features||[];
+    setAnalysisProgressDetail('가로구역',`ROAD_BT ${roadFeatures.length}건 · RW 실폭면 ${roadSurfaceFeatures.length}건 · 철도/하천 ${barrierResult.features?.length||0}건 · 기초단위구 연산`);
     if(!roadFeatures.length)streetBlockAnalysis.warnings.push('가로구역 병합판정용 TL_SPRD_MANAGE ROAD_BT 도로자료를 확보하지 못했습니다.');
-    const response=await fetch('/api/spatial/street-block',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry:activeGeometry,barrier_features:barrierResult.features,road_features:roadFeatures,max_radius_m:searchRadiusM}),signal:signal||undefined});
+    const response=await fetch('/api/spatial/street-block',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry:activeGeometry,barrier_features:barrierResult.features,road_features:roadFeatures,road_surface_features:roadSurfaceFeatures,max_radius_m:searchRadiusM}),signal:signal||undefined});
     const data=await response.json();if(!response.ok)throw new Error(data.detail||'가로구역 자동추출 실패');
     if(token!==streetBlockAnalysis.requestToken || signal?.aborted)return {status:'cancelled'};
-    streetBlockAnalysis.status=data.status||'unresolved';streetBlockAnalysis.blockFeature=data.block||null;streetBlockAnalysis.blockFeatures=data.blocks?.features||[];streetBlockAnalysis.basicUnitContext=data.basic_unit_context?.features||[];streetBlockAnalysis.roadBarriers=data.road_barriers?.features||[];streetBlockAnalysis.roadContext=data.road_context?.features||[];streetBlockAnalysis.facilityBarriers=data.facility_barriers?.features||[];streetBlockAnalysis.metadata=data.metadata||{};streetBlockAnalysis.errors=[...(barrierResult.errors||[]),...(roadResult.errors||[]).map(error=>({id:'road_manage',error}))];
+    streetBlockAnalysis.status=data.status||'unresolved';streetBlockAnalysis.blockFeature=data.block||null;streetBlockAnalysis.blockFeatures=data.blocks?.features||[];streetBlockAnalysis.basicUnitContext=data.basic_unit_context?.features||[];streetBlockAnalysis.roadBarriers=data.road_barriers?.features||[];streetBlockAnalysis.roadContext=data.road_context?.features||[];streetBlockAnalysis.facilityBarriers=data.facility_barriers?.features||[];streetBlockAnalysis.metadata=Object.assign({},data.metadata||{},{road_fact_source:roadResult.road_facts?'TL_SPRD_RW+TL_SPRD_MANAGE local':'VWorld/cache fallback',rw_feature_count:Number(roadResult.road_facts?.metadata?.rw_count||0),road_surface_feature_count:Number(roadResult.road_facts?.metadata?.surface_count||0),rw_unmatched_count:Number(roadResult.road_facts?.metadata?.rw_unmatched_count||0),rw_mixed_width_count:Number(roadResult.road_facts?.metadata?.rw_mixed_width_count||0)});streetBlockAnalysis.errors=[...(barrierResult.errors||[]),...(roadResult.errors||[]).map(error=>({id:'road_manage',error}))];
     streetBlockAnalysis.blockAreaM2=Number(data.metadata?.block_area_m2);if(!Number.isFinite(streetBlockAnalysis.blockAreaM2))streetBlockAnalysis.blockAreaM2=null;
     streetBlockAnalysis.siteAreaM2=activeGeometry?Number(turf.area(turf.feature(activeGeometry))):null;if(!Number.isFinite(streetBlockAnalysis.siteAreaM2))streetBlockAnalysis.siteAreaM2=null;
     streetBlockAnalysis.stationBufferFeature=streetBlockApplicableStationBuffer(streetBlockAnalysis.thresholdM);
@@ -4939,6 +5009,7 @@ const renewalAnalysis={loaded:false,loading:false,features:[],contextFeatures:[]
 const developmentAnalysis={loaded:false,loading:false,contextFeatures:[],overlaps:[],metadata:{},error:''};
 const hillAnalysis={loaded:false,loading:false,status:'unavailable',source_status:'',intersects:null,overlap_area_m2:null,overlap_pct:null,distance_m:null,contextFeatures:[],overlaps:[],metadata:{},error:''};
 const safeMedicalAnalysis={loaded:false,loading:false,status:'unavailable',items:[],metadata:{},errors:[],warnings:[],sourceStats:{},nearbyCounts:{},message:''};
+const schoolAbsoluteProtectionAnalysis={loaded:false,loading:false,status:'unavailable',known:false,present:null,overlapAreaM2:null,overlapPct:null,zoneCount:0,schoolNames:[],features:[],overlapFeatures:[],source:'',sourceType:'',file:'',error:''};
 const sharedConservationAnalysis={
   loaded:false,loading:false,status:'unavailable',errors:[],
   urbanPark:{known:false,present:null,area_m2:null,pct:null,features:[]},
@@ -5013,6 +5084,7 @@ function resetPlanningAnalysis(){
   developmentAnalysis.loaded=false;developmentAnalysis.loading=false;developmentAnalysis.contextFeatures=[];developmentAnalysis.overlaps=[];developmentAnalysis.metadata={};developmentAnalysis.error='';
   hillAnalysis.loaded=false;hillAnalysis.loading=false;hillAnalysis.status='unavailable';hillAnalysis.source_status='';hillAnalysis.intersects=null;hillAnalysis.overlap_area_m2=null;hillAnalysis.overlap_pct=null;hillAnalysis.distance_m=null;hillAnalysis.contextFeatures=[];hillAnalysis.overlaps=[];hillAnalysis.metadata={};hillAnalysis.error='';
   safeMedicalAnalysis.loaded=false;safeMedicalAnalysis.loading=false;safeMedicalAnalysis.status='unavailable';safeMedicalAnalysis.items=[];safeMedicalAnalysis.metadata={};safeMedicalAnalysis.errors=[];safeMedicalAnalysis.warnings=[];safeMedicalAnalysis.sourceStats={};safeMedicalAnalysis.nearbyCounts={};safeMedicalAnalysis.message='';
+  schoolAbsoluteProtectionAnalysis.loaded=false;schoolAbsoluteProtectionAnalysis.loading=false;schoolAbsoluteProtectionAnalysis.status='unavailable';schoolAbsoluteProtectionAnalysis.known=false;schoolAbsoluteProtectionAnalysis.present=null;schoolAbsoluteProtectionAnalysis.overlapAreaM2=null;schoolAbsoluteProtectionAnalysis.overlapPct=null;schoolAbsoluteProtectionAnalysis.zoneCount=0;schoolAbsoluteProtectionAnalysis.schoolNames=[];schoolAbsoluteProtectionAnalysis.features=[];schoolAbsoluteProtectionAnalysis.overlapFeatures=[];schoolAbsoluteProtectionAnalysis.source='';schoolAbsoluteProtectionAnalysis.sourceType='';schoolAbsoluteProtectionAnalysis.file='';schoolAbsoluteProtectionAnalysis.error='';
   sharedConservationAnalysis.loaded=false;sharedConservationAnalysis.loading=false;sharedConservationAnalysis.status='unavailable';sharedConservationAnalysis.errors=[];sharedConservationAnalysis.urbanPark={known:false,present:null,area_m2:null,pct:null,features:[]};sharedConservationAnalysis.greenbelt={known:false,present:null,area_m2:null,pct:null,features:[]};sharedConservationAnalysis.biotope={known:false,present:null,area_m2:null,pct:null,features:[],affected_pnus:[],rows:[],geometry_basis:'NONE'};sharedConservationAnalysis.publicForest={known:false,present:null,area_m2:null,pct:null,features:[],affected_pnus:[],rows:[],geometry_basis:'NONE'};sharedConservationAnalysis.source={geometry_basis:'mixed'};
   activationArterialAnalysis.loaded=false;activationArterialAnalysis.loading=false;activationArterialAnalysis.status='unavailable';activationArterialAnalysis.roads=[];activationArterialAnalysis.commercialZones=[];activationArterialAnalysis.siteOverlapFeatures=[];activationArterialAnalysis.blockFeature=null;activationArterialAnalysis.stationBufferFeature=null;activationArterialAnalysis.siteOverlapM2=null;activationArterialAnalysis.siteOverlapPct=null;activationArterialAnalysis.blockOverlapM2=null;activationArterialAnalysis.siteIncludes=null;activationArterialAnalysis.blockIncludes=null;activationArterialAnalysis.routeStatus='REVIEW';activationArterialAnalysis.routeConditional=false;activationArterialAnalysis.path='';activationArterialAnalysis.metadata={};activationArterialAnalysis.errors=[];activationArterialAnalysis.warnings=[];
   const renewalSelect=document.getElementById('renewal_area_type');if(renewalSelect)renewalSelect.value='auto';
@@ -5020,7 +5092,7 @@ function resetPlanningAnalysis(){
   ccPlanningBoundary.clearLayers();ccPlanningZoning.clearLayers();ccPlanningDistrict.clearLayers();ccPlanningFacility.clearLayers();ccPlanningDistrictPlan.clearLayers();ccPlanningRenewal.clearLayers();
   ccRenewalStatusContext.clearLayers();ccRenewalStatusOverlap.clearLayers();ccRenewalStatusBoundary.clearLayers();
   ccDevelopmentStatusContext.clearLayers();ccDevelopmentStatusOverlap.clearLayers();ccDevelopmentStatusBoundary.clearLayers();
-  ccZoningLayer.clearLayers();ccZoningBoundary.clearLayers();ccPlanningFacilityLayer.clearLayers();ccPlanningFacilityBoundary.clearLayers();ccSharedUrbanPark.clearLayers();ccSharedGreenbelt.clearLayers();ccSharedBiotopeParcels.clearLayers();ccSharedForestParcels.clearLayers();ccSharedConservationBoundary.clearLayers();ccHillContext.clearLayers();ccHillOverlap.clearLayers();ccHillBoundary.clearLayers();ccActivationArterialContext.clearLayers();ccActivationArterialStation.clearLayers();ccActivationArterialZone.clearLayers();ccActivationArterialOverlap.clearLayers();ccActivationArterialRoad.clearLayers();ccActivationArterialBlock.clearLayers();ccActivationArterialSite.clearLayers();ccSchemeRoadLayer.clearLayers();ccSchemeRoadInfluence.clearLayers();ccSchemeRoadBoundary.clearLayers();ccSafeMedicalPoints.clearLayers();ccSafeMedicalBuffers.clearLayers();ccSafeMedicalFacilitySites.clearLayers();ccSafeMedicalBoundary.clearLayers();
+  ccZoningLayer.clearLayers();ccZoningBoundary.clearLayers();ccPlanningFacilityLayer.clearLayers();ccPlanningFacilityBoundary.clearLayers();ccSharedUrbanPark.clearLayers();ccSharedGreenbelt.clearLayers();ccSharedBiotopeParcels.clearLayers();ccSharedForestParcels.clearLayers();ccSharedConservationBoundary.clearLayers();ccHillContext.clearLayers();ccHillOverlap.clearLayers();ccHillBoundary.clearLayers();ccActivationArterialContext.clearLayers();ccActivationArterialStation.clearLayers();ccActivationArterialZone.clearLayers();ccActivationArterialOverlap.clearLayers();ccActivationArterialRoad.clearLayers();ccActivationArterialBlock.clearLayers();ccActivationArterialSite.clearLayers();ccSchemeRoadLayer.clearLayers();ccSchemeRoadInfluence.clearLayers();ccSchemeRoadBoundary.clearLayers();ccSafeMedicalPoints.clearLayers();ccSafeMedicalBuffers.clearLayers();ccSafeMedicalFacilitySites.clearLayers();ccSafeMedicalBoundary.clearLayers();ccSchoolAbsoluteZones.clearLayers();ccSchoolAbsoluteOverlap.clearLayers();ccSchoolAbsoluteBoundary.clearLayers();
   const ids=['planningZoneSummary','planningDistrictSummary','planningFacilitySummary','planningDistrictPlanSummary','planningRenewalSummary','planningPromotionSummary'];
   for(const id of ids){const el=document.getElementById(id);if(el)el.textContent='미조회';}
   const dl=document.getElementById('planningDetailList');if(dl)dl.textContent='대상구역을 설정하면 자동 조회합니다.';
@@ -5133,6 +5205,16 @@ async function analyzeSafeMedicalReference(){
   }catch(e){safeMedicalAnalysis.status='error';safeMedicalAnalysis.errors=[String(e.message||e)];safeMedicalAnalysis.warnings=[];safeMedicalAnalysis.sourceStats={};safeMedicalAnalysis.nearbyCounts={};safeMedicalAnalysis.message='의료시설 공식 위치자료 조회 실패';}
   finally{safeMedicalAnalysis.loading=false;renderSafeMedicalSpatialStatus();}
   return safeMedicalAnalysis.items;
+}
+async function analyzeSchoolAbsoluteProtection(){
+  if(!activeGeometry)return schoolAbsoluteProtectionAnalysis;
+  const a=schoolAbsoluteProtectionAnalysis;a.loading=true;a.loaded=false;a.status='loading';a.error='';a.features=[];a.overlapFeatures=[];a.schoolNames=[];
+  try{
+    const data=await fetchBackendJson('/api/spatial/school-absolute-protection-intersections',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry:activeGeometry})});
+    a.loaded=true;a.status=data.status||'unavailable';a.known=data.known===true;a.present=data.present===true;a.overlapAreaM2=Number(data.overlap_area_m2||0);a.overlapPct=Number.isFinite(Number(data.overlap_pct))?Number(data.overlap_pct):null;a.zoneCount=Number(data.zone_count||0);a.schoolNames=data.school_names||[];a.features=data.features||[];a.overlapFeatures=data.overlap_features||[];a.source=data.source||'';a.sourceType=data.source_type||'';a.file=data.file||'';
+  }catch(e){a.loaded=false;a.status='error';a.known=false;a.present=null;a.overlapAreaM2=null;a.overlapPct=null;a.zoneCount=0;a.error=String(e.message||e);}
+  finally{a.loading=false;renderSchoolAbsoluteProtectionSpatialStatus();}
+  return a;
 }
 function developmentStatusText(kind){
   const rows=(developmentAnalysis.overlaps||[]).filter(f=>(f.properties||{}).development_kind===kind);
@@ -6569,7 +6651,8 @@ async function runAllAutoAnalyses(options={}){
   results.push(await safeAnalysisStep('정비사업 GIS',async()=>{await analyzeRenewalZones();return {error:renewalAnalysis.error,overlaps:renewalAnalysis.overlaps?.length||0};},180000,{classify:v=>({status:v?.error?'rejected':'fulfilled',detail:v?.error?String(v.error).slice(0,120):`중첩 ${v?.overlaps||0}건`})}));
   results.push(await safeAnalysisStep('개발사업 GIS',async()=>{await analyzeDevelopmentZones();return {error:developmentAnalysis.error,overlaps:developmentAnalysis.overlaps?.length||0};},180000,{classify:v=>({status:v?.error?'rejected':'fulfilled',detail:v?.error?String(v.error).slice(0,120):`중첩 ${v?.overlaps||0}건`})}));
   results.push(await safeAnalysisStep('의료시설',async()=>{await analyzeSafeMedicalReference();return {status:safeMedicalAnalysis.status,error_count:safeMedicalAnalysis.errors?.length||0,item_count:safeMedicalAnalysis.items?.length||0};},240000,{classify:v=>({status:v?.status==='error'?'rejected':(v?.error_count?'partial':'fulfilled'),detail:`후보 ${v?.item_count||0}건${v?.error_count?` · 오류 ${v.error_count}`:''}`})}));
-  try{renderPlanningGIS();renderPlanningFacilitySpatialStatus();renderSharedConservationSpatialStatus();renderIndependentSpatialStatusMaps();}catch(e){console.warn('[site-review] 독립 GIS 최종렌더',e);}
+  results.push(await safeAnalysisStep('학교 절대보호구역',analyzeSchoolAbsoluteProtection,240000,{classify:v=>({status:v?.loaded&&v?.known?'fulfilled':'rejected',detail:v?.loaded&&v?.known?`UOA110 중첩 ${Number(v.zoneCount||0)}건 · ${Math.round(Number(v.overlapAreaM2||0)).toLocaleString('ko-KR')}㎡`:(v?.error||'공식 SHP 미확보')})}));
+  try{renderPlanningGIS();renderPlanningFacilitySpatialStatus();renderSharedConservationSpatialStatus();renderIndependentSpatialStatusMaps();renderSchoolAbsoluteProtectionSpatialStatus();}catch(e){console.warn('[site-review] 독립 GIS 최종렌더',e);}
 
   results.push(await safeAnalysisStep('건축HUB',analyzeBuildingHub,300000,{onTimeout:cancelBuildingHubAnalysis,classify:v=>{
     if(!v)return {status:'rejected',detail:'응답 없음'};
@@ -8580,6 +8663,11 @@ function safeMedicalSpatialEvidenceFacts(){
   return {known:!!safeMedicalAnalysis.loaded,status:safeMedicalAnalysis.status||'unavailable',items,candidates_350:candidates,reference_point_candidates_350:pointCandidates,confirmed_boundaries:confirmed,nearest_boundary:nearestBoundary,nearest:items[0]||null,boundary_geometry_available:confirmed.length>0,criterion:'의료시설 대상부지 경계 350m',source_note:safeMedicalAnalysis.message||'',auto_pass_eligible:candidates.length>0,metadata:{...(safeMedicalAnalysis.metadata||{})},errors:[...(safeMedicalAnalysis.errors||[])],warnings:[...(safeMedicalAnalysis.warnings||[])],source_stats:{...(safeMedicalAnalysis.sourceStats||{})},nearby_counts:{...(safeMedicalAnalysis.nearbyCounts||{})}};
 }
 
+function schoolAbsoluteProtectionSpatialEvidenceFacts(){
+  const a=schoolAbsoluteProtectionAnalysis;
+  return {known:!!a.loaded&&a.known===true,status:a.status||'unavailable',present:a.present===true,overlap_area_m2:Number.isFinite(Number(a.overlapAreaM2))?Number(a.overlapAreaM2):null,overlap_pct:Number.isFinite(Number(a.overlapPct))?Number(a.overlapPct):null,zone_count:Number(a.zoneCount||0),school_names:[...(a.schoolNames||[])],features:[...(a.features||[])],overlap_features:[...(a.overlapFeatures||[])],source:a.source||'',source_type:a.sourceType||'',file:a.file||'',error:a.error||'',criterion:'학교 출입문 50m 이내 사업대상지 제외 · UO101 UOA110 절대보호구역'};
+}
+
 function buildSiteFactStore(){
   const c=commonSchemeData();
   const base=selectedParcelLandBase();
@@ -8599,7 +8687,7 @@ function buildSiteFactStore(){
         nearby:stationSchemeFactSummary().stations,union_coverage:stationSchemeFactSummary().union},
       road_raw:roadRawFacts(c),
       road:compactRoadFacts(c),
-      spatial_evidence:{zoning:zoningSpatialEvidenceFacts(),roads:schemeRoadEvidenceFacts(c),frontage:schemeFrontageEvidenceFacts(c),street_block:streetBlockSpatialEvidenceFacts(),activation_arterial:activationLinearCommercialEvidence(),safe_medical:safeMedicalSpatialEvidenceFacts()},
+      spatial_evidence:{zoning:zoningSpatialEvidenceFacts(),roads:schemeRoadEvidenceFacts(c),frontage:schemeFrontageEvidenceFacts(c),street_block:streetBlockSpatialEvidenceFacts(),activation_arterial:activationLinearCommercialEvidence(),safe_medical:safeMedicalSpatialEvidenceFacts(),school_absolute_protection:schoolAbsoluteProtectionSpatialEvidenceFacts()},
       building:{total:Number(analysisState.metrics.total_buildings||0),records:buildingRecords,source:'건축HUB 표제부',
         note:'공통 현황은 사용승인일·구조·용도·연면적 등 사실값만 저장하며 법적 노후도 판정은 derived.age에서 제도별로 수행'},
       factory_usage:computeFactoryUsageFact(buildingRecords,currentBuildingFeatures,c.factory),
@@ -8877,6 +8965,9 @@ function safeHousingSpatialFacts(store){
   else selected=paths[typ]||station;
   const coverage=selected?.key==='station'?selected.coverage:null;
   const schoolFacilities=(d.planning_facilities||[]).filter(x=>/학교/.test(`${x.name} ${x.category}`));
+  const schoolAbsolute=store.site?.spatial_evidence?.school_absolute_protection||schoolAbsoluteProtectionSpatialEvidenceFacts();
+  const schoolAbsoluteValue=!schoolAbsolute.known?'학교 절대보호구역 SHP 미확보':schoolAbsolute.present?`절대보호구역 중첩 ${Number(schoolAbsolute.overlap_area_m2||0).toLocaleString('ko-KR',{maximumFractionDigits:0})}㎡ · ${Number(schoolAbsolute.zone_count||0)}건`:'절대보호구역 중첩 없음';
+  const schoolAbsoluteStatus=!schoolAbsolute.known?'REVIEW':schoolAbsolute.present?'FAIL':'PASS';
   const characteristic=(d.planning_districts||[]).filter(x=>/특성관리/.test(x.name||''));
   const age=schemeAgeFact(store,'safe');
   const fact={
@@ -8884,7 +8975,7 @@ function safeHousingSpatialFacts(store){
     zoning:{current:c.zoning||'',special_low_zone:specialLowZone,elder_condition:lowZoneElderCondition,supply_type:c.safeSupplyType},
     area:{m2:c.area,min_m2:specialLowZone?5000:1000},
     road:{...road,arterial_candidate:roadEvidence||safeArterialSpatialCandidate()},
-    exclusions:{characteristic,school_facilities:schoolFacilities,downtown_band:{known:false,value:'서울도심 기본계획 배제범위 전용 경계 미연결'},school_entrance_50m:{known:false,value:'학교 출입구 점자료 미연결'},concentration:{known:false,value:'사업 집중도는 행정판단'}},
+    exclusions:{characteristic,school_facilities:schoolFacilities,downtown_band:{known:false,value:'서울도심 기본계획 배제범위 전용 경계 미연결'},school_entrance_50m:{known:schoolAbsolute.known===true,value:schoolAbsoluteValue,status:schoolAbsoluteStatus,overlap_area_m2:schoolAbsolute.overlap_area_m2,overlap_pct:schoolAbsolute.overlap_pct,zone_count:schoolAbsolute.zone_count,source:schoolAbsolute.source,source_type:schoolAbsolute.source_type},concentration:{known:false,value:'사업 집중도는 행정판단'}},
     aging:{assessment:age},
     planning:{density:safeDensity(c),target_zoning:targetOrSuggested(c,'safe')},
     spatial_status_rows:[
@@ -8900,7 +8991,7 @@ function safeHousingSpatialFacts(store){
       spatialFactRow('간선도로변 50m',arterial.value,arterial.status==='PASS'?'CONFIRMED':'REVIEW',arterial.note),
       spatialFactRow('의료시설 중심지역 350m',medical.value,medical.status,medical.note),
       spatialFactRow('중심지역 포함률',coverage==null?'-':`${Number(coverage).toFixed(1)}%`,coverage==null?'REVIEW':'CONFIRMED','대상지 50% 이상 포함 원칙 · 미달 시 통합심의 인정/추가 공공기여 검토'),
-      spatialFactRow('학교 출입구 50m',schoolFacilities.length?`학교시설 중첩/인접 후보 ${schoolFacilities.length}건`:'출입구 점자료 미확보','REVIEW','학교시설 폴리곤은 출입구 50m를 확정할 수 없음'),
+      spatialFactRow('학교 출입구 50m',schoolAbsoluteValue,schoolAbsoluteStatus==='PASS'?'CONFIRMED':schoolAbsoluteStatus,schoolAbsolute.known?'국가공간정보 UO101 UOA110 절대보호구역 원본 중첩으로 판정':'절대보호구역 원본 미확보 · 추가 확인 필요'),
       spatialFactRow('서울도심 배제범위',characteristic.length?characteristic.map(x=>x.name).join(' / '):'전용 경계 미연결','REVIEW','율곡·사직로 이북 및 퇴계로 이남 등 운영기준 배제범위 공식 경계 확인'),
       spatialFactRow('의료시설 저용도지역 어르신 조건',specialLowZone?(c.safeSupplyType==='elder100'?'어르신 100% 공급':'공급조건 미확인'):'비해당',specialLowZone&&c.safeSupplyType==='elder100'?'CONFIRMED':specialLowZone?'REVIEW':'CONFIRMED','자연녹지·제1종일반주거 특례 적용 시 확인')
     ]
@@ -8954,7 +9045,7 @@ function checkSafeFromFacts(store,f){
   const age=f.aging.assessment;
   rows.push(schemeRow('노후도','안심주택 운영기준: 20년 이상 노후건축물 비율 1/2 이상',ageFactValue(age),age?.status||'REVIEW',ageFactNote(age),true,{sourceId:'SAFE_OP',locator:age?.source_locator||'[붙임11] 운영기준 요약본'}));
   rows.push(schemeRow('서울도심 배제범위','운영기준상 서울도심 일부 배제범위',f.exclusions.downtown_band.value,'REVIEW','전용 공간경계가 현황에 연결되기 전 자동 PASS 금지',true,{sourceId:'SAFE_OP',locator:'3-2-2'}));
-  rows.push(schemeRow('학교 출입구 50m','학교 출입구로부터 50m 이내 제외',f.exclusions.school_entrance_50m.value,'REVIEW','학교시설 폴리곤과 출입구 점은 다른 데이터이므로 별도 공간자료 필요',true,{sourceId:'SAFE_OP',locator:'3-2-2'}));
+  rows.push(schemeRow('학교 출입구 50m','학교 출입구로부터 50m 이내 제외',f.exclusions.school_entrance_50m.value,f.exclusions.school_entrance_50m.status||'REVIEW',f.exclusions.school_entrance_50m.known?'국가공간정보 UO101 UOA110 절대보호구역 원본과 대상지 중첩으로 판정':'학교 절대보호구역 공식 SHP 미확보 · 자동 확정 금지',true,{sourceId:'SAFE_OP',locator:'3-2-2'}));
   rows.push(schemeRow('사업 집중도','지역별 과도한 사업 집중 시 제한 가능',f.exclusions.concentration.value,'REVIEW','행정·정책 판단사항',false,{sourceId:'SAFE_OP',locator:'3-2-2'}));
   const den=f.planning.density;
   rows.push(schemeRow('용도지역 변경 범위',den.zone,den.far,'INFO','현황 입지요건 충족과 최종 종상향·계획용적률은 분리 판단',false,{sourceId:'SAFE_OP',locator:'제4장'}));

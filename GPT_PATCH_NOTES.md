@@ -286,3 +286,67 @@ r34에서는 가로구역 분할결과(`rawBlocks`, `separators`)를 다시 이�
 2. 인라인 JavaScript 추출 후 `node --check` PASS.
 3. 수정 전후 `app.html` diff 확인: `safeAnalysisStep` 기본값 및 각 검토 단계 timeout 숫자 변경만 존재하며 분석 함수 본문·호출순서·classify/onTimeout 로직은 변경 없음.
 4. 기존 전체 `python regression_checks.py`는 measurement~progress truth 항목까지 PASS 후, 기준본에 이미 존재하는 구형 r21 assertion(`선행 ROAD_BT 미확보 · 분석 미실행`)에서 중단됨. 이번 timeout 변경과 무관함.
+
+## r46 — 가로구역 r42 기준 복원·고정 (2026-09-07)
+
+### 원인
+- 이후 의료시설 폴백·검토시간 확대가 반영된 최신 작업본(r45)에는 `buildProjectStreetBlockValidation()` 본체는 r42와 동일하게 남아 있었으나, 가로구역 `analyzeStreetBlock()`의 도로 입력 경로가 r42-roadfact 분기와 달라져 `TL_SPRD_RW` 실폭도로 + `TL_SPRD_MANAGE ROAD_BT` 독립 도로 FACT를 소비하지 않는 상태가 되었다.
+- 사용자 최종 결정에 따라 **가로구역 검토는 공유된 `urban-strategy-v2.5.0-r42-roadfact-rw-manage-branch`를 기준으로 고정**하며, 명시적 변경 요청 전까지 이 기준을 임의 변경하지 않는다.
+
+### 수정범위
+- 최신 r45를 기준으로 의료시설 오프라인 지적 폴백과 확대된 검토시간 등 이후 기능은 유지했다.
+- 가로구역에 필요한 r42-roadfact 입력 체인만 복원했다.
+  - 서버 `TL_SPRD_RW` + `TL_SPRD_MANAGE` 로컬 도로 FACT 조회 함수 및 `/api/spatial/road-facts` 엔드포인트 추가.
+  - `data/road_shp_seoul/`의 r42 도로 원자료(RW/MANAGE SHP/SHX/DBF + DATA_SUMMARY) 복원.
+  - 서버 `analyze_street_block()` / `_street_block_from_basic_units()`에 r42와 동일하게 `road_surface_features` 입력을 복원하고, ROAD_BT 폭원에 대응된 RW 실제 도로면을 barrier로 우선 사용하도록 복원.
+  - 브라우저 `analyzeStreetBlock()`을 r42-roadfact 버전과 바이트 수준 동일하게 복원하고, 독립 도로 FACT 조회 helper(`independentRoadFactKey`, `fetchIndependentRoadFacts`, `independentRoadManageCandidate`)를 추가.
+- **보호범위**
+  - `buildProjectStreetBlockValidation()`은 r42/r45/r46 모두 동일 해시로 유지.
+  - 사업구역 `buildIndependentProjectAreaCandidate()`는 r45 그대로 유지(이번 수정에서 변경하지 않음).
+  - `analyzeActivationArterial()`, `runAllAutoAnalyses()`, `renderStreetBlockSpatialStatus()`도 r45 그대로 유지.
+  - 의료시설 폴백, AI 종합분석, 상생주택 보전환경, 검토시간, 기존 UI·도면·팝업은 변경하지 않음.
+
+### 회귀검증
+1. `python -m py_compile app.py regression_checks.py` PASS.
+2. 인라인 JavaScript 추출 후 `node --check` PASS.
+3. 함수 해시 비교:
+   - `buildProjectStreetBlockValidation()` r42 = r45 = r46 동일.
+   - `analyzeStreetBlock()` r46 = r42-roadfact 동일.
+   - `analyzeActivationArterial()`, `buildIndependentProjectAreaCandidate()`, `renderStreetBlockSpatialStatus()`, `runAllAutoAnalyses()` r46 = r45 동일.
+4. 서울시청 인근 로컬 테스트 geometry에서 독립 도로 FACT 실연산 PASS:
+   - `status=resolved`, RW 34건 / MANAGE 38건 / surface association 135건.
+   - 동일 FACT를 `analyze_street_block()`에 전달해 `status=resolved`, 가로구역 후보 3개 산출, `road_surface_count=88`, `road_count=8` 확인.
+   - 수치는 로컬 테스트 geometry 결과이며 법적 기준값이 아님.
+5. 기존 `python regression_checks.py`는 measurement~progress truth까지 PASS 후, 기존 구형 r21 assertion `선행 ROAD_BT 미확보 · 분석 미실행`을 요구하는 지점에서 중단. 현재의 도로 게이트 분리 결정과 정반대인 과거 기대값이며 이번 가로구역 복원과 무관하여 테스트 파일은 변경하지 않음.
+
+## r47 — 안심주택 학교 절대보호구역(UO101/UOA110) 공간 FACT·도면 추가 (2026-09-07)
+
+### 원인
+- 안심주택 운영기준의 학교 출입문 50m 배제항목이 기존에는 `학교 출입구 점자료 미연결` REVIEW로 남아 실제 대상지에서 자동 확인되지 않았다.
+- 사용자가 제공한 국가공간정보 연속주제도 `LSMD_CONT_UO101_5174_11_202608`에는 서울 교육환경보호구역 3,767건이 있으며, MNUM 코드 기준 `UOA110` 절대보호구역 1,699건 / `UOA120` 상대보호구역 1,455건 / `UOA100` 기타 613건으로 확인됐다.
+- 이번 안심주택 배제 FACT에는 법정 학교 출입문 50m 범위에 대응하는 `UOA110` 절대보호구역만 사용하고, 상대보호구역은 섞지 않는다.
+
+### 수정범위
+- 기준본은 `urban-strategy-v2.5.0-r46-streetblock-r42-restored`이며, r42 고정 가로구역 로직은 수정하지 않았다.
+- `school_protection_seoul_202608.zip`을 번들하고 서버 시작 후 최초 호출 시 1회만 파싱하여 `UOA110` 1,699건을 WGS84로 변환·STRtree 색인한다.
+- 신규 서버 FACT:
+  - `/api/spatial/school-absolute-protection-data-status`
+  - `/api/spatial/school-absolute-protection-intersections`
+  - 대상지와 UOA110 절대보호구역의 실제 중첩면적·중첩률·중첩구역 수·학교명을 반환한다.
+  - 별도 50m 버퍼를 임의 생성하지 않고 제공된 공시 절대보호구역 원본 도형을 그대로 사용한다.
+- 공간현황 박스에 `안심주택 학교 절대보호구역 현황` 카드를 추가했다.
+  - 절대보호구역 전체 도형과 대상지 중첩부를 별도 색상으로 도면화.
+  - 대상지 중첩면적/중첩률/중첩구역 수/배제판정을 표시.
+- 안심주택 FACT의 `학교 출입구 50m` 항목을 신규 UOA110 공간 FACT에 연결했다.
+  - 공식 SHP 정상 + 중첩 없음: PASS.
+  - 공식 SHP 정상 + 중첩 있음: 현재 입력 사업대상지에 배제공간이 포함된 것으로 FAIL 표시하고 중첩면적을 도면으로 제시.
+  - SHP 미확보/조회 실패: 기존 원칙대로 REVIEW 유지.
+- 서울도심 기본계획 배제범위 로직은 이번 패치에서 수정하지 않았다. 공식 범역/도로경계 소스 확정 후 별도 구현 대상으로 유지한다.
+
+### 회귀검증
+1. `python -m py_compile app.py regression_checks.py` PASS.
+2. 인라인 JavaScript 추출 후 `node --check` PASS.
+3. 제공 SHP 직접 로드: 전체 3,767건 중 UOA110 1,699건 색인 확인, invalid 1건은 `buffer(0)` 보정 후 geometry quality를 내부 기록.
+4. UOA110 첫 번째 실제 도형을 대상지로 넣은 서버 함수 실연산: `present=true`, `zone_count=1`, 중첩면적 양수, 중첩률 100% 확인.
+5. 보호기능 함수 해시 비교: `buildProjectStreetBlockValidation()`, `analyzeStreetBlock()`, `buildIndependentProjectAreaCandidate()`, `analyzeActivationArterial()`, `renderStreetBlockSpatialStatus()`가 r46과 동일함을 확인.
+6. 기존 `python regression_checks.py`는 progress truth까지 PASS 후, 기준본에 남아 있는 과거 r21 assertion `선행 ROAD_BT 미확보 · 분석 미실행`에서 중단. 현재 도로 게이트 분리 결정과 충돌하는 기존 테스트이며 이번 학교 절대보호구역 변경과 무관하여 테스트 파일은 수정하지 않음.
