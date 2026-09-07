@@ -2654,6 +2654,24 @@ body.service-layout-ready>.shell{display:none!important}
   </section>
 </div>
 
+
+<!-- r48 UI compatibility: legacy JS hooks retained off-screen so UI reorganization cannot break analysis flow. -->
+<div id="r48LegacyJsCompatibility" hidden aria-hidden="true">
+  <input id="lyFrontagePass" type="checkbox" checked>
+  <input id="lyFrontageFail" type="checkbox" checked>
+  <input id="lyRoad6" type="checkbox" checked>
+  <span id="strategyTotalBuildings">-</span>
+  <span id="strategyOldBuildings">-</span>
+  <span id="strategyOldRatio">-</span>
+  <span id="strategySmallCount">-</span>
+  <span id="strategySmallRatio">-</span>
+  <span id="strategySignal">-</span>
+  <span id="strategyAgeJudgement">-</span>
+  <span id="strategyReason">-</span>
+  <span id="ovPlanRenewal">-</span>
+  <span id="ovPlanPromotion">-</span>
+  <span id="ovSummaryFoot">-</span>
+</div>
 <script crossorigin="" src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
@@ -13251,36 +13269,43 @@ function updateRedevelopmentStrategySignal(){
   const smallParcels=Number(document.getElementById('small_parcel_count')?.value)||0;
   const smallRatio=totalParcels>0 ? smallParcels/totalParcels*100 : null;
 
+  // r48 UI 재편에서는 이 레거시 신호 카드를 화면에 노출하지 않는다.
+  // DOM이 없거나 일부만 남아 있어도 분석 파이프라인을 끊지 않도록 모든 출력 대상을 방어한다.
   const totalEl=document.getElementById('strategyTotalBuildings');
-  if(!totalEl)return;
-
-  document.getElementById('strategyOldBuildings').textContent=total?old+'동':'-';
-  totalEl.textContent=total?total+'동':'-';
-  document.getElementById('strategyOldRatio').textContent=ratio==null?'-':ratio.toFixed(1)+'%';
-  document.getElementById('strategySmallCount').textContent=totalParcels?smallParcels+'필지':'-';
-  document.getElementById('strategySmallRatio').textContent=smallRatio==null?'-':smallRatio.toFixed(1)+'%';
-
+  const oldEl=document.getElementById('strategyOldBuildings');
+  const ratioEl=document.getElementById('strategyOldRatio');
+  const smallCountEl=document.getElementById('strategySmallCount');
+  const smallRatioEl=document.getElementById('strategySmallRatio');
   const signal=document.getElementById('strategySignal');
   const judge=document.getElementById('strategyAgeJudgement');
   const reason=document.getElementById('strategyReason');
 
+  if(totalEl)totalEl.textContent=total?total+'동':'-';
+  if(oldEl)oldEl.textContent=total?old+'동':'-';
+  if(ratioEl)ratioEl.textContent=ratio==null?'-':ratio.toFixed(1)+'%';
+  if(smallCountEl)smallCountEl.textContent=totalParcels?smallParcels+'필지':'-';
+  if(smallRatioEl)smallRatioEl.textContent=smallRatio==null?'-':smallRatio.toFixed(1)+'%';
+
+  // 출력 카드가 의도적으로 비노출 상태여도 계산/공간분석 흐름은 그대로 계속한다.
+  if(!signal && !judge && !reason)return;
+
   if(ratio==null){
-    signal.textContent='건축HUB 조회 필요';
-    judge.textContent='미분석';
-    reason.innerHTML=`건축HUB에서 사용승인일·구조·주용도를 불러오면 노후도 기반 초기신호를 표시합니다.${smallRatio!=null?` 현재 90㎡ 미만 필지는 <b>${smallParcels}/${totalParcels}필지 (${smallRatio.toFixed(1)}%)</b>입니다.`:''}`;
+    if(signal)signal.textContent='건축HUB 조회 필요';
+    if(judge)judge.textContent='미분석';
+    if(reason)reason.innerHTML=`건축HUB에서 사용승인일·구조·주용도를 불러오면 노후도 기반 초기신호를 표시합니다.${smallRatio!=null?` 현재 90㎡ 미만 필지는 <b>${smallParcels}/${totalParcels}필지 (${smallRatio.toFixed(1)}%)</b>입니다.`:''}`;
     return;
   }
 
   const smallText = smallRatio==null ? '' : ` · 90㎡ 미만 ${smallParcels}/${totalParcels}필지 (${smallRatio.toFixed(1)}%)`;
 
   if(ratio>=60){
-    signal.textContent='재개발 검토 우선';
-    judge.textContent='노후도 충족';
-    reason.innerHTML=`노후건축물 <b>${old}/${total}동 (${ratio.toFixed(1)}%)</b>${smallText}. 노후도 측면에서는 재개발을 우선 사업방식으로 검토할 수 있으며, 과소필지 비율은 대상지의 물리적 정비여건을 보는 보조지표로 함께 봅니다.`;
+    if(signal)signal.textContent='재개발 검토 우선';
+    if(judge)judge.textContent='노후도 충족';
+    if(reason)reason.innerHTML=`노후건축물 <b>${old}/${total}동 (${ratio.toFixed(1)}%)</b>${smallText}. 노후도 측면에서는 재개발을 우선 사업방식으로 검토할 수 있으며, 과소필지 비율은 대상지의 물리적 정비여건을 보는 보조지표로 함께 봅니다.`;
   }else{
-    signal.textContent='다른 사업방식 비교';
-    judge.textContent='노후도 미충족';
-    reason.innerHTML=`노후건축물 <b>${old}/${total}동 (${ratio.toFixed(1)}%)</b>${smallText}. 재개발 노후도는 낮아 역세권·지구단위·개별개발 등 다른 사업방식과 비교하되, 과소필지 비율은 별도 현황지표로 유지합니다.`;
+    if(signal)signal.textContent='다른 사업방식 비교';
+    if(judge)judge.textContent='노후도 미충족';
+    if(reason)reason.innerHTML=`노후건축물 <b>${old}/${total}동 (${ratio.toFixed(1)}%)</b>${smallText}. 재개발 노후도는 낮아 역세권·지구단위·개별개발 등 다른 사업방식과 비교하되, 과소필지 비율은 별도 현황지표로 유지합니다.`;
   }
 }
 
@@ -13919,10 +13944,10 @@ function buildServiceLayout(){
       </div>
     </section>
     <section class="service-page" id="serviceSitePage">
-      <div class="service-page-head">
+      <div class="service-page-head" style="display:none" aria-hidden="true">
         <div><h2>토지·건축물·도시계획 현황</h2><span>구역계 설정 후 GIS·토지대장·건축물대장 정보를 자동으로 불러옵니다.</span></div>
       </div>
-      <div class="service-overview-grid" id="serviceOverviewGrid">
+      <div class="service-overview-grid engine-data-panel" id="serviceOverviewGrid" aria-hidden="true">
         <button class="service-overview-card" onclick="focusSpatialModule('land')" type="button">
           <div class="service-overview-card-head"><b>토지</b><span>상세보기 ›</span></div>
           <div class="service-overview-metrics"><div><span>필지면적</span><b id="ovLandArea">-</b></div><div><span>필지수</span><b id="ovLandParcels">-</b></div><div><span>제외 기반시설</span><b id="ovLandInfra">-</b></div><div><span>기초 순수대지</span><b id="ovLandNet">-</b></div></div>
@@ -13945,7 +13970,7 @@ function buildServiceLayout(){
         </button>
       </div>
       <div class="service-visual-maps" id="serviceVisualMaps"><div class="service-block-title"><b>사이트 분석</b><span>토지·도시계획·건축물 현황 후 제도별 입지조건을 순서대로 확인</span><div class="service-visual-controls"><button type="button" onclick="setAllSpatialModulesCollapsed(false)">전체 펼치기</button><button type="button" onclick="setAllSpatialModulesCollapsed(true)">전체 접기</button></div></div></div>
-      <div class="service-overview-note"><span>중복 종합현황은 제거했습니다. 상세 판정근거는 아래 사이트 분석과 사업별 추가현황에서 확인합니다.</span></div>
+      <div class="service-overview-note" style="display:none" aria-hidden="true"><span>중복 종합현황은 제거했습니다. 상세 판정근거는 아래 사이트 분석과 사업별 추가현황에서 확인합니다.</span></div>
     </section>`;
   main.insertAdjacentHTML('beforeend','<div class="service-privacy-note">서비스 개선과 이용통계를 위해 익명 식별자, 분석 실행기록, 검토 대상지의 주소·PNU·면적을 수집합니다. 이름·이메일·원문 IP·원본 구역계는 저장하지 않습니다.</div>');
   header.insertAdjacentElement('afterend',main);
