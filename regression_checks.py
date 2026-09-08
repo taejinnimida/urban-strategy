@@ -972,17 +972,21 @@ def check_r8_boundary_map_smallscale_prior() -> None:
     ):
         assert marker in html, marker
 
-    # 지도는 일반/항공/항공+도시계획을 선택하고, 용도지역·도시계획시설을 반투명 오버레이한다.
+    # 메인 검토지도는 VWorld Satellite를 기본으로 두고, 이미 적재된 Fact를
+    # 용도지역 → 지적 → 도시계획시설 순서로 독립 토글한다. 외부 WMS 재호출은 금지한다.
     for marker in (
-        '<option value="normal">일반지도</option>', '<option value="satellite">항공사진</option>',
-        '<option value="satellite_planning">항공사진 + 도시계획</option>',
-        'id="mapOverlayZoning"', 'id="mapOverlayFacility"', 'id="mapOverlayOpacity"',
-        "const mapBaseSatellite=L.tileLayer", "const mainMapZoningWms=L.tileLayer.wms",
-        "const mainMapFacilityWms=L.tileLayer.wms", "function setMapVisualMode(mode)",
-        "function syncMapPlanningOverlay()",
+        "const mapBaseSatellite=L.tileLayer",
+        "mainSatellitePane", "mainZoningPane", "mainCadastralPane", "mainFacilityPane",
+        'id="mainLayerSatelliteToggle"', 'id="mainLayerCadastralToggle"',
+        'id="mainLayerZoningToggle"', 'id="mainLayerFacilityToggle"',
+        'id="mainLayerSatelliteOpacity"', 'id="mainLayerCadastralOpacity"',
+        'id="mainLayerZoningOpacity"', 'id="mainLayerFacilityOpacity"',
+        "function syncMainMapLayerVisibility()", "function refreshMainMapReviewData()",
     ):
         assert marker in html, marker
-    assert "항공·도시계획 오버레이는 구역계 작성을 돕는 시각자료" in html
+    assert "mainMapZoningWms" not in html and "mainMapFacilityWms" not in html
+    assert "compactParcelBaseFeatures()" in html
+    assert "planningAnalysis.zoning||[]" in html and "planningAnalysis.facilities||[]" in html
 
     # 회귀오류 방지: 도형 생성 직후 무거운 API를 자동 실행하지 않고 검토버튼을 활성화한다.
     m_start=html.index("async function measureAndSync()")
@@ -2235,6 +2239,47 @@ def check_review_gates_and_activation_station_separation() -> None:
     complex_check = html[html.index("function checkStationComplexFromFacts"):html.index("function moduleStrengthRisk", html.index("function checkStationComplexFromFacts"))]
     assert "schemeRow('사업대상지 가로구역 점유'" in complex_check
 
+
+def check_main_review_map_layer_toggles() -> None:
+    """2026-09-08: 메인 검토지도 4레이어 토글·Fact 재사용·z-order·투명도/지적선 전환을 고정한다."""
+    html = Path(app.BASE_DIR, "app.html").read_text(encoding="utf-8")
+
+    # 표시 순서는 Satellite → zoning → cadastral → planning facilities.
+    assert "['mainSatellitePane',200]" in html
+    assert "['mainZoningPane',320]" in html
+    assert "['mainCadastralPane',330]" in html
+    assert "['mainFacilityPane',340]" in html
+
+    # 시작화면: 항공사진만 ON. 용도지역은 켤 때 92%로 아래 항공사진이 거의 비치지 않는다.
+    control = html[html.index("mainMapLayerControl.onAdd=function()"):html.index("mainMapLayerControl.addTo(map)")]
+    assert 'id="mainLayerSatelliteToggle" type="checkbox" checked' in control
+    for layer in ("Cadastral", "Zoning", "Facility"):
+        assert f'id="mainLayer{layer}Toggle" type="checkbox" onchange=' in control
+    assert 'id="mainLayerZoningOpacity" type="range" min="0" max="100" value="92"' in control
+    for layer in ("Satellite", "Cadastral", "Facility"):
+        assert f'id="mainLayer{layer}Opacity" type="range" min="0" max="100"' in control
+
+    # 새 fetch 없이 기존 분석 메모리의 동일 Fact를 메인 지도에 미러링한다.
+    refresh = html[html.index("function refreshMainMapReviewData()"):html.index("// 기존 호출 호환", html.index("function refreshMainMapReviewData()"))]
+    assert "const parcels=compactParcelBaseFeatures();" in refresh
+    assert "for(const row of planningAnalysis.zoning||[])" in refresh
+    assert "for(const row of planningAnalysis.facilities||[])" in refresh
+    assert "fetch(" not in refresh
+    assert "mainMapZoningWms" not in html and "mainMapFacilityWms" not in html
+
+    # 용도지역 ON이면 지적선 검정, 항공사진 단독 배경이면 흰색.
+    cadastral = html[html.index("function mainMapCadastralColor()"):html.index("function mainMapZoningStyle", html.index("function mainMapCadastralColor()"))]
+    assert "mainLayerZoningToggle" in cadastral and "return '#111827'" in cadastral
+    assert "return satVisible?'#ffffff':'#111827'" in cadastral
+
+    # 0%를 허용하고 그대로 0..1 opacity로 환산한다.
+    opacity = html[html.index("function mainMapLayerValue"):html.index("function mainMapLayerChecked", html.index("function mainMapLayerValue"))]
+    assert "Math.max(0,Math.min(100,n))/100" in opacity
+    assert "#map{background:#fff!important}" in html
+
+    # 지적·도시계획 갱신 시 메인 지도도 같은 저장소에서 즉시 동기화한다.
+    assert html.count("refreshMainMapReviewData();") >= 4
+
 def check_street_block_expert_confirmation() -> None:
     """전문가 승인 gate와 단일 공통 가로구역 UI는 사용하지 않고 제도별 산정값을 바로 FACT로 쓴다."""
     html = Path(app.BASE_DIR, "app.html").read_text(encoding="utf-8")
@@ -2279,6 +2324,7 @@ def main() -> None:
     _run("remaining four + sources", check_remaining_four_independent_modules_and_sources)
     _run("scheme family separation", check_scheme_family_separation)
     _run("r8 boundary + map + smallscale + prior", check_r8_boundary_map_smallscale_prior)
+    _run("main review map layer toggles", check_main_review_map_layer_toggles)
     _run("r9 refinement placement", check_r9_refinement_placement)
     _run("r10 scheme fail-safe", check_r10_scheme_fail_safe)
     _run("r11 popup + spatial + progress", check_r11_popup_spatial_progress)

@@ -1526,6 +1526,19 @@ body.service-layout-ready>.shell{display:none!important}
   .scheme-detail-summary{grid-template-columns:1fr 1fr}
 }
 
+
+/* 2026-09-08 메인 검토지도 레이어 토글: Satellite → 용도지역 → 지적 → 도시계획시설 */
+#map{background:#fff!important}
+.main-map-layer-control{width:248px;background:rgba(255,255,255,.96);border:1px solid #d0d5dd!important;border-radius:8px!important;box-shadow:0 2px 10px rgba(16,24,40,.16);padding:0;overflow:hidden;font-size:9px;color:#344054}
+.main-map-layer-control .main-map-layer-title{padding:7px 9px;background:#f8fafc;border-bottom:1px solid #eaecf0;font-weight:900;color:#101828;letter-spacing:-.1px}
+.main-map-layer-control .main-map-layer-row{display:grid;grid-template-columns:88px minmax(80px,1fr) 34px;gap:6px;align-items:center;padding:6px 8px;border-bottom:1px solid #f2f4f7}
+.main-map-layer-control .main-map-layer-row:last-of-type{border-bottom:0}
+.main-map-layer-control label{display:flex;align-items:center;gap:5px;font-weight:800;white-space:nowrap;cursor:pointer}
+.main-map-layer-control input[type=checkbox]{margin:0;width:13px;height:13px}
+.main-map-layer-control input[type=range]{width:100%;margin:0;accent-color:#175cd3}
+.main-map-layer-control .main-map-layer-pct{text-align:right;font-variant-numeric:tabular-nums;color:#667085;font-weight:800}
+.main-map-layer-control .main-map-layer-note{padding:6px 8px;background:#fcfcfd;border-top:1px solid #eaecf0;color:#667085;line-height:1.35}
+@media(max-width:720px){.main-map-layer-control{width:218px}.main-map-layer-control .main-map-layer-row{grid-template-columns:78px minmax(68px,1fr) 31px;padding:5px 7px}}
 </style>
 </head>
 <body>
@@ -1737,11 +1750,7 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="boundary-action-row"><button onclick="clearBoundaryShp()" type="button">SHP 입력 초기화</button><button onclick="fitToActiveArea()" type="button">대상지 보기</button></div>
 <div class="boundary-address-status boundary-shp-status" id="boundaryShpStatus">좌표계 정보(.prj)를 포함한 ZIP을 권장합니다. 서울 범위를 벗어난 좌표는 자동 적용하지 않습니다.</div>
 </div>
-<div class="boundary-map-ui">
-<label>지도 배경<select id="mapBaseMode" onchange="setMapVisualMode(this.value)"><option value="normal">일반지도</option><option value="satellite">항공사진</option><option value="satellite_planning">항공사진 + 도시계획</option></select></label>
-<div class="boundary-map-overlays"><label><input id="mapOverlayZoning" type="checkbox" onchange="syncMapPlanningOverlay()">용도지역</label><label><input id="mapOverlayFacility" type="checkbox" onchange="syncMapPlanningOverlay()">도시계획시설</label><label>투명도 <input id="mapOverlayOpacity" type="range" min="15" max="65" value="34" oninput="syncMapPlanningOverlay()"></label></div>
-<div class="boundary-map-note">항공·도시계획 오버레이는 구역계 작성을 돕는 시각자료이며, 사업판정은 기존 공식 벡터 Fact를 별도로 조회하여 사용합니다.</div>
-</div>
+
 </div><div id="map"></div>
 <div class="cc-map-instruction" id="ccMapInstruction">지도에 그리기·지번 입력·SHP 중 하나로 사업구역을 설정하세요.</div>
 <div class="boundary-review-bar"><button id="siteReviewBtn" type="button" onclick="runSiteReview()" disabled>검토하기</button><div class="boundary-review-status" id="siteReviewStatus">구역계를 설정한 뒤 ‘검토하기’를 누르면 공식 공간자료 수집과 사업판정을 실행합니다.</div><div class="site-analysis-progress" id="siteAnalysisProgress" aria-live="polite"><div class="site-analysis-progress-head"><b id="siteAnalysisProgressTitle">분석 대기</b><span id="siteAnalysisElapsed">00:00</span></div><div class="site-analysis-progress-track"><i id="siteAnalysisProgressBar"></i></div><div class="site-analysis-progress-steps" id="siteAnalysisProgressSteps"></div><div class="site-analysis-progress-note" id="siteAnalysisProgressNote">외부 공식자료 응답시간에 따라 수 분이 걸릴 수 있습니다. 미응답 자료는 임의 추정하지 않고 REVIEW로 남깁니다.</div></div></div>
@@ -2903,32 +2912,103 @@ async function mapLimit(items,limit,fn){
 }
 
 const map=L.map('map',{zoomControl:true}).setView([37.5665,126.9780],13);
-const mapBaseNormal=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:20,attribution:'© OpenStreetMap contributors'}).addTo(map);
-const mapBaseSatellite=L.tileLayer(`https://api.vworld.kr/req/wmts/1.0.0/${VWORLD_CLIENT_KEY}/Satellite/{z}/{y}/{x}.jpeg`,{maxZoom:20,attribution:'VWorld Satellite'});
-// 구역계 작성용 시각 오버레이. 판정은 analyzePlanningGIS()의 공식 벡터 Fact를 별도로 사용한다.
-const mainMapZoningWms=L.tileLayer.wms('https://map.seoul.go.kr/geoserver/wms',{layers:'tile_map:upis_c_uq111',format:'image/png',transparent:true,version:'1.1.1',opacity:.34});
-const mainMapFacilityWms=L.tileLayer.wms('https://map.seoul.go.kr/geoserver/wms',{layers:'tile_map:upis_c_uq151,tile_map:upis_c_uq152,tile_map:upis_c_uq153,tile_map:upis_c_uq154,tile_map:upis_c_uq155,tile_map:upis_c_uq156,tile_map:upis_c_uq157,tile_map:upis_c_uq158,tile_map:upis_c_uq159',format:'image/png',transparent:true,version:'1.1.1',opacity:.34});
-let mapVisualMode='normal';
+// 메인 검토지도 레이어 순서: Satellite(200) → 용도지역(320) → 지적(330) → 도시계획시설(340).
+// 대상구역/선택/측정 등 기존 작업 레이어(Leaflet overlayPane=400)는 검토 레이어보다 위에 유지한다.
+for(const [paneName,z] of [['mainSatellitePane',200],['mainZoningPane',320],['mainCadastralPane',330],['mainFacilityPane',340]]){
+  if(!map.getPane(paneName))map.createPane(paneName);
+  const pane=map.getPane(paneName);pane.style.zIndex=String(z);pane.style.pointerEvents='none';
+}
+const mapBaseNormal=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:20,attribution:'© OpenStreetMap contributors'}); // 호환용 정의만 유지, 기본 표시하지 않음
+const mapBaseSatellite=L.tileLayer(`https://api.vworld.kr/req/wmts/1.0.0/${VWORLD_CLIENT_KEY}/Satellite/{z}/{y}/{x}.jpeg`,{maxZoom:20,attribution:'VWorld Satellite',pane:'mainSatellitePane',opacity:1});
 function vworldTileKeyReady(){return !!VWORLD_CLIENT_KEY && !String(VWORLD_CLIENT_KEY).startsWith('__');}
+if(vworldTileKeyReady())mapBaseSatellite.addTo(map);
+
+function mainMapLayerValue(id,fallback){
+  const el=document.getElementById(id),n=Number(el?.value);
+  return Number.isFinite(n)?Math.max(0,Math.min(100,n))/100:fallback;
+}
+function mainMapLayerChecked(id,fallback=false){const el=document.getElementById(id);return el?!!el.checked:fallback;}
+function mainMapCadastralColor(){
+  if(mainMapLayerChecked('mainLayerZoningToggle'))return '#111827';
+  const satVisible=mainMapLayerChecked('mainLayerSatelliteToggle',true)&&mainMapLayerValue('mainLayerSatelliteOpacity',1)>0;
+  return satVisible?'#ffffff':'#111827';
+}
+function mainMapZoningStyle(f){
+  const p=f?.properties||{},spec=zoningColorSpec(p._planning_name||p.name||p.zonename||'');
+  const o=mainMapLayerValue('mainLayerZoningOpacity',.92);
+  return {pane:'mainZoningPane',weight:1.05,color:spec.border,opacity:o,fillColor:spec.fill,fillOpacity:o};
+}
+function mainMapCadastralStyle(){
+  const o=mainMapLayerValue('mainLayerCadastralOpacity',1);
+  return {pane:'mainCadastralPane',weight:1.15,color:mainMapCadastralColor(),opacity:o,fill:false,fillOpacity:0};
+}
+function mainMapFacilityStyle(){
+  const o=mainMapLayerValue('mainLayerFacilityOpacity',.72);
+  return {pane:'mainFacilityPane',weight:1.6,color:'#175cd3',opacity:o,fillColor:'#84adff',fillOpacity:o};
+}
+const mainMapZoningLayer=L.geoJSON(null,{pane:'mainZoningPane',style:mainMapZoningStyle});
+const mainMapCadastralLayer=L.geoJSON(null,{pane:'mainCadastralPane',style:mainMapCadastralStyle});
+const mainMapFacilityLayer=L.geoJSON(null,{pane:'mainFacilityPane',style:mainMapFacilityStyle});
+
+function setMainMapLayerVisible(layer,on){if(on){if(!map.hasLayer(layer))layer.addTo(map);}else if(map.hasLayer(layer))map.removeLayer(layer);}
+function updateMainMapLayerPct(id,valueId){const el=document.getElementById(id),out=document.getElementById(valueId);if(el&&out)out.textContent=`${Math.round(Number(el.value)||0)}%`;}
+function syncMainMapLayerVisibility(){
+  const satOn=mainMapLayerChecked('mainLayerSatelliteToggle',true),zoneOn=mainMapLayerChecked('mainLayerZoningToggle'),cadOn=mainMapLayerChecked('mainLayerCadastralToggle'),facilityOn=mainMapLayerChecked('mainLayerFacilityToggle');
+  const satOpacity=mainMapLayerValue('mainLayerSatelliteOpacity',1);
+  mapBaseSatellite.setOpacity(satOpacity);
+  if(vworldTileKeyReady())setMainMapLayerVisible(mapBaseSatellite,satOn);else setMainMapLayerVisible(mapBaseSatellite,false);
+  setMainMapLayerVisible(mainMapZoningLayer,zoneOn);
+  setMainMapLayerVisible(mainMapCadastralLayer,cadOn);
+  setMainMapLayerVisible(mainMapFacilityLayer,facilityOn);
+  mainMapZoningLayer.setStyle(mainMapZoningStyle);
+  mainMapCadastralLayer.setStyle(mainMapCadastralStyle);
+  mainMapFacilityLayer.setStyle(mainMapFacilityStyle);
+  updateMainMapLayerPct('mainLayerSatelliteOpacity','mainLayerSatellitePct');
+  updateMainMapLayerPct('mainLayerZoningOpacity','mainLayerZoningPct');
+  updateMainMapLayerPct('mainLayerCadastralOpacity','mainLayerCadastralPct');
+  updateMainMapLayerPct('mainLayerFacilityOpacity','mainLayerFacilityPct');
+}
+function refreshMainMapReviewData(){
+  // 새 fetch 금지: 이미 분석 메모리에 적재된 연속지적/용도지역/도시계획시설 Feature만 메인 지도에 미러링한다.
+  mainMapCadastralLayer.clearLayers();
+  // siteDetail_land/공통 미니맵이 이미 확보한 연속지적(대상지 + 45m 주변지적)을 그대로 재사용한다.
+  const parcels=compactParcelBaseFeatures();
+  if(parcels.length)mainMapCadastralLayer.addData({type:'FeatureCollection',features:parcels});
+
+  mainMapZoningLayer.clearLayers();
+  const zones=[];
+  for(const row of planningAnalysis.zoning||[]){if(!row?.feature?.geometry)continue;const f={type:'Feature',id:row.feature.id,geometry:row.feature.geometry,properties:Object.assign({},row.feature.properties||{})};f.properties._planning_name=row.name||f.properties._planning_name||'용도지역';zones.push(f);}
+  if(zones.length)mainMapZoningLayer.addData({type:'FeatureCollection',features:zones});
+
+  mainMapFacilityLayer.clearLayers();
+  const facilities=[];
+  for(const row of planningAnalysis.facilities||[]){if(!row?.feature?.geometry)continue;const f={type:'Feature',id:row.feature.id,geometry:row.feature.geometry,properties:Object.assign({},row.feature.properties||{})};f.properties._planning_name=row.name||row.category||f.properties._planning_name||'도시계획시설';facilities.push(f);}
+  if(facilities.length)mainMapFacilityLayer.addData({type:'FeatureCollection',features:facilities});
+  syncMainMapLayerVisibility();
+}
+// 기존 호출 호환: 메인 지도는 이제 4개 독립 토글로 제어한다.
+let mapVisualMode='satellite';
 function setMapVisualMode(mode){
-  mapVisualMode=['normal','satellite','satellite_planning'].includes(mode)?mode:'normal';
-  if(map.hasLayer(mapBaseNormal))map.removeLayer(mapBaseNormal);
-  if(map.hasLayer(mapBaseSatellite))map.removeLayer(mapBaseSatellite);
-  if(mapVisualMode==='normal'||!vworldTileKeyReady())mapBaseNormal.addTo(map);else mapBaseSatellite.addTo(map);
-  const z=document.getElementById('mapOverlayZoning'),f=document.getElementById('mapOverlayFacility');
-  if(mapVisualMode==='satellite_planning'){if(z)z.checked=true;if(f)f.checked=true;}
-  const sel=document.getElementById('mapBaseMode');if(sel&&sel.value!==mapVisualMode)sel.value=mapVisualMode;
-  syncMapPlanningOverlay();
+  mapVisualMode=mode||'satellite';
+  const sat=document.getElementById('mainLayerSatelliteToggle');if(sat)sat.checked=mapVisualMode!=='normal';
+  syncMainMapLayerVisibility();
 }
-function syncMapPlanningOverlay(){
-  const opacity=Math.max(.15,Math.min(.65,(Number(document.getElementById('mapOverlayOpacity')?.value)||34)/100));
-  mainMapZoningWms.setOpacity(opacity);mainMapFacilityWms.setOpacity(opacity);
-  const zone=!!document.getElementById('mapOverlayZoning')?.checked,facility=!!document.getElementById('mapOverlayFacility')?.checked;
-  if(zone){if(!map.hasLayer(mainMapZoningWms))mainMapZoningWms.addTo(map);}else if(map.hasLayer(mainMapZoningWms))map.removeLayer(mainMapZoningWms);
-  if(facility){if(!map.hasLayer(mainMapFacilityWms))mainMapFacilityWms.addTo(map);}else if(map.hasLayer(mainMapFacilityWms))map.removeLayer(mainMapFacilityWms);
-  // 대상지·입력도형은 항상 오버레이 위로 유지한다.
-  try{drawnItems.bringToFront?.();addressPreviewLayer.bringToFront?.();}catch(e){}
-}
+function syncMapPlanningOverlay(){syncMainMapLayerVisibility();}
+
+const mainMapLayerControl=L.control({position:'topright'});
+mainMapLayerControl.onAdd=function(){
+  const div=L.DomUtil.create('div','main-map-layer-control');
+  div.innerHTML=`<div class="main-map-layer-title">검토지도 레이어</div>
+    <div class="main-map-layer-row"><label><input id="mainLayerSatelliteToggle" type="checkbox" checked onchange="syncMainMapLayerVisibility()">항공사진</label><input id="mainLayerSatelliteOpacity" type="range" min="0" max="100" value="100" oninput="syncMainMapLayerVisibility()" aria-label="항공사진 투명도"><span class="main-map-layer-pct" id="mainLayerSatellitePct">100%</span></div>
+    <div class="main-map-layer-row"><label><input id="mainLayerCadastralToggle" type="checkbox" onchange="syncMainMapLayerVisibility()">지적</label><input id="mainLayerCadastralOpacity" type="range" min="0" max="100" value="100" oninput="syncMainMapLayerVisibility()" aria-label="지적 투명도"><span class="main-map-layer-pct" id="mainLayerCadastralPct">100%</span></div>
+    <div class="main-map-layer-row"><label><input id="mainLayerZoningToggle" type="checkbox" onchange="syncMainMapLayerVisibility()">용도지역</label><input id="mainLayerZoningOpacity" type="range" min="0" max="100" value="92" oninput="syncMainMapLayerVisibility()" aria-label="용도지역 투명도"><span class="main-map-layer-pct" id="mainLayerZoningPct">92%</span></div>
+    <div class="main-map-layer-row"><label><input id="mainLayerFacilityToggle" type="checkbox" onchange="syncMainMapLayerVisibility()">도시계획시설</label><input id="mainLayerFacilityOpacity" type="range" min="0" max="100" value="72" oninput="syncMainMapLayerVisibility()" aria-label="도시계획시설 투명도"><span class="main-map-layer-pct" id="mainLayerFacilityPct">72%</span></div>
+    <div class="main-map-layer-note">표시순서: 항공사진 → 용도지역 → 지적 → 도시계획시설 · 분석에 이미 적재된 벡터 Fact만 재사용</div>`;
+  L.DomEvent.disableClickPropagation(div);L.DomEvent.disableScrollPropagation(div);
+  return div;
+};
+mainMapLayerControl.addTo(map);
+syncMainMapLayerVisibility();
 const drawnItems=new L.FeatureGroup().addTo(map);
 const addressPreviewLayer=L.geoJSON(null,{
   style:{weight:2.2,color:'#175cd3',fillColor:'#d1e9ff',fillOpacity:.26,dashArray:'4,2'},
@@ -5313,6 +5393,7 @@ function refreshCompactMiniMaps(){
   ccLandMiniBoundary.clearLayers();ccLandMiniParcels.clearLayers();ccLandMiniContext.clearLayers();ccLandMiniRoads.clearLayers();
   ccBuildingMiniBoundary.clearLayers();ccBuildingMiniBuildings.clearLayers();ccBuildingMiniContext.clearLayers();
   refreshCommonParcelBases();
+  refreshMainMapReviewData();
 
   if(activeGeometry){
     const bf={type:'Feature',geometry:activeGeometry,properties:{}};
@@ -5545,6 +5626,7 @@ function resetPlanningAnalysis(){
   const fs=document.getElementById('planningFacilityLiveStatus');if(fs)fs.textContent='구역 설정 후 즉시 조회';
   const fsrc=document.getElementById('planningFacilitySourceStatus');if(fsrc)fsrc.textContent='VWorld 벡터 · 서울 UPIS 원본지도 교차확인';
   renderIndependentSpatialStatusMaps();renderZoningSpatialStatus();renderDistrictSpatialStatus();renderPlanningFacilitySpatialStatus();renderHeritageSpatialStatus();renderSharedConservationSpatialStatus();renderHillSpatialStatus();renderAgeMapStatus();renderBuildingUseSpatialStatus();renderRoadConditionMiniMap();renderSchemeRoadEvidence();renderSafeMedicalSpatialStatus();
+  refreshMainMapReviewData();
 }
 
 async function loadRenewalReference(force=false){
@@ -5855,6 +5937,7 @@ function renderPlanningFacilitiesImmediate(){
     if(out.length)ccPlanningFacility.addData({type:'FeatureCollection',features:out});
   }
   try{setTimeout(()=>ccPlanningMini.invalidateSize(false),0);}catch(e){}
+  refreshMainMapReviewData();
   // 도시계획시설 갱신 후 사업구역과 가로구역을 서로 독립 계산한다.
   buildProjectBoundaryCandidate();
   // 공통 가로구역 검토는 폐지. 제도별 가로구역은 runSiteReview의 전용 단계에서 산정한다.
@@ -6143,6 +6226,7 @@ function renderPlanningGIS(){
   updateSiteStatusCard();
   renderIndependentSpatialStatusMaps();
   renderZoningSpatialStatus();
+  refreshMainMapReviewData();
 
   try{syncServiceOverview();}catch(e){}
 }
@@ -6373,6 +6457,7 @@ function syncParcelLayerFromState(){
     arr.push(copy);
   }
   parcelLayer.addData({type:'FeatureCollection',features:arr});
+  refreshMainMapReviewData();
   renderParcelSelectionList();
   recalcSelectedParcelStats();
   refreshAnalysisLayers();
