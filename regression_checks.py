@@ -213,7 +213,8 @@ def check_feedback_and_ui() -> None:
     assert "function candidateDisplayState(name,st=safeCandidateState(name))" in html
     assert "function candidateChangeOpportunity(name,st)" in html
     assert "r.hardGate==='AREA'" in html
-    assert "공개 GIS·입력자료 자동검토에서 충족 사실이 확인되지 않아 미충족 처리" in html
+    assert "공개 GIS·입력자료 자동검토에서 충족 사실이 확인되지 않아 미충족 처리" not in html
+    assert "자료 미확보/사실관계 미확정(REVIEW)을 법적 미충족(FAIL)로 강제변환하지 않는다" in html
     assert "function baseReviewDisclaimerHtml(name)" in html
     assert "결정·고시된 도시관리계획" in html
     assert "min_m2:specialLowZone?5000:1000" in html
@@ -2153,6 +2154,59 @@ def check_three_legal_road_groups() -> None:
     assert "40% 이하" in frontage and "20% 이하" in frontage
 
 
+
+def check_flexible_initial_feasibility_pass1() -> None:
+    """초기 사업가능성은 합법적 유리경로를 반영하고 REVIEW를 FAIL로 변조하지 않는다.
+    1차 범위는 역세권활성화 거리판정, 공통 REVIEW 합성, 재건축 초기판정,
+    공동주택단지형의 재개발 중복추천 차단까지로 한정한다.
+    """
+    html = Path(app.BASE_DIR, "app.html").read_text(encoding="utf-8")
+
+    # 공통 결과합성: REVIEW 보존, FAIL은 개별 모듈이 명시한 경우에만.
+    row0 = html.index("function schemeRow(")
+    row1 = html.index("function selectedHubRecordsForSchemes", row0)
+    row = html[row0:row1]
+    assert "finalStatus='FAIL'" not in row
+    assert "자료 미확보/사실관계 미확정(REVIEW)을 법적 미충족(FAIL)로 강제변환하지 않는다" in row
+    overall0 = html.index("function overallScheme(rows)")
+    overall1 = html.index("function overallLabel", overall0)
+    overall = html[overall0:overall1]
+    assert "mandatory.some(r=>r.status==='REVIEW')" in overall
+    assert "return 'REVIEW'" in overall
+    candidate = html[html.index("function combineCandidateDecision"):html.index("function candidateStageLabel")]
+    assert "regulatory==='REVIEW')return {state:'review',label:'자료확인 필요'" in candidate
+    display = html[html.index("function candidateDisplayState"):html.index("function ccContextFor")]
+    assert "css:'candidate-review',label:'자료확인 필요'" in display
+
+    # 역세권활성화: <=250m 확정 PASS, 250~350m는 허용 가능한 완화경로를 조건부 PASS로 사용.
+    station = html[html.index("function activationStationCriterion"):html.index("function checkActivationFromFacts", html.index("function activationStationCriterion"))]
+    assert "if(distance<=250)" in station
+    assert "else if(distance<=350)" in station
+    assert "250m/350m 어느 적용기준에서도 거리상 포함" in station
+    assert "350m 완화 가능경로를 초기 사업가능성에 유리하게 적용" in station
+    assert "status='REVIEW';conditional=true;path='threshold_pending'" not in station
+    assert "direct:{status:directStatus,conditional:directConditional" in station
+
+    # 재건축 초기판정: 대상지 성격 + 30년 + 규모만 하드게이트. 진단/동의는 INFO 후속절차.
+    assert "function reconstructionEligibleBuildingRecord(r)" in html
+    assert "function housingRenewalSiteCharacter(records,c={})" in html
+    assert "function reconstructionThirtyYearFact(records)" in html
+    recon = html[html.index("function reconstructionSpatialFacts"):html.index("function residentialEnvironmentSpatialFacts", html.index("function reconstructionSpatialFacts"))]
+    for token in ("공동주택·집합건축물 대상", "사업규모", "30년 이상 노후", "재건축진단", "주민동의·조합설립"):
+        assert token in recon, token
+    assert "대상지 면적 10,000㎡ 이상" in recon
+    assert "초기 후보 PASS/FAIL에 사용하지 않음" in recon
+    assert "초기 사업대상 적격성 자동판정에서 제외" in recon
+
+    # 재개발/재건축 중복: 명백한 아파트·연립주택 단지형은 재개발 하드진입에서 제외.
+    redevelop = html[html.index("function redevelopmentSpatialFacts"):html.index("function reconstructionSpatialFacts", html.index("function redevelopmentSpatialFacts"))]
+    assert "siteCharacter.type==='APARTMENT_COMPLEX'?'FAIL'" in redevelop
+    assert "공동주택단지형은 일반 재개발 경로에서 제외하고 재건축을 우선 검토" in redevelop
+    redevelop_check = html[html.index("function checkRedevelopmentFromFacts"):html.index("function reconstructionSpatialFacts", html.index("function checkRedevelopmentFromFacts"))]
+    assert "schemeRow('대상지 유형'" in redevelop_check
+    assert "재건축 우선검토" in redevelop_check
+
+
 def check_street_block_expert_confirmation() -> None:
     """행안부·서울시에 공식 가로구역 GIS 레이어가 없다는 게 확인됐다(2026-09, 전문가 확인).
     그래서 '공식 데이터 연결'이나 '매 회 사람의 수기 확인'을 기다리지 않고, 기초단위구
@@ -2234,6 +2288,7 @@ def main() -> None:
     _run("AI comprehensive explainer", check_ai_comprehensive_explainer)
     _run("r22 growth frontage engine", check_r22_growth_frontage_engine)
     _run("three legal road groups", check_three_legal_road_groups)
+    _run("flexible initial feasibility pass1", check_flexible_initial_feasibility_pass1)
     _run("street block expert confirmation", check_street_block_expert_confirmation)
     _run("release files", check_release_files)
     print("v2.5.0 regression checks: PASS")
