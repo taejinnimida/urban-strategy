@@ -340,8 +340,8 @@ def check_four_independent_scheme_modules() -> None:
     station = html[station_start:station_end]
     assert "250~350m" not in station
     assert "distance_m<=350" not in station
-    assert "승강장 250m 이내에 가로구역의 1/2 이상" in station
-    assert "위원회 인정경로" in station
+    assert "선정사업지 면적 ÷ 해당 가로구역 면적" in station
+    assert "위원회 인정" in station
     assert "STATION_COMPLEX" in html and "verified:false" in html
 
     # 성장잠재권: 35m 간선도로·둘레 1/8·6m 접면과 시행방식별 노후도 Fact를 사용한다.
@@ -507,7 +507,7 @@ def check_spatial_evidence_maps() -> None:
         assert layer in html, layer
     # Fact Store가 도면과 사업엔진의 단일 근거가 된다. 공통 도로는 판정값이 아니라 raw fact로 보존한다.
     assert 'road_raw:roadRawFacts(c)' in html
-    assert 'spatial_evidence:{zoning:zoningSpatialEvidenceFacts(),roads:schemeRoadEvidenceFacts(c),frontage:schemeFrontageEvidenceFacts(c),street_block:streetBlockSpatialEvidenceFacts(),activation_arterial:activationLinearCommercialEvidence(),safe_medical:safeMedicalSpatialEvidenceFacts(),school_absolute_protection:schoolAbsoluteProtectionSpatialEvidenceFacts()}' in html
+    assert 'street_blocks:schemeStreetBlockSpatialEvidenceFacts()' in html and "street_block:schemeStreetBlockFact('smallscale')" in html
     assert 'function roadRawFacts(cArg=null)' in html
     assert 'has_20m_width_candidate' in html
     assert 'has_20m:c.has20' not in html
@@ -1135,9 +1135,9 @@ def check_r11_popup_spatial_progress() -> None:
     # 공간현황은 구역계만 남지 않도록 전체 미니맵을 DOM 이동/최종분석 후 재계산한다.
     assert "function invalidateAllSpatialMaps(refresh=true)" in html
     inv = html[html.index("function invalidateAllSpatialMaps"):html.index("function enforceLocationMapBoundaryOnly", html.index("function invalidateAllSpatialMaps"))]
-    for map_name in ("ccLandMini","ccBuildingMini","ccZoningMini","ccStationMini","ccStreetBlockMini","ccCenterMini","ccRenewalStatusMini","ccDevelopmentStatusMini","ccSchemeRoadMini","ccSafeMedicalMini","ccPlanningMini"):
+    for map_name in ("ccLandMini","ccBuildingMini","ccZoningMini","ccStationMini","ccSmallscaleBlockMini","ccActivationBlockMini","ccStationComplexBlockMini","ccGrowthBlockMini","ccCenterMini","ccRenewalStatusMini","ccDevelopmentStatusMini","ccSchemeRoadMini","ccSafeMedicalMini","ccPlanningMini"):
         assert map_name in inv, map_name
-    for renderer in ("refreshCommonParcelBases()","renderIndependentSpatialStatusMaps()","renderZoningSpatialStatus()","renderStreetBlockSpatialStatus()","renderSchemeRoadEvidence()","renderSafeMedicalSpatialStatus()"):
+    for renderer in ("refreshCommonParcelBases()","renderIndependentSpatialStatusMaps()","renderZoningSpatialStatus()","renderSchemeStreetBlockSpatialStatus()","renderSchemeRoadEvidence()","renderSafeMedicalSpatialStatus()"):
         assert renderer in inv, renderer
     assert "setTimeout(()=>invalidateAllSpatialMaps(true),80);" in html
     assert "map.invalidateSize(false);invalidateAllSpatialMaps(true)" in html
@@ -1212,7 +1212,7 @@ def check_r13_criterion_layer1() -> None:
     assert "share>0" in station
     assert "block_committee" in station
     assert "위원회 심의 가능" in station
-    assert "direct_inside_block_pending" in station
+    assert "block_pending" in station
 
     activation = html[html.index("function checkActivationFromFacts"):html.index("function safeDistrictPlanOverlapState", html.index("function checkActivationFromFacts"))]
     for item in ("승강장 거리", "가로구역 포함", "역세권"):
@@ -1231,89 +1231,64 @@ def check_r13_criterion_layer1() -> None:
     assert '"scheme_module_api": "2026-09-02-r22-station-area-frontage-no-hierarchy"' in py
 
 def check_r14_street_block_auto() -> None:
-    """사업구역과 가로구역 독립 연산 + R43 건축선 사업구역 + r32 가로구역 동결을 확인한다."""
-    root = Path(app.BASE_DIR)
-    html = (root / "app.html").read_text(encoding="utf-8")
-    assert 'id="ccStreetBlockMiniMap"' in html
-    for dom_id in ("spStreetBlockState","spProjectAreaM2","spProjectAreaState","spStreetBlockCount","spStreetBlockTotalArea","spProjectEdgeRoads","spProjectEdgeFacilities","spProjectInternalFacilities","spStreetBlockReview","spStreetBlockTable"):
-        assert f'id="{dom_id}"' in html
-
-    assert "function buildIndependentProjectAreaCandidate(site)" in html
-    assert "function buildProjectBoundaryCandidate()" in html
-    assert "function buildProjectStreetBlockValidation(projectFeature)" in html
-    assert "function classifyProjectFacility(row)" in html
-    assert "function streetBlockPlanningRoadEvidence(row)" in html
-
-    classify = html[html.index("function classifyProjectFacility(row)"):html.index("function streetBlockPlanningRoadEvidence(row)", html.index("function classifyProjectFacility(row)"))]
-    assert "row?.name,row?.category" in classify
-    assert "layer==='LT_C_UPISUQ151'" in classify
-    road_evidence = html[html.index("function streetBlockPlanningRoadEvidence(row)"):html.index("const STREET_BLOCK_BOUNDARY_FACILITY_TOLERANCE_M", html.index("function streetBlockPlanningRoadEvidence(row)"))]
-    assert "기타도시시설" in road_evidence
-    assert "UQS(?:11[1-9]|12[0-3]|190)" in road_evidence
-    assert "ambiguous:layer==='LT_C_UPISUQ151'&&!confirmed" in road_evidence
-
-    # R43 사업구역: 지적 도로필지의 대상지 안쪽 경계 + 검토경계 평행성 + 단절 연결.
-    assert "async function enrichProjectBoundaryParcelCategories(site)" in html
-    assert "function extractProjectBuildingLineCandidates(site)" in html
-    assert "function buildProjectPolygonFromBuildingLines(site,candidateResult)" in html
-    assert "projectParcelIsRoad" in html
-    assert "_project_parallel_angle_deg" in html
-    assert "_project_connector_count" in html
-    assert "건축선 후보 부족" in html
-
-    project_helper = html[html.index("function buildIndependentProjectAreaCandidate(site)"):html.index("function buildProjectBoundaryCandidate()", html.index("function buildIndependentProjectAreaCandidate(site)"))]
-    assert "extractProjectBuildingLineCandidates(site)" in project_helper
-    assert "buildProjectPolygonFromBuildingLines(site,candidateResult)" in project_helper
-    assert "street_blocks / separators / 가로구역 결과를 절대 참조하지 않는다" in project_helper
-    assert "projectStreetBlockValidation" not in project_helper
-    assert "buildProjectStreetBlockValidation" not in project_helper
-    assert "rawBlocks" not in project_helper
-    assert "safeDifferencePolygons(site" not in project_helper
-    assert "_project_independent:true" in project_helper
-    assert "cadastral_road_building_line" in project_helper
-
-    project_block=html[html.index("function buildProjectBoundaryCandidate()"):html.index("function buildProjectStreetBlockValidation(projectFeature)")]
-    assert "buildIndependentProjectAreaCandidate(site)" in project_block
-    assert "buildProjectStreetBlockValidation" not in project_block
-    assert "projectStreetBlockValidation" not in project_block
-    assert "basis:'independent_cadastral_building_line_fact'" in project_block
-
-    # 가로구역: r32 정상 추출 구조를 유지하며 사업구역 결과를 입력으로 사용하지 않는다.
-    street_block=html[html.index("function buildProjectStreetBlockValidation(projectFeature)"):html.index("function finalizeAnalysisGeometryFromSelectedParcels()")]
-    assert "R35 FREEZE" in street_block
-    assert "for(const [pnu,src] of parcelFeatureMap.entries())" in street_block
-    assert "selectedParcelPnus" in street_block
-    assert "for(const rf of currentRoadWidthFeatures||[])" in street_block
-    assert "_separator_kind:'roadbt_road'" in street_block
-    assert "streetBlockPlanningRoadEvidence(row)" in street_block
-    assert "if(!roadEvidence.confirmed)" in street_block
-    assert "planningFacilityReviews.push(review)" in street_block
-    assert "const sepUnion=safeUnionPolygons(separators)" in street_block
-    assert "const rawBlocks=sepUnion?safeDifferencePolygons(projectFeature,[sepUnion]):projectFeature" in street_block
-    assert "analysisState.metrics.project_area" not in street_block
-    assert "safeUnionPolygons([rawBlocks" not in street_block
-    assert "_project_integrated" not in street_block
-
-    # 호출도 서로 독립: 같은 activeGeometry FACT를 각각 받는다.
-    assert "buildProjectBoundaryCandidate();\n  if(activeGeometry)buildProjectStreetBlockValidation(turf.feature(activeGeometry));" in html
-    assert "사업구역·가로구역 독립연산" in html
-    assert "ccStreetBlockProject.eachLayer(l=>l.bringToFront?.())" in html
-    assert "4m 미만 도로" in html
-    assert "공간 FACT 검증용" in html
-    assert "현재 화면은 범위 추출 가능성 검증용이며 기존 사업 판정엔진에는 아직 연결하지 않습니다" in html
-
-
-def check_r15_street_block_4m_conditional() -> None:
-    """Current invariant: 4m is an engine merge threshold applied to ROAD_BT, not a legal width rule."""
+    """2026-09-08: 공통 가로구역을 폐기하고 4개 제도별 가로구역을 독립 산정한다."""
     root = Path(app.BASE_DIR)
     html = (root / "app.html").read_text(encoding="utf-8")
     py = (root / "app.py").read_text(encoding="utf-8")
-    assert "road_min_width_m = 4.0" in py
-    assert "TL_SPRD_MANAGE ROAD_BT" in py
-    assert "4m 미만 도로" in html and "가로구역 경계 제외" in html
-    assert "estimatePolygonShortWidthMeters" in html
-    assert "철도|하천" in py
-    assert "LT_C_UPISUQ151" not in html[html.index("function streetBlockBarrierSpec"):html.index("async function fetchStreetBlockFacilityBarriers")]
+
+    # 사이트분석 공간현황의 마지막 카드 + 4개 독립 미니도면.
+    assert 'id="siteDetail_schemeStreetBlocks"' in html
+    for marker in (
+        'id="ccSmallscaleBlockMiniMap"', 'id="ccActivationBlockMiniMap"',
+        'id="ccStationComplexBlockMiniMap"', 'id="ccGrowthBlockMiniMap"',
+        'id="spSbActivationRelations"', 'id="spSbComplexRelations"',
+        'function analyzeSchemeStreetBlocks(', 'function analyzeOneSchemeStreetBlock(',
+        'function schemeStreetBlockFact(', 'function schemeStreetBlockSpatialEvidenceFacts(',
+    ):
+        assert marker in html, marker
+    # 구형 공통 가로구역 사용자 UI는 제거되어야 한다.
+    assert 'id="siteDetail_streetBlock"' not in html
+    assert 'id="ccStreetBlockMiniMap"' not in html
+    assert 'id="smallscaleBlockSummary"' not in html
+
+    cfg = html[html.index('const SCHEME_STREET_BLOCK_CONFIG='):html.index('function newSchemeStreetBlockState', html.index('const SCHEME_STREET_BLOCK_CONFIG='))]
+    assert "smallscale:{key:'smallscale',label:'가로주택정비',existing_min_m:6,planning_mode:'min_width',planning_min_m:6" in cfg
+    assert "activation:{key:'activation',label:'역세권활성화',existing_min_m:4,planning_mode:'gt_width',planning_min_m:4" in cfg
+    assert "station_complex:{key:'station_complex',label:'역세권복합개발',existing_min_m:4,planning_mode:'gt_width',planning_min_m:4" in cfg
+    assert "growth_potential:{key:'growth_potential',label:'성장잠재권',existing_min_m:6,planning_mode:'none'" in cfg
+
+    # 선택사업지는 seed이고, 서버는 요청별 4m/6m 내부도로 기준과 외곽도로 폐합을 분리한다.
+    for marker in ('road_area_features', 'road_min_width_m', 'outer_closure_all_roads'):
+        assert marker in py, marker
+    assert 'outer_candidate_metric' in py
+    assert '외곽경계' in py and '2차 폐합' in py
+    assert "road_min_width_m:cfg.existing_min_m" in html
+    assert "outer_closure_all_roads:true" in html
+    assert "site_share_formula:'selected_site_intersection_in_block / containing_block_area'" in html
+
+    # 사업구역 로직은 이번 제도별 가로구역 재설계와 분리되어 그대로 존재한다.
+    assert 'function buildIndependentProjectAreaCandidate(site)' in html
+    assert 'function buildProjectBoundaryCandidate()' in html
+
+def check_r15_street_block_4m_conditional() -> None:
+    """제도별 내부도로 임계폭과 계획도로 적용범위를 고정한다."""
+    root = Path(app.BASE_DIR)
+    html = (root / "app.html").read_text(encoding="utf-8")
+    py = (root / "app.py").read_text(encoding="utf-8")
+    cfg = html[html.index('const SCHEME_STREET_BLOCK_CONFIG='):html.index('function newSchemeStreetBlockState', html.index('const SCHEME_STREET_BLOCK_CONFIG='))]
+    assert "existing_min_m:6,planning_mode:'min_width',planning_min_m:6" in cfg  # 가로주택
+    assert cfg.count("existing_min_m:4,planning_mode:'gt_width',planning_min_m:4") == 2  # 역세권 2종: 기존도로 4m+, 도시계획도로 >4m
+    assert "growth_potential:{key:'growth_potential',label:'성장잠재권',existing_min_m:6,planning_mode:'none'" in cfg
+    planning = html[html.index('function schemePlanningRoadCutters'):html.index('async function fetchSchemeNonBuildableCutters')]
+    assert "cfg.planning_mode==='gt_width'" in planning
+    assert "w>threshold" in planning
+    assert "w>=threshold" in planning
+    nonbuild = html[html.index('async function fetchSchemeNonBuildableCutters'):html.index('function schemeBlockComponentsAfterRemoval')]
+    assert "['rail','river','park','green','public_open','square']" in nonbuild
+    # 외곽도로는 폭원 무관, 내부도로는 제도별 threshold라는 서버 구조.
+    assert 'width < road_min_width_m' in py
+    assert 'outer_closure_all_roads' in py
+    assert 'outer_candidate_metric' in py
 
     from shapely.geometry import box, GeometryCollection
     from shapely.strtree import STRtree
@@ -1325,9 +1300,8 @@ def check_r15_street_block_4m_conditional() -> None:
     comp, limited = app._basic_unit_component(0, units, tree, road_corridor, GeometryCollection(), max_units=20)
     assert limited is False and comp == {0}
 
-
 def check_r16_basic_unit_street_block() -> None:
-    """SGIS 기초단위구가 후보 geometry이고 도로는 TL_SPRD_MANAGE ROAD_BT만 쓴다."""
+    """SGIS 기초단위구 seed + RW 실제도로면 + MANAGE ROAD_BT의 제도별 산정 인터페이스를 검증한다."""
     root = Path(app.BASE_DIR)
     html = (root / "app.html").read_text(encoding="utf-8")
     py = (root / "app.py").read_text(encoding="utf-8")
@@ -1335,15 +1309,14 @@ def check_r16_basic_unit_street_block() -> None:
         "def _basic_unit_zip_path()", "def _basic_unit_spatial_layers()",
         "def _shared_edge_barrier", "def _basic_unit_component",
         "def _street_block_from_basic_units", "sgis_basic_unit_roadbt_merge",
-        "basic_unit_is_legal_street_block", "street_block_basic_unit_configured",
+        "road_surface_features", "road_area_features", "outer_closure_all_roads",
     ):
         assert token in py, token
-    assert "basicUnitContext" in html and "ccStreetBlockUnitContext" in html
-    assert "SGIS 기초단위구 후보경계" in html
-    assert "현재 가로구역 산정모듈이 생성한 가로구역 도형·면적·중첩률은 그 자체를 공통 공간 FACT로 사용" in html
-    assert "도로 fallback" not in html[html.index("function renderStreetBlockSpatialStatus"):html.index("async function refreshMiniContextFeatures", html.index("function renderStreetBlockSpatialStatus"))]
-    assert "SCHEME_MODULE_API_VERSION='2026-09-02-r22-station-area-frontage-no-hierarchy'" in html
-    assert '"scheme_module_api": "2026-09-02-r22-station-area-frontage-no-hierarchy"' in py
+    for token in (
+        "basicUnitContext", "function analyzeSchemeStreetBlocks", "fetchIndependentRoadFacts(750)",
+        "road_surface_features:inputs.allSurfaces", "road_area_features:inputs.rwAreas",
+    ):
+        assert token in html, token
 
     lon, lat, d = 127.0152, 37.5586, 0.00008
     geom = {"type":"Polygon","coordinates":[[[lon-d,lat-d],[lon+d,lat-d],[lon+d,lat+d],[lon-d,lat+d],[lon-d,lat-d]]]}
@@ -1353,54 +1326,37 @@ def check_r16_basic_unit_street_block() -> None:
         assert result["status"] == "unavailable", result
         assert md.get("fallback_used") is False
 
-
 def check_r17_spatial_relation_road_facts() -> None:
-    """R17: spatial facts are separated from scheme rules; block/site/station ratios have explicit denominators."""
+    """선정사업지/해당 가로구역 비율은 블록별로 보존하고 여러 블록을 합치지 않는다."""
     root = Path(app.BASE_DIR)
     html = (root / "app.html").read_text(encoding="utf-8")
     py = (root / "app.py").read_text(encoding="utf-8")
-    for token in (
-        "siteShareOfBlockPct","blockCoverageOfSitePct","siteStationSharePct","blockRelations",
-        "site_share_of_block_pct","block_coverage_of_site_pct","station_share_of_block_pct","station_share_of_site_pct",
-    ):
-        assert token in html, token
-    # R38~R46 사이 라벨 문구가 다듬어졌다(뜻은 동일). 예전 4개 문구 대신 현재 실제 쓰이는
-    # 4개 문구로 갱신 — 대상지→가로구역, 가로구역→대상지, 역→가로구역, 종합 4방향을 각각 확인한다.
-    for label in (
-        "사업대상지/가로구역 점유율","대상지 포함률","가로구역 포함률","역세권 입지 종합",
-    ):
-        assert label in html, label
-    assert "frontage_ratio_pct:Number.isFinite(Number(x.boundary_share_pct))" in html
-    assert "boundary_share_pct:pct(x.contact)" in html
-    assert "도로명(없으면 RN_CD/관리번호) 단위로 묶는다" in html
-    assert "faceCountAt(4)" in html and "faceCountAt(35)" in html
-    assert "road4Perimeter" in html and "road6Perimeter" in html and "road8Perimeter" in html
-    assert "ROAD_BT 폭원 · 도로위계 판정 비활성(사용자 제공자료 연결 대기)" in html
-    assert "공간 Fact → 사업모듈 판정 입력" in html
-    # station-complex uses site/block occupancy, while activation uses station/block coverage.
-    station_block = html[html.index("function stationComplexSpatialFacts"):html.index("function checkStationComplexFromFacts")]
-    assert "c.siteShareOfBlock??c.blockShare" in station_block
-    activation_block = html[html.index("function activationSpatialFacts"):html.index("function spatialFactRow", html.index("function activationSpatialFacts"))]
-    assert "activationBlockShare" in activation_block
-    assert "stationBlock" in activation_block
-    # explicit committee path is PASS + caveat, not data-unknown REVIEW.
-    station_check = html[html.index("function checkStationComplexFromFacts"):html.index("function longtermSpatialFacts", html.index("function checkStationComplexFromFacts"))]
-    assert "blockStatus='PASS';blockConditional=true" in station_check
-    # street-block API accepts TL_SPRD_MANAGE centerline features.
-    assert "road_features: List[Dict[str, Any]]" in py
-    assert "도로폭 근거는 TL_SPRD_MANAGE의 ROAD_BT를 유지한다" in py
-    assert "_road_spatial_layers()" not in py[py.index("def _street_block_from_basic_units"):py.index("def analyze_street_block")]
-    smallscale = html[html.index("function smallscaleSpatialFacts(store)"):html.index("function checkSmallscaleFromFacts")]
-    assert "analysis_scope_m2" in smallscale and "retained_road_area_m2" in smallscale
-    assert "through_road_candidate_count" in smallscale and "blockThroughRoadStatus" in smallscale
-    assert "사용자 구역계는 고정" in html and "존치기반시설" in html
-    assert "사업방식의 '대상면적'은 사용자가 확정한 구역계 면적" in html
-    assert "area:Number.isFinite(Number(businessBoundaryArea))" in html
-    assert "retained_facility_area_m2" in smallscale and "analysis_scope_connected" in smallscale
-    derive = html[html.index("function deriveStreetBlockAnalysisScope"):html.index("function streetBlockApplicableStationBuffer")]
-    assert "planningAnalysis.facilities" in derive and "_retained_kind:'facility'" in derive
-    assert "activeGeometry=" not in derive, "analysis-scope derivation must not mutate user boundary"
-
+    # 공통 도로 Fact와 제도별 가로구역 Fact를 분리한다.
+    assert 'road_raw:roadRawFacts(c)' in html
+    assert 'street_blocks:schemeStreetBlockSpatialEvidenceFacts()' in html
+    assert "street_block:schemeStreetBlockFact('smallscale')" in html  # 레거시 소비부 최소 호환
+    relation = html[html.index('function schemeBlockComponentsAfterRemoval'):html.index('function schemeStreetBlockFact')]
+    assert 'site_share_of_block_pct:ia/ba*100' in relation
+    assert 'block_coverage_of_site_pct:ia/siteArea*100' in relation
+    assert 'relations:unique.map' in relation
+    assert 'multi:unique.length>1' in relation
+    assert 'safeUnionPolygons(unique' not in relation
+    renderer = html[html.index('function renderSchemeStreetBlockSpatialStatus'):html.index('async function analyzeActivationArterial')]
+    assert '해당 블록 내 선정사업지' in renderer
+    assert 'rels.length>1' in renderer
+    # 역세권활성화/역세권복합은 선정사업지 ÷ 가로구역 비율을 판정 입력으로 사용한다.
+    activation = html[html.index('function activationStationCandidates'):html.index('function activationStationCriterion')]
+    assert "schemeStreetBlockRelation('activation')" in activation
+    complex_block = html[html.index('function stationComplexSpatialFacts'):html.index('function checkStationComplexFromFacts')]
+    assert "schemeStreetBlockFact('station_complex')" in complex_block
+    assert 'site_share_of_block_pct' in complex_block
+    assert 'relations:complexBlock.relations||[]' in complex_block
+    # 성장잠재권은 6m 가로구역 Fact와 35m/1/8 사업 Rule을 별도로 유지한다.
+    growth = html[html.index('function growthPotentialSpatialFacts'):html.index('function checkGrowthPotentialFromFacts')]
+    assert "schemeStreetBlockFact('growth_potential')" in growth
+    assert '35m' in growth and '12.5' in growth
+    # API가 요청별 road_min_width_m을 받는다.
+    assert 'road_min_width_m: float = Field(4.0' in py
 
 def check_r18_bundled_basic_unit_and_frontage_caveat() -> None:
     """서울 기초단위구 번들과 TL_SPRD_MANAGE 기반 접도 단서를 검증한다."""
@@ -1473,7 +1429,7 @@ def check_r20_progress_truth_and_wide_scheme_facts() -> None:
     html=(Path(__file__).resolve().parent / "app.html").read_text(encoding="utf-8")
     assert "#siteDetail_schemeSpecific{grid-column:1/-1}" in html
     assert "#siteDetail_schemeSpecific #spSchemeFactList{display:grid;grid-template-columns:repeat(3" in html
-    assert "가로구역 polygon/면적 미확보" in html
+    assert "제도별 가로구역" in html and "4개 제도 중" in html
     assert "사용승인일 0동" in html
     assert "주변 도로 0건 · 후보 없음으로 확정하지 않음" in html
     assert "도로 인접관계·대상지 주변 동일 도로구간의 양측 후보" in html
@@ -1643,13 +1599,12 @@ def check_r22_multi_station_fact_engine():
         "same_name_cluster_count",
         "line_data_complete:lineDataComplete",
         "function activationStationCandidates()",
-        "function stationBlockRelation(station,threshold)",
-        "function streetBlockIsAuthoritative()",
-        "function bestLongtermStationFact(c)",
+        "function stationBlockRelation(station,threshold,schemeKey='station_complex')",
+                "function bestLongtermStationFact(c)",
         "bestStationByCoverage(350)",
         "transferCandidate=stationAnalysis.loaded?bestConfirmedTransferStation():null",
         "역세권활성화 공간대상에 포함되면 성장잠재권 활성화구역은 비활성화",
-        "계산된 가로구역이 존재하는데 별도의 전문가 승인 여부 때문에 사업판정을 보류하지 않습니다",
+        "function schemeStreetBlockFact(key)",
         "future_function_interface:{field:'road_hierarchy'",
     ):
         assert token in html, token
@@ -1660,8 +1615,9 @@ def check_r22_multi_station_fact_engine():
     assert "'authoritative_street_block':False" in py
     assert "'future_street_block_interface':'MOIS_BASIC_UNIT_OR_VERIFIED_PLANNING_ROAD_BLOCK'" in py
     # 역세권활성화 간선가로형은 가로구역 경로와 별개로 공개 GIS의 띠형 상업지역을 이진 판정한다.
-    assert "shareKnown&&!blockAuthoritative" not in html
-    assert "if(shareKnown){" in html
+    activation_criterion=html[html.index("function activationStationCriterion"):html.index("function checkActivationFromFacts",html.index("function activationStationCriterion"))]
+    assert "if(shareKnown){" in activation_criterion
+    assert "blockAuthoritative" not in activation_criterion
     assert "arterial.linear_commercial===true?'PASS':'FAIL'" in html
     # 동명 이격역을 단순 역명으로 합쳐 거짓 환승역을 만들지 않는다.
     assert "function stationNameOnlyLineFactAllowed(group){return Number(group?.same_name_cluster_count||1)<=1;}" in html
@@ -2133,21 +2089,21 @@ def check_ai_comprehensive_explainer() -> None:
 def check_three_legal_road_groups() -> None:
     html = Path(app.BASE_DIR, "app.html").read_text(encoding="utf-8")
     for marker in (
-        'id="urbanRenewalFrontageSummary"', 'id="smallscaleBlockSummary"',
+        'id="urbanRenewalFrontageSummary"', 'id="siteDetail_schemeStreetBlocks"',
         'id="frontageSchemeSummary"', 'id="widthRoadSchemeSummary"',
         "const URBAN_RENEWAL_FRONTAGE_SCHEME_KEYS=['redevelopment','residential_environment']",
         "const STATION_SPECIAL_FRONTAGE_SCHEME_KEYS=['activation','station_complex','public_complex']",
         "const WIDTH_ROAD_SCHEME_KEYS=['safe','growth','longterm','innovation_growth','innovation_housing']",
     ):
         assert marker in html, marker
-    # 소정법 현황표는 면적·노후도·주택수까지 합친 routes.block 전체판정을 쓰지 않는다.
-    start=html.index("function renderSmallscaleBlockSummary()")
-    end=html.index("function renderWidthRoadSchemeSummary()",start)
-    block=html[start:end]
-    assert ".street_block" in block
-    assert "street_status" in block and "through_road_status" in block
-    assert "routes?.block" not in block and "routes.block" not in block
-    assert "통과도로 요건 적용 제외" in block
+    # 가로주택정비 가로구역은 사이트분석 마지막의 제도별 전용 카드에서 6m 기준으로 노출한다.
+    ui0=html.index('id="siteDetail_schemeStreetBlocks"')
+    ui1=html.index('</section>',ui0)
+    block=html[ui0:ui1]
+    assert '가로주택정비 가로구역' in block
+    assert '일반도로 6m+ 제외' in block
+    assert '도시계획도로 6m+ 제외' in block
+    assert '4m 초과 통과도로' not in block
     # 도정법 두 사업은 동일한 6m 산식 입력을 사용하고 기준비율만 40%/20%로 분리한다.
     frontage=html[html.index("function schemeFrontageEvidenceFacts(cArg=null)"):html.index("function schemeRoadEvidenceFacts(")]
     assert "frontage_access_buildings_6m" in frontage
@@ -2209,53 +2165,19 @@ def check_flexible_initial_feasibility_pass1() -> None:
 
 
 def check_street_block_expert_confirmation() -> None:
-    """가로구역 산정값은 별도 전문가 승인 없이 공통 공간 FACT로 바로 사용한다.
-    AUTO/PARTIAL은 품질·단서 표시용일 뿐 사업판정 게이트가 아니다. 화면에 계산된
-    가로구역이 있으면 역세권활성화·역세권복합 등 소비 모듈이 그 도형/면적/중첩률을 사용한다.
-    """
+    """전문가 승인 gate와 단일 공통 가로구역 UI는 사용하지 않고 제도별 산정값을 바로 FACT로 쓴다."""
     html = Path(app.BASE_DIR, "app.html").read_text(encoding="utf-8")
-
-    assert "function streetBlockIsAuthoritative(){" in html
-    fn0 = html.index("function streetBlockIsAuthoritative(){")
-    fn1 = html.index("\nfunction ", fn0 + 10)
-    fn_block = html[fn0:fn1]
-    assert "projectStreetBlockValidation?.blocks?.length" in fn_block
-    assert "streetBlockAnalysis.quality==='AUTO'" not in fn_block
-    assert "전문가 승인 여부를 사업판정 게이트로 쓰지 않는다" in fn_block
-
-    # 사람이 클릭하는 수기 확인 입력에 의존하지 않는다.
-    assert "getElementById('street_block_expert_confirm')" not in html
     assert 'id="street_block_expert_confirm"' not in html
-
-    # 화면의 산정 가로구역을 역세권 판정에서 우선 사용한다.
-    rel0 = html.index("function stationBlockRelation(station,threshold){")
-    rel1 = html.index("\nfunction ", rel0 + 20)
-    relation = html[rel0:rel1]
-    assert "projectStreetBlockValidation?.blocks?.length" in relation
-    assert "!['AUTO','PARTIAL'].includes" not in relation
-
-    act0 = html.index("function activationStationCriterion(station,c={}){")
-    act1 = html.index("\nfunction checkActivationFromFacts", act0)
-    activation = html[act0:act1]
-    assert "if(shareKnown){" in activation
-    assert "blockAuthoritative" not in activation
-
-    # 공간현황 가로구역 카드도 전문가 확인이 아니라 산정완료/산정값으로 표시한다.
-    ui0 = html.index('id="spStreetBlockState"')
-    ui1 = html.index('id="ccStreetBlockMiniMap"', ui0)
-    ui = html[ui0:ui1]
-    assert "산정 상태" in html
-    render0 = html.index("function renderStreetBlockSpatialStatus")
-    render1 = html.index("\nfunction ", render0 + 20)
-    render = html[render0:render1]
-    assert "산정완료" in render
-    assert '>산정값</span>' in render
-    assert "전문가 확인" not in render
-
-    # 여러 사업모듈은 동일 인터페이스를 공유한다.
-    consumer_count = html.count("streetBlockIsAuthoritative()")
-    assert consumer_count >= 5, consumer_count
-
+    assert "getElementById('street_block_expert_confirm')" not in html
+    assert 'id="siteDetail_streetBlock"' not in html
+    assert 'id="ccStreetBlockMiniMap"' not in html
+    assert 'id="siteDetail_schemeStreetBlocks"' in html
+    assert "function schemeStreetBlockFact(key)" in html
+    assert "loaded:!!x.loaded" in html
+    # AUTO/PARTIAL은 품질표시이며 별도 수기 승인값을 요구하지 않는다.
+    block = html[html.index('function schemeStreetBlockFact(key)'):html.index('function schemeStreetBlockSpatialEvidenceFacts')]
+    assert 'quality:x.quality' in block
+    assert 'expert' not in block.lower()
 
 def main() -> None:
     _run("measurement", check_measurement)
