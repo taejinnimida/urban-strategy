@@ -1210,9 +1210,12 @@ def check_r13_criterion_layer1() -> None:
     station = html[html.index("function activationStationCriterion"):html.index("function checkActivationFromFacts", html.index("function activationStationCriterion"))]
     assert "share>=50" in station
     assert "share>0" in station
-    assert "block_committee" in station
+    assert "blockCommittee=true" in station
     assert "위원회 심의 가능" in station
-    assert "block_pending" in station
+    # 역세권 범위 overall은 직접거리로만 확정하고 가로구역은 block 하위판정으로 독립 유지한다.
+    assert "let status=directStatus,conditional=directConditional" in station
+    assert "block_pending" not in station
+    assert "no_block_overlap" not in station
 
     activation = html[html.index("function checkActivationFromFacts"):html.index("function safeDistrictPlanOverlapState", html.index("function checkActivationFromFacts"))]
     for item in ("승강장 거리", "가로구역 포함", "역세권"):
@@ -1618,7 +1621,7 @@ def check_r22_multi_station_fact_engine():
     activation_criterion=html[html.index("function activationStationCriterion"):html.index("function checkActivationFromFacts",html.index("function activationStationCriterion"))]
     assert "if(shareKnown){" in activation_criterion
     assert "blockAuthoritative" not in activation_criterion
-    assert "arterial.linear_commercial===true?'PASS':'FAIL'" in html
+    assert "arterial.linear_commercial===true?'PASS':arterial.linear_commercial===false?'FAIL':'REVIEW'" in html
     # 동명 이격역을 단순 역명으로 합쳐 거짓 환승역을 만들지 않는다.
     assert "function stationNameOnlyLineFactAllowed(group){return Number(group?.same_name_cluster_count||1)<=1;}" in html
     assert "const sameNameAmbiguous=!stationNameOnlyLineFactAllowed(group);" in html
@@ -2140,7 +2143,7 @@ def check_flexible_initial_feasibility_pass1() -> None:
     assert "if(distance<=250)" in station
     assert "else if(distance<=350)" in station
     assert "250m/350m 어느 적용기준에서도 거리상 포함" in station
-    assert "350m 완화 가능경로를 초기 사업가능성에 유리하게 적용" in station
+    assert "350m 완화 가능경로를 유리하게 적용" in station
     assert "status='REVIEW';conditional=true;path='threshold_pending'" not in station
     assert "direct:{status:directStatus,conditional:directConditional" in station
 
@@ -2193,6 +2196,44 @@ def check_reconstruction_single_complex_and_streetblock_roadfact_guard() -> None
     assert "road_shp_seoul.zip" in py
     assert "road_review_package.zip" in py
     assert "ROAD_SHAPE_REQUIRED" in py
+
+def check_review_gates_and_activation_station_separation() -> None:
+    """2026-09-08: 도로자료 미확보는 FAIL이 아니라 REVIEW, 역세권 범위와 가로구역 비율은 분리한다."""
+    html = Path(app.BASE_DIR, "app.html").read_text(encoding="utf-8")
+
+    road = html[html.index("function schemeRoadEvidenceFacts"):html.index("function schemeRoadEvidenceStyle", html.index("function schemeRoadEvidenceFacts"))]
+    assert "(raw.maxWidth==null||raw.road35Perimeter==null)?'REVIEW'" in road
+    assert "(!longtermGeometryKnown||c.arterialIntersectionDist==null)?'REVIEW'" in road
+    assert "status:raw.maxWidth==null?'REVIEW':(igrA&&igrB?'CONFIRMED':'FAIL')" in road
+    assert "(housingThreshold==null||raw.maxWidth==null||c.enclosed6==null)?'REVIEW'" in road
+    # 이미 맞던 두 제도는 기존 패턴 유지.
+    assert "station_complex',label:'역세권복합개발',threshold:4,status:(c.road4Faces==null||c.has8==null)?'REVIEW'" in road
+    assert "public_complex',label:'도심공공주택복합',threshold:4,status:(c.road4Faces==null||c.has8==null)?'REVIEW'" in road
+
+    arterial = html[html.index("async function analyzeActivationArterial()"):html.index("function updateActivationArterialBlockLink", html.index("async function analyzeActivationArterial()"))]
+    assert "const roadFetchFailed=roadRes.status!=='fulfilled',zoneFetchFailed=zoneRes.status!=='fulfilled';" in arterial
+    assert "else if(roadFetchFailed||zoneFetchFailed){routeStatus='REVIEW'" in arterial
+    assert "공개 GIS 정상조회 · 주변 도로 후보 0건 · 자동판정상 미충족" in arterial
+    assert "activationArterialAnalysis.routeStatus='REVIEW'" in arterial
+    assert "자동분석 오류 · 공개 GIS 자동판정 확인불가" in arterial
+    relink = html[html.index("function updateActivationArterialBlockLink"):html.index("function renderActivationArterialSpatialStatus", html.index("function updateActivationArterialBlockLink"))]
+    assert "metadata?.source_fetch_failed===true" in relink
+    render = html[html.index("function renderActivationArterialSpatialStatus"):html.index("function cancelStreetBlockAnalysis", html.index("function renderActivationArterialSpatialStatus"))]
+    assert "activationArterialAnalysis.routeStatus==='REVIEW'?'확인필요'" in render
+
+    station = html[html.index("function activationStationCriterion"):html.index("function checkActivationFromFacts", html.index("function activationStationCriterion"))]
+    assert "let status=directStatus,conditional=directConditional" in station
+    assert "if(directStatus==='PASS')path=directConditional?'direct_inside_relaxed':'direct_inside';" in station
+    assert "block_pending" not in station and "no_block_overlap" not in station
+    activation = html[html.index("function checkActivationFromFacts"):html.index("function safeDistrictPlanOverlapState", html.index("function checkActivationFromFacts"))]
+    assert "schemeRow('가로구역 포함'" in activation
+    assert "arterial.linear_commercial===true?'PASS':arterial.linear_commercial===false?'FAIL':'REVIEW'" in activation
+    growth_gate = html[html.index("function activationLocationGateForGrowth"):html.index("function effectiveSharedHousingType", html.index("function activationLocationGateForGrowth"))]
+    assert "const sd=activationStationCriterion" in growth_gate
+    assert "const stationStatus=sd.overall.status;" in growth_gate
+    # 역세권복합개발의 가로구역 법정요건은 독립 schemeRow로 그대로 남는다.
+    complex_check = html[html.index("function checkStationComplexFromFacts"):html.index("function moduleStrengthRisk", html.index("function checkStationComplexFromFacts"))]
+    assert "schemeRow('사업대상지 가로구역 점유'" in complex_check
 
 def check_street_block_expert_confirmation() -> None:
     """전문가 승인 gate와 단일 공통 가로구역 UI는 사용하지 않고 제도별 산정값을 바로 FACT로 쓴다."""
@@ -2262,6 +2303,7 @@ def main() -> None:
     _run("three legal road groups", check_three_legal_road_groups)
     _run("flexible initial feasibility pass1", check_flexible_initial_feasibility_pass1)
     _run("reconstruction single complex + streetblock road fact guard", check_reconstruction_single_complex_and_streetblock_roadfact_guard)
+    _run("review gates + activation station separation", check_review_gates_and_activation_station_separation)
     _run("street block expert confirmation", check_street_block_expert_confirmation)
     _run("release files", check_release_files)
     print("v2.5.0 regression checks: PASS")
