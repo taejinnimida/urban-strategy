@@ -1340,7 +1340,7 @@ def check_r16_basic_unit_street_block() -> None:
         assert token in py, token
     assert "basicUnitContext" in html and "ccStreetBlockUnitContext" in html
     assert "SGIS 기초단위구 후보경계" in html
-    assert "현재 내장 기초단위구/ROAD_BT 형상은 법정 가로구역이 아니므로" in html
+    assert "현재 가로구역 산정모듈이 생성한 가로구역 도형·면적·중첩률은 그 자체를 공통 공간 FACT로 사용" in html
     assert "도로 fallback" not in html[html.index("function renderStreetBlockSpatialStatus"):html.index("async function refreshMiniContextFeatures", html.index("function renderStreetBlockSpatialStatus"))]
     assert "SCHEME_MODULE_API_VERSION='2026-09-02-r22-station-area-frontage-no-hierarchy'" in html
     assert '"scheme_module_api": "2026-09-02-r22-station-area-frontage-no-hierarchy"' in py
@@ -1649,18 +1649,19 @@ def check_r22_multi_station_fact_engine():
         "bestStationByCoverage(350)",
         "transferCandidate=stationAnalysis.loaded?bestConfirmedTransferStation():null",
         "역세권활성화 공간대상에 포함되면 성장잠재권 활성화구역은 비활성화",
-        "현재 내장 기초단위구/ROAD_BT 형상은 법정 가로구역이 아니므로 행안부/공식 가로구역 데이터 연결 전 자동 PASS·FAIL 금지",
+        "계산된 가로구역이 존재하는데 별도의 전문가 승인 여부 때문에 사업판정을 보류하지 않습니다",
         "future_function_interface:{field:'road_hierarchy'",
     ):
         assert token in html, token
     # 후보검색 1km는 판정기준이 아니라 수집범위이며, 개별 역의 250/350/500m 면적관계를 보존한다.
     assert "coverage250:m250.coverage_pct" in html and "coverage350:m350.coverage_pct" in html and "coverage500:m500.coverage_pct" in html
     assert "overlap250M2:m250.overlap_m2" in html and "full500:m500.full_containment" in html
-    # 현 SGIS 기초단위구 자동추정은 법정 가로구역으로 승격하지 않는다. 향후 공식 데이터 인터페이스만 열어둔다.
+    # 서버 메타데이터의 공식성 여부는 보존하되, 프론트 판정은 계산된 가로구역 결과 자체를 FACT로 사용한다.
     assert "'authoritative_street_block':False" in py
     assert "'future_street_block_interface':'MOIS_BASIC_UNIT_OR_VERIFIED_PLANNING_ROAD_BLOCK'" in py
-    # 역세권활성화 간선가로형은 공식 가로구역 유무와 별개로 공개 GIS의 띠형 상업지역을 이진 판정한다.
-    assert "shareKnown&&!blockAuthoritative" in html
+    # 역세권활성화 간선가로형은 가로구역 경로와 별개로 공개 GIS의 띠형 상업지역을 이진 판정한다.
+    assert "shareKnown&&!blockAuthoritative" not in html
+    assert "if(shareKnown){" in html
     assert "arterial.linear_commercial===true?'PASS':'FAIL'" in html
     # 동명 이격역을 단순 역명으로 합쳐 거짓 환승역을 만들지 않는다.
     assert "function stationNameOnlyLineFactAllowed(group){return Number(group?.same_name_cluster_count||1)<=1;}" in html
@@ -1691,7 +1692,7 @@ def check_r22_station_rule_engine_v4():
     assert "const lineDataComplete=!sameNameAmbiguous&&transferConfirmed" in html
     assert "const transferConfirmed=official?.transfer===true" in html
 
-    # 역세권활성화: 거리 하나가 아니라 역별 적용반경 + 가로구역. 비공식 블록은 자동 PASS 금지.
+    # 역세권활성화: 거리 하나가 아니라 역별 적용반경 + 계산된 가로구역 관계값으로 판정한다.
     a0=html.index('function activationSpatialFacts(store)')
     a1=html.index('function growthPotentialSpatialFacts(store)',a0)
     activation=html[a0:a1]
@@ -2208,11 +2209,9 @@ def check_flexible_initial_feasibility_pass1() -> None:
 
 
 def check_street_block_expert_confirmation() -> None:
-    """행안부·서울시에 공식 가로구역 GIS 레이어가 없다는 게 확인됐다(2026-09, 전문가 확인).
-    그래서 '공식 데이터 연결'이나 '매 회 사람의 수기 확인'을 기다리지 않고, 기초단위구
-    병합·도로장벽·시설장벽 조회가 전부 에러 없이 끝난 AUTO 품질 결과 자체를 신뢰 근거로
-    삼는다 — 산정 알고리즘 자체가 검증된 방법론이라는 전제다. 일부 조회가 실패한 PARTIAL
-    품질은 여전히 REVIEW로 남아야 한다(사람이 매번 버튼을 누르는 별도 판정 단계는 없다).
+    """가로구역 산정값은 별도 전문가 승인 없이 공통 공간 FACT로 바로 사용한다.
+    AUTO/PARTIAL은 품질·단서 표시용일 뿐 사업판정 게이트가 아니다. 화면에 계산된
+    가로구역이 있으면 역세권활성화·역세권복합 등 소비 모듈이 그 도형/면적/중첩률을 사용한다.
     """
     html = Path(app.BASE_DIR, "app.html").read_text(encoding="utf-8")
 
@@ -2220,43 +2219,42 @@ def check_street_block_expert_confirmation() -> None:
     fn0 = html.index("function streetBlockIsAuthoritative(){")
     fn1 = html.index("\nfunction ", fn0 + 10)
     fn_block = html[fn0:fn1]
-    assert "streetBlockAnalysis.quality==='AUTO'" in fn_block
-    # 공식 데이터 경로(향후 실제로 생기면)가 여전히 최우선이어야 한다.
-    assert "authoritative_street_block===true" in fn_block
-    assert fn_block.index("authoritative_street_block===true") < fn_block.index("streetBlockAnalysis.quality==='AUTO'")
-    # 사람이 클릭하는 수기 확인 입력에 의존하면 안 된다 — 알고리즘 품질 신호만으로 판정한다.
+    assert "projectStreetBlockValidation?.blocks?.length" in fn_block
+    assert "streetBlockAnalysis.quality==='AUTO'" not in fn_block
+    assert "전문가 승인 여부를 사업판정 게이트로 쓰지 않는다" in fn_block
+
+    # 사람이 클릭하는 수기 확인 입력에 의존하지 않는다.
     assert "getElementById('street_block_expert_confirm')" not in html
     assert 'id="street_block_expert_confirm"' not in html
 
-    assert "function streetBlockAuthoritativeLabel(){" in html
-    assert "'공식'" in html
+    # 화면의 산정 가로구역을 역세권 판정에서 우선 사용한다.
+    rel0 = html.index("function stationBlockRelation(station,threshold){")
+    rel1 = html.index("\nfunction ", rel0 + 20)
+    relation = html[rel0:rel1]
+    assert "projectStreetBlockValidation?.blocks?.length" in relation
+    assert "!['AUTO','PARTIAL'].includes" not in relation
 
-    # 이 하나의 인터페이스(streetBlockIsAuthoritative)를 역세권활성화·역세권복합개발 등
-    # 여러 판정이 공통으로 참조해야 한다 — 제도마다 따로 판정 로직을 만들지 않는다.
+    act0 = html.index("function activationStationCriterion(station,c={}){")
+    act1 = html.index("\nfunction checkActivationFromFacts", act0)
+    activation = html[act0:act1]
+    assert "if(shareKnown){" in activation
+    assert "blockAuthoritative" not in activation
+
+    # 공간현황 가로구역 카드도 전문가 확인이 아니라 산정완료/산정값으로 표시한다.
+    ui0 = html.index('id="spStreetBlockState"')
+    ui1 = html.index('id="ccStreetBlockMiniMap"', ui0)
+    ui = html[ui0:ui1]
+    assert "산정 상태" in html
+    render0 = html.index("function renderStreetBlockSpatialStatus")
+    render1 = html.index("\nfunction ", render0 + 20)
+    render = html[render0:render1]
+    assert "산정완료" in render
+    assert '>산정값</span>' in render
+    assert "전문가 확인" not in render
+
+    # 여러 사업모듈은 동일 인터페이스를 공유한다.
     consumer_count = html.count("streetBlockIsAuthoritative()")
     assert consumer_count >= 5, consumer_count
-
-
-def check_activation_direct_distance_pass() -> None:
-    """역세권활성화: 250m 이내는 가로구역 자료 유무·적용거리 확정 여부와 무관하게 즉시 PASS.
-    250m 초과~350m는 350m가 실제 적용 threshold일 때만 해당하며, 그 적용 자체가 REVIEW(완화
-    가능성 검토 중)면 PASS+단서로 유지한다. 이 직접거리 확정은 그 뒤에 있는
-    'threshold_status!==CONFIRMED면 PASS를 REVIEW로 되돌리는' 재검사에 다시 걸리면 안 된다
-    (distanceResolved로 방어).
-    """
-    html = Path(app.BASE_DIR, "app.html").read_text(encoding="utf-8")
-
-    fn0 = html.index("function activationStationCandidates(){")
-    fn1 = html.index("\nfunction stationSchemeFactSummary", fn0)
-    fn_block = html[fn0:fn1]
-    assert "distanceResolved" in fn_block
-    assert "Number(st.distance_m)<=250" in fn_block
-    assert "threshold===350&&Number(st.distance_m)<=350" in fn_block
-    assert "if(!distanceResolved&&status==='PASS'&&thresholdInfo.status!=='CONFIRMED')" in fn_block
-
-    # 가로구역 50%/30% 위원회경로 등 기존 block 기반 로직은 이번에 손대지 않는다.
-    assert "Number(block.max_share_pct)>=50" in fn_block
-    assert "1/2 미만 위원회 인정경로 검토" in fn_block
 
 
 def main() -> None:
@@ -2312,7 +2310,6 @@ def main() -> None:
     _run("three legal road groups", check_three_legal_road_groups)
     _run("flexible initial feasibility pass1", check_flexible_initial_feasibility_pass1)
     _run("street block expert confirmation", check_street_block_expert_confirmation)
-    _run("activation direct distance pass", check_activation_direct_distance_pass)
     _run("release files", check_release_files)
     print("v2.5.0 regression checks: PASS")
 
