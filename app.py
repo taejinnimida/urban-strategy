@@ -1776,6 +1776,62 @@ def _road_width_m(properties: Dict[str, Any]) -> Optional[float]:
 
 
 
+ROAD_SHAPE_REQUIRED = tuple(
+    f"{stem}{ext}"
+    for stem in ("TL_SPRD_RW", "TL_SPRD_MANAGE")
+    for ext in (".shp", ".shx", ".dbf")
+)
+
+
+def _road_shape_dir_complete(path: str) -> bool:
+    return bool(path) and os.path.isdir(path) and all(
+        os.path.isfile(os.path.join(path, name)) and os.path.getsize(os.path.join(path, name)) > 0
+        for name in ROAD_SHAPE_REQUIRED
+    )
+
+
+@lru_cache(maxsize=1)
+def _road_shape_zip_cache_dir() -> Optional[str]:
+    """평탄화 배포에서도 도로 FACT 압축파일을 자동 사용한다.
+
+    우선순위는 ``road_shp_seoul.zip``(RW+MANAGE 최소패키지)이고,
+    기존 검토패키지 ``road_review_package.zip``도 하위호환으로 읽는다.
+    전체 ZIP을 풀지 않고 필요한 6개 SHP 구성파일만 /tmp에 1회 추출한다.
+    """
+    candidates = [
+        os.path.join(STRUCTURED_DATA_DIR, "road_shp_seoul.zip"),
+        os.path.join(BASE_DIR, "road_shp_seoul.zip"),
+        os.path.join(STRUCTURED_DATA_DIR, "road_review_package.zip"),
+        os.path.join(BASE_DIR, "road_review_package.zip"),
+    ]
+    archive = next((p for p in candidates if os.path.isfile(p) and os.path.getsize(p) > 0), None)
+    if not archive:
+        return None
+    cache_dir = os.path.join("/tmp", "urban_strategy_road_shp_seoul")
+    os.makedirs(cache_dir, exist_ok=True)
+    if _road_shape_dir_complete(cache_dir):
+        return cache_dir
+    try:
+        with zipfile.ZipFile(archive) as zf:
+            names = zf.namelist()
+            for required in ROAD_SHAPE_REQUIRED:
+                member = next((n for n in names if n.replace('\\','/').endswith('/' + required) or n.replace('\\','/') == required), None)
+                if not member:
+                    logging.warning("road zip missing %s in %s", required, archive)
+                    return None
+                target = os.path.join(cache_dir, required)
+                with zf.open(member) as src, open(target, 'wb') as dst:
+                    while True:
+                        chunk = src.read(1024 * 1024)
+                        if not chunk:
+                            break
+                        dst.write(chunk)
+    except Exception as exc:
+        logging.warning("road zip extract failed %s: %s", archive, exc)
+        return None
+    return cache_dir if _road_shape_dir_complete(cache_dir) else None
+
+
 def _road_shape_dir() -> str:
     """서울 도로도형 원본 SHP(RW/MANAGE) 설치 경로.
 
@@ -1784,9 +1840,13 @@ def _road_shape_dir() -> str:
     즉 EPSG:5179로 읽는다. 법적 기준값이 아니라 원자료 CRS 정의다.
     """
     structured = os.path.join(STRUCTURED_DATA_DIR, "road_shp_seoul")
-    if os.path.isdir(structured):
+    if _road_shape_dir_complete(structured):
         return structured
-    return os.path.join(BASE_DIR, "road_shp_seoul")
+    flat = os.path.join(BASE_DIR, "road_shp_seoul")
+    if _road_shape_dir_complete(flat):
+        return flat
+    cached = _road_shape_zip_cache_dir()
+    return cached or flat
 
 def _road_shape_base(stem: str) -> Optional[str]:
     base = os.path.join(_road_shape_dir(), stem)

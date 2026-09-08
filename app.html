@@ -4943,6 +4943,16 @@ async function analyzeOneSchemeStreetBlock(key,roadFacts,planningRoadBase,nonBui
   if(!activeGeometry){state.status='unavailable';state.loading=false;return state;}
   const site=turf.feature(activeGeometry),siteArea=turf.area(site),inputs=schemeExistingRoadInputs(roadFacts,cfg.existing_min_m,site);
   state.siteAreaM2=siteArea;state.existingRoadCutters=inputs.cutters.map(cloneFeature);
+  const validRoadBtCount=(inputs.allManage||[]).filter(f=>Number.isFinite(schemeRoadWidthM(f))).length;
+  state.metadata={road_bt_feature_count:validRoadBtCount,existing_road_min_m:cfg.existing_min_m};
+  // 4m/6m 제도별 분리는 ROAD_BT 폭원 FACT가 있어야만 계산할 수 있다.
+  // 폭원 0건인데 기초단위구 seed만으로 4개 제도에 같은 도형을 그리는 것은 거짓 산정이므로 중단한다.
+  if(validRoadBtCount===0){
+    state.loaded=true;state.loading=false;state.status='review';state.quality='NONE';
+    state.warnings.push(`ROAD_BT 폭원 FACT 미확보 · ${cfg.existing_min_m}m 내부도로 분리기준 적용 불가`);
+    state.metadata=Object.assign({},state.metadata,{road_fact_missing:true,reason:'TL_SPRD_MANAGE ROAD_BT 폭원 FACT 미확보 · 제도별 가로구역 산정 보류'});
+    return state;
+  }
   const pr=schemePlanningRoadCutters(planningRoadBase,key);state.planningRoadCutters=(pr.cutters||[]).map(cloneFeature);
   if((pr.reviews||[]).length)state.warnings.push(`도시계획도로 폭원 확인 ${pr.reviews.length}건`);
   if((planningRoadBase?.errors||[]).length&&cfg.planning_mode!=='none')state.errors.push(...planningRoadBase.errors.map(error=>({id:'planning_road',error})));
@@ -4961,7 +4971,7 @@ async function analyzeOneSchemeStreetBlock(key,roadFacts,planningRoadBase,nonBui
   }
   state.status=state.blockFeature?'resolved':(data.status||'unresolved');
   state.quality=state.blockFeature?(state.errors.length||data.status==='partial'?'PARTIAL':'AUTO'):'NONE';state.loaded=true;state.loading=false;
-  state.metadata=Object.assign({},data.metadata||{},{scheme:key,existing_road_min_m:cfg.existing_min_m,planning_mode:cfg.planning_mode,planning_road_min_m:cfg.planning_min_m,outer_closure_all_roads:true,road_space_removed:true,nonbuildable_removed:cfg.exclude_nonbuildable===true,site_share_formula:'selected_site_intersection_in_block / containing_block_area',planning_road_count:state.planningRoadCutters.length,nonbuildable_count:state.exclusionCutters.length});
+  state.metadata=Object.assign({},state.metadata||{},data.metadata||{},{scheme:key,existing_road_min_m:cfg.existing_min_m,planning_mode:cfg.planning_mode,planning_road_min_m:cfg.planning_min_m,outer_closure_all_roads:true,road_space_removed:true,nonbuildable_removed:cfg.exclude_nonbuildable===true,site_share_formula:'selected_site_intersection_in_block / containing_block_area',planning_road_count:state.planningRoadCutters.length,nonbuildable_count:state.exclusionCutters.length});
   if(state.multiBlock)state.warnings.push(`선정사업지가 ${state.blockFeatures.length}개 가로구역에 걸칩니다. 가로구역을 합치지 않고 각 블록별 포함률을 별도 산정합니다.`);
   return state;
 }
@@ -4989,7 +4999,8 @@ async function analyzeSchemeStreetBlocks(signal=null){
 }
 function renderSchemeStreetBlockSpatialStatus(){
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v??'-';};
-  const any=Object.values(schemeStreetBlockAnalysis).some(x=>x.loaded);set('spSchemeStreetBlockState',any?'제도별 독립 산정완료':'제도별 독립 산정 · 분석 전');
+  const allStates=Object.values(schemeStreetBlockAnalysis),any=allStates.some(x=>x.loaded),resolved=allStates.filter(x=>x.blockFeature).length,roadMissing=allStates.some(x=>x.loaded&&x.metadata?.road_fact_missing===true);
+  set('spSchemeStreetBlockState',!any?'제도별 독립 산정 · 분석 전':roadMissing&&resolved===0?'ROAD_BT 폭원 FACT 확인필요':resolved===allStates.length?'제도별 독립 산정완료':`제도별 일부 산정 · ${resolved}/${allStates.length}`);
   const dom={smallscale:{area:'spSbSmallArea',share:'spSbSmallCoverage',status:'spSbSmallStatus'},activation:{area:'spSbActivationArea',share:'spSbActivationShare',status:'spSbActivationStatus',relations:'spSbActivationRelations'},station_complex:{area:'spSbComplexArea',share:'spSbComplexShare',status:'spSbComplexStatus',relations:'spSbComplexRelations'},growth_potential:{area:'spSbGrowthArea',status:'spSbGrowthStatus'}};
   for(const [key,st] of Object.entries(schemeStreetBlockAnalysis)){
     const ids=dom[key]||{},rels=st.relations||[];
@@ -4998,7 +5009,7 @@ function renderSchemeStreetBlockSpatialStatus(){
       const maxShare=Math.max(...rels.map(x=>Number(x.site_share_of_block_pct||0)));if(ids.share)set(ids.share,`${rels.length>1?'최대 ':''}${maxShare.toFixed(1)}%`);
     }else{set(ids.area,'-');if(ids.share)set(ids.share,'-');}
     if(key==='smallscale'&&ids.share)set(ids.share,st.blockCoverageOfSitePct==null?'-':`${Number(st.blockCoverageOfSitePct).toFixed(1)}%`);
-    set(ids.status,st.blockFeature?`산정값${st.multiBlock?` · ${st.blockFeatures.length}개 블록`:''}`:st.loaded?'미산정':'분석 전');
+    set(ids.status,st.blockFeature?`산정값${st.multiBlock?` · ${st.blockFeatures.length}개 블록`:''}`:st.loaded&&st.metadata?.road_fact_missing?'확인필요 · ROAD_BT 미확보':st.loaded?'미산정':'분석 전');
     if(ids.relations){const el=document.getElementById(ids.relations);if(el)el.innerHTML=rels.length?rels.map((r,i)=>`<span><b>${escHtml(r.name||koreanBlockName(i))}</b> ${Math.round(Number(r.block_area_m2||0)).toLocaleString('ko-KR')}㎡ · 해당 블록 내 선정사업지 ${Math.round(Number(r.selected_site_area_m2||0)).toLocaleString('ko-KR')}㎡ · <b>${Number(r.site_share_of_block_pct||0).toFixed(1)}%</b></span>`).join(''):'<span>블록별 산정값 없음</span>';}
     const lyr=schemeStreetBlockLayers[key];if(!lyr)continue;for(const x of ['context','roads','planning','exclusions','growth35','block','site'])lyr[x].clearLayers();
     if(st.basicUnitContext?.length)lyr.context.addData({type:'FeatureCollection',features:st.basicUnitContext});if(st.existingRoadCutters?.length)lyr.roads.addData({type:'FeatureCollection',features:st.existingRoadCutters});if(st.planningRoadCutters?.length)lyr.planning.addData({type:'FeatureCollection',features:st.planningRoadCutters});if(st.exclusionCutters?.length)lyr.exclusions.addData({type:'FeatureCollection',features:st.exclusionCutters});if(st.blockFeatures?.length)lyr.block.addData({type:'FeatureCollection',features:st.blockFeatures});if(activeGeometry)lyr.site.addData(turf.feature(activeGeometry));
@@ -10276,7 +10287,10 @@ function reconstructionSpatialFacts(store){
   const officialHits=renewalHitsByType(store,['reconstruction']);
   const siteCharacter=family.site_character||housingRenewalSiteCharacter(records,c);
   const eligible=records.filter(reconstructionEligibleBuildingRecord);
-  const targetStatus=officialHits.length?'PASS':siteCharacter.type==='APARTMENT_COMPLEX'?'PASS':siteCharacter.type==='MIXED'?'REVIEW':siteCharacter.type==='EXISTING_URBAN'?'FAIL':'REVIEW';
+  // 일반 재건축은 단일 아파트·연립주택 단지형에서만 초기 후보로 진입한다.
+  // 기정 재건축 정비구역 중첩은 참고/공식경로 Fact일 뿐, 단독·다가구·다세대·근생 혼재지를
+  // 일반 재건축 후보로 되살리는 우회조건으로 사용하지 않는다.
+  const targetStatus=siteCharacter.type==='APARTMENT_COMPLEX'?'PASS':siteCharacter.type==='UNKNOWN'?'REVIEW':'FAIL';
   const households=eligible.reduce((sum,r)=>sum+(Number(r.household_count)||Number(r.family_count)||0),0);
   const age30=reconstructionThirtyYearFact(records);
   const area=family.area_m2;
@@ -10295,8 +10309,8 @@ function reconstructionSpatialFacts(store){
   };
   fact.spatial_status_rows=[
     spatialFactRow('재건축 정비구역',fact.official.value,fact.official.loaded?'CONFIRMED':'REVIEW','기정 정비구역은 참고·우선경로이며 신규 재건축 가능성의 필수조건으로 사용하지 않음'),
-    spatialFactRow('공동주택·집합건축물 대상',siteCharacter.label,siteCharacter.type==='UNKNOWN'?'REVIEW':'CONFIRMED',targetStatus==='PASS'?'재건축 대상지 성격 확인':targetStatus==='FAIL'?'현재 자료상 일반 재건축 대상 공동주택단지형 아님':'혼합형 대상지 · 재건축/재개발 경계 검토 필요',
-      {criterionStatus:targetStatus,criterionRule:'공동주택·집합건축물 중심 재건축 대상지',criterionItem:'공동주택·집합건축물 대상'}),
+    spatialFactRow('공동주택·집합건축물 대상',siteCharacter.label,siteCharacter.type==='UNKNOWN'?'REVIEW':'CONFIRMED',targetStatus==='PASS'?'재건축 대상지 성격 확인':targetStatus==='FAIL'?'현재 자료상 단일 아파트·연립주택 단지형 아님 · 일반 재건축 제외':'혼합형 대상지 · 재건축/재개발 경계 검토 필요',
+      {criterionStatus:targetStatus,criterionRule:'단일 아파트·연립주택 단지형 재건축 대상지',criterionItem:'공동주택·집합건축물 대상'}),
     spatialFactRow('재건축 사업규모',fmtSchemeArea(area),area==null?'REVIEW':'CONFIRMED',scaleNote,
       {criterionStatus:scaleStatus,criterionRule:'대상지 면적 10,000㎡ 이상 1차 판정 · 기정 재건축 정비구역은 공식경로 우선',criterionItem:'사업규모'}),
     spatialFactRow('30년 이상 노후',age30.value,age30.status==='REVIEW'?'REVIEW':'CONFIRMED',age30.note,
@@ -10309,7 +10323,7 @@ function reconstructionSpatialFacts(store){
 function checkReconstructionFromFacts(store,f){
   const rows=[];
   rows.push(schemeRow('공식 진입경로·정비구역','기정 재건축 정비구역 여부는 참고·우선경로이며 신규 사업가능성의 필수조건이 아님',f.official.value,'INFO',f.official.hits.length?'기정 정비구역 공식경로 확인':'미중첩도 사업불가 의미가 아님',false,{sourceId:'RENEWAL_GIS',locator:'서울시 재건축 정비구역 공식 공간자료 / 결정고시'}));
-  rows.push(schemeRow('공동주택·집합건축물 대상','공동주택·집합건축물 중심 재건축 대상지 여부',f.site_character?.label||'자료 없음',f.site_character?.status||'REVIEW',f.site_character?.status==='FAIL'?'현재 자료상 일반 재건축 대상 공동주택단지형 아님':'건축HUB 주용도·집합건축물 Fact',true,{sourceId:'RENEWAL_PLAN',locator:'재건축사업 부문 · 사업대상'}));
+  rows.push(schemeRow('공동주택·집합건축물 대상','단일 아파트·연립주택 단지형 재건축 대상지 여부',f.site_character?.label||'자료 없음',f.site_character?.status||'REVIEW',f.site_character?.status==='FAIL'?'현재 자료상 단일 아파트·연립주택 단지형 아님 · 일반 재건축 제외':'건축HUB 주용도·집합건축물 Fact',true,{sourceId:'RENEWAL_PLAN',locator:'재건축사업 부문 · 사업대상'}));
   rows.push(schemeRow('사업규모','대상지 면적 10,000㎡ 이상 1차 판정 · 기정 재건축 정비구역은 공식경로 우선',fmtSchemeArea(f.area.m2),f.area.status,f.area.note,true,{sourceId:'RENEWAL_ORD',locator:'제6조제4항 · 영 별표1 제3호라목 관련'}));
   rows.push(schemeRow('30년 이상 노후','재건축 대상 공동주택의 사용승인일 30년 이상 1차 사업가능성 판정',f.aging.age30?.value||'자료 없음',f.aging.age30?.status||'REVIEW',f.aging.age30?.note||'사용승인일 확인 필요',true,{sourceId:'RENEWAL_PLAN',locator:'재건축사업 부문 · 노후·불량건축물 기준'}));
   rows.push(schemeRow('재건축진단','법정 재건축진단은 초기 사업가능성 판정 후 후속 절차로 확인',f.diagnosis.confirmed?'추진절차 확인 입력':'후속 법정절차','INFO','후속 정비계획·사업추진 단계에서 확인 · 초기 후보 PASS/FAIL에 사용하지 않음',false,{sourceId:'RENEWAL_ACT',locator:'제12조·제13조'}));
@@ -12150,6 +12164,18 @@ function ccContextFor(name){
   reasons.push(`② 토지·시행 · ${execution.actorText}`);
 
   const structural={status:'PASS',label:'독립모듈',reason:'공간현황 Fact → 독립 사업모듈의 단일 판정결과 사용'};
+  // 재건축은 다른 사업과 달리 '단일 아파트·연립주택 단지형'이 선행 하드게이트다.
+  // 상세 재건축 모듈의 대상지 유형 FAIL/REVIEW를 추천엔진이 임의로 PASS로 덮어쓰지 않는다.
+  if(name==='reconstruction'){
+    const reconType=schemeResults.reconstruction?.facts?.site_character;
+    structural.status=reconType?.status||'REVIEW';
+    structural.label=structural.status==='FAIL'?'단일단지 아님':structural.status==='REVIEW'?'단일단지 확인필요':'단일 공동주택단지';
+    structural.reason=structural.status==='PASS'
+      ? `단일 아파트·연립주택 단지형 확인 · ${reconType?.label||''}`
+      : structural.status==='FAIL'
+        ? `일반 재건축 제외 · ${reconType?.label||'단일 아파트·연립주택 단지형 아님'} · 노후 저층주거지는 소규모주택정비 등 독립 사업모듈에서 검토`
+        : `재건축 단일단지 여부 확인 필요 · ${reconType?.label||'건축물대장 Fact 미확정'}`;
+  }
   reasons.push(`③ 법정진입 · ${structural.reason}`);
 
   const areaGate=candidateAreaGate(name);
@@ -14747,11 +14773,11 @@ function renderRemainingSchemeDetailPopup(name){
       note:'주택접도율은 법정 세부항목이지만 본 플랫폼의 1차 재개발 사업후보 자동판정 변수에서는 제외하며 정비계획 단계에서 현장조사·도로대장·도면으로 추후검토합니다.'
     },
     reconstruction:{
-      subtitle:'재건축 초기 사업가능성 · 공동주택/집합건축물 + 30년 이상 + 사업규모',feasibility:'초기 사업가능성',
+      subtitle:'재건축 초기 사업가능성 · 단일 아파트·연립주택 단지형 + 30년 이상 + 사업규모',feasibility:'초기 사업가능성',
       status:[['대상지 유형',f.site_character?.label||'-'],['대상지 면적',fmtSchemeArea(f.area?.m2)],['30년 이상 노후',f.aging?.age30?.value||'-'],['정비구역 현황',f.official?.value||'-'],['재건축진단',f.diagnosis?.confirmed?'추진절차 확인':'후속 법정절차']],
       groups:[{label:'초기 자동판정',items:['공동주택·집합건축물 대상','사업규모','30년 이상 노후']},{label:'후속 법정절차',items:['재건축진단','주민동의·조합설립']}],planItems:['공식 진입경로·정비구역','용적률·계획기준'],
-      steps:[['초기 대상지 적격성 확인','공동주택·집합건축물 성격, 30년 이상 노후, 사업규모를 자동검토'],['정비계획 사전검토','기정 정비구역 여부와 계획기준·밀도 검토'],['재건축진단·주민협의','법정 재건축진단과 주민동의는 후보선정 이후 후속절차로 진행'],['정비계획 결정·구역지정','법정 의견청취·심의·고시'],['사업시행 절차','조합설립·사업시행인가·관리처분 등']],
-      note:'본 플랫폼은 초기 사업가능성 검토도구이므로 재건축진단·주민동의·조합설립을 후보 하드게이트로 사용하지 않습니다. 공동주택·집합건축물 대상, 30년 이상 노후, 사업규모가 확인되면 재건축 가능 후보로 제시하고 후속 법정절차를 단서로 표시합니다.'
+      steps:[['초기 대상지 적격성 확인','단일 아파트·연립주택 단지형 여부, 30년 이상 노후, 사업규모를 자동검토'],['정비계획 사전검토','기정 정비구역 여부와 계획기준·밀도 검토'],['재건축진단·주민협의','법정 재건축진단과 주민동의는 후보선정 이후 후속절차로 진행'],['정비계획 결정·구역지정','법정 의견청취·심의·고시'],['사업시행 절차','조합설립·사업시행인가·관리처분 등']],
+      note:'본 플랫폼은 초기 사업가능성 검토도구이므로 재건축진단·주민동의·조합설립을 후보 하드게이트로 사용하지 않습니다. 단일 아파트·연립주택 단지형, 30년 이상 노후, 사업규모가 확인되면 재건축 가능 후보로 제시하고 후속 법정절차를 단서로 표시합니다.'
     },
     residential_environment:{
       subtitle:'도시정비법 제23조·제24조 + 서울시 정비조례 제6조',feasibility:'사업진입 가능성',

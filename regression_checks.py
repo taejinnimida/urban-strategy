@@ -2164,6 +2164,36 @@ def check_flexible_initial_feasibility_pass1() -> None:
     assert "재건축 우선검토" in redevelop_check
 
 
+
+def check_reconstruction_single_complex_and_streetblock_roadfact_guard() -> None:
+    """일반 재건축 단일단지 하드게이트와 ROAD_BT 결손 가로구역 오판 방지를 고정한다."""
+    html = Path(app.BASE_DIR, "app.html").read_text(encoding="utf-8")
+    py = Path(app.BASE_DIR, "app.py").read_text(encoding="utf-8")
+
+    recon = html[html.index("function reconstructionSpatialFacts"):html.index("function residentialEnvironmentSpatialFacts", html.index("function reconstructionSpatialFacts"))]
+    assert "const targetStatus=siteCharacter.type==='APARTMENT_COMPLEX'?'PASS':siteCharacter.type==='UNKNOWN'?'REVIEW':'FAIL'" in recon
+    assert "officialHits.length?'PASS'" not in recon
+    assert "단일 아파트·연립주택 단지형" in recon
+
+    ctx = html[html.index("function ccContextFor(name)"):html.index("function compareCandidateNames", html.index("function ccContextFor(name)"))]
+    assert "if(name==='reconstruction')" in ctx
+    assert "schemeResults.reconstruction?.facts?.site_character" in ctx
+    assert "일반 재건축 제외" in ctx
+
+    sb = html[html.index("async function analyzeOneSchemeStreetBlock"):html.index("async function analyzeSchemeStreetBlocks", html.index("async function analyzeOneSchemeStreetBlock"))]
+    assert "validRoadBtCount" in sb
+    assert "road_fact_missing:true" in sb
+    assert "ROAD_BT 폭원 FACT 미확보" in sb
+    assert "return state;" in sb
+    render = html[html.index("function renderSchemeStreetBlockSpatialStatus"):html.index("function cancelStreetBlockAnalysis", html.index("function renderSchemeStreetBlockSpatialStatus"))]
+    assert "확인필요 · ROAD_BT 미확보" in render
+    assert "ROAD_BT 폭원 FACT 확인필요" in render
+
+    assert "def _road_shape_zip_cache_dir()" in py
+    assert "road_shp_seoul.zip" in py
+    assert "road_review_package.zip" in py
+    assert "ROAD_SHAPE_REQUIRED" in py
+
 def check_street_block_expert_confirmation() -> None:
     """전문가 승인 gate와 단일 공통 가로구역 UI는 사용하지 않고 제도별 산정값을 바로 FACT로 쓴다."""
     html = Path(app.BASE_DIR, "app.html").read_text(encoding="utf-8")
@@ -2231,6 +2261,7 @@ def main() -> None:
     _run("r22 growth frontage engine", check_r22_growth_frontage_engine)
     _run("three legal road groups", check_three_legal_road_groups)
     _run("flexible initial feasibility pass1", check_flexible_initial_feasibility_pass1)
+    _run("reconstruction single complex + streetblock road fact guard", check_reconstruction_single_complex_and_streetblock_roadfact_guard)
     _run("street block expert confirmation", check_street_block_expert_confirmation)
     _run("release files", check_release_files)
     print("v2.5.0 regression checks: PASS")
