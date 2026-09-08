@@ -2676,6 +2676,9 @@ def _street_block_from_basic_units(
     road_features: Optional[List[Dict[str, Any]]] = None,
     max_radius_m: float = 500.0,
     road_surface_features: Optional[List[Dict[str, Any]]] = None,
+    road_area_features: Optional[List[Dict[str, Any]]] = None,
+    road_min_width_m: float = 4.0,
+    outer_closure_all_roads: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """SGIS 기초단위구를 seed로 삼고 TL_SPRD_MANAGE ROAD_BT로 병합여부를 판단한다.
 
@@ -2723,7 +2726,7 @@ def _street_block_from_basic_units(
             'metadata':{'method':'sgis_basic_unit_roadbt_merge','reason':'대상지 주변 기초단위구 없음','basic_unit_file':units.get('file')}
         }
 
-    road_min_width_m = 4.0
+    road_min_width_m = max(0.0, float(road_min_width_m or 0.0))
     if not road_features:
         return {
             'status':'unavailable','block':None,'blocks':{'type':'FeatureCollection','features':[]},
@@ -2753,9 +2756,15 @@ def _street_block_from_basic_units(
         except Exception:
             continue
 
-    # 새 공통 도로 FACT가 있으면 MANAGE의 ROAD_BT별로 대응된 RW 실제 도로면 부분을
-    # 가로구역 분리 barrier로 사용한다. 이 입력이 없을 때만 기존 1m 중심선 위상허용폭으로 fallback한다.
+    # 제도별 내부도로 기준과 블록 외곽 폐합을 분리한다.
+    # - 내부 분리: ROAD_BT가 road_min_width_m 이상인 실제 RW 도로면
+    # - 외곽 폐합: outer_closure_all_roads=True이면 선택 사업지와 실질적으로 겹치지 않는
+    #   TL_SPRD_RW 도로면은 폭원과 무관하게 블록 외곽 장벽으로 사용한다.
+    #   따라서 4m/6m 기준은 '사업지 내부를 가르는 도로'에만 적용되고, 이미 바깥에서
+    #   블록을 닫는 도로에는 다시 폭원 조건을 걸지 않는다.
     surface_used_count = 0
+    outer_closure_count = 0
+    threshold_surface_ids = set()
     for feat in road_surface_features or []:
         props = (feat or {}).get('properties') or {}
         width = _road_width_m(props)
@@ -2769,14 +2778,38 @@ def _street_block_from_basic_units(
             if gm is None or gm.is_empty or not gm.intersects(frame_metric):
                 continue
             road_metric.append(gm)
+            threshold_surface_ids.add((props.get('RW_SN'), props.get('RDS_MAN_NO'), round(float(width), 3)))
             surface_used_count += 1
         except Exception:
             continue
+
+    # 폭원과 무관하게 쓸 수 있는 외곽 폐합도로 후보는 여기서 수집만 한다.
+    # 선택사업지(seed) 밖에 있다는 이유만으로 즉시 barrier로 쓰면 블록 내부의 2~3m 골목까지
+    # 잘못 분리하므로, 아래 1차 블록 산정 후 실제 외곽경계에 닿는 도로만 2차 폐합에 사용한다.
+    outer_candidate_metric: List[Any] = []
+    if outer_closure_all_roads:
+        for feat in road_area_features or []:
+            try:
+                geom = _polygonal_only(shape((feat or {}).get('geometry') or {}))
+                if geom is None or geom.is_empty:
+                    continue
+                gm = _polygonal_only(geometry_transform(to_metric, geom))
+                if gm is None or gm.is_empty or not gm.intersects(frame_metric):
+                    continue
+                try:
+                    overlap_area = float(gm.intersection(site_metric).area)
+                except Exception:
+                    overlap_area = 0.0
+                if overlap_area <= 1.0:
+                    outer_candidate_metric.append(gm)
+            except Exception:
+                continue
+
     if not road_metric:
         for item in selected_items:
             width = item['width']
             if width is not None and width >= road_min_width_m:
-                # 기존 방식 유지: 폭 자체를 면도형으로 재현하지 않고 공통경계와 중심선 위치관계만 확인.
+                # RW 실폭면이 없을 때만 중심선 1m 위상장벽으로 fallback한다.
                 road_metric.append(item['metric'].buffer(1.0, cap_style=2, join_style=2))
     road_union = unary_union(road_metric).buffer(0) if road_metric else GeometryCollection()
 
@@ -2818,24 +2851,52 @@ def _street_block_from_basic_units(
             'metadata':{'method':'sgis_basic_unit_roadbt_merge','reason':'대상지와 중첩되는 기초단위구 없음','basic_unit_file':units.get('file')}
         }
 
-    components: List[tuple[set[int], Any, float, bool]] = []
-    seen_keys = set()
-    for start in initial:
-        comp, hit_limit = _basic_unit_component(start, geoms, tree, road_union, strong_union)
-        key = tuple(sorted(comp))
-        if key in seen_keys:
-            continue
-        seen_keys.add(key)
-        merged = unary_union([geoms[i] for i in comp]).buffer(0)
-        try:
-            ia = float(merged.intersection(site_metric).area)
-        except Exception:
-            ia = 0.0
-        if ia > max(1.0, site_area * 0.002):
-            components.append((comp, merged, ia, hit_limit))
-    components.sort(key=lambda x: x[2], reverse=True)
+    def _components_for(road_barrier_union: Any) -> List[tuple[set[int], Any, float, bool]]:
+        out: List[tuple[set[int], Any, float, bool]] = []
+        seen_keys = set()
+        for start in initial:
+            comp, hit_limit = _basic_unit_component(start, geoms, tree, road_barrier_union, strong_union)
+            key = tuple(sorted(comp))
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            merged = unary_union([geoms[i] for i in comp]).buffer(0)
+            try:
+                ia = float(merged.intersection(site_metric).area)
+            except Exception:
+                ia = 0.0
+            if ia > max(1.0, site_area * 0.002):
+                out.append((comp, merged, ia, hit_limit))
+        out.sort(key=lambda x: x[2], reverse=True)
+        return out
+
+    components = _components_for(road_union)
     if not components:
         return None
+
+    # 2차 외곽폐합: 제도별 폭원 임계값으로 먼저 만든 블록의 '외곽경계'에 실제로 닿는
+    # RW 도로면만 폭원과 무관한 폐합도로로 승격한다. 내부의 좁은 골목은 경계와 닿지
+    # 않으므로 투명하게 유지되어 같은 가로구역 안에 포함된다.
+    if outer_closure_all_roads and outer_candidate_metric:
+        provisional = components[0][1]
+        try:
+            outer_band = provisional.boundary.buffer(2.0, cap_style=2, join_style=2)
+        except Exception:
+            outer_band = None
+        selected_outer: List[Any] = []
+        if outer_band is not None and not outer_band.is_empty:
+            for gm in outer_candidate_metric:
+                try:
+                    if gm.intersects(outer_band):
+                        selected_outer.append(gm)
+                except Exception:
+                    continue
+        if selected_outer:
+            outer_closure_count = len(selected_outer)
+            road_union = unary_union([road_union, *selected_outer]).buffer(0)
+            components = _components_for(road_union)
+            if not components:
+                return None
 
     significant = [x for x in components if x[2] >= max(5.0, site_area * 0.05)]
     primary_comp, primary, primary_site_area, primary_limit = components[0]
@@ -2902,11 +2963,13 @@ def _street_block_from_basic_units(
             'basic_unit_source':units.get('source'),'basic_unit_file':units.get('file'),'basic_unit_feature_count':units.get('feature_count'),
             'local_basic_unit_count':len(local_rows),'merged_basic_unit_count':len(primary_comp),
             'road_source':('TL_SPRD_RW actual surface + TL_SPRD_MANAGE ROAD_BT' if surface_used_count else 'VWorld TL_SPRD_MANAGE ROAD_BT'),'road_mode':('rw_surface_plus_centerline_width' if surface_used_count else 'centerline_width_attribute'),'road_min_width_m':road_min_width_m,
-            'road_count':len(road_barriers),'road_surface_count':surface_used_count,'road_under4_context_count':len(road_context),'road_under4_total_count':under4_count,
+            'road_count':len(road_barriers),'road_surface_count':surface_used_count,'outer_closure_road_count':outer_closure_count,
+            'road_context_below_threshold_count':len(road_context),'road_below_threshold_total_count':under4_count,
             'road_width_unknown_count':unknown_width_count,'strong_facility_count':len(strong_features),
             'block_area_m2':block_area,'site_intersection_m2':primary_site_area,
             'site_primary_block_pct':primary_site_pct,'site_share_of_primary_block_pct':primary_block_occupancy_pct,
             'site_spans_multiple_blocks':multi,'merge_limit_reached':primary_limit,'legal_width_rule':False,
+            'road_min_width_m':road_min_width_m,'outer_closure_all_roads':bool(outer_closure_all_roads),
             'basic_unit_is_legal_street_block':False,'authoritative_street_block':False,
             'future_street_block_interface':'MOIS_BASIC_UNIT_OR_VERIFIED_PLANNING_ROAD_BLOCK',
             'engine_note':'현재 내장 기초단위구는 가로구역 후보 골격(ESTIMATE)이다. TL_SPRD_MANAGE ROAD_BT 폭원 근거와, 사용 가능할 때 TL_SPRD_RW 실제 도로면을 결합해 인접 기초단위구 병합 여부를 판단하며 법정 가로구역으로 자동확정하지 않는다. 향후 행안부 기초단위구/공식 가로구역 또는 검증된 도시계획시설도로 블록 자료가 연결되면 authoritative_street_block=true로 승격한다.',
@@ -2920,13 +2983,19 @@ def analyze_street_block(
     road_features: Optional[List[Dict[str, Any]]] = None,
     max_radius_m: float = 500.0,
     road_surface_features: Optional[List[Dict[str, Any]]] = None,
+    road_area_features: Optional[List[Dict[str, Any]]] = None,
+    road_min_width_m: float = 4.0,
+    outer_closure_all_roads: bool = False,
 ) -> Dict[str, Any]:
     """기초단위구 seed + 독립 도로 FACT(TL_SPRD_RW + TL_SPRD_MANAGE ROAD_BT)를 사용한다.
 
     기초단위구가 없거나 자동확정에 실패하면 자료부족을 명시한다.
     폭원 근거는 TL_SPRD_MANAGE ROAD_BT이며, 실제 barrier 형상은 RW 실폭면 결합값을 우선한다.
     """
-    basic = _street_block_from_basic_units(geometry, barrier_features, road_features, max_radius_m, road_surface_features)
+    basic = _street_block_from_basic_units(
+        geometry, barrier_features, road_features, max_radius_m, road_surface_features,
+        road_area_features, road_min_width_m, outer_closure_all_roads,
+    )
     if basic is not None:
         return basic
     unit_layers = _basic_unit_spatial_layers()
@@ -3942,6 +4011,11 @@ class StreetBlockInput(BaseModel):
     barrier_features: List[Dict[str, Any]] = Field(default_factory=list, max_length=3000)
     road_features: List[Dict[str, Any]] = Field(default_factory=list, max_length=5000)
     road_surface_features: List[Dict[str, Any]] = Field(default_factory=list, max_length=5000)
+    # TL_SPRD_RW 실제 도로면 전체. 폭원이 없더라도 선택 사업지 바깥에서 블록 외곽을
+    # 실제로 닫는 도로는 폭원과 무관하게 폐합경계로 사용할 수 있게 별도 전달한다.
+    road_area_features: List[Dict[str, Any]] = Field(default_factory=list, max_length=5000)
+    road_min_width_m: float = Field(4.0, ge=0.0, le=50.0)
+    outer_closure_all_roads: bool = False
     max_radius_m: float = Field(500.0, ge=120.0, le=1000.0)
 
 
@@ -4962,13 +5036,17 @@ def road_facts(inp: RoadFactInput):
 
 @app.post("/api/spatial/street-block")
 def street_block(inp: StreetBlockInput):
-    """SGIS 기초단위구 seed를 TL_SPRD_MANAGE ROAD_BT 4m+ 도로중심선으로 병합 검증합니다.
+    """선택 사업지를 seed로 주변 기초단위구를 확장해 제도별 가로구역 후보를 찾습니다.
 
-    도로 Fact는 TL_SPRD_MANAGE ROAD_BT만 사용하며,
-    기초단위구/ROAD_BT 자료가 없으면 잘못된 도형으로 대체하지 않습니다.
+    내부도로의 분리 임계값(4m/6m)은 요청별로 받고, outer_closure_all_roads=True이면
+    1차 제도별 블록 외곽경계에 실제로 닿는 TL_SPRD_RW 도로면은 폭원과 무관하게 2차 폐합경계로 사용합니다.
     """
     try:
-        return analyze_street_block(inp.geometry, inp.barrier_features, inp.road_features, inp.max_radius_m, inp.road_surface_features)
+        return analyze_street_block(
+            inp.geometry, inp.barrier_features, inp.road_features, inp.max_radius_m,
+            inp.road_surface_features, inp.road_area_features, inp.road_min_width_m,
+            inp.outer_closure_all_roads,
+        )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
