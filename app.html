@@ -1931,7 +1931,7 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="spatial-tags" id="spStreetBlockLegend"><span>검은선=검토요청지</span><span>붉은 2점쇄선=사업구역</span><span>주황면=가로구역 후보</span><span>파랑면=가로구역 경계시설</span></div>
 <div class="road-condition-table-wrap" style="max-height:220px"><table class="road-condition-table"><thead><tr><th>가로구역</th><th>면적</th><th>사업구역 대비</th><th>추출근거</th><th>상태</th></tr></thead><tbody id="spStreetBlockTable"><tr><td colspan="5">검증 전</td></tr></tbody></table></div>
 <div class="spatial-caption"><b>공간 FACT 검증용</b> · 어떤 사업을 적용할지 정하기 전 단계이므로 <b>검토요청지 전체를 분석 프레임으로 먼저 유지</b>합니다. <b>사업구역은 가로구역과 별도 연산</b>하며 지적상 도로필지의 경계 중 <b>대상지 안쪽 대지측 경계</b>이면서 검토구역 외곽선과 방향이 유사한 선을 <b>건축선 후보</b>로 추출합니다. 후보 건축선이 중간에 끊긴 구간은 검토구역의 진행방향을 기준으로 인접 후보선끼리 연결하여 하나의 폐합 사업구역 폴리곤을 생성하며, <b>사업구역 내부의 공원·녹지·광장·주차장·철도·학교·하천 등 기반시설은 사업구역 외곽선 생성에 사용하지 않습니다.</b> 가로구역은 <b>확인된 4m 이상 도로 가로망</b>으로 분할하고, 도로 외 도시계획시설은 검토경계 ±1m에 인접한 경우에만 가로구역 경계부 제척 후보로 사용합니다. 검토요청지 내부에 놓인 시설은 가로구역에서 빼지 않고 그대로 포함합니다. 도시계획시설 도로는 <b>도로등급·도로명·도로시설 코드가 확인된 도형만 계획도로 분할선으로 사용</b>하며, ‘기타도시시설’처럼 세부유형이 모호한 도형은 자동분할에서 제외하고 전문가 확인으로 남깁니다. <b>가로구역의 ±1m는 법정기준이 아니라 SHP·사용자 구역계 정합을 위한 GIS 허용오차</b>입니다. 현재 화면은 범위 추출 가능성 검증용이며 기존 사업 판정엔진에는 아직 연결하지 않습니다.</div>
-<div class="spatial-caption"><b>향후 판정원칙</b> · 이 화면에서 확보한 사업구역·가로구역 후보는 공통 공간 FACT로 보존하고, 실제 사업 판정에서는 각 제도 모듈이 필요한 범위·도로·면적 관계값만 독립적으로 가져가 RULE을 적용합니다. 자동추출 형상 자체가 법적 구역을 확정하는 것은 아니며 전문가 재확인 단서를 유지합니다.</div>
+<div class="spatial-caption"><b>판정원칙</b> · 이 화면에서 확보한 사업구역·가로구역 후보는 공통 공간 FACT로 보존하고, 실제 사업 판정에서는 각 제도 모듈이 필요한 범위·도로·면적 관계값만 독립적으로 가져가 RULE을 적용합니다. 행안부·서울시에 별도의 공식 가로구역 GIS가 없어(2026-09 확인), 기초단위구 병합·도로장벽·시설장벽 조회가 전부 에러 없이 끝난 <b>AUTO 품질 결과는 그 자체를 판정 근거로 사용</b>합니다(가로구역 산정 알고리즘 자체가 검증된 방법론). 일부 조회가 실패한 PARTIAL 품질은 여전히 REVIEW로 남습니다.</div>
 <div class="spatial-mini-map" id="ccStreetBlockMiniMap"></div>
 </section>
 <section class="spatial-module site-analysis-card site-analysis-context" id="siteDetail_activationArterial">
@@ -4665,7 +4665,17 @@ function streetBlockApplicableStationBuffer(threshold){
   return safeUnionPolygons(stationAnalysis.nearestFeatures.map(f=>{try{return turf.buffer(f,t,{units:'meters'});}catch(e){return null;}}).filter(Boolean));
 }
 function streetBlockIsAuthoritative(){
-  return streetBlockAnalysis.metadata?.authoritative_street_block===true||streetBlockAnalysis.metadata?.basic_unit_is_legal_street_block===true;
+  if(streetBlockAnalysis.metadata?.authoritative_street_block===true||streetBlockAnalysis.metadata?.basic_unit_is_legal_street_block===true)return true;
+  // 행안부/서울시에 별도의 공식 가로구역 GIS 레이어 자체가 없다(전문가 확인·2026-09).
+  // 그래서 "공식 데이터 연결"을 기다리지 않고, 기초단위구 병합·도로장벽·시설장벽 조회가
+  // 전부 에러 없이 끝난 AUTO 품질 결과 자체를 신뢰 근거로 삼는다(가로구역 산정 알고리즘
+  // 자체가 전문가 방법론으로 검증된 것 — 매 회 사람이 다시 확인하는 절차를 두지 않는다).
+  // 일부 조회가 실패한 PARTIAL 품질은 여전히 REVIEW로 남긴다.
+  return streetBlockAnalysis.quality==='AUTO';
+}
+function streetBlockAuthoritativeLabel(){
+  if(streetBlockAnalysis.metadata?.authoritative_street_block===true||streetBlockAnalysis.metadata?.basic_unit_is_legal_street_block===true)return '공식';
+  return streetBlockAnalysis.quality==='AUTO'?'가로구역 자동확정':'추정';
 }
 function streetBlockBarrierSpec(){
   // 기초단위구가 폐합 골격이므로 여기서는 병합을 막는 강한 경계인 철도·하천만 추가 조회한다.
@@ -7612,10 +7622,10 @@ function activationStationCandidates(){
           status='PASS';note=`${st.name} ${threshold}m 역세권이 공식 가로구역 ${Number(block.max_share_pct).toFixed(1)}% 포함`;
         }else{
           status='REVIEW';conditional=true;
-          note=`${st.name} ${threshold}m ${thresholdInfo.status==='REVIEW'?'잠재':''}역세권이 ${block.authoritative?'공식':'추정'} 가로구역 ${Number(block.max_share_pct).toFixed(1)}% 포함 · ${thresholdInfo.status==='REVIEW'?thresholdInfo.reason+' · ':''}${block.authoritative?'적용거리 확정 후 판정':'공식 가로구역 데이터 연결 전 자동 PASS 금지'}`;
+          note=`${st.name} ${threshold}m ${thresholdInfo.status==='REVIEW'?'잠재':''}역세권이 ${streetBlockAuthoritativeLabel()} 가로구역 ${Number(block.max_share_pct).toFixed(1)}% 포함 · ${thresholdInfo.status==='REVIEW'?thresholdInfo.reason+' · ':''}${block.authoritative?'적용거리 확정 후 판정':'가로구역 산정 품질(PARTIAL/NONE) 미달로 자동 PASS 금지'}`;
         }
       }else if(Number(block.max_share_pct)>0){
-        status='REVIEW';conditional=true;note=`${st.name} ${threshold}m 역세권이 ${block.authoritative?'공식':'추정'} 가로구역 ${Number(block.max_share_pct).toFixed(1)}% 포함 · 1/2 미만 위원회 인정경로 검토`;
+        status='REVIEW';conditional=true;note=`${st.name} ${threshold}m 역세권이 ${streetBlockAuthoritativeLabel()} 가로구역 ${Number(block.max_share_pct).toFixed(1)}% 포함 · 1/2 미만 위원회 인정경로 검토`;
       }else{
         status=(block.authoritative&&thresholdInfo.status==='CONFIRMED')?'FAIL':'REVIEW';
         note=status==='FAIL'?'공식 가로구역 중첩 없음':'가로구역 중첩/적용거리 확정 필요';
@@ -8896,7 +8906,7 @@ function activationSpatialFacts(store){
     location:{
       station:{threshold_m:threshold,threshold_status:chosenStation?.activation_threshold_status||'REVIEW',threshold_reason:chosenStation?.activation_threshold_reason||'',candidate_status:chosenStation?.activation_status||'REVIEW',distance_m:chosenStation?.distance_m??null,name:chosenStation?.name||'',line_count:chosenStation?.line_count??null,
         within:stationWithin,block_share_pct:stationBlock,block_half_or_more:stationBlockPass,block_quality:stationBlockQuality,block_authoritative:chosenStation?.activation_block?.authoritative===true,
-        block_area_m2:activationBlockAuto?c.activationBlockArea:null,block_source:activationBlockAuto?(chosenStation?.activation_block?.authoritative===true?'공식 가로구역 Fact':'추정 가로구역 Fact · 자동 PASS 금지'):'가로구역 데이터 대기',
+        block_area_m2:activationBlockAuto?c.activationBlockArea:null,block_source:activationBlockAuto?(chosenStation?.activation_block?.authoritative===true?`${streetBlockAuthoritativeLabel()} 가로구역 Fact`:'가로구역 Fact · 전문가 확인 전 자동 PASS 금지'):'가로구역 데이터 대기',
         coverage_pct:chosenStation?(stationCoverageValue(chosenStation,threshold)):null,
         candidate_count:stationCandidates.length,candidates:stationCandidates.map(x=>({name:x.name,distance_m:x.distance_m,line_count:x.line_count,transfer:x.transfer,threshold_m:x.activation_threshold_m,coverage_pct:stationCoverageValue(x,x.activation_threshold_m),block_share_pct:x.activation_block?.max_share_pct??null,block_known:x.activation_block?.known===true,block_authoritative:x.activation_block?.authoritative===true,status:x.activation_status,note:x.activation_note}))},
       arterial:{linear_commercial:c.activationLinearCommercial,evidence:store.site.spatial_evidence?.roads?.activation||null,spatial:store.site.spatial_evidence?.activation_arterial||null,
@@ -8924,7 +8934,7 @@ function activationSpatialFacts(store){
   fact.spatial_status_rows=[
     spatialFactRow('역세권 기준거리',threshold==null?'기준 미확인':`${threshold}m / 판정역 ${chosenStation?.name||'-'} ${chosenStation?.distance_m==null?'-':Number(chosenStation.distance_m).toFixed(1)+'m'}`,stationDecision.direct.status==='REVIEW'?'REVIEW':'CONFIRMED','승강장 경계·중심지위계·환승여부를 반영한 직접거리 판정',
       {criterionStatus:stationDecision.direct.status,criterionRule:threshold==null?'250/350m 적용거리 결정 필요':`승강장 경계 ${threshold}m 이내`,criterionNote:stationDecision.direct.note,criterionItem:'승강장 거리'}),
-    spatialFactRow('가로구역 포함률',stationBlock==null?'-':`${Number(stationBlock).toFixed(1)}%${activationBlockAuto&&c.activationBlockArea!=null?` · 가로구역 ${Number(c.activationBlockArea).toLocaleString('ko-KR',{maximumFractionDigits:0})}㎡`:''}`,stationBlock==null||chosenStation?.activation_block?.authoritative!==true?'REVIEW':'CONFIRMED',activationBlockAuto?(chosenStation?.activation_block?.authoritative===true?`공식 가로구역 · ${stationBlockQuality} · 1/2 이상 일반경로 · 1/2 미만 일부 걸침은 심의경로`:`추정 가로구역 · ${stationBlockQuality} · 행안부/공식 데이터 연결 전 자동 PASS 금지`):'가로구역 데이터 대기',
+    spatialFactRow('가로구역 포함률',stationBlock==null?'-':`${Number(stationBlock).toFixed(1)}%${activationBlockAuto&&c.activationBlockArea!=null?` · 가로구역 ${Number(c.activationBlockArea).toLocaleString('ko-KR',{maximumFractionDigits:0})}㎡`:''}`,stationBlock==null||chosenStation?.activation_block?.authoritative!==true?'REVIEW':'CONFIRMED',activationBlockAuto?(chosenStation?.activation_block?.authoritative===true?`${streetBlockAuthoritativeLabel()} 가로구역 · ${stationBlockQuality} · 1/2 이상 일반경로 · 1/2 미만 일부 걸침은 심의경로`:`추정 가로구역 · ${stationBlockQuality} · 가로구역 산정 품질(PARTIAL/NONE) 미달로 자동 PASS 금지`):'가로구역 데이터 대기',
       {criterionStatus:stationDecision.block.status,criterionRule:'가로구역 1/2 이상 일반경로 / 1/2 미만 일부 걸침은 간선가로 접면 또는 정형화 필요성 인정 시 위원회 심의',criterionNote:stationDecision.block.note,conditional:stationDecision.block.conditional,caveat:stationDecision.block.conditional?stationDecision.block.note:'',criterionItem:'가로구역 포함'}),
     spatialFactRow('역세권 입지 종합',`${stationDecision.overall.path}${stationBlock==null?' · 가로구역 포함률 미산정':''}`,stationDecision.overall.status==='REVIEW'?'REVIEW':'CONFIRMED','직접거리와 가로구역 일반·심의경로를 종합',
       {criterionStatus:stationDecision.overall.status,criterionRule:'직접거리 + 가로구역 적용경로 종합',criterionNote:stationDecision.overall.note,conditional:stationDecision.overall.conditional,caveat:stationDecision.overall.conditional?stationDecision.overall.note:'',criterionItem:'역세권',decisionPath:stationDecision.overall.path}),

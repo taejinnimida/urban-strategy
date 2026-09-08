@@ -2153,6 +2153,36 @@ def check_three_legal_road_groups() -> None:
     assert "40% 이하" in frontage and "20% 이하" in frontage
 
 
+def check_street_block_expert_confirmation() -> None:
+    """행안부·서울시에 공식 가로구역 GIS 레이어가 없다는 게 확인됐다(2026-09, 전문가 확인).
+    그래서 '공식 데이터 연결'이나 '매 회 사람의 수기 확인'을 기다리지 않고, 기초단위구
+    병합·도로장벽·시설장벽 조회가 전부 에러 없이 끝난 AUTO 품질 결과 자체를 신뢰 근거로
+    삼는다 — 산정 알고리즘 자체가 검증된 방법론이라는 전제다. 일부 조회가 실패한 PARTIAL
+    품질은 여전히 REVIEW로 남아야 한다(사람이 매번 버튼을 누르는 별도 판정 단계는 없다).
+    """
+    html = Path(app.BASE_DIR, "app.html").read_text(encoding="utf-8")
+
+    assert "function streetBlockIsAuthoritative(){" in html
+    fn0 = html.index("function streetBlockIsAuthoritative(){")
+    fn1 = html.index("\nfunction ", fn0 + 10)
+    fn_block = html[fn0:fn1]
+    assert "streetBlockAnalysis.quality==='AUTO'" in fn_block
+    # 공식 데이터 경로(향후 실제로 생기면)가 여전히 최우선이어야 한다.
+    assert "authoritative_street_block===true" in fn_block
+    assert fn_block.index("authoritative_street_block===true") < fn_block.index("streetBlockAnalysis.quality==='AUTO'")
+    # 사람이 클릭하는 수기 확인 입력에 의존하면 안 된다 — 알고리즘 품질 신호만으로 판정한다.
+    assert "getElementById('street_block_expert_confirm')" not in html
+    assert 'id="street_block_expert_confirm"' not in html
+
+    assert "function streetBlockAuthoritativeLabel(){" in html
+    assert "'공식'" in html
+
+    # 이 하나의 인터페이스(streetBlockIsAuthoritative)를 역세권활성화·역세권복합개발 등
+    # 여러 판정이 공통으로 참조해야 한다 — 제도마다 따로 판정 로직을 만들지 않는다.
+    consumer_count = html.count("streetBlockIsAuthoritative()")
+    assert consumer_count >= 5, consumer_count
+
+
 def main() -> None:
     _run("measurement", check_measurement)
     _run("renewal spatial", check_renewal_server_intersection)
@@ -2204,6 +2234,7 @@ def main() -> None:
     _run("AI comprehensive explainer", check_ai_comprehensive_explainer)
     _run("r22 growth frontage engine", check_r22_growth_frontage_engine)
     _run("three legal road groups", check_three_legal_road_groups)
+    _run("street block expert confirmation", check_street_block_expert_confirmation)
     _run("release files", check_release_files)
     print("v2.5.0 regression checks: PASS")
 
