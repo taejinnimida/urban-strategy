@@ -7613,8 +7613,24 @@ function activationStationCandidates(){
     const threshold=thresholdInfo.threshold_m;
     const block=stationBlockRelation(st,threshold);
     const direct=st.distance_m==null?null:Number(st.distance_m)<=threshold;
-    let status='REVIEW',conditional=false,note='가로구역 공간자료 확인 필요';
-    if(direct===false&&block.known&&block.authoritative&&Number(block.max_share_pct||0)<=0){
+    let status='REVIEW',conditional=false,note='가로구역 공간자료 확인 필요',distanceResolved=false;
+    // 직접거리 우선 확정: 250m는 250m/350m 어느 적용경로에서도 포함되는 구간이라 가로구역
+    // 자료 유무와 무관하게 즉시 PASS한다. 250m 초과~350m는 350m가 실제 적용 threshold일
+    // 때만 해당하며, 350m 적용이 아직 REVIEW(완화 가능성 검토 중)면 PASS를 확정하지 않고
+    // PASS+단서(위원회 심의·관련부서 협의 후속조건)로 둔다 — 적용거리 자체가 250m로 이미
+    // 확정된 역(threshold===250)에는 이 완화폭을 적용하지 않는다. distanceResolved로
+    // 표시해서, 아래 threshold_status 재검사(원래 block 기반 PASS만을 위한 것)가 이
+    // 직접거리 확정 결과를 다시 REVIEW로 되돌리지 않게 한다.
+    if(st.distance_m!=null&&Number(st.distance_m)<=250){
+      status='PASS';distanceResolved=true;note=`${st.name} 대상지 경계거리 ${Number(st.distance_m).toFixed(1)}m는 250m 이내로 적용거리 확정 여부와 무관하게 포함`;
+    }else if(st.distance_m!=null&&threshold===350&&Number(st.distance_m)<=350){
+      distanceResolved=true;
+      if(thresholdInfo.status==='CONFIRMED'){
+        status='PASS';note=`${st.name} 대상지 경계거리 ${Number(st.distance_m).toFixed(1)}m는 확정 350m 역세권 이내`;
+      }else{
+        status='PASS';conditional=true;note=`${st.name} 대상지 경계거리 ${Number(st.distance_m).toFixed(1)}m는 350m 잠재범위 이내 · ${thresholdInfo.reason} · 위원회 심의·관련부서 협의를 전제로 유지`;
+      }
+    }else if(direct===false&&block.known&&block.authoritative&&Number(block.max_share_pct||0)<=0){
       status='FAIL';note='최대 적용 역세권과 공식 가로구역 중첩 없음';
     }else if(block.known){
       if(Number(block.max_share_pct)>=50){
@@ -7635,7 +7651,7 @@ function activationStationCandidates(){
     }else if(direct===false){
       status='REVIEW';note=`${st.name} 직접거리는 ${threshold}m 밖이나 동일 가로구역 포함여부 미확보`;
     }
-    if(status==='PASS'&&thresholdInfo.status!=='CONFIRMED'){
+    if(!distanceResolved&&status==='PASS'&&thresholdInfo.status!=='CONFIRMED'){
       status='REVIEW';conditional=true;note=`${note} · ${thresholdInfo.reason}`;
     }
     return {...st,activation_threshold_m:threshold,activation_threshold_status:thresholdInfo.status,activation_threshold_reason:thresholdInfo.reason,activation_block:block,activation_status:status,activation_conditional:conditional,activation_note:note};

@@ -2237,6 +2237,28 @@ def check_street_block_expert_confirmation() -> None:
     assert consumer_count >= 5, consumer_count
 
 
+def check_activation_direct_distance_pass() -> None:
+    """역세권활성화: 250m 이내는 가로구역 자료 유무·적용거리 확정 여부와 무관하게 즉시 PASS.
+    250m 초과~350m는 350m가 실제 적용 threshold일 때만 해당하며, 그 적용 자체가 REVIEW(완화
+    가능성 검토 중)면 PASS+단서로 유지한다. 이 직접거리 확정은 그 뒤에 있는
+    'threshold_status!==CONFIRMED면 PASS를 REVIEW로 되돌리는' 재검사에 다시 걸리면 안 된다
+    (distanceResolved로 방어).
+    """
+    html = Path(app.BASE_DIR, "app.html").read_text(encoding="utf-8")
+
+    fn0 = html.index("function activationStationCandidates(){")
+    fn1 = html.index("\nfunction stationSchemeFactSummary", fn0)
+    fn_block = html[fn0:fn1]
+    assert "distanceResolved" in fn_block
+    assert "Number(st.distance_m)<=250" in fn_block
+    assert "threshold===350&&Number(st.distance_m)<=350" in fn_block
+    assert "if(!distanceResolved&&status==='PASS'&&thresholdInfo.status!=='CONFIRMED')" in fn_block
+
+    # 가로구역 50%/30% 위원회경로 등 기존 block 기반 로직은 이번에 손대지 않는다.
+    assert "Number(block.max_share_pct)>=50" in fn_block
+    assert "1/2 미만 위원회 인정경로 검토" in fn_block
+
+
 def main() -> None:
     _run("measurement", check_measurement)
     _run("renewal spatial", check_renewal_server_intersection)
@@ -2290,6 +2312,7 @@ def main() -> None:
     _run("three legal road groups", check_three_legal_road_groups)
     _run("flexible initial feasibility pass1", check_flexible_initial_feasibility_pass1)
     _run("street block expert confirmation", check_street_block_expert_confirmation)
+    _run("activation direct distance pass", check_activation_direct_distance_pass)
     _run("release files", check_release_files)
     print("v2.5.0 regression checks: PASS")
 
