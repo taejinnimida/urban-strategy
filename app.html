@@ -2908,39 +2908,17 @@ async function fetchSpatialFeaturesBrowser(layerId, geometry, uniqueKeys=[]){
 }
 
 async function fetchOfficialAreaBrowser(pnu){
-  const u=new URL(VWORLD_LAND_URL);
-  u.searchParams.set('pnu',pnu);
-  u.searchParams.set('format','xml');
-  u.searchParams.set('key',VWORLD_CLIENT_KEY);
-  u.searchParams.set('domain',VWORLD_CLIENT_DOMAIN);
-  u.searchParams.set('numOfRows','50');
-
-  const r=await fetch(u.toString(),{method:'GET',mode:'cors'});
-  if(!r.ok) throw new Error('토지특성 HTTP '+r.status);
-  const xml=await r.text();
-  const doc=new DOMParser().parseFromString(xml,'application/xml');
-  if(doc.querySelector('parsererror')) throw new Error('토지특성 XML 파싱 오류');
-
-  const vals=[];
-  for(const row of [...doc.querySelectorAll('field')]){
-    const an=row.querySelector('lndpclAr');
-    if(!an||!an.textContent.trim()) continue;
-    const area=Number(an.textContent.trim());
-    if(!Number.isFinite(area)||area<=0) continue;
-    const yn=row.querySelector('stdrYear');
-    const year=yn?Number(yn.textContent.trim())||0:0;
-    vals.push({year,area});
-  }
-  if(vals.length){
-    vals.sort((a,b)=>b.year-a.year);
-    return vals[0].area;
-  }
-  const any=doc.querySelector('lndpclAr');
-  if(any){
-    const area=Number(any.textContent.trim());
-    if(Number.isFinite(area)&&area>0)return area;
-  }
-  return null;
+  // R9: official area is fetched through our FastAPI proxy, never directly
+  // from api.vworld.kr in the browser (NED is CORS-blocked on Render origins).
+  const r=await fetch('/api/land/characteristics-one',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({pnu:String(pnu)})
+  });
+  if(!r.ok) throw new Error('토지특성 프록시 HTTP '+r.status);
+  const d=await r.json();
+  const area=Number(d?.record?.lndpclAr);
+  return Number.isFinite(area)&&area>0?area:null;
 }
 
 async function mapLimit(items,limit,fn){
@@ -14158,37 +14136,46 @@ function parseLandCharacteristicsXml(xmlText){
   const vals=fields.map(row=>{const g=n=>row.querySelector(n)?.textContent?.trim()||'';return {pnu:g('pnu'),lndpclAr:Number(g('lndpclAr'))||null,lndcgrCodeNm:g('lndcgrCodeNm')||g('lndcgrCode'),stdrYear:g('stdrYear'),stdrMt:g('stdrMt'),lastUpdtDt:g('lastUpdtDt'),_route:'getLandCharacteristics'};}).filter(x=>x.lndpclAr!=null);vals.sort((a,b)=>String(b.stdrYear||'').localeCompare(String(a.stdrYear||'')));return vals[0]||null;
 }
 async function fetchLandCharacteristicsBrowser(pnu){
-  const base='https://api.vworld.kr/ned/data/getLandCharacteristics';const now=new Date().getFullYear();
+  // R9: VWorld NED is server-proxy first. Browser CORS fetch is intentionally
+  // forbidden because api.vworld.kr does not return Access-Control-Allow-Origin
+  // for this Render origin and generated one failed request per parcel/year.
+  try{
+    const r=await fetch('/api/land/characteristics-one',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({pnu:String(pnu)})
+    });
+    const d=await r.json();
+    if(r.ok && d.record)return d.record;
+    if(r.ok && d.vworld_ready===true)return null;
+  }catch(e){}
+
+  // Last-resort browser fallback: JSONP does not use fetch/CORS.  This path is
+  // only reached when the server proxy has no usable record.
+  const base='https://api.vworld.kr/ned/data/getLandCharacteristics';
+  const now=new Date().getFullYear();
   for(let y=now;y>=now-5;y--){
-    try{const u=new URL(base);for(const [k,v] of Object.entries({key:VWORLD_CLIENT_KEY,domain:VWORLD_CLIENT_DOMAIN,pnu:String(pnu),format:'xml',stdrYear:String(y)}))u.searchParams.set(k,v);const r=await fetch(u.toString(),{mode:'cors'});if(r.ok){const rec=parseLandCharacteristicsXml(await r.text());if(rec)return rec;}}catch(e){}
-    try{const data=await vworldJsonp(base,{key:VWORLD_CLIENT_KEY,domain:VWORLD_CLIENT_DOMAIN,pnu:String(pnu),format:'json',stdrYear:String(y)},9000);const f=data?.response?.fields?.field||data?.fields?.field;const arr=Array.isArray(f)?f:(f?[f]:[]);for(const x of arr){const a=Number(x.lndpclAr);if(Number.isFinite(a)&&a>0)return {pnu:String(pnu),lndpclAr:a,lndcgrCodeNm:String(x.lndcgrCodeNm||x.lndcgrCode||''),stdrYear:String(x.stdrYear||y),stdrMt:String(x.stdrMt||''),lastUpdtDt:String(x.lastUpdtDt||''),_route:'getLandCharacteristics_jsonp'};}}catch(e){}
-  } return null;
+    try{
+      const data=await vworldJsonp(base,{key:VWORLD_CLIENT_KEY,domain:VWORLD_CLIENT_DOMAIN,pnu:String(pnu),format:'json',stdrYear:String(y)},8000);
+      const f=data?.response?.fields?.field||data?.fields?.field;
+      const arr=Array.isArray(f)?f:(f?[f]:[]);
+      for(const x of arr){
+        const a=Number(x.lndpclAr);
+        if(Number.isFinite(a)&&a>0)return {
+          pnu:String(pnu),lndpclAr:a,
+          lndcgrCodeNm:String(x.lndcgrCodeNm||x.lndcgrCode||''),
+          stdrYear:String(x.stdrYear||y),stdrMt:String(x.stdrMt||''),
+          lastUpdtDt:String(x.lastUpdtDt||''),_route:'getLandCharacteristics_jsonp'
+        };
+      }
+    }catch(e){}
+  }
+  return null;
 }
 async function fetchLandLedgerBrowser(pnu){
-  const base='https://api.vworld.kr/ned/data/ladfrlList';
-  const common={key:VWORLD_CLIENT_KEY,domain:VWORLD_CLIENT_DOMAIN,pnu:String(pnu)};
-
-  // 1) Browser CORS XML
-  try{
-    const u=new URL(base);
-    for(const [k,v] of Object.entries(common))u.searchParams.set(k,v);
-    u.searchParams.set('format','xml');
-    const r=await fetch(u.toString(),{method:'GET',mode:'cors'});
-    if(r.ok){
-      const t=await r.text();
-      const parsed=parseLandLedgerXml(t);
-      if(parsed)return {...parsed,_route:'vworld_xml'};
-    }
-  }catch(e){}
-
-  // 2) JSONP fallback (some VWorld endpoints accept JSON callback)
-  try{
-    const data=await vworldJsonp(base,{...common,format:'json'},12000);
-    const parsed=parseLandLedgerJson(data);
-    if(parsed)return {...parsed,_route:'vworld_jsonp'};
-  }catch(e){}
-
-  // 3) Render backend fallback (VWorld direct/proxy + legacy data.go.kr)
+  // R9: server proxy first.  Do not browser-fetch VWorld ladfrlList: that
+  // endpoint is CORS-blocked on the deployed Render origin and previously
+  // produced dozens of red console errors plus needless retries.
   try{
     const r=await fetch('/api/land/ledger-one',{
       method:'POST',
@@ -14197,6 +14184,20 @@ async function fetchLandLedgerBrowser(pnu){
     });
     const d=await r.json();
     if(r.ok && d.record)return d.record;
+    // If the server had a configured VWorld key and still found no record,
+    // do not repeat the same official calls in the browser.
+    if(r.ok && d.vworld_ready===true)return null;
+  }catch(e){}
+
+  // Preserve one non-CORS fallback only when the server proxy is unavailable
+  // or has no configured VWorld key.
+  try{
+    const base='https://api.vworld.kr/ned/data/ladfrlList';
+    const data=await vworldJsonp(base,{
+      key:VWORLD_CLIENT_KEY,domain:VWORLD_CLIENT_DOMAIN,pnu:String(pnu),format:'json'
+    },8000);
+    const parsed=parseLandLedgerJson(data);
+    if(parsed)return {...parsed,_route:'vworld_jsonp'};
   }catch(e){}
 
   const ch=await fetchLandCharacteristicsBrowser(pnu);
