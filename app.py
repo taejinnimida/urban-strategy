@@ -3131,7 +3131,14 @@ def _street_block_from_basic_units(
     primary_wgs = geometry_transform(to_wgs, primary)
     primary_site_pct = primary_site_area / site_area * 100.0 if site_area > 0 else None
     primary_block_occupancy_pct = primary_site_area / block_area * 100.0 if block_area > 0 else None
-    status = 'resolved' if not primary_limit else 'partial'
+    # R13 adaptive-radius support: a block that reaches the current search frame is not
+    # accepted as final. The browser retries only that scheme with the legacy wide radius.
+    # This keeps simple urban blocks fast without truncating genuinely large/open blocks.
+    try:
+        frame_boundary_touched = bool(not frame_metric.buffer(-5.0).contains(primary))
+    except Exception:
+        frame_boundary_touched = False
+    status = 'resolved' if not primary_limit and not frame_boundary_touched else 'partial'
     block_features=[]
     for comp,g,ia,_ in significant[:12]:
         ba=float(g.area)
@@ -3160,7 +3167,7 @@ def _street_block_from_basic_units(
             'road_width_unknown_count':unknown_width_count,'strong_facility_count':len(strong_features),
             'block_area_m2':block_area,'site_intersection_m2':primary_site_area,
             'site_primary_block_pct':primary_site_pct,'site_share_of_primary_block_pct':primary_block_occupancy_pct,
-            'site_spans_multiple_blocks':multi,'merge_limit_reached':primary_limit,'legal_width_rule':False,
+            'site_spans_multiple_blocks':multi,'merge_limit_reached':primary_limit,'frame_boundary_touched':frame_boundary_touched,'analysis_radius_m':float(max_radius_m),'legal_width_rule':False,
             'road_min_width_m':road_min_width_m,'outer_closure_all_roads':bool(outer_closure_all_roads),
             'basic_unit_is_legal_street_block':False,'authoritative_street_block':False,
             'future_street_block_interface':'MOIS_BASIC_UNIT_OR_VERIFIED_PLANNING_ROAD_BLOCK',

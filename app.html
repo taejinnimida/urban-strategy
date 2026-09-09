@@ -5195,8 +5195,28 @@ async function analyzeOneSchemeStreetBlock(key,roadFacts,planningRoadBase,nonBui
     ...state.planningRoadCutters.map(f=>cloneFeatureWithProps(f,{_block_barrier_type:'도시계획도로',_block_barrier_role:'planning_road'})),
     ...state.exclusionCutters.map(f=>cloneFeatureWithProps(f,{_block_barrier_type:String(f?.properties?._scheme_nonbuildable_label||f?.properties?._scheme_nonbuildable_kind||'법정 경계시설'),_block_barrier_role:'facility'}))
   ];
-  const response=await fetch('/api/spatial/street-block',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry:activeGeometry,barrier_features:topologyBarriers,road_features:inputs.allManage,road_surface_features:inputs.allSurfaces,road_area_features:inputs.rwAreas,road_min_width_m:cfg.existing_min_m,outer_closure_all_roads:true,max_radius_m:700}),signal:signal||undefined});
-  const data=await response.json();if(!response.ok)throw new Error(data.detail||`${cfg.label} 가로구역 산정 실패`);
+  // R13 성능개선: 모든 제도를 처음부터 반경 700m로 계산하지 않는다.
+  // 단순 블록은 320m에서 확정하고, 계산된 블록이 탐색 프레임에 닿거나 병합상한에
+  // 도달한 경우에만 해당 제도를 기존 700m로 1회 재검증한다. 판정 Rule은 동일하다.
+  const requestStreetBlock=async radius=>{
+    const t0=performance.now();
+    const response=await fetch('/api/spatial/street-block',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry:activeGeometry,barrier_features:topologyBarriers,road_features:inputs.allManage,road_surface_features:inputs.allSurfaces,road_area_features:inputs.rwAreas,road_min_width_m:cfg.existing_min_m,outer_closure_all_roads:true,max_radius_m:radius}),signal:signal||undefined});
+    const data=await response.json();if(!response.ok)throw new Error(data.detail||`${cfg.label} 가로구역 산정 실패`);
+    data._client_elapsed_ms=Math.round(performance.now()-t0);
+    return data;
+  };
+  let data=await requestStreetBlock(320);
+  const needsWideRetry=data?.metadata?.frame_boundary_touched===true||data?.metadata?.merge_limit_reached===true;
+  if(needsWideRetry&&!signal?.aborted){
+    console.info(`[가로구역] ${cfg.label}: 320m 탐색경계 도달 → 700m 재검증`);
+    const firstMs=Number(data?._client_elapsed_ms||0);
+    const wide=await requestStreetBlock(700);
+    wide.metadata=Object.assign({},wide.metadata||{},{adaptive_radius_retry:true,initial_radius_m:320,initial_elapsed_ms:firstMs});
+    data=wide;
+  }else{
+    data.metadata=Object.assign({},data.metadata||{},{adaptive_radius_retry:false,initial_radius_m:320});
+  }
+  data.metadata=Object.assign({},data.metadata||{},{client_elapsed_ms:Number(data?._client_elapsed_ms||0)});
   const rawBlocks=(data.blocks?.features||[]).length?(data.blocks.features||[]).map(cloneFeature):(data.block?[cloneFeature(data.block)]:[]);
   const allCutters=[...state.existingRoadCutters,...state.planningRoadCutters,...state.exclusionCutters];
   const refined=schemeBlockComponentsAfterRemoval(rawBlocks,allCutters,site);
@@ -5237,6 +5257,17 @@ async function streetBlockRuntimePreflight(signal=null){
     return {known:false,configured:null,reason:String(e?.message||e)};
   }finally{if(timer)clearTimeout(timer);}
 }
+function sameSchemeStreetBlockSpatialRule(a,b){
+  if(!a||!b)return false;
+  const fields=['existing_min_m','planning_mode','planning_min_m','exclude_nonbuildable','all_roads_boundary','requires_road_width_for_block'];
+  if(fields.some(k=>JSON.stringify(a[k]??null)!==JSON.stringify(b[k]??null)))return false;
+  const af=[...(a.facility_kinds||[])].sort(),bf=[...(b.facility_kinds||[])].sort();
+  return JSON.stringify(af)===JSON.stringify(bf);
+}
+function setSchemeStreetBlockProgress(text){
+  const el=document.getElementById('spSchemeStreetBlockState');
+  if(el)el.textContent=text;
+}
 function markSchemeStreetBlocksUnavailable(reason='SGIS 기초단위구 ZIP 미설치'){
   for(const key of ['smallscale','activation','station_complex','growth_potential']){
     const st=schemeStreetBlockAnalysis[key]=newSchemeStreetBlockState(key);
@@ -5249,23 +5280,45 @@ function markSchemeStreetBlocksUnavailable(reason='SGIS 기초단위구 ZIP 미�
 }
 async function analyzeSchemeStreetBlocks(signal=null){
   if(!activeGeometry)return {status:'unavailable'};
+  const allStarted=performance.now();
+  setSchemeStreetBlockProgress('가로구역 · 기초자료 확인 중');
   const preflight=await streetBlockRuntimePreflight(signal);
   if(preflight.known&&preflight.configured===false){
     return markSchemeStreetBlocksUnavailable('SGIS 기초단위구 ZIP 미설치 · 가로구역만 REVIEW, 다른 현황분석은 계속');
   }
   let roadFacts=null,roadErrors=[];
+  const roadStarted=performance.now();
+  setSchemeStreetBlockProgress('가로구역 · 도로 FACT 수집 중');
   try{roadFacts=await fetchIndependentRoadFacts(750);}catch(e){roadErrors.push(String(e?.message||e));}
+  console.info(`[가로구역 성능] 도로 FACT ${Math.round(performance.now()-roadStarted)}ms`);
   if(!roadFacts||!(roadFacts.manage_features||[]).length){
     const fallback=await independentRoadManageCandidate(turf.buffer(turf.feature(activeGeometry),750,{units:'meters'}).geometry,750);
     roadFacts={manage_features:fallback.features||[],surface_features:fallback.surface_features||[],rw_features:[],metadata:{source:'fallback'}};roadErrors.push(...(fallback.errors||[]));
   }
   const search=turf.buffer(turf.feature(activeGeometry),750,{units:'meters'}).geometry;
+  const facilityStarted=performance.now();
+  setSchemeStreetBlockProgress('가로구역 · 도시계획도로·경계시설 수집 중');
   const [planningRoadBase,nonBuildableBase]=await Promise.all([fetchSchemePlanningRoadBase(search),fetchSchemeNonBuildableCutters(search)]);
+  console.info(`[가로구역 성능] 계획도로·시설 ${Math.round(performance.now()-facilityStarted)}ms`);
   const results={};
-  for(const key of ['smallscale','activation','station_complex','growth_potential']){
+  // activation과 station_complex는 현재 공간규칙이 같을 때만 결과를 재사용한다.
+  // 향후 기준이 갈라지면 자동으로 station_complex를 별도 계산하여 묵시적 공유를 막는다.
+  const activationComplexSameRule=sameSchemeStreetBlockSpatialRule(SCHEME_STREET_BLOCK_CONFIG.activation,SCHEME_STREET_BLOCK_CONFIG.station_complex);
+  const runKeys=activationComplexSameRule?['smallscale','activation','growth_potential']:['smallscale','activation','station_complex','growth_potential'];
+  for(const key of runKeys){
     if(signal?.aborted)break;
+    const stepStarted=performance.now();
+    setSchemeStreetBlockProgress(`가로구역 · ${SCHEME_STREET_BLOCK_CONFIG[key]?.label||key} 산정 중`);
     try{results[key]=await analyzeOneSchemeStreetBlock(key,roadFacts,planningRoadBase,nonBuildableBase,signal);}catch(e){const st=schemeStreetBlockAnalysis[key]=newSchemeStreetBlockState(key);st.loaded=true;st.status='error';st.quality='NONE';st.errors=[{id:'scheme_street_block',error:String(e?.message||e)}];results[key]=st;}
+    console.info(`[가로구역 성능] ${SCHEME_STREET_BLOCK_CONFIG[key]?.label||key} ${Math.round(performance.now()-stepStarted)}ms`,results[key]?.metadata||{});
+    if(key==='activation'&&activationComplexSameRule&&results.activation){
+      const src=results.activation,dst=schemeStreetBlockAnalysis.station_complex=newSchemeStreetBlockState('station_complex');
+      Object.assign(dst,{loaded:src.loaded,loading:false,status:src.status,quality:src.quality,blockFeature:src.blockFeature?cloneFeature(src.blockFeature):null,blockFeatures:(src.blockFeatures||[]).map(cloneFeature),basicUnitContext:(src.basicUnitContext||[]).map(cloneFeature),existingRoadCutters:(src.existingRoadCutters||[]).map(cloneFeature),planningRoadCutters:(src.planningRoadCutters||[]).map(cloneFeature),exclusionCutters:(src.exclusionCutters||[]).map(cloneFeature),growth35Roads:[],roadContext:(src.roadContext||[]).map(cloneFeature),blockAreaM2:src.blockAreaM2,siteAreaM2:src.siteAreaM2,siteIntersectionM2:src.siteIntersectionM2,siteShareOfBlockPct:src.siteShareOfBlockPct,blockCoverageOfSitePct:src.blockCoverageOfSitePct,relations:(src.relations||[]).map(x=>Object.assign({},x,{geometry:x.geometry?JSON.parse(JSON.stringify(x.geometry)):x.geometry})),componentCount:src.componentCount,multiBlock:src.multiBlock,metadata:Object.assign({},src.metadata||{},{scheme:'station_complex',reused_from:'activation',shared_street_block_rule:true}),errors:[...(src.errors||[])],warnings:[...(src.warnings||[])]});
+      results.station_complex=dst;
+      console.info('[가로구역 성능] 역세권복합개발: 동일 4m 공간규칙 결과 재사용');
+    }
   }
+  console.info(`[가로구역 성능] 전체 ${Math.round(performance.now()-allStarted)}ms`);
   if(roadErrors.length)for(const st of Object.values(schemeStreetBlockAnalysis))st.warnings.push(...roadErrors.map(x=>`도로 FACT: ${x}`));
   renderSchemeStreetBlockSpatialStatus();
   try{updateActivationArterialBlockLink();}catch(e){}
