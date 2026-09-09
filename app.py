@@ -13,6 +13,7 @@ import zipfile
 import html
 import hmac
 import threading
+import time
 import uuid
 from collections import deque
 import xml.etree.ElementTree as ET
@@ -280,7 +281,7 @@ def _vworld_headers() -> Dict[str, str]:
     }
 
 
-def _vworld_get(url: str, params: Dict[str, Any], timeout: int = 20):
+def _vworld_get(url: str, params: Dict[str, Any], timeout: int = 20, proxy_timeout: Optional[int] = None):
     """VWorld direct call first, then VWorld's own proxy on transport/5xx failure.
 
     The proxy path is used by VWorld's published utilization examples.
@@ -309,7 +310,7 @@ def _vworld_get(url: str, params: Dict[str, Any], timeout: int = 20):
                 "User-Agent": "urban-strategy/0.4.2",
                 "Accept": "application/json, text/xml;q=0.9, */*;q=0.8",
             },
-            timeout=timeout + 10,
+            timeout=(proxy_timeout if proxy_timeout is not None else timeout + 10),
         )
         logger.info(
             "VWorld proxy fallback route status=%s (direct_error=%s)",
@@ -1206,10 +1207,19 @@ def _resolve_medical_facility_boundary(item: Dict[str, Any], site_wgs) -> Dict[s
 
 VWORLD_LAND_LEDGER_URL = "https://api.vworld.kr/ned/data/ladfrlList"
 VWORLD_LAND_USE_URL = "https://api.vworld.kr/ned/data/getLandUseAttr"
-LEGACY_LAND_LEDGER_URLS = [
-    "https://apis.data.go.kr/1611000/nsdi/eios/LadfrlService/ladfrlList.xml",
-    "http://apis.data.go.kr/1611000/nsdi/eios/LadfrlService/ladfrlList.xml",
-]
+# data.go.kr 토지임야정보조회서비스. HTTPS/HTTP는 같은 host/path의 동일 서비스다.
+# 정상 경로에서는 HTTPS 한 번만 사용하고, HTTP 별도 순차 재시도는 하지 않는다.
+# 과거 활용가이드에 HTTP 예시가 있었지만 이를 독립 데이터 소스로 취급하지 않는다.
+LEGACY_LAND_LEDGER_URL = "https://apis.data.go.kr/1611000/nsdi/eios/LadfrlService/ladfrlList.xml"
+
+# 토지대장은 같은 PNU를 짧은 시간에 반복 조회해도 값이 즉시 바뀌는 자료가 아니다.
+# 일시 장애를 영구 기억하지 않도록 성공/실패 TTL을 분리한다.
+LAND_LEDGER_CACHE_TTL_POSITIVE_SEC = int(os.getenv("LAND_LEDGER_CACHE_TTL_POSITIVE_SEC", "1800"))
+LAND_LEDGER_CACHE_TTL_NEGATIVE_SEC = int(os.getenv("LAND_LEDGER_CACHE_TTL_NEGATIVE_SEC", "300"))
+LAND_LEDGER_CACHE_LOCK = threading.Lock()
+LAND_LEDGER_CACHE: Dict[str, Dict[str, Any]] = {}
+# 브라우저가 PNU 5개를 동시에 보내도 외부 소스 fan-out이 과도하게 커지지 않도록 제한한다.
+LAND_LEDGER_SOURCE_EXECUTOR = ThreadPoolExecutor(max_workers=8, thread_name_prefix="land-ledger-source")
 
 
 def _parse_land_ledger_xml(text: str) -> Optional[Dict[str, Any]]:
@@ -1253,7 +1263,7 @@ def _parse_land_ledger_xml(text: str) -> Optional[Dict[str, Any]]:
     return parsed[0]
 
 
-def _server_land_ledger_vworld(pnu: str) -> Optional[Dict[str, Any]]:
+def _server_land_ledger_vworld(pnu: str, timeout: int = 6) -> Optional[Dict[str, Any]]:
     if not _vworld_key():
         return None
     params = {
@@ -1263,7 +1273,11 @@ def _server_land_ledger_vworld(pnu: str) -> Optional[Dict[str, Any]]:
         "pnu": pnu,
     }
     try:
-        resp, route = _vworld_get(VWORLD_LAND_LEDGER_URL, params=params, timeout=15)
+        # Land-ledger path caps one VWorld source stage to roughly 6s total
+        # (direct first, then official proxy with the remaining budget).
+        direct_budget = min(float(timeout), 4.0)
+        proxy_budget = max(1.0, float(timeout) - direct_budget)
+        resp, route = _vworld_get(VWORLD_LAND_LEDGER_URL, params=params, timeout=direct_budget, proxy_timeout=proxy_budget)
         if resp.status_code >= 400:
             return None
         record = _parse_land_ledger_xml(resp.text)
@@ -1275,25 +1289,25 @@ def _server_land_ledger_vworld(pnu: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def _server_land_ledger_legacy_data_go(pnu: str) -> Optional[Dict[str, Any]]:
+def _server_land_ledger_legacy_data_go(pnu: str, timeout: int = 6) -> Optional[Dict[str, Any]]:
     # data.go.kr account keys are often shared across approved APIs. This is only
-    # a fallback; authorization failure is silently ignored.
+    # a fallback peer for the full land-ledger record; authorization failure is ignored.
+    # HTTPS/HTTP aliases are the same service, so do not burn a second timeout on HTTP.
     key = _building_hub_key()
     if not key:
         return None
     params = {"serviceKey": key, "pnu": pnu, "numOfRows": 100}
-    for url in LEGACY_LAND_LEDGER_URLS:
-        try:
-            resp = requests.get(url, params=params, timeout=15, allow_redirects=True)
-            if resp.status_code >= 400:
-                continue
-            record = _parse_land_ledger_xml(resp.text)
-            if record:
-                record["_route"] = "legacy_data_go"
-                return record
-        except Exception:
-            continue
-    return None
+    try:
+        resp = requests.get(LEGACY_LAND_LEDGER_URL, params=params, timeout=timeout, allow_redirects=True)
+        if resp.status_code >= 400:
+            return None
+        record = _parse_land_ledger_xml(resp.text)
+        if record:
+            record["_route"] = "legacy_data_go_https"
+        return record
+    except Exception as exc:
+        logger.info("server data.go land ledger failed pnu=%s err=%s", pnu, exc)
+        return None
 
 
 def _parse_land_characteristics_xml(text: str) -> Optional[Dict[str, Any]]:
@@ -1361,7 +1375,7 @@ def _parse_land_characteristics_xml(text: str) -> Optional[Dict[str, Any]]:
     return parsed[0]
 
 
-def _server_land_characteristics_vworld(pnu: str) -> Optional[Dict[str, Any]]:
+def _server_land_characteristics_vworld(pnu: str, timeout: int = 6) -> Optional[Dict[str, Any]]:
     """Server-side VWorld characteristics lookup; never exposes CORS to client."""
     if not _vworld_key():
         return None
@@ -1373,7 +1387,9 @@ def _server_land_characteristics_vworld(pnu: str) -> Optional[Dict[str, Any]]:
         "numOfRows": 50,
     }
     try:
-        resp, route = _vworld_get(VWORLD_LAND_URL, params=params, timeout=15)
+        direct_budget = min(float(timeout), 4.0)
+        proxy_budget = max(1.0, float(timeout) - direct_budget)
+        resp, route = _vworld_get(VWORLD_LAND_URL, params=params, timeout=direct_budget, proxy_timeout=proxy_budget)
         if resp.status_code >= 400:
             return None
         record = _parse_land_characteristics_xml(resp.text)
@@ -1384,6 +1400,107 @@ def _server_land_characteristics_vworld(pnu: str) -> Optional[Dict[str, Any]]:
         logger.info("server VWorld land characteristics failed pnu=%s err=%s", pnu, exc)
         return None
 
+
+
+def _land_ledger_cache_get(pnu: str) -> Optional[Dict[str, Any]]:
+    now = time.monotonic()
+    with LAND_LEDGER_CACHE_LOCK:
+        item = LAND_LEDGER_CACHE.get(pnu)
+        if not item:
+            return None
+        if float(item.get("expires_at") or 0) <= now:
+            LAND_LEDGER_CACHE.pop(pnu, None)
+            return None
+        payload = dict(item.get("payload") or {})
+        record = payload.get("record")
+        payload["record"] = dict(record) if isinstance(record, dict) else None
+        payload["cache_hit"] = True
+        return payload
+
+
+def _land_ledger_cache_put(pnu: str, payload: Dict[str, Any]) -> None:
+    record = payload.get("record")
+    ttl = LAND_LEDGER_CACHE_TTL_POSITIVE_SEC if isinstance(record, dict) else LAND_LEDGER_CACHE_TTL_NEGATIVE_SEC
+    cached = dict(payload)
+    cached["record"] = dict(record) if isinstance(record, dict) else None
+    cached["cache_hit"] = False
+    with LAND_LEDGER_CACHE_LOCK:
+        LAND_LEDGER_CACHE[pnu] = {
+            "expires_at": time.monotonic() + max(1, int(ttl)),
+            "payload": cached,
+        }
+
+
+def _resolve_land_ledger_uncached(pnu: str) -> Dict[str, Any]:
+    """Resolve one PNU without changing legal/source semantics.
+
+    Two *full land-ledger* routes are started together because they normalize to
+    the same ladfrlList schema.  The first valid full-ledger record wins.
+    VWorld land-characteristics remains lower-priority and is queried only if
+    both full-ledger routes fail/return no record.
+    """
+    started = time.perf_counter()
+    full_sources = []
+    if _vworld_key():
+        full_sources.append(("vworld_ladfrl", _server_land_ledger_vworld))
+    if _building_hub_key():
+        full_sources.append(("data_go_ladfrl", _server_land_ledger_legacy_data_go))
+
+    attempts: List[Dict[str, Any]] = []
+    if full_sources:
+        futures = {
+            LAND_LEDGER_SOURCE_EXECUTOR.submit(fn, pnu, 6): name
+            for name, fn in full_sources
+        }
+        # IMPORTANT: no context-manager shutdown(wait=True) here.  If one full
+        # ledger succeeds, the endpoint must not wait for the slower peer.
+        for fut in as_completed(futures):
+            name = futures[fut]
+            t0 = time.perf_counter()
+            try:
+                record = fut.result()
+                attempts.append({"source": name, "ok": bool(record), "completed_ms": round((time.perf_counter()-started)*1000.0, 1)})
+            except Exception as exc:
+                record = None
+                attempts.append({"source": name, "ok": False, "error": str(exc)[:160], "completed_ms": round((time.perf_counter()-started)*1000.0, 1)})
+            if record is not None:
+                return {
+                    "record": record,
+                    "dataset": "토지임야정보(속성정보)",
+                    "operation": "ladfrlList",
+                    "selected_source": name,
+                    "attempts": attempts,
+                    "elapsed_ms": round((time.perf_counter()-started)*1000.0, 1),
+                    "cache_hit": False,
+                }
+
+    # Full ledger is preferred over characteristics.  Characteristics is only a
+    # fallback for area/category fields and therefore never races ahead of a
+    # still-possible full ledger result.
+    char_record = _server_land_characteristics_vworld(pnu, 6)
+    attempts.append({
+        "source": "vworld_land_characteristics",
+        "ok": bool(char_record),
+        "completed_ms": round((time.perf_counter()-started)*1000.0, 1),
+    })
+    return {
+        "record": char_record,
+        "dataset": "토지특성정보" if char_record is not None else "토지임야정보(속성정보)",
+        "operation": "getLandCharacteristics" if char_record is not None else "ladfrlList",
+        "selected_source": "vworld_land_characteristics" if char_record is not None else None,
+        "attempts": attempts,
+        "elapsed_ms": round((time.perf_counter()-started)*1000.0, 1),
+        "cache_hit": False,
+    }
+
+
+def _resolve_land_ledger(pnu: str) -> Dict[str, Any]:
+    cached = _land_ledger_cache_get(pnu)
+    if cached is not None:
+        return cached
+    payload = _resolve_land_ledger_uncached(pnu)
+    _land_ledger_cache_put(pnu, payload)
+    return payload
 
 
 def _parse_land_use_xml(text: str) -> List[Dict[str, Any]]:
@@ -2832,22 +2949,19 @@ def _basic_unit_component(start_idx: int, geoms: List[Any], tree: Any, road_unio
     return selected, hit_limit
 
 
-def _street_block_from_basic_units(
+def _street_block_common_context(
     geometry: Dict[str, Any],
-    barrier_features: Optional[List[Dict[str, Any]]] = None,
     road_features: Optional[List[Dict[str, Any]]] = None,
     max_radius_m: float = 500.0,
     road_surface_features: Optional[List[Dict[str, Any]]] = None,
     road_area_features: Optional[List[Dict[str, Any]]] = None,
-    road_min_width_m: float = 4.0,
-    outer_closure_all_roads: bool = False,
 ) -> Optional[Dict[str, Any]]:
-    """SGIS 기초단위구를 seed로 삼고 TL_SPRD_MANAGE ROAD_BT로 병합여부를 판단한다.
+    """제도별 가로구역이 공통으로 쓰는 공간 FACT를 한 번만 준비한다.
 
-    도로폭 근거는 TL_SPRD_MANAGE의 ROAD_BT를 유지한다. 새 로컬 도로 FACT가 전달되면
-    MANAGE별 폭원에 대응시킨 TL_SPRD_RW 실제 도로면 부분을 barrier geometry로 사용하고,
-    로컬 실폭면이 없을 때만 기존 중심선 위상허용폭 방식으로 fallback한다.
+    R14 성능개선: 대상지/기초단위구/도로 FACT의 파싱·좌표변환과 로컬 STRtree 생성을
+    제도별 요청마다 반복하지 않는다. 여기서는 Rule을 적용하지 않고 공통 context만 만든다.
     """
+    started = time.perf_counter()
     units = _basic_unit_spatial_layers()
     if not units.get('available'):
         return None
@@ -2882,24 +2996,26 @@ def _street_block_from_basic_units(
             continue
     if not local_rows:
         return {
-            'status':'unresolved','block':None,'blocks':{'type':'FeatureCollection','features':[]},
-            'road_barriers':{'type':'FeatureCollection','features':[]},'road_context':{'type':'FeatureCollection','features':[]},
-            'facility_barriers':{'type':'FeatureCollection','features':[]},'basic_unit_context':{'type':'FeatureCollection','features':[]},
-            'metadata':{'method':'sgis_basic_unit_roadbt_merge','reason':'대상지 주변 기초단위구 없음','basic_unit_file':units.get('file')}
+            'early_result': {
+                'status':'unresolved','block':None,'blocks':{'type':'FeatureCollection','features':[]},
+                'road_barriers':{'type':'FeatureCollection','features':[]},'road_context':{'type':'FeatureCollection','features':[]},
+                'facility_barriers':{'type':'FeatureCollection','features':[]},'basic_unit_context':{'type':'FeatureCollection','features':[]},
+                'metadata':{'method':'sgis_basic_unit_roadbt_merge','reason':'대상지 주변 기초단위구 없음','basic_unit_file':units.get('file')}
+            },
+            'common_prep_ms': round((time.perf_counter()-started)*1000.0, 2),
         }
-
-    road_min_width_m = max(0.0, float(road_min_width_m or 0.0))
     if not road_features:
         return {
-            'status':'unavailable','block':None,'blocks':{'type':'FeatureCollection','features':[]},
-            'road_barriers':{'type':'FeatureCollection','features':[]},'road_context':{'type':'FeatureCollection','features':[]},
-            'facility_barriers':{'type':'FeatureCollection','features':[]},'basic_unit_context':{'type':'FeatureCollection','features':[]},
-            'metadata':{'method':'sgis_basic_unit_roadbt_merge','reason':'TL_SPRD_MANAGE ROAD_BT 도로자료 미확보','basic_unit_file':units.get('file')}
+            'early_result': {
+                'status':'unavailable','block':None,'blocks':{'type':'FeatureCollection','features':[]},
+                'road_barriers':{'type':'FeatureCollection','features':[]},'road_context':{'type':'FeatureCollection','features':[]},
+                'facility_barriers':{'type':'FeatureCollection','features':[]},'basic_unit_context':{'type':'FeatureCollection','features':[]},
+                'metadata':{'method':'sgis_basic_unit_roadbt_merge','reason':'TL_SPRD_MANAGE ROAD_BT 도로자료 미확보','basic_unit_file':units.get('file')}
+            },
+            'common_prep_ms': round((time.perf_counter()-started)*1000.0, 2),
         }
+
     selected_items: List[Dict[str, Any]] = []
-    road_metric: List[Any] = []
-    under4_count = 0
-    unknown_width_count = 0
     for feat in road_features or []:
         props = (feat or {}).get('properties') or {}
         width = _road_width_m(props)
@@ -2911,29 +3027,14 @@ def _street_block_from_basic_units(
             if gm.is_empty or not gm.intersects(frame_metric):
                 continue
             selected_items.append({'feature':feat,'metric':gm,'width':width})
-            if width is None:
-                unknown_width_count += 1
-            elif width < road_min_width_m:
-                under4_count += 1
         except Exception:
             continue
 
-    # 제도별 내부도로 기준과 블록 외곽 폐합을 분리한다.
-    # - 내부 분리: ROAD_BT가 road_min_width_m 이상인 실제 RW 도로면
-    # - 외곽 폐합: outer_closure_all_roads=True이면 선택 사업지와 실질적으로 겹치지 않는
-    #   TL_SPRD_RW 도로면은 폭원과 무관하게 블록 외곽 장벽으로 사용한다.
-    #   따라서 4m/6m 기준은 '사업지 내부를 가르는 도로'에만 적용되고, 이미 바깥에서
-    #   블록을 닫는 도로에는 다시 폭원 조건을 걸지 않는다.
-    surface_used_count = 0
-    outer_closure_count = 0
-    threshold_surface_ids = set()
+    # 실폭도로면은 threshold 적용 전에 전부 1회 좌표변환한다. 4m/6m/전체도로 Rule은 apply 단계에서 분기한다.
+    surface_items: List[Dict[str, Any]] = []
     for feat in road_surface_features or []:
         props = (feat or {}).get('properties') or {}
         width = _road_width_m(props)
-        # 성장잠재권은 운영기준상 '도로 또는 시설로 둘러싸인' 가로구역이므로
-        # road_min_width_m=0일 때는 폭원 미상 도로면도 topology 경계로 보존한다.
-        if road_min_width_m > 0 and (width is None or width < road_min_width_m):
-            continue
         try:
             geom = _polygonal_only(shape((feat or {}).get('geometry') or {}))
             if geom is None or geom.is_empty:
@@ -2941,14 +3042,119 @@ def _street_block_from_basic_units(
             gm = _polygonal_only(geometry_transform(to_metric, geom))
             if gm is None or gm.is_empty or not gm.intersects(frame_metric):
                 continue
-            road_metric.append(gm)
-            threshold_surface_ids.add((props.get('RW_SN'), props.get('RDS_MAN_NO'), round(float(width), 3) if width is not None else None))
-            surface_used_count += 1
+            surface_items.append({'feature':feat,'metric':gm,'width':width})
         except Exception:
             continue
 
-    # road_min_width_m=0은 성장잠재권의 '모든 도로 경계' 모드다.
-    # 실폭면과 폭원이 연결되지 않은 도로도 얇은 위상장벽으로 보완해 거대 component로 번지는 것을 막는다.
+    # 폭원과 무관한 외곽 폐합도로 후보도 1회만 파싱한다.
+    outer_candidate_metric: List[Any] = []
+    for feat in road_area_features or []:
+        try:
+            geom = _polygonal_only(shape((feat or {}).get('geometry') or {}))
+            if geom is None or geom.is_empty:
+                continue
+            gm = _polygonal_only(geometry_transform(to_metric, geom))
+            if gm is None or gm.is_empty or not gm.intersects(frame_metric):
+                continue
+            try:
+                overlap_area = float(gm.intersection(site_metric).area)
+            except Exception:
+                overlap_area = 0.0
+            if overlap_area <= 1.0:
+                outer_candidate_metric.append(gm)
+        except Exception:
+            continue
+
+    geoms = [x['metric'] for x in local_rows]
+    tree = STRtree(geoms)
+    initial: List[int] = []
+    for i, gm in enumerate(geoms):
+        try:
+            ia = float(gm.intersection(site_metric).area)
+        except Exception:
+            ia = 0.0
+        if ia >= max(1.0, site_area * 0.002):
+            initial.append(i)
+    if not initial:
+        return {
+            'early_result': {
+                'status':'unresolved','block':None,'blocks':{'type':'FeatureCollection','features':[]},
+                'road_barriers':{'type':'FeatureCollection','features':[]},'road_context':{'type':'FeatureCollection','features':[]},
+                'facility_barriers':{'type':'FeatureCollection','features':[]},
+                'basic_unit_context':{'type':'FeatureCollection','features':[]},
+                'metadata':{'method':'sgis_basic_unit_roadbt_merge','reason':'대상지와 중첩되는 기초단위구 없음','basic_unit_file':units.get('file')}
+            },
+            'common_prep_ms': round((time.perf_counter()-started)*1000.0, 2),
+        }
+
+    return {
+        'units': units,
+        'to_metric': to_metric,
+        'to_wgs': to_wgs,
+        'site_metric': site_metric,
+        'site_area': site_area,
+        'frame_metric': frame_metric,
+        'local_rows': local_rows,
+        'selected_items': selected_items,
+        'surface_items': surface_items,
+        'outer_candidate_metric': outer_candidate_metric,
+        'geoms': geoms,
+        'tree': tree,
+        'initial': initial,
+        'max_radius_m': float(max_radius_m),
+        'common_prep_ms': round((time.perf_counter()-started)*1000.0, 2),
+    }
+
+
+def _street_block_apply_rule(
+    context: Optional[Dict[str, Any]],
+    barrier_features: Optional[List[Dict[str, Any]]] = None,
+    road_min_width_m: float = 4.0,
+    outer_closure_all_roads: bool = False,
+) -> Optional[Dict[str, Any]]:
+    """공통 context에 제도별 가로구역 Rule만 적용한다. R13의 판정 알고리즘은 그대로 유지한다."""
+    if context is None:
+        return None
+    if context.get('early_result') is not None:
+        result = context['early_result']
+        try:
+            result = json.loads(json.dumps(result, ensure_ascii=False))
+        except Exception:
+            result = dict(result)
+        if isinstance(result.get('metadata'), dict):
+            result['metadata']['common_prep_ms'] = context.get('common_prep_ms')
+        return result
+
+    rule_started = time.perf_counter()
+    units = context['units']
+    to_metric = context['to_metric']
+    to_wgs = context['to_wgs']
+    site_metric = context['site_metric']
+    site_area = context['site_area']
+    frame_metric = context['frame_metric']
+    local_rows = context['local_rows']
+    selected_items = context['selected_items']
+    surface_items = context['surface_items']
+    geoms = context['geoms']
+    tree = context['tree']
+    initial = context['initial']
+    max_radius_m = context['max_radius_m']
+
+    road_min_width_m = max(0.0, float(road_min_width_m or 0.0))
+    road_metric: List[Any] = []
+    under4_count = sum(1 for item in selected_items if item['width'] is not None and item['width'] < road_min_width_m)
+    unknown_width_count = sum(1 for item in selected_items if item['width'] is None)
+    surface_used_count = 0
+    outer_closure_count = 0
+
+    for item in surface_items:
+        width = item['width']
+        if road_min_width_m > 0 and (width is None or width < road_min_width_m):
+            continue
+        road_metric.append(item['metric'])
+        surface_used_count += 1
+
+    # 성장잠재권의 '모든 도로 경계' 모드는 폭원 미상 중심선도 위상장벽으로 보완한다.
     if road_min_width_m <= 0:
         for item in selected_items:
             if item['width'] is None:
@@ -2957,39 +3163,15 @@ def _street_block_from_basic_units(
                 except Exception:
                     pass
 
-    # 폭원과 무관하게 쓸 수 있는 외곽 폐합도로 후보는 여기서 수집만 한다.
-    # 선택사업지(seed) 밖에 있다는 이유만으로 즉시 barrier로 쓰면 블록 내부의 2~3m 골목까지
-    # 잘못 분리하므로, 아래 1차 블록 산정 후 실제 외곽경계에 닿는 도로만 2차 폐합에 사용한다.
-    outer_candidate_metric: List[Any] = []
-    if outer_closure_all_roads:
-        for feat in road_area_features or []:
-            try:
-                geom = _polygonal_only(shape((feat or {}).get('geometry') or {}))
-                if geom is None or geom.is_empty:
-                    continue
-                gm = _polygonal_only(geometry_transform(to_metric, geom))
-                if gm is None or gm.is_empty or not gm.intersects(frame_metric):
-                    continue
-                try:
-                    overlap_area = float(gm.intersection(site_metric).area)
-                except Exception:
-                    overlap_area = 0.0
-                if overlap_area <= 1.0:
-                    outer_candidate_metric.append(gm)
-            except Exception:
-                continue
+    outer_candidate_metric = context['outer_candidate_metric'] if outer_closure_all_roads else []
 
     if not road_metric:
         for item in selected_items:
             width = item['width']
             if width is not None and width >= road_min_width_m:
-                # RW 실폭면이 없을 때만 중심선 1m 위상장벽으로 fallback한다.
                 road_metric.append(item['metric'].buffer(1.0, cap_style=2, join_style=2))
     road_union = unary_union(road_metric).buffer(0) if road_metric else GeometryCollection()
 
-    # 프론트가 제도별로 선별한 도시계획도로·시설을 후보 장벽으로 받는다.
-    # 내부에 고립된 작은 시설까지 무조건 블록을 쪼개지 않도록 1차 도로 블록을 만든 뒤
-    # 실제로 블록을 관통·분리하거나 외곽 폐합에 기여하는 시설만 strong barrier로 승격한다.
     barrier_candidates: List[tuple[Dict[str, Any], Any]] = []
     for feat in barrier_features or []:
         try:
@@ -3004,25 +3186,6 @@ def _street_block_from_basic_units(
     strong_features: List[Dict[str, Any]] = []
     strong_metric: List[Any] = []
     strong_union = GeometryCollection()
-
-    geoms = [x['metric'] for x in local_rows]
-    tree = STRtree(geoms)
-    initial: List[int] = []
-    for i, gm in enumerate(geoms):
-        try:
-            ia = float(gm.intersection(site_metric).area)
-        except Exception:
-            ia = 0.0
-        if ia >= max(1.0, site_area * 0.002):
-            initial.append(i)
-    if not initial:
-        return {
-            'status':'unresolved','block':None,'blocks':{'type':'FeatureCollection','features':[]},
-            'road_barriers':{'type':'FeatureCollection','features':[]},'road_context':{'type':'FeatureCollection','features':[]},
-            'facility_barriers':{'type':'FeatureCollection','features':strong_features},
-            'basic_unit_context':{'type':'FeatureCollection','features':[]},
-            'metadata':{'method':'sgis_basic_unit_roadbt_merge','reason':'대상지와 중첩되는 기초단위구 없음','basic_unit_file':units.get('file')}
-        }
 
     def _components_for(road_barrier_union: Any) -> List[tuple[set[int], Any, float, bool]]:
         out: List[tuple[set[int], Any, float, bool]] = []
@@ -3047,9 +3210,6 @@ def _street_block_from_basic_units(
     if not components:
         return None
 
-    # 제도별 시설/계획도로 장벽을 현재 블록 형태에 적용한다.
-    # 도로만으로 만든 1차 블록을 실제로 분리하거나 외곽을 닫는 시설만 채택하므로
-    # 내부 공원·주차장 같은 고립시설을 불필요하게 별도 가로구역으로 오인하지 않는다.
     if barrier_candidates:
         provisional = components[0][1]
         barrier_base = road_union
@@ -3066,9 +3226,6 @@ def _street_block_from_basic_units(
             if not components:
                 return None
 
-    # 2차 외곽폐합: 제도별 폭원 임계값으로 먼저 만든 블록의 '외곽경계'에 실제로 닿는
-    # RW 도로면만 폭원과 무관한 폐합도로로 승격한다. 내부의 좁은 골목은 경계와 닿지
-    # 않으므로 투명하게 유지되어 같은 가로구역 안에 포함된다.
     if outer_closure_all_roads and outer_candidate_metric:
         provisional = components[0][1]
         try:
@@ -3131,9 +3288,6 @@ def _street_block_from_basic_units(
     primary_wgs = geometry_transform(to_wgs, primary)
     primary_site_pct = primary_site_area / site_area * 100.0 if site_area > 0 else None
     primary_block_occupancy_pct = primary_site_area / block_area * 100.0 if block_area > 0 else None
-    # R13 adaptive-radius support: a block that reaches the current search frame is not
-    # accepted as final. The browser retries only that scheme with the legacy wide radius.
-    # This keeps simple urban blocks fast without truncating genuinely large/open blocks.
     try:
         frame_boundary_touched = bool(not frame_metric.buffer(-5.0).contains(primary))
     except Exception:
@@ -3145,6 +3299,7 @@ def _street_block_from_basic_units(
         block_features.append({'type':'Feature','geometry':mapping(geometry_transform(to_wgs,g)),'properties':{
             'site_intersection_m2':ia,'block_area_m2':ba,'site_share_of_block_pct':(ia/ba*100.0 if ba>0 else None),
             'block_coverage_of_site_pct':(ia/site_area*100.0 if site_area>0 else None),'merged_basic_units':len(comp)}})
+    rule_ms = round((time.perf_counter()-rule_started)*1000.0, 2)
     return {
         'status': status,
         'block': {'type':'Feature','geometry':mapping(primary_wgs),'properties':{
@@ -3172,9 +3327,26 @@ def _street_block_from_basic_units(
             'basic_unit_is_legal_street_block':False,'authoritative_street_block':False,
             'future_street_block_interface':'MOIS_BASIC_UNIT_OR_VERIFIED_PLANNING_ROAD_BLOCK',
             'engine_note':'현재 내장 기초단위구는 가로구역 후보 골격(ESTIMATE)이다. TL_SPRD_MANAGE ROAD_BT 폭원 근거와, 사용 가능할 때 TL_SPRD_RW 실제 도로면을 결합해 인접 기초단위구 병합 여부를 판단하며 법정 가로구역으로 자동확정하지 않는다. 향후 행안부 기초단위구/공식 가로구역 또는 검증된 도시계획시설도로 블록 자료가 연결되면 authoritative_street_block=true로 승격한다.',
+            'common_prep_ms': context.get('common_prep_ms'), 'rule_apply_ms': rule_ms,
         }
     }
 
+
+def _street_block_from_basic_units(
+    geometry: Dict[str, Any],
+    barrier_features: Optional[List[Dict[str, Any]]] = None,
+    road_features: Optional[List[Dict[str, Any]]] = None,
+    max_radius_m: float = 500.0,
+    road_surface_features: Optional[List[Dict[str, Any]]] = None,
+    road_area_features: Optional[List[Dict[str, Any]]] = None,
+    road_min_width_m: float = 4.0,
+    outer_closure_all_roads: bool = False,
+) -> Optional[Dict[str, Any]]:
+    """기존 단일 제도 API 호환 wrapper. 내부는 R14 공통 context + Rule 분리 엔진을 사용한다."""
+    context = _street_block_common_context(
+        geometry, road_features, max_radius_m, road_surface_features, road_area_features,
+    )
+    return _street_block_apply_rule(context, barrier_features, road_min_width_m, outer_closure_all_roads)
 
 def analyze_street_block(
     geometry: Dict[str, Any],
@@ -3224,6 +3396,74 @@ ANALYTICS_LOCK = threading.Lock()
 ANALYTICS_DB_READY = False
 ADMIN_SECURITY = HTTPBasic(auto_error=False)
 
+
+
+def analyze_street_block_batch(
+    geometry: Dict[str, Any],
+    road_features: Optional[List[Dict[str, Any]]] = None,
+    road_surface_features: Optional[List[Dict[str, Any]]] = None,
+    road_area_features: Optional[List[Dict[str, Any]]] = None,
+    schemes: Optional[Dict[str, Dict[str, Any]]] = None,
+    max_radius_m: float = 500.0,
+) -> Dict[str, Any]:
+    """R14: 동일 대상지의 제도별 가로구역을 공통 공간전처리 1회 후 순차 Rule 적용한다.
+
+    병렬화하지 않는다. Render 소형 인스턴스에서 대형 공간연산 동시실행을 피하면서
+    제도별로 중복되던 좌표변환·로컬 STRtree·도로 geometry 파싱만 제거한다.
+    """
+    started = time.perf_counter()
+    scheme_map = schemes or {}
+    if not scheme_map:
+        raise ValueError('가로구역 batch에는 최소 1개 제도 Rule이 필요합니다.')
+    if len(scheme_map) > 6:
+        raise ValueError('가로구역 batch는 최대 6개 제도까지 허용합니다.')
+    context = _street_block_common_context(
+        geometry, road_features, max_radius_m, road_surface_features, road_area_features,
+    )
+    prep_ms = None if context is None else context.get('common_prep_ms')
+    results: Dict[str, Any] = {}
+    rule_ms: Dict[str, float] = {}
+    for key, rule in scheme_map.items():
+        t0 = time.perf_counter()
+        result = _street_block_apply_rule(
+            context,
+            (rule or {}).get('barrier_features') or [],
+            float((rule or {}).get('road_min_width_m') or 0.0),
+            bool((rule or {}).get('outer_closure_all_roads', False)),
+        )
+        if result is None:
+            unit_layers = _basic_unit_spatial_layers()
+            result = {
+                'status':'unavailable','block':None,'blocks':{'type':'FeatureCollection','features':[]},
+                'road_barriers':{'type':'FeatureCollection','features':[]},'road_context':{'type':'FeatureCollection','features':[]},
+                'facility_barriers':{'type':'FeatureCollection','features':[]},'basic_unit_context':{'type':'FeatureCollection','features':[]},
+                'metadata':{
+                    'method':'sgis_basic_unit_roadbt_merge','preferred_method':'sgis_basic_unit_roadbt_merge',
+                    'basic_unit_available':bool(unit_layers.get('available')),
+                    'basic_unit_reason':None if unit_layers.get('available') else unit_layers.get('reason'),
+                    'road_feature_count':len(road_features or []),'fallback_used':False,
+                    'reason':'기초단위구 자료가 없거나 가로구역 후보를 자동확정하지 못했습니다. TL_SPRD_MANAGE ROAD_BT 자료를 확인하세요.'
+                }
+            }
+        elapsed = round((time.perf_counter()-t0)*1000.0, 2)
+        if isinstance(result.get('metadata'), dict):
+            result['metadata']['batch_rule_ms'] = elapsed
+            result['metadata']['batch_shared_context'] = True
+        results[str(key)] = result
+        rule_ms[str(key)] = elapsed
+    return {
+        'status':'ok',
+        'results':results,
+        'shared_meta':{
+            'analysis_radius_m':float(max_radius_m),
+            'common_prep_ms':prep_ms,
+            'rule_ms':rule_ms,
+            'scheme_count':len(results),
+            'batch_total_ms':round((time.perf_counter()-started)*1000.0, 2),
+            'common_context_reused':True,
+            'execution_mode':'sequential_rules_shared_context',
+        },
+    }
 
 def _database_url() -> str:
     return os.getenv("DATABASE_URL", "").strip()
@@ -4215,6 +4455,21 @@ class StreetBlockInput(BaseModel):
     road_area_features: List[Dict[str, Any]] = Field(default_factory=list, max_length=5000)
     road_min_width_m: float = Field(4.0, ge=0.0, le=50.0)
     outer_closure_all_roads: bool = False
+    max_radius_m: float = Field(500.0, ge=120.0, le=1000.0)
+
+
+class StreetBlockSchemeRuleInput(BaseModel):
+    barrier_features: List[Dict[str, Any]] = Field(default_factory=list, max_length=3000)
+    road_min_width_m: float = Field(4.0, ge=0.0, le=50.0)
+    outer_closure_all_roads: bool = False
+
+
+class StreetBlockBatchInput(BaseModel):
+    geometry: Dict[str, Any]
+    road_features: List[Dict[str, Any]] = Field(default_factory=list, max_length=5000)
+    road_surface_features: List[Dict[str, Any]] = Field(default_factory=list, max_length=5000)
+    road_area_features: List[Dict[str, Any]] = Field(default_factory=list, max_length=5000)
+    schemes: Dict[str, StreetBlockSchemeRuleInput]
     max_radius_m: float = Field(500.0, ge=120.0, le=1000.0)
 
 
@@ -5292,6 +5547,31 @@ def road_facts(inp: RoadFactInput):
         logging.exception("road fact analysis failed")
         raise HTTPException(status_code=500, detail=f"도로 FACT 분석 실패: {exc}") from exc
 
+@app.post("/api/spatial/street-block-batch")
+def street_block_batch(inp: StreetBlockBatchInput):
+    """동일 도로 FACT를 공유하는 여러 제도 가로구역을 공통 전처리 1회로 순차 산정한다."""
+    try:
+        scheme_dict = {
+            key: {
+                'barrier_features': value.barrier_features,
+                'road_min_width_m': value.road_min_width_m,
+                'outer_closure_all_roads': value.outer_closure_all_roads,
+            }
+            for key, value in inp.schemes.items()
+        }
+        return analyze_street_block_batch(
+            inp.geometry, inp.road_features, inp.road_surface_features, inp.road_area_features,
+            scheme_dict, inp.max_radius_m,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logging.exception("street block batch analysis failed")
+        raise HTTPException(status_code=500, detail=f"가로구역 batch 자동추출 오류: {exc}") from exc
+
+
 @app.post("/api/spatial/street-block")
 def street_block(inp: StreetBlockInput):
     """선택 사업지를 seed로 주변 기초단위구를 확장해 제도별 가로구역 후보를 찾습니다.
@@ -5383,23 +5663,23 @@ def land_ledger_one(inp: LandLedgerOneInput):
     if len(pnu) != 19 or not pnu.isdigit():
         raise HTTPException(status_code=422, detail="PNU는 19자리 숫자여야 합니다.")
 
-    # Browser -> VWorld direct calls are deliberately avoided.  The server
-    # performs all official-source lookups so the client never hits NED CORS.
-    record = _server_land_ledger_vworld(pnu)
-    dataset = "토지임야정보(속성정보)"
-    operation = "ladfrlList"
-    if record is None:
-        record = _server_land_ledger_legacy_data_go(pnu)
-    if record is None:
-        record = _server_land_characteristics_vworld(pnu)
-        if record is not None:
-            dataset = "토지특성정보"
-            operation = "getLandCharacteristics"
+    # R15: race the two equivalent full-ledger routes, then use land
+    # characteristics only as a lower-priority fallback.  Positive and negative
+    # results are short-TTL cached so a repeated site review does not redo the
+    # same network failures.
+    resolved = _resolve_land_ledger(pnu)
+    record = resolved.get("record")
+    dataset = str(resolved.get("dataset") or "토지임야정보(속성정보)")
+    operation = str(resolved.get("operation") or "ladfrlList")
 
     return {
         "pnu": pnu,
         "record": record,
         "vworld_ready": bool(_vworld_key()),
+        "cache_hit": bool(resolved.get("cache_hit")),
+        "selected_source": resolved.get("selected_source"),
+        "elapsed_ms": resolved.get("elapsed_ms"),
+        "attempts": resolved.get("attempts") or [],
         "source": {
             "provider": "국토교통부",
             "dataset": dataset,
