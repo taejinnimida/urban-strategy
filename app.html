@@ -5207,8 +5207,39 @@ async function analyzeOneSchemeStreetBlock(key,roadFacts,planningRoadBase,nonBui
   if(state.multiBlock)state.warnings.push(`선정사업지가 ${state.blockFeatures.length}개 가로구역에 걸칩니다. 가로구역을 합치지 않고 각 블록별 포함률을 별도 산정합니다.`);
   return state;
 }
+async function streetBlockRuntimePreflight(signal=null){
+  // 가로구역 필수 seed(SGIS 기초단위구)가 배포본에 없으면 VWorld 다중조회와
+  // 백엔드 가로구역 POST를 시작하지 않는다. 누락은 즉시 REVIEW로 확정한다.
+  // /health 자체가 확인되지 않는 경우에는 자료 누락으로 단정하지 않고 기존 분석을 시도한다.
+  const controller=new AbortController();let timer=null;
+  try{
+    if(signal?.aborted)return {known:false,configured:null,reason:'요청 취소'};
+    if(signal)signal.addEventListener('abort',()=>{try{controller.abort();}catch(_e){}},{once:true});
+    timer=setTimeout(()=>{try{controller.abort();}catch(_e){}},5000);
+    const res=await fetch('/health',{cache:'no-store',signal:controller.signal});
+    const data=await res.json();
+    if(!res.ok)throw new Error(data?.detail||`health HTTP ${res.status}`);
+    return {known:true,configured:data.street_block_basic_unit_configured===true,file:data.street_block_basic_unit_file||null};
+  }catch(e){
+    return {known:false,configured:null,reason:String(e?.message||e)};
+  }finally{if(timer)clearTimeout(timer);}
+}
+function markSchemeStreetBlocksUnavailable(reason='SGIS 기초단위구 ZIP 미설치'){
+  for(const key of ['smallscale','activation','station_complex','growth_potential']){
+    const st=schemeStreetBlockAnalysis[key]=newSchemeStreetBlockState(key);
+    st.loaded=true;st.loading=false;st.status='review';st.quality='NONE';
+    st.metadata={basic_unit_available:false,basic_unit_reason:reason,reason};
+    st.warnings=[reason];
+  }
+  renderSchemeStreetBlockSpatialStatus();
+  return {status:'unavailable',resolved_count:0,reason,schemes:Object.fromEntries(Object.entries(schemeStreetBlockAnalysis).map(([k,v])=>[k,{status:v.status,area_m2:null,site_share_pct:null,block_count:0}]))};
+}
 async function analyzeSchemeStreetBlocks(signal=null){
   if(!activeGeometry)return {status:'unavailable'};
+  const preflight=await streetBlockRuntimePreflight(signal);
+  if(preflight.known&&preflight.configured===false){
+    return markSchemeStreetBlocksUnavailable('SGIS 기초단위구 ZIP 미설치 · 가로구역만 REVIEW, 다른 현황분석은 계속');
+  }
   let roadFacts=null,roadErrors=[];
   try{roadFacts=await fetchIndependentRoadFacts(750);}catch(e){roadErrors.push(String(e?.message||e));}
   if(!roadFacts||!(roadFacts.manage_features||[]).length){
@@ -6783,14 +6814,20 @@ async function applySelectedParcelsAsBoundary(){
   activeGeometry=merged.geometry;analysisGeometry=merged.geometry;boundaryReferenceGeometry=JSON.parse(JSON.stringify(merged.geometry));
   drawnItems.clearLayers();
   L.geoJSON(merged,{style:{weight:3}}).eachLayer(l=>drawnItems.addLayer(l));
+  // FIX(r6-fix2): 필지선택 경로를 지도그리기/주소/SHP 3개 경로와 동일한 구조로 통일한다.
+  //  1) 이전 구역계 기준으로 계산된 가로구역·역세권·도시계획·도로·의료시설 등 Fact는 여기서 초기화한다(stale 값 방지).
+  //     단 keepParcelSelection=true이므로 사용자가 고른 selectedParcelPnus/parcelFeatureMap 자체는 보존한다.
+  //  2) 토지대장/건축물/건축HUB/도로/의료시설 같은 무거운 공식조회는 여기서 미리 실행하지 않는다.
+  //     다른 3개 입력경로와 마찬가지로 사용자가 '검토하기'를 눌렀을 때만 전체 파이프라인이 돈다.
+  clearBoundaryAnalysisForNewGeometry({keepParcelSelection:true});
   await updateMeasurementOnly();
   recalcSelectedParcelStats();
-  await Promise.allSettled([analyzeLandLedger(),analyzeBuildings()]);
-  await analyzeBuildingHub();
-  await analyzeRoadAccess();
-  await analyzeSafeMedicalReference();
-  renderSafeMedicalSpatialStatus();
-  document.getElementById('result').innerHTML='<div class="empty">선택필지로 구역계를 갱신했습니다. 자동·수기 지표를 확인한 뒤 재개발 검토를 실행하세요.</div>';
+  document.getElementById('result').innerHTML='<div class="empty">선택필지로 구역계를 설정했습니다. ‘검토하기’를 누르면 연속지적·건축물·도시계획·도로 Fact를 수집합니다.</div>';
+  const legacyRun=document.getElementById('runBtn');if(legacyRun)legacyRun.disabled=false;
+  setSiteReviewStatus('구역계 설정 완료(필지선택) · ‘검토하기’를 눌러 공식 공간분석을 실행하세요.','ready');
+  safeSchemeUiStep('compact-ready-parcels',()=>updateCompactInfoRail(),null);
+  safeSchemeUiStep('mini-ready-parcels',()=>refreshCompactMiniMaps(),null);
+  safeSchemeUiStep('overview-ready-parcels',()=>syncServiceOverview(),null);
 }
 
 
@@ -7282,10 +7319,13 @@ async function safeAnalysisStep(label,fn,timeoutMs=ANALYSIS_STEP_TIMEOUT_MS,opti
     return {label,status:'rejected',reason};
   }
 }
-function clearBoundaryAnalysisForNewGeometry(){
+function clearBoundaryAnalysisForNewGeometry(options={}){
   analysisGeometry=null;
   resetAnalysisProgress();buildingHubRequestToken+=1;planningAnalysis.requestToken=(planningAnalysis.requestToken||0)+1;
-  parcelFeatureMap.clear();selectedParcelPnus.clear();
+  // FIX(r6-fix2): 필지선택으로 구역계를 갱신/재편집하는 경로는 사용자가 하나씩 고른 selectedParcelPnus/parcelFeatureMap을
+  // 여기서 통째로 비우면 안 된다. keepParcelSelection=true면 필지 선택 상태는 보존하고
+  // 가로구역·역세권·도시계획·도로·의료시설 등 '이전 구역계 기준으로 계산된 Fact'만 초기화한다.
+  if(!options.keepParcelSelection){parcelFeatureMap.clear();selectedParcelPnus.clear();}
   currentBuildingFeatures=[];hubRecordsByPnu.clear();
   currentRoadWidthFeatures=[];currentRoadManageFeatures=[];
   ccContextParcelFeatures=[];ccContextBuildingFeatures=[];
@@ -7323,7 +7363,8 @@ async function runAllAutoAnalyses(options={}){
   // runSiteReview에서 이미 선행 산정한 경우 skipStreetBlocks로 중복 호출을 막는다.
   if(!options.skipStreetBlocks){
     results.push(await safeAnalysisStep('제도별 가로구역',analyzeSchemeStreetBlocks,300000,{classify:v=>{
-      const ok=Number(v?.resolved_count||0);return {status:ok===4?'fulfilled':ok?'partial':'rejected',detail:`4개 제도 중 ${ok}개 가로구역 산정 · 가로주택 일반6m/계획도로6m · 역세권2종 내부4m+외곽도로폭무관+계획도로 · 성장잠재권 6m`};
+      const ok=Number(v?.resolved_count||0),missing=/기초단위구/.test(String(v?.reason||''));
+      return {status:missing?'partial':(ok===4?'fulfilled':ok?'partial':'rejected'),detail:missing?'SGIS 기초단위구 미설치 · 가로구역 REVIEW · 후속 현황분석 계속':`4개 제도 중 ${ok}개 가로구역 산정 · 가로주택 일반6m/계획도로6m · 역세권2종 내부4m+외곽도로폭무관+계획도로 · 성장잠재권 6m`};
     }}));
   }
 
@@ -7409,8 +7450,8 @@ async function runSiteReview(){
     // 제도별 가로구역은 후속 역세권·간선가로 판정의 선행 공간 Fact이므로 가장 먼저 확정한다.
     // activeGeometry와 독립 도로/도시계획도로 Fact만 사용하므로 연속지적·역세권 조회보다 먼저 실행할 수 있다.
     const streetBlockStep=await safeAnalysisStep('제도별 가로구역',analyzeSchemeStreetBlocks,300000,{classify:v=>{
-      const ok=Number(v?.resolved_count||0);
-      return {status:ok===4?'fulfilled':ok?'partial':'rejected',detail:`4개 제도 중 ${ok}개 가로구역 산정 · 후속 역세권/간선가로 판정에 선행 적용`};
+      const ok=Number(v?.resolved_count||0),missing=/기초단위구/.test(String(v?.reason||''));
+      return {status:missing?'partial':(ok===4?'fulfilled':ok?'partial':'rejected'),detail:missing?'SGIS 기초단위구 미설치 · 가로구역 REVIEW · 후속 현황분석 계속':`4개 제도 중 ${ok}개 가로구역 산정 · 후속 역세권/간선가로 판정에 선행 적용`};
     }});
 
     // 연속지적 자동선정은 필지 Fact 수집용이다. 사용자가 확정한 구역계는 그대로 유지한다.

@@ -1790,6 +1790,25 @@ def _road_shape_dir_complete(path: str) -> bool:
     )
 
 
+def _road_zip_candidates() -> List[str]:
+    return [
+        os.path.join(STRUCTURED_DATA_DIR, "road_shp_seoul.zip"),
+        os.path.join(BASE_DIR, "road_shp_seoul.zip"),
+        os.path.join(STRUCTURED_DATA_DIR, "road_review_package.zip"),
+        os.path.join(BASE_DIR, "road_review_package.zip"),
+    ]
+
+
+def _road_zip_path() -> Optional[str]:
+    """/health 등에서 참조 — 배포 패키지에 도로 SHP 번들 zip이 실제로 존재하는지 확인.
+
+    FIX(r6-fix2): 이 함수가 정의되지 않은 채 /health 핸들러에서
+    ``bool(_road_zip_path())``로 호출되고 있어 NameError로 /health가 500을 반환했다.
+    Render의 healthCheckPath가 /health이므로 배포 자체가 불안정해질 수 있었다.
+    """
+    return next((p for p in _road_zip_candidates() if os.path.isfile(p) and os.path.getsize(p) > 0), None)
+
+
 @lru_cache(maxsize=1)
 def _road_shape_zip_cache_dir() -> Optional[str]:
     """평탄화 배포에서도 도로 FACT 압축파일을 자동 사용한다.
@@ -1798,13 +1817,7 @@ def _road_shape_zip_cache_dir() -> Optional[str]:
     기존 검토패키지 ``road_review_package.zip``도 하위호환으로 읽는다.
     전체 ZIP을 풀지 않고 필요한 6개 SHP 구성파일만 /tmp에 1회 추출한다.
     """
-    candidates = [
-        os.path.join(STRUCTURED_DATA_DIR, "road_shp_seoul.zip"),
-        os.path.join(BASE_DIR, "road_shp_seoul.zip"),
-        os.path.join(STRUCTURED_DATA_DIR, "road_review_package.zip"),
-        os.path.join(BASE_DIR, "road_review_package.zip"),
-    ]
-    archive = next((p for p in candidates if os.path.isfile(p) and os.path.getsize(p) > 0), None)
+    archive = _road_zip_path()
     if not archive:
         return None
     cache_dir = os.path.join("/tmp", "urban_strategy_road_shp_seoul")
@@ -4784,8 +4797,24 @@ def reference_renewal_zones():
     return _renewal_reference_data()
 
 
+def _reference_data_readiness() -> Dict[str, bool]:
+    return {
+        "stations": os.path.isfile(_data_path("stations.json")),
+        "centers": os.path.isfile(_data_path("centers.json")),
+        "station_entrances": os.path.isfile(_data_path("station_entrances.json")),
+        "renewal_legal": os.path.isfile(_data_path("uq181_legal.zip")),
+        "renewal_project": os.path.isfile(_data_path("uq120_project.zip")),
+        "safe_medical": os.path.isfile(_data_path("safe_medical_reference.json")),
+        "biotope": os.path.isfile(_data_path("biotope_seoul.zip")),
+        "public_forest": os.path.isfile(_data_path("forest_classification_seoul_202608.zip")),
+        "school_protection": os.path.isfile(_data_path("school_protection_seoul_202608.zip")),
+        "basic_unit": bool(_basic_unit_zip_path()),
+    }
+
+
 @app.get("/health")
 def health():
+    reference_data = _reference_data_readiness()
     return {
         "ok": True,
         "app": "seoul_urban_renewal_platform_v2.5.0",
@@ -4806,6 +4835,9 @@ def health():
         "land_ledger": "ladfrlList + getLandCharacteristics + geometry provisional",
         "road_access": "VWorld TL_SPRD_MANAGE + ROAD_BT for cadastral/frontage calculations",
         "road_bundled_configured": bool(_road_zip_path()),
+        "reference_data": reference_data,
+        "reference_data_missing": [k for k, v in reference_data.items() if not v],
+        "analysis_reference_ready": all(reference_data.get(k, False) for k in ("stations", "centers", "renewal_legal", "renewal_project")),
         "analysis_object_model": "parcel/building common ledger retained for station-area/zoning/mixed-use expansion",
         "redevelopment_strategy": "scheme-specific legal aging facts + area/aging/additional-entry AND-OR gates",
         "scheme_sheets": ["housing_redevelopment","reconstruction","residential_environment","smallscale_housing_5_routes","general_housing","safe_housing","shared_housing","longterm_lease","public_housing_complex","urban_redevelopment","station_activation","growth_potential","urban_complex_innovation","station_complex_district","prior_negotiation"],
