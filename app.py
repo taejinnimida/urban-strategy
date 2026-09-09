@@ -1296,95 +1296,6 @@ def _server_land_ledger_legacy_data_go(pnu: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-def _parse_land_characteristics_xml(text: str) -> Optional[Dict[str, Any]]:
-    """Parse the newest positive-area row from VWorld getLandCharacteristics.
-
-    This is a server-side fallback for browsers that cannot call VWorld NED
-    directly because of CORS.  It intentionally returns only fields that are
-    actually present in the official characteristics response.
-    """
-    root = ET.fromstring(text)
-
-    result_code = (root.findtext(".//resultCode") or "").strip()
-    result_msg = (root.findtext(".//resultMsg") or "").strip()
-    if result_code and result_code not in {"00", "0"}:
-        raise RuntimeError(f"토지특성정보 API 오류 {result_code}: {result_msg or 'unknown'}")
-
-    def val(row: ET.Element, name: str) -> str:
-        node = row.find(name)
-        return (node.text or "").strip() if node is not None else ""
-
-    parsed: List[Dict[str, Any]] = []
-    for row in root.findall(".//field"):
-        area_raw = val(row, "lndpclAr")
-        try:
-            area = float(area_raw) if area_raw else None
-        except ValueError:
-            area = None
-        if area is None or area <= 0:
-            continue
-        parsed.append({
-            "pnu": val(row, "pnu"),
-            "lndpclAr": area,
-            "lndcgrCodeNm": val(row, "lndcgrCodeNm") or val(row, "lndcgrCode"),
-            "stdrYear": val(row, "stdrYear"),
-            "stdrMt": val(row, "stdrMt"),
-            "lastUpdtDt": val(row, "lastUpdtDt"),
-        })
-
-    if not parsed:
-        # Defensive fallback for response variants without <field>.
-        area_raw = (root.findtext(".//lndpclAr") or "").strip()
-        try:
-            area = float(area_raw) if area_raw else None
-        except ValueError:
-            area = None
-        if area is None or area <= 0:
-            return None
-        return {
-            "pnu": (root.findtext(".//pnu") or "").strip(),
-            "lndpclAr": area,
-            "lndcgrCodeNm": (root.findtext(".//lndcgrCodeNm") or root.findtext(".//lndcgrCode") or "").strip(),
-            "stdrYear": (root.findtext(".//stdrYear") or "").strip(),
-            "stdrMt": (root.findtext(".//stdrMt") or "").strip(),
-            "lastUpdtDt": (root.findtext(".//lastUpdtDt") or "").strip(),
-        }
-
-    parsed.sort(
-        key=lambda r: (
-            str(r.get("stdrYear") or ""),
-            str(r.get("stdrMt") or ""),
-            str(r.get("lastUpdtDt") or ""),
-        ),
-        reverse=True,
-    )
-    return parsed[0]
-
-
-def _server_land_characteristics_vworld(pnu: str) -> Optional[Dict[str, Any]]:
-    """Server-side VWorld characteristics lookup; never exposes CORS to client."""
-    if not _vworld_key():
-        return None
-    params = {
-        "format": "xml",
-        "key": _vworld_key(),
-        "domain": _vworld_domain(),
-        "pnu": pnu,
-        "numOfRows": 50,
-    }
-    try:
-        resp, route = _vworld_get(VWORLD_LAND_URL, params=params, timeout=15)
-        if resp.status_code >= 400:
-            return None
-        record = _parse_land_characteristics_xml(resp.text)
-        if record:
-            record["_route"] = f"server_land_characteristics_{route}"
-        return record
-    except Exception as exc:
-        logger.info("server VWorld land characteristics failed pnu=%s err=%s", pnu, exc)
-        return None
-
-
 
 def _parse_land_use_xml(text: str) -> List[Dict[str, Any]]:
     """Parse VWorld NED getLandUseAttr XML.
@@ -4887,6 +4798,8 @@ def reference_renewal_zones():
 
 
 def _reference_data_readiness() -> Dict[str, bool]:
+    """FIX(r6-fix3): GPT R7 검토안 채택 — 배포 ZIP에 실제로 들어있는 참조자료를 /health로 노출한다.
+    분석이 안 될 때 코드 오류인지 데이터 누락인지 /health 하나로 바로 구분할 수 있게 한다."""
     return {
         "stations": os.path.isfile(_data_path("stations.json")),
         "centers": os.path.isfile(_data_path("centers.json")),
@@ -4903,7 +4816,6 @@ def _reference_data_readiness() -> Dict[str, bool]:
 
 @app.get("/health")
 def health():
-    reference_data = _reference_data_readiness()
     return {
         "ok": True,
         "app": "seoul_urban_renewal_platform_v2.5.0",
@@ -4924,9 +4836,9 @@ def health():
         "land_ledger": "ladfrlList + getLandCharacteristics + geometry provisional",
         "road_access": "VWorld TL_SPRD_MANAGE + ROAD_BT for cadastral/frontage calculations",
         "road_bundled_configured": bool(_road_zip_path()),
-        "reference_data": reference_data,
-        "reference_data_missing": [k for k, v in reference_data.items() if not v],
-        "analysis_reference_ready": all(reference_data.get(k, False) for k in ("stations", "centers", "renewal_legal", "renewal_project")),
+        "reference_data": _reference_data_readiness(),
+        "reference_data_missing": [k for k, v in _reference_data_readiness().items() if not v],
+        "analysis_reference_ready": all(_reference_data_readiness().get(k, False) for k in ("stations", "centers", "renewal_legal", "renewal_project")),
         "analysis_object_model": "parcel/building common ledger retained for station-area/zoning/mixed-use expansion",
         "redevelopment_strategy": "scheme-specific legal aging facts + area/aging/additional-entry AND-OR gates",
         "scheme_sheets": ["housing_redevelopment","reconstruction","residential_environment","smallscale_housing_5_routes","general_housing","safe_housing","shared_housing","longterm_lease","public_housing_complex","urban_redevelopment","station_activation","growth_potential","urban_complex_innovation","station_complex_district","prior_negotiation"],
@@ -5346,51 +5258,17 @@ def land_ledger_one(inp: LandLedgerOneInput):
     if len(pnu) != 19 or not pnu.isdigit():
         raise HTTPException(status_code=422, detail="PNU는 19자리 숫자여야 합니다.")
 
-    # Browser -> VWorld direct calls are deliberately avoided.  The server
-    # performs all official-source lookups so the client never hits NED CORS.
     record = _server_land_ledger_vworld(pnu)
-    dataset = "토지임야정보(속성정보)"
-    operation = "ladfrlList"
     if record is None:
         record = _server_land_ledger_legacy_data_go(pnu)
-    if record is None:
-        record = _server_land_characteristics_vworld(pnu)
-        if record is not None:
-            dataset = "토지특성정보"
-            operation = "getLandCharacteristics"
 
     return {
         "pnu": pnu,
         "record": record,
-        "vworld_ready": bool(_vworld_key()),
         "source": {
             "provider": "국토교통부",
-            "dataset": dataset,
-            "operation": operation,
-            "portal_modified": "2025-07-01",
-        },
-    }
-
-
-@app.post("/api/land/characteristics-one")
-def land_characteristics_one(inp: LandLedgerOneInput):
-    """Server proxy for VWorld getLandCharacteristics.
-
-    Kept as a separate endpoint so any future client path can obtain official
-    area/category data without ever attempting a browser CORS request.
-    """
-    pnu = str(inp.pnu or "").strip()
-    if len(pnu) != 19 or not pnu.isdigit():
-        raise HTTPException(status_code=422, detail="PNU는 19자리 숫자여야 합니다.")
-    record = _server_land_characteristics_vworld(pnu)
-    return {
-        "pnu": pnu,
-        "record": record,
-        "vworld_ready": bool(_vworld_key()),
-        "source": {
-            "provider": "국토교통부",
-            "dataset": "토지특성정보",
-            "operation": "getLandCharacteristics",
+            "dataset": "토지임야정보(속성정보)",
+            "operation": "ladfrlList",
             "portal_modified": "2025-07-01",
         },
     }

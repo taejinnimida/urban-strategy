@@ -2908,17 +2908,39 @@ async function fetchSpatialFeaturesBrowser(layerId, geometry, uniqueKeys=[]){
 }
 
 async function fetchOfficialAreaBrowser(pnu){
-  // R9: official area is fetched through our FastAPI proxy, never directly
-  // from api.vworld.kr in the browser (NED is CORS-blocked on Render origins).
-  const r=await fetch('/api/land/characteristics-one',{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({pnu:String(pnu)})
-  });
-  if(!r.ok) throw new Error('토지특성 프록시 HTTP '+r.status);
-  const d=await r.json();
-  const area=Number(d?.record?.lndpclAr);
-  return Number.isFinite(area)&&area>0?area:null;
+  const u=new URL(VWORLD_LAND_URL);
+  u.searchParams.set('pnu',pnu);
+  u.searchParams.set('format','xml');
+  u.searchParams.set('key',VWORLD_CLIENT_KEY);
+  u.searchParams.set('domain',VWORLD_CLIENT_DOMAIN);
+  u.searchParams.set('numOfRows','50');
+
+  const r=await fetch(u.toString(),{method:'GET',mode:'cors'});
+  if(!r.ok) throw new Error('토지특성 HTTP '+r.status);
+  const xml=await r.text();
+  const doc=new DOMParser().parseFromString(xml,'application/xml');
+  if(doc.querySelector('parsererror')) throw new Error('토지특성 XML 파싱 오류');
+
+  const vals=[];
+  for(const row of [...doc.querySelectorAll('field')]){
+    const an=row.querySelector('lndpclAr');
+    if(!an||!an.textContent.trim()) continue;
+    const area=Number(an.textContent.trim());
+    if(!Number.isFinite(area)||area<=0) continue;
+    const yn=row.querySelector('stdrYear');
+    const year=yn?Number(yn.textContent.trim())||0:0;
+    vals.push({year,area});
+  }
+  if(vals.length){
+    vals.sort((a,b)=>b.year-a.year);
+    return vals[0].area;
+  }
+  const any=doc.querySelector('lndpclAr');
+  if(any){
+    const area=Number(any.textContent.trim());
+    if(Number.isFinite(area)&&area>0)return area;
+  }
+  return null;
 }
 
 async function mapLimit(items,limit,fn){
@@ -5185,13 +5207,16 @@ async function analyzeOneSchemeStreetBlock(key,roadFacts,planningRoadBase,nonBui
   if(state.multiBlock)state.warnings.push(`선정사업지가 ${state.blockFeatures.length}개 가로구역에 걸칩니다. 가로구역을 합치지 않고 각 블록별 포함률을 별도 산정합니다.`);
   return state;
 }
+// FIX(r6-fix3): GPT R7 검토안 채택 — 가로구역 사전점검(preflight).
+// basic_unit_seoul.zip이 배포본에 없으면 VWorld 다중조회·백엔드 4회 POST를 아예 시작하지 않고
+// 5초 내 즉시 REVIEW로 표시한다. 순서(가로구역이 다른 FACT보다 먼저 '완료'되는 구조) 자체는
+// 그대로 유지한다 — R7처럼 백그라운드 병렬실행으로 바꾸지 않는다. 저사양 Render 인스턴스에서
+// 가로구역의 대형 SHP·도로연산이 다른 대형 공간자료 조회와 동시에 도는 것을 피하기 위함이다
+// (하단 runAllAutoAnalyses의 "SHP 2종 동시 적재로 프로세스 재시작" 주석과 동일한 이유).
 async function streetBlockRuntimePreflight(signal=null){
-  // 가로구역 필수 seed(SGIS 기초단위구)가 배포본에 없으면 VWorld 다중조회와
-  // 백엔드 가로구역 POST를 시작하지 않는다. 누락은 즉시 REVIEW로 확정한다.
-  // /health 자체가 확인되지 않는 경우에는 자료 누락으로 단정하지 않고 기존 분석을 시도한다.
   const controller=new AbortController();let timer=null;
   try{
-    if(signal?.aborted)return {known:false,configured:null,reason:'요청 취소'};
+    if(signal?.aborted)return {known:true,configured:false,reason:'요청 취소'};
     if(signal)signal.addEventListener('abort',()=>{try{controller.abort();}catch(_e){}},{once:true});
     timer=setTimeout(()=>{try{controller.abort();}catch(_e){}},5000);
     const res=await fetch('/health',{cache:'no-store',signal:controller.signal});
@@ -7341,8 +7366,9 @@ async function runAllAutoAnalyses(options={}){
   // runSiteReview에서 이미 선행 산정한 경우 skipStreetBlocks로 중복 호출을 막는다.
   if(!options.skipStreetBlocks){
     results.push(await safeAnalysisStep('제도별 가로구역',analyzeSchemeStreetBlocks,300000,{classify:v=>{
-      const ok=Number(v?.resolved_count||0),missing=/기초단위구/.test(String(v?.reason||''));
-      return {status:missing?'partial':(ok===4?'fulfilled':ok?'partial':'rejected'),detail:missing?'SGIS 기초단위구 미설치 · 가로구역 REVIEW · 후속 현황분석 계속':`4개 제도 중 ${ok}개 가로구역 산정 · 가로주택 일반6m/계획도로6m · 역세권2종 내부4m+외곽도로폭무관+계획도로 · 성장잠재권 6m`};
+      const ok=Number(v?.resolved_count||0);
+      const missing=/기초단위구/.test(String(v?.reason||''));
+      return {status:missing?'partial':(ok===4?'fulfilled':ok?'partial':'rejected'),detail:missing?'기초단위구 미설치 · 가로구역 REVIEW · 다른 현황분석 계속':`4개 제도 중 ${ok}개 가로구역 산정 · 가로주택 일반6m/계획도로6m · 역세권2종 내부4m+외곽도로폭무관+계획도로 · 성장잠재권 6m`};
     }}));
   }
 
@@ -7427,9 +7453,13 @@ async function runSiteReview(){
 
     // 제도별 가로구역은 후속 역세권·간선가로 판정의 선행 공간 Fact이므로 가장 먼저 확정한다.
     // activeGeometry와 독립 도로/도시계획도로 Fact만 사용하므로 연속지적·역세권 조회보다 먼저 실행할 수 있다.
+    // FIX(r6-fix3): analyzeSchemeStreetBlocks 내부에 5초 preflight가 추가되어, basic_unit_seoul.zip이
+    // 없으면 여기서 최대 300초를 기다리지 않고 수 초 내에 REVIEW로 넘어온다. 순서 자체(가로구역을
+    // 다른 FACT보다 먼저 '완료')는 그대로 유지 — 백그라운드 병렬실행으로는 바꾸지 않는다.
     const streetBlockStep=await safeAnalysisStep('제도별 가로구역',analyzeSchemeStreetBlocks,300000,{classify:v=>{
-      const ok=Number(v?.resolved_count||0),missing=/기초단위구/.test(String(v?.reason||''));
-      return {status:missing?'partial':(ok===4?'fulfilled':ok?'partial':'rejected'),detail:missing?'SGIS 기초단위구 미설치 · 가로구역 REVIEW · 후속 현황분석 계속':`4개 제도 중 ${ok}개 가로구역 산정 · 후속 역세권/간선가로 판정에 선행 적용`};
+      const ok=Number(v?.resolved_count||0);
+      const missing=/기초단위구/.test(String(v?.reason||''));
+      return {status:missing?'partial':(ok===4?'fulfilled':ok?'partial':'rejected'),detail:missing?'기초단위구 미설치 · 가로구역 REVIEW · 다른 현황분석 계속':`4개 제도 중 ${ok}개 가로구역 산정 · 후속 역세권/간선가로 판정에 선행 적용`};
     }});
 
     // 연속지적 자동선정은 필지 Fact 수집용이다. 사용자가 확정한 구역계는 그대로 유지한다.
@@ -14136,46 +14166,37 @@ function parseLandCharacteristicsXml(xmlText){
   const vals=fields.map(row=>{const g=n=>row.querySelector(n)?.textContent?.trim()||'';return {pnu:g('pnu'),lndpclAr:Number(g('lndpclAr'))||null,lndcgrCodeNm:g('lndcgrCodeNm')||g('lndcgrCode'),stdrYear:g('stdrYear'),stdrMt:g('stdrMt'),lastUpdtDt:g('lastUpdtDt'),_route:'getLandCharacteristics'};}).filter(x=>x.lndpclAr!=null);vals.sort((a,b)=>String(b.stdrYear||'').localeCompare(String(a.stdrYear||'')));return vals[0]||null;
 }
 async function fetchLandCharacteristicsBrowser(pnu){
-  // R9: VWorld NED is server-proxy first. Browser CORS fetch is intentionally
-  // forbidden because api.vworld.kr does not return Access-Control-Allow-Origin
-  // for this Render origin and generated one failed request per parcel/year.
-  try{
-    const r=await fetch('/api/land/characteristics-one',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({pnu:String(pnu)})
-    });
-    const d=await r.json();
-    if(r.ok && d.record)return d.record;
-    if(r.ok && d.vworld_ready===true)return null;
-  }catch(e){}
-
-  // Last-resort browser fallback: JSONP does not use fetch/CORS.  This path is
-  // only reached when the server proxy has no usable record.
-  const base='https://api.vworld.kr/ned/data/getLandCharacteristics';
-  const now=new Date().getFullYear();
+  const base='https://api.vworld.kr/ned/data/getLandCharacteristics';const now=new Date().getFullYear();
   for(let y=now;y>=now-5;y--){
-    try{
-      const data=await vworldJsonp(base,{key:VWORLD_CLIENT_KEY,domain:VWORLD_CLIENT_DOMAIN,pnu:String(pnu),format:'json',stdrYear:String(y)},8000);
-      const f=data?.response?.fields?.field||data?.fields?.field;
-      const arr=Array.isArray(f)?f:(f?[f]:[]);
-      for(const x of arr){
-        const a=Number(x.lndpclAr);
-        if(Number.isFinite(a)&&a>0)return {
-          pnu:String(pnu),lndpclAr:a,
-          lndcgrCodeNm:String(x.lndcgrCodeNm||x.lndcgrCode||''),
-          stdrYear:String(x.stdrYear||y),stdrMt:String(x.stdrMt||''),
-          lastUpdtDt:String(x.lastUpdtDt||''),_route:'getLandCharacteristics_jsonp'
-        };
-      }
-    }catch(e){}
-  }
-  return null;
+    try{const u=new URL(base);for(const [k,v] of Object.entries({key:VWORLD_CLIENT_KEY,domain:VWORLD_CLIENT_DOMAIN,pnu:String(pnu),format:'xml',stdrYear:String(y)}))u.searchParams.set(k,v);const r=await fetch(u.toString(),{mode:'cors'});if(r.ok){const rec=parseLandCharacteristicsXml(await r.text());if(rec)return rec;}}catch(e){}
+    try{const data=await vworldJsonp(base,{key:VWORLD_CLIENT_KEY,domain:VWORLD_CLIENT_DOMAIN,pnu:String(pnu),format:'json',stdrYear:String(y)},9000);const f=data?.response?.fields?.field||data?.fields?.field;const arr=Array.isArray(f)?f:(f?[f]:[]);for(const x of arr){const a=Number(x.lndpclAr);if(Number.isFinite(a)&&a>0)return {pnu:String(pnu),lndpclAr:a,lndcgrCodeNm:String(x.lndcgrCodeNm||x.lndcgrCode||''),stdrYear:String(x.stdrYear||y),stdrMt:String(x.stdrMt||''),lastUpdtDt:String(x.lastUpdtDt||''),_route:'getLandCharacteristics_jsonp'};}}catch(e){}
+  } return null;
 }
 async function fetchLandLedgerBrowser(pnu){
-  // R9: server proxy first.  Do not browser-fetch VWorld ladfrlList: that
-  // endpoint is CORS-blocked on the deployed Render origin and previously
-  // produced dozens of red console errors plus needless retries.
+  const base='https://api.vworld.kr/ned/data/ladfrlList';
+  const common={key:VWORLD_CLIENT_KEY,domain:VWORLD_CLIENT_DOMAIN,pnu:String(pnu)};
+
+  // 1) Browser CORS XML
+  try{
+    const u=new URL(base);
+    for(const [k,v] of Object.entries(common))u.searchParams.set(k,v);
+    u.searchParams.set('format','xml');
+    const r=await fetch(u.toString(),{method:'GET',mode:'cors'});
+    if(r.ok){
+      const t=await r.text();
+      const parsed=parseLandLedgerXml(t);
+      if(parsed)return {...parsed,_route:'vworld_xml'};
+    }
+  }catch(e){}
+
+  // 2) JSONP fallback (some VWorld endpoints accept JSON callback)
+  try{
+    const data=await vworldJsonp(base,{...common,format:'json'},12000);
+    const parsed=parseLandLedgerJson(data);
+    if(parsed)return {...parsed,_route:'vworld_jsonp'};
+  }catch(e){}
+
+  // 3) Render backend fallback (VWorld direct/proxy + legacy data.go.kr)
   try{
     const r=await fetch('/api/land/ledger-one',{
       method:'POST',
@@ -14184,20 +14205,6 @@ async function fetchLandLedgerBrowser(pnu){
     });
     const d=await r.json();
     if(r.ok && d.record)return d.record;
-    // If the server had a configured VWorld key and still found no record,
-    // do not repeat the same official calls in the browser.
-    if(r.ok && d.vworld_ready===true)return null;
-  }catch(e){}
-
-  // Preserve one non-CORS fallback only when the server proxy is unavailable
-  // or has no configured VWorld key.
-  try{
-    const base='https://api.vworld.kr/ned/data/ladfrlList';
-    const data=await vworldJsonp(base,{
-      key:VWORLD_CLIENT_KEY,domain:VWORLD_CLIENT_DOMAIN,pnu:String(pnu),format:'json'
-    },8000);
-    const parsed=parseLandLedgerJson(data);
-    if(parsed)return {...parsed,_route:'vworld_jsonp'};
   }catch(e){}
 
   const ch=await fetchLandCharacteristicsBrowser(pnu);
