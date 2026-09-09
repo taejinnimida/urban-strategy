@@ -75,13 +75,28 @@ def main():
         check(f'layer toggle {ident}',BASE.count(f'id="{ident}"')==1)
     check('zoning default 92','id="mainLayerZoningOpacity" type="range" min="0" max="100" value="92"' in BASE)
     check('facility default 88','id="mainLayerFacilityOpacity" type="range" min="0" max="100" value="88"' in BASE)
-    check('z-order',"['mainSatellitePane',200],['mainZoningPane',320],['mainCadastralPane',330],['mainFacilityPane',340]" in BASE)
+    check('z-order',"['mainSatellitePane',200]" in BASE and "['mainZoningPreviewPane',320],['mainZoningFactPane',321]" in BASE and "['mainCadastralPreviewPane',330],['mainCadastralFactPane',331]" in BASE and "['mainFacilityPreviewPane',340],['mainFacilityFactPane',341]" in BASE)
     check('cadastral color switch',"mainMapLayerChecked('mainLayerZoningToggle'))return '#111827'" in BASE)
-    check('no extra WMS fetch','mainMapZoningWms' not in BASE and 'mainMapFacilityWms' not in BASE)
+    check('pre-review zoning WMS',"layers:'tile_map:upis_c_uq111'" in BASE)
+    check('pre-review cadastral WMS',"layers:'tile_map:s_lsmd_cbnd'" in BASE)
+    check('pre-review facility WMS',"layers:'tile_map:upis_c_uq151,tile_map:upis_c_uq152,tile_map:upis_c_uq153'" in BASE)
+    check('preview is display-only','판정 로직은 아래 WMS를 절대 참조하지 않으며' in BASE)
+    check('preview toggle independent of fact count',"setMainMapLayerVisible(mainMapZoningPreview,zoneOn&&zoneOpacity>0)" in BASE and "setMainMapLayerVisible(mainMapFacilityPreview,facilityOn&&facilityOpacity>0)" in BASE)
     check('reuse parcel fact','const parcels=compactParcelBaseFeatures();' in BASE)
     check('reuse zoning fact','for(const row of planningAnalysis.zoning||[])' in BASE)
     check('reuse facility fact','for(const row of planningAnalysis.facilities||[])' in BASE)
     check('planning one-click preset','function setMainMapPlanningPreset()' in BASE)
+
+    # 3-column road summary readability
+    check('road summary compact columns', '#widthRoadSchemeSummary .station-scheme-row' in BASE and 'grid-template-columns:minmax(92px,118px) minmax(58px,72px) minmax(0,1fr)' in BASE)
+    check('frontage summary compact columns', '#frontageSchemeSummary .station-scheme-row' in BASE and '#urbanRenewalFrontageSummary .station-scheme-row' in BASE)
+
+    # street-block analysis is the first substantive review step and is not duplicated later
+    review=extract_function('runSiteReview')
+    auto=extract_function('runAllAutoAnalyses')
+    check('street block runs before parcels', review.find("safeAnalysisStep('제도별 가로구역'") < review.find("safeAnalysisStep('연속지적'"))
+    check('street block runs before station', review.find("safeAnalysisStep('제도별 가로구역'") < review.find("safeAnalysisStep('역세권 경계'"))
+    check('street block duplicate skipped', 'skipStreetBlocks:true' in review and 'if(!options.skipStreetBlocks)' in auto)
 
     # REVIEW / FAIL separation
     src=extract_function('schemeRoadEvidenceFacts')
