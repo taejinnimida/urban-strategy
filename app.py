@@ -1296,6 +1296,95 @@ def _server_land_ledger_legacy_data_go(pnu: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+def _parse_land_characteristics_xml(text: str) -> Optional[Dict[str, Any]]:
+    """Parse the newest positive-area row from VWorld getLandCharacteristics.
+
+    This is a server-side fallback for browsers that cannot call VWorld NED
+    directly because of CORS.  It intentionally returns only fields that are
+    actually present in the official characteristics response.
+    """
+    root = ET.fromstring(text)
+
+    result_code = (root.findtext(".//resultCode") or "").strip()
+    result_msg = (root.findtext(".//resultMsg") or "").strip()
+    if result_code and result_code not in {"00", "0"}:
+        raise RuntimeError(f"토지특성정보 API 오류 {result_code}: {result_msg or 'unknown'}")
+
+    def val(row: ET.Element, name: str) -> str:
+        node = row.find(name)
+        return (node.text or "").strip() if node is not None else ""
+
+    parsed: List[Dict[str, Any]] = []
+    for row in root.findall(".//field"):
+        area_raw = val(row, "lndpclAr")
+        try:
+            area = float(area_raw) if area_raw else None
+        except ValueError:
+            area = None
+        if area is None or area <= 0:
+            continue
+        parsed.append({
+            "pnu": val(row, "pnu"),
+            "lndpclAr": area,
+            "lndcgrCodeNm": val(row, "lndcgrCodeNm") or val(row, "lndcgrCode"),
+            "stdrYear": val(row, "stdrYear"),
+            "stdrMt": val(row, "stdrMt"),
+            "lastUpdtDt": val(row, "lastUpdtDt"),
+        })
+
+    if not parsed:
+        # Defensive fallback for response variants without <field>.
+        area_raw = (root.findtext(".//lndpclAr") or "").strip()
+        try:
+            area = float(area_raw) if area_raw else None
+        except ValueError:
+            area = None
+        if area is None or area <= 0:
+            return None
+        return {
+            "pnu": (root.findtext(".//pnu") or "").strip(),
+            "lndpclAr": area,
+            "lndcgrCodeNm": (root.findtext(".//lndcgrCodeNm") or root.findtext(".//lndcgrCode") or "").strip(),
+            "stdrYear": (root.findtext(".//stdrYear") or "").strip(),
+            "stdrMt": (root.findtext(".//stdrMt") or "").strip(),
+            "lastUpdtDt": (root.findtext(".//lastUpdtDt") or "").strip(),
+        }
+
+    parsed.sort(
+        key=lambda r: (
+            str(r.get("stdrYear") or ""),
+            str(r.get("stdrMt") or ""),
+            str(r.get("lastUpdtDt") or ""),
+        ),
+        reverse=True,
+    )
+    return parsed[0]
+
+
+def _server_land_characteristics_vworld(pnu: str) -> Optional[Dict[str, Any]]:
+    """Server-side VWorld characteristics lookup; never exposes CORS to client."""
+    if not _vworld_key():
+        return None
+    params = {
+        "format": "xml",
+        "key": _vworld_key(),
+        "domain": _vworld_domain(),
+        "pnu": pnu,
+        "numOfRows": 50,
+    }
+    try:
+        resp, route = _vworld_get(VWORLD_LAND_URL, params=params, timeout=15)
+        if resp.status_code >= 400:
+            return None
+        record = _parse_land_characteristics_xml(resp.text)
+        if record:
+            record["_route"] = f"server_land_characteristics_{route}"
+        return record
+    except Exception as exc:
+        logger.info("server VWorld land characteristics failed pnu=%s err=%s", pnu, exc)
+        return None
+
+
 
 def _parse_land_use_xml(text: str) -> List[Dict[str, Any]]:
     """Parse VWorld NED getLandUseAttr XML.
@@ -2841,7 +2930,9 @@ def _street_block_from_basic_units(
     for feat in road_surface_features or []:
         props = (feat or {}).get('properties') or {}
         width = _road_width_m(props)
-        if width is None or width < road_min_width_m:
+        # 성장잠재권은 운영기준상 '도로 또는 시설로 둘러싸인' 가로구역이므로
+        # road_min_width_m=0일 때는 폭원 미상 도로면도 topology 경계로 보존한다.
+        if road_min_width_m > 0 and (width is None or width < road_min_width_m):
             continue
         try:
             geom = _polygonal_only(shape((feat or {}).get('geometry') or {}))
@@ -2851,10 +2942,20 @@ def _street_block_from_basic_units(
             if gm is None or gm.is_empty or not gm.intersects(frame_metric):
                 continue
             road_metric.append(gm)
-            threshold_surface_ids.add((props.get('RW_SN'), props.get('RDS_MAN_NO'), round(float(width), 3)))
+            threshold_surface_ids.add((props.get('RW_SN'), props.get('RDS_MAN_NO'), round(float(width), 3) if width is not None else None))
             surface_used_count += 1
         except Exception:
             continue
+
+    # road_min_width_m=0은 성장잠재권의 '모든 도로 경계' 모드다.
+    # 실폭면과 폭원이 연결되지 않은 도로도 얇은 위상장벽으로 보완해 거대 component로 번지는 것을 막는다.
+    if road_min_width_m <= 0:
+        for item in selected_items:
+            if item['width'] is None:
+                try:
+                    road_metric.append(item['metric'].buffer(1.0, cap_style=2, join_style=2))
+                except Exception:
+                    pass
 
     # 폭원과 무관하게 쓸 수 있는 외곽 폐합도로 후보는 여기서 수집만 한다.
     # 선택사업지(seed) 밖에 있다는 이유만으로 즉시 barrier로 쓰면 블록 내부의 2~3m 골목까지
@@ -2886,24 +2987,23 @@ def _street_block_from_basic_units(
                 road_metric.append(item['metric'].buffer(1.0, cap_style=2, join_style=2))
     road_union = unary_union(road_metric).buffer(0) if road_metric else GeometryCollection()
 
-    strong_features: List[Dict[str, Any]] = []
-    strong_metric: List[Any] = []
+    # 프론트가 제도별로 선별한 도시계획도로·시설을 후보 장벽으로 받는다.
+    # 내부에 고립된 작은 시설까지 무조건 블록을 쪼개지 않도록 1차 도로 블록을 만든 뒤
+    # 실제로 블록을 관통·분리하거나 외곽 폐합에 기여하는 시설만 strong barrier로 승격한다.
+    barrier_candidates: List[tuple[Dict[str, Any], Any]] = []
     for feat in barrier_features or []:
-        p = (feat or {}).get('properties') or {}
-        typ = str(p.get('_block_barrier_type') or '')
-        if not re.search(r'철도|하천', typ):
-            continue
         try:
             gm = _polygonal_only(shape((feat or {}).get('geometry') or {}))
             if gm is None or gm.is_empty:
                 continue
-            mm = geometry_transform(to_metric, gm)
-            if mm.intersects(frame_metric):
-                strong_metric.append(mm)
-                strong_features.append(feat)
+            mm = _polygonal_only(geometry_transform(to_metric, gm))
+            if mm is not None and not mm.is_empty and mm.intersects(frame_metric):
+                barrier_candidates.append((feat, mm))
         except Exception:
             continue
-    strong_union = unary_union(strong_metric).buffer(0.10, join_style=2) if strong_metric else GeometryCollection()
+    strong_features: List[Dict[str, Any]] = []
+    strong_metric: List[Any] = []
+    strong_union = GeometryCollection()
 
     geoms = [x['metric'] for x in local_rows]
     tree = STRtree(geoms)
@@ -2946,6 +3046,25 @@ def _street_block_from_basic_units(
     components = _components_for(road_union)
     if not components:
         return None
+
+    # 제도별 시설/계획도로 장벽을 현재 블록 형태에 적용한다.
+    # 도로만으로 만든 1차 블록을 실제로 분리하거나 외곽을 닫는 시설만 채택하므로
+    # 내부 공원·주차장 같은 고립시설을 불필요하게 별도 가로구역으로 오인하지 않는다.
+    if barrier_candidates:
+        provisional = components[0][1]
+        barrier_base = road_union
+        for feat, mm in barrier_candidates:
+            effective, reason = _street_block_facility_effect(provisional, mm, frame_metric, barrier_base, site_metric)
+            if effective:
+                props = dict((feat or {}).get('properties') or {})
+                props['_block_barrier_effect'] = reason
+                strong_features.append({'type':'Feature','geometry':(feat or {}).get('geometry'),'properties':props})
+                strong_metric.append(mm)
+        if strong_metric:
+            strong_union = unary_union(strong_metric).buffer(0.10, join_style=2)
+            components = _components_for(road_union)
+            if not components:
+                return None
 
     # 2차 외곽폐합: 제도별 폭원 임계값으로 먼저 만든 블록의 '외곽경계'에 실제로 닿는
     # RW 도로면만 폭원과 무관한 폐합도로로 승격한다. 내부의 좁은 골목은 경계와 닿지
@@ -4798,8 +4917,6 @@ def reference_renewal_zones():
 
 
 def _reference_data_readiness() -> Dict[str, bool]:
-    """FIX(r6-fix3): GPT R7 검토안 채택 — 배포 ZIP에 실제로 들어있는 참조자료를 /health로 노출한다.
-    분석이 안 될 때 코드 오류인지 데이터 누락인지 /health 하나로 바로 구분할 수 있게 한다."""
     return {
         "stations": os.path.isfile(_data_path("stations.json")),
         "centers": os.path.isfile(_data_path("centers.json")),
@@ -4816,6 +4933,7 @@ def _reference_data_readiness() -> Dict[str, bool]:
 
 @app.get("/health")
 def health():
+    reference_data = _reference_data_readiness()
     return {
         "ok": True,
         "app": "seoul_urban_renewal_platform_v2.5.0",
@@ -4836,9 +4954,9 @@ def health():
         "land_ledger": "ladfrlList + getLandCharacteristics + geometry provisional",
         "road_access": "VWorld TL_SPRD_MANAGE + ROAD_BT for cadastral/frontage calculations",
         "road_bundled_configured": bool(_road_zip_path()),
-        "reference_data": _reference_data_readiness(),
-        "reference_data_missing": [k for k, v in _reference_data_readiness().items() if not v],
-        "analysis_reference_ready": all(_reference_data_readiness().get(k, False) for k in ("stations", "centers", "renewal_legal", "renewal_project")),
+        "reference_data": reference_data,
+        "reference_data_missing": [k for k, v in reference_data.items() if not v],
+        "analysis_reference_ready": all(reference_data.get(k, False) for k in ("stations", "centers", "renewal_legal", "renewal_project")),
         "analysis_object_model": "parcel/building common ledger retained for station-area/zoning/mixed-use expansion",
         "redevelopment_strategy": "scheme-specific legal aging facts + area/aging/additional-entry AND-OR gates",
         "scheme_sheets": ["housing_redevelopment","reconstruction","residential_environment","smallscale_housing_5_routes","general_housing","safe_housing","shared_housing","longterm_lease","public_housing_complex","urban_redevelopment","station_activation","growth_potential","urban_complex_innovation","station_complex_district","prior_negotiation"],
@@ -4858,7 +4976,7 @@ def health():
         "safe_medical_reference": "TbHospitalInfo general hospitals + official Seoul municipal hospitals/25 district health centers; one representative cadastral parcel and its 350m buffer",
         "safe_medical_key_env": _seoul_open_data_key_info()[1] or None,
         "road_width_gis": "VWorld TL_SPRD_MANAGE ROAD_BT is the sole road-width Fact source",
-        "street_block_gis": "SGIS 2025 basic-unit seed + VWorld TL_SPRD_MANAGE ROAD_BT 4m+ merge verification; ESTIMATE only and never authoritative PASS/FAIL until official street-block data is connected",
+        "street_block_gis": "SGIS 2025 basic-unit seed + VWorld road geometry with scheme-specific street-block rules: smallscale 6m existing roads + all urban-planning facility roads + statutory facilities, activation/station-complex 4m + nonbuildable facilities, growth-potential all roads + defined facilities; ESTIMATE until authoritative official block data is connected",
         "street_block_future_interface": "MOIS basic-unit / official street-block or verified planning-road block -> authoritative_street_block=true",
         "arterial_road_future_interface": "official address-based road function/classification -> road_function / statutory_classification fields; width-only candidates remain REVIEW",
         "activation_arterial_gis": "Seoul published linear-commercial road list + VWorld LT_C_UQ111 zoning + TL_SPRD_MANAGE road centerlines; dedicated station-activation arterial map",
@@ -5258,17 +5376,51 @@ def land_ledger_one(inp: LandLedgerOneInput):
     if len(pnu) != 19 or not pnu.isdigit():
         raise HTTPException(status_code=422, detail="PNU는 19자리 숫자여야 합니다.")
 
+    # Browser -> VWorld direct calls are deliberately avoided.  The server
+    # performs all official-source lookups so the client never hits NED CORS.
     record = _server_land_ledger_vworld(pnu)
+    dataset = "토지임야정보(속성정보)"
+    operation = "ladfrlList"
     if record is None:
         record = _server_land_ledger_legacy_data_go(pnu)
+    if record is None:
+        record = _server_land_characteristics_vworld(pnu)
+        if record is not None:
+            dataset = "토지특성정보"
+            operation = "getLandCharacteristics"
 
     return {
         "pnu": pnu,
         "record": record,
+        "vworld_ready": bool(_vworld_key()),
         "source": {
             "provider": "국토교통부",
-            "dataset": "토지임야정보(속성정보)",
-            "operation": "ladfrlList",
+            "dataset": dataset,
+            "operation": operation,
+            "portal_modified": "2025-07-01",
+        },
+    }
+
+
+@app.post("/api/land/characteristics-one")
+def land_characteristics_one(inp: LandLedgerOneInput):
+    """Server proxy for VWorld getLandCharacteristics.
+
+    Kept as a separate endpoint so any future client path can obtain official
+    area/category data without ever attempting a browser CORS request.
+    """
+    pnu = str(inp.pnu or "").strip()
+    if len(pnu) != 19 or not pnu.isdigit():
+        raise HTTPException(status_code=422, detail="PNU는 19자리 숫자여야 합니다.")
+    record = _server_land_characteristics_vworld(pnu)
+    return {
+        "pnu": pnu,
+        "record": record,
+        "vworld_ready": bool(_vworld_key()),
+        "source": {
+            "provider": "국토교통부",
+            "dataset": "토지특성정보",
+            "operation": "getLandCharacteristics",
             "portal_modified": "2025-07-01",
         },
     }
