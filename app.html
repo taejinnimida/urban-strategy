@@ -5197,9 +5197,13 @@ async function analyzeOneSchemeStreetBlock(key,roadFacts,planningRoadBase,nonBui
   if(state.relations.length){
     const primary=state.relations[0];state.blockAreaM2=primary.block_area_m2;state.siteIntersectionM2=primary.selected_site_area_m2;state.siteShareOfBlockPct=primary.site_share_of_block_pct;state.blockCoverageOfSitePct=primary.block_coverage_of_site_pct;
   }
-  state.status=state.blockFeature?'resolved':(data.status||'unresolved');
+  state.status=state.blockFeature?'resolved':(data.status==='unavailable'?'review':(data.status||'review'));
   state.quality=state.blockFeature?(state.errors.length||data.status==='partial'?'PARTIAL':'AUTO'):'NONE';state.loaded=true;state.loading=false;
   state.metadata=Object.assign({},state.metadata||{},data.metadata||{},{scheme:key,existing_road_min_m:cfg.existing_min_m,planning_mode:cfg.planning_mode,planning_road_min_m:cfg.planning_min_m,outer_closure_all_roads:true,road_space_removed:true,nonbuildable_removed:cfg.exclude_nonbuildable===true,site_share_formula:'selected_site_intersection_in_block / containing_block_area',planning_road_count:state.planningRoadCutters.length,nonbuildable_count:state.exclusionCutters.length});
+  if(!state.blockFeature){
+    const reason=String(state.metadata?.basic_unit_reason||state.metadata?.reason||'').trim();
+    if(reason&&!state.warnings.includes(reason))state.warnings.push(reason);
+  }
   if(state.multiBlock)state.warnings.push(`선정사업지가 ${state.blockFeatures.length}개 가로구역에 걸칩니다. 가로구역을 합치지 않고 각 블록별 포함률을 별도 산정합니다.`);
   return state;
 }
@@ -5228,7 +5232,8 @@ async function analyzeSchemeStreetBlocks(signal=null){
 function renderSchemeStreetBlockSpatialStatus(){
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v??'-';};
   const allStates=Object.values(schemeStreetBlockAnalysis),any=allStates.some(x=>x.loaded),resolved=allStates.filter(x=>x.blockFeature).length,roadMissing=allStates.some(x=>x.loaded&&x.metadata?.road_fact_missing===true);
-  set('spSchemeStreetBlockState',!any?'제도별 독립 산정 · 분석 전':roadMissing&&resolved===0?'ROAD_BT 폭원 FACT 확인필요':resolved===allStates.length?'제도별 독립 산정완료':`제도별 일부 산정 · ${resolved}/${allStates.length}`);
+  const basicUnitMissing=allStates.some(x=>x.loaded&&x.metadata?.basic_unit_available===false&&/기초단위구/.test(String(x.metadata?.basic_unit_reason||x.metadata?.reason||'')));
+  set('spSchemeStreetBlockState',!any?'제도별 독립 산정 · 분석 전':basicUnitMissing&&resolved===0?'확인필요 · SGIS 기초단위구 자료 미설치':roadMissing&&resolved===0?'ROAD_BT 폭원 FACT 확인필요':resolved===allStates.length?'제도별 독립 산정완료':`제도별 일부 산정 · ${resolved}/${allStates.length}`);
   const dom={smallscale:{area:'spSbSmallArea',share:'spSbSmallCoverage',status:'spSbSmallStatus'},activation:{area:'spSbActivationArea',share:'spSbActivationShare',status:'spSbActivationStatus',relations:'spSbActivationRelations'},station_complex:{area:'spSbComplexArea',share:'spSbComplexShare',status:'spSbComplexStatus',relations:'spSbComplexRelations'},growth_potential:{area:'spSbGrowthArea',status:'spSbGrowthStatus'}};
   for(const [key,st] of Object.entries(schemeStreetBlockAnalysis)){
     const ids=dom[key]||{},rels=st.relations||[];
@@ -5237,7 +5242,8 @@ function renderSchemeStreetBlockSpatialStatus(){
       const maxShare=Math.max(...rels.map(x=>Number(x.site_share_of_block_pct||0)));if(ids.share)set(ids.share,`${rels.length>1?'최대 ':''}${maxShare.toFixed(1)}%`);
     }else{set(ids.area,'-');if(ids.share)set(ids.share,'-');}
     if(key==='smallscale'&&ids.share)set(ids.share,st.blockCoverageOfSitePct==null?'-':`${Number(st.blockCoverageOfSitePct).toFixed(1)}%`);
-    set(ids.status,st.blockFeature?`산정값${st.multiBlock?` · ${st.blockFeatures.length}개 블록`:''}`:st.loaded&&st.metadata?.road_fact_missing?'확인필요 · ROAD_BT 미확보':st.loaded?'미산정':'분석 전');
+    const stBasicMissing=st.loaded&&st.metadata?.basic_unit_available===false&&/기초단위구/.test(String(st.metadata?.basic_unit_reason||st.metadata?.reason||''));
+    set(ids.status,st.blockFeature?`산정값${st.multiBlock?` · ${st.blockFeatures.length}개 블록`:''}`:stBasicMissing?'확인필요 · 기초단위구 자료':st.loaded&&st.metadata?.road_fact_missing?'확인필요 · ROAD_BT 미확보':st.loaded?'확인필요 · 자동확정 불가':'분석 전');
     if(ids.relations){const el=document.getElementById(ids.relations);if(el)el.innerHTML=rels.length?rels.map((r,i)=>`<span><b>${escHtml(r.name||koreanBlockName(i))}</b> ${Math.round(Number(r.block_area_m2||0)).toLocaleString('ko-KR')}㎡ · 해당 블록 내 선정사업지 ${Math.round(Number(r.selected_site_area_m2||0)).toLocaleString('ko-KR')}㎡ · <b>${Number(r.site_share_of_block_pct||0).toFixed(1)}%</b></span>`).join(''):'<span>블록별 산정값 없음</span>';}
     const lyr=schemeStreetBlockLayers[key];if(!lyr)continue;for(const x of ['context','roads','planning','exclusions','growth35','block','site'])lyr[x].clearLayers();
     if(st.basicUnitContext?.length)lyr.context.addData({type:'FeatureCollection',features:st.basicUnitContext});if(st.existingRoadCutters?.length)lyr.roads.addData({type:'FeatureCollection',features:st.existingRoadCutters});if(st.planningRoadCutters?.length)lyr.planning.addData({type:'FeatureCollection',features:st.planningRoadCutters});if(st.exclusionCutters?.length)lyr.exclusions.addData({type:'FeatureCollection',features:st.exclusionCutters});if(st.blockFeatures?.length)lyr.block.addData({type:'FeatureCollection',features:st.blockFeatures});if(activeGeometry)lyr.site.addData(turf.feature(activeGeometry));
@@ -8177,9 +8183,16 @@ async function analyzeStationBoundary(){
     }
     // 법정/정책 판정의 환승확정은 공식 노선자료에서 2개 이상이 확인될 때만 연다.
     // 내장 문자열·VWorld 검색은 표시/진단 보조자료이며 자동 PASS 근거가 아니다.
-    const transferConfirmed=official?.transfer===true;
-    const transferKnown=!sameNameAmbiguous&&(official?.transfer_status==='CONFIRMED_TRANSFER'||official?.transfer_status==='CONFIRMED_SINGLE_LINE');
-    // 광역 보강자료까지 확인한 CONFIRMED_SINGLE_LINE은 비환승으로 확정한다. 부분 소스 1개뿐이면 기존대로 REVIEW를 유지한다.
+    const officialTransferStatus=String(official?.transfer_status||'');
+    const transferConfirmed=official?.transfer===true||officialTransferStatus==='CONFIRMED_TRANSFER';
+    // 서버 공식 교차확인이 단일노선이라도, 현재 역사 공간자료/VWorld 보조자료에서 2개 이상 노선이 보이면
+    // 자동으로 비환승 확정하지 않는다. 상충 자료는 REVIEW로 남겨 거짓 FAIL을 막는다.
+    const contradictoryMultiLine=officialTransferStatus==='CONFIRMED_SINGLE_LINE'&&lines.length>=2;
+    const transferKnown=!sameNameAmbiguous&&(
+      officialTransferStatus==='CONFIRMED_TRANSFER'||
+      (official?.transfer_status==='CONFIRMED_SINGLE_LINE'&&!contradictoryMultiLine)
+    );
+    // 서로 다른 서울시 공식 조회경로가 동일 단일노선을 교차확인하면 비환승으로 확정한다.
     const lineDataComplete=transferKnown;
     const cm=stationCenterMeta(features),m250=stationBufferMetrics(zone,features,250),m350=stationBufferMetrics(zone,features,350),m500=stationBufferMetrics(zone,features,500);
     return {name,station_instance_id:`${name}#${group.cluster_index}`,same_name_cluster_count:group.same_name_cluster_count,same_name_ambiguous:sameNameAmbiguous,features,distance_m:Number.isFinite(dist)?dist:null,search_distance_m:searchDist,lines,line_count:lines.length||null,transfer:transferKnown?transferConfirmed:null,line_source:lineSource,line_data_complete:lineDataComplete,center_value:cm.value,center_type:cm.type,center_label:cm.label,

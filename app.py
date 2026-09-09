@@ -4646,7 +4646,13 @@ def _seoul_station_line_reference(force: bool = False) -> Dict[str, Any]:
 
 
 def _direct_station_line_probe(station_name: str, force: bool = False) -> Dict[str, Any]:
-    """Diagnostic single-station probe used to verify runtime merge before scheme testing."""
+    """단일 역사 노선 보강조회.
+
+    한 개 노선만 보인다는 사실을 곧바로 '비환승 확정'으로 쓰지 않는다.
+    다만 (1) 전체 노선표와 (2) 역명 직접조회라는 서로 다른 공식 조회경로가
+    동일한 단일 노선으로 교차확인되면 CONFIRMED_SINGLE_LINE으로 승격한다.
+    어느 경로에서든 2개 이상 노선이 확인되면 CONFIRMED_TRANSFER가 우선한다.
+    """
     nm = _normalize_station_public_name(station_name)
     if not nm:
         return {"status": "invalid", "name": station_name, "lines": [], "line_count": 0, "transfer": None}
@@ -4661,54 +4667,87 @@ def _direct_station_line_probe(station_name: str, force: bool = False) -> Dict[s
     if not key:
         return {
             "status": "unavailable", "name": nm + "역", "lines": [], "line_count": 0,
-            "transfer": None, "key_configured": False, "credential_env": None,
+            "transfer": None, "transfer_status": "UNRESOLVED",
+            "key_configured": False, "credential_env": None,
             "build_marker": STATION_RUNTIME_BUILD_MARKER,
         }
 
     errors: List[str] = []
-    lines: List[str] = []
+    global_lines: List[str] = []
+    global_transfer_status = ""
+    global_sources: List[str] = []
     try:
         ref = _seoul_station_line_reference(force=force)
         row = next((x for x in ref.get("stations", []) if _name_key(_normalize_station_public_name(x.get("name"))) == cache_key), None)
         if row:
-            lines.extend(row.get("lines") or [])
+            global_lines = sorted(set(_normalize_subway_line_name(x) for x in (row.get("lines") or []) if _normalize_subway_line_name(x)))
+            global_transfer_status = str(row.get("transfer_status") or "")
+            global_sources = list(row.get("sources") or [])
     except Exception as exc:
         errors.append(f"global reference: {exc}")
 
-    if len(set(lines)) < 2:
-        try:
-            station_q = quote(nm, safe="")
-            url = f"{SEOUL_OPEN_DATA_BASE}/{quote(key, safe='')}/json/SearchInfoBySubwayNameService/1/50/{station_q}/"
-            resp = requests.get(url, timeout=8)
-            resp.raise_for_status()
-            payload = resp.json()
-            top = payload.get("RESULT") if isinstance(payload, dict) else None
-            if isinstance(top, dict):
-                code = str(top.get("CODE") or "")
-                if code and code not in {"INFO-000", "INFO-200"}:
-                    raise RuntimeError(f"{code} {top.get('MESSAGE','')}")
-            body = payload.get("SearchInfoBySubwayNameService") if isinstance(payload, dict) else None
-            if isinstance(body, dict):
-                for row in body.get("row") or []:
-                    if not isinstance(row, dict):
-                        continue
-                    if _name_key(_normalize_station_public_name(row.get("STATION_NM"))) != cache_key:
-                        continue
-                    ln = _normalize_subway_line_name(row.get("LINE_NUM"))
-                    if ln:
-                        lines.append(ln)
-        except Exception as exc:
-            errors.append(f"SearchInfoBySubwayNameService: {exc}")
+    direct_lines: List[str] = []
+    direct_query_ok = False
+    try:
+        station_q = quote(nm, safe="")
+        url = f"{SEOUL_OPEN_DATA_BASE}/{quote(key, safe='')}/json/SearchInfoBySubwayNameService/1/50/{station_q}/"
+        resp = requests.get(url, timeout=8)
+        resp.raise_for_status()
+        payload = resp.json()
+        top = payload.get("RESULT") if isinstance(payload, dict) else None
+        if isinstance(top, dict):
+            code = str(top.get("CODE") or "")
+            if code and code not in {"INFO-000", "INFO-200"}:
+                raise RuntimeError(f"{code} {top.get('MESSAGE','')}")
+        body = payload.get("SearchInfoBySubwayNameService") if isinstance(payload, dict) else None
+        if isinstance(body, dict):
+            direct_query_ok = True
+            for row in body.get("row") or []:
+                if not isinstance(row, dict):
+                    continue
+                if _name_key(_normalize_station_public_name(row.get("STATION_NM"))) != cache_key:
+                    continue
+                ln = _normalize_subway_line_name(row.get("LINE_NUM"))
+                if ln:
+                    direct_lines.append(ln)
+    except Exception as exc:
+        errors.append(f"SearchInfoBySubwayNameService: {exc}")
 
-    lines = sorted(set(lines))
-    transfer = True if len(lines) >= 2 else None
+    direct_lines = sorted(set(direct_lines))
+    lines = sorted(set(global_lines + direct_lines))
+    transfer: Optional[bool] = None
+    transfer_status = "UNRESOLVED"
+    confirmation_basis = ""
+
+    if len(lines) >= 2 or global_transfer_status == "CONFIRMED_TRANSFER":
+        transfer = True
+        transfer_status = "CONFIRMED_TRANSFER"
+        confirmation_basis = "공식 노선자료에서 2개 이상 노선 확인"
+    elif len(lines) == 1:
+        if global_transfer_status == "CONFIRMED_SINGLE_LINE":
+            transfer = False
+            transfer_status = "CONFIRMED_SINGLE_LINE"
+            confirmation_basis = "광역 보강자료 포함 공식 노선표에서 단일노선 확인"
+        elif direct_query_ok and len(global_lines) == 1 and len(direct_lines) == 1 and global_lines[0] == direct_lines[0]:
+            transfer = False
+            transfer_status = "CONFIRMED_SINGLE_LINE"
+            confirmation_basis = "공식 전체노선표와 역명 직접조회가 동일 단일노선으로 교차확인"
+        else:
+            confirmation_basis = "단일 소스 또는 교차확인 미완료"
+
     result = {
-        "status": "ok" if lines else "error",
+        "status": "ok" if lines else ("partial" if direct_query_ok or global_lines else "error"),
         "name": nm + "역",
         "lines": lines,
         "line_count": len(lines),
         "transfer": transfer,
-        "transfer_status": "CONFIRMED_TRANSFER" if transfer else "UNRESOLVED",
+        "transfer_status": transfer_status,
+        "confirmation_basis": confirmation_basis,
+        "global_lines": global_lines,
+        "direct_lines": direct_lines,
+        "global_transfer_status": global_transfer_status,
+        "global_sources": global_sources,
+        "direct_query_ok": direct_query_ok,
         "key_configured": True,
         "credential_env": key_env,
         "errors": errors[:5],
@@ -5084,6 +5123,7 @@ def forest_classification_intersections(inp: GeometryInput):
         raise HTTPException(status_code=500, detail=f"산지구분도 중첩분석 오류: {exc}") from exc
 
 
+@app.post("/api/spatial/road-facts")
 def road_facts(inp: RoadFactInput):
     """서울 원본 RW 실폭도로 + MANAGE ROAD_BT의 대상지 주변 다대다 도로 FACT."""
     try:
