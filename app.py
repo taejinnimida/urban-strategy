@@ -2152,7 +2152,7 @@ def analyze_local_road_facts(geometry: Dict[str, Any], radius_m: float = 220.0) 
     local_rw: List[Dict[str, Any]] = []
     for row in rw_rows:
         try:
-            gm = row["geometry"].intersection(frame_metric)
+            gm = row["geometry"].intersection(search_metric)
             gm = _polygonal_only(gm)
             if gm is None or gm.is_empty:
                 continue
@@ -2363,7 +2363,8 @@ def analyze_local_road_facts(geometry: Dict[str, Any], radius_m: float = 220.0) 
     to_metric = Transformer.from_crs(4326, 5179, always_xy=True).transform
     to_wgs = Transformer.from_crs(5179, 4326, always_xy=True).transform
     site_metric = geometry_transform(to_metric, site_wgs)
-    frame_metric = site_metric.buffer(float(radius_m)).envelope
+    search_metric = site_metric.buffer(float(radius_m))
+    frame_metric = search_metric.envelope
     rows = _road_shape_records("TL_SPRD_MANAGE", list(frame_metric.bounds))
 
     manage_features: List[Dict[str, Any]] = []
@@ -2400,7 +2401,7 @@ def analyze_local_road_facts(geometry: Dict[str, Any], radius_m: float = 220.0) 
             if width is None or width <= 0:
                 continue
             # Computational separator/contact surface only; not an official road-area polygon.
-            surf = gm.buffer(width / 2.0, cap_style=2, join_style=2).intersection(frame_metric)
+            surf = gm.buffer(width / 2.0, cap_style=2, join_style=2).intersection(search_metric)
             if surf is None or surf.is_empty:
                 continue
             surf = _polygonal_only(surf)
