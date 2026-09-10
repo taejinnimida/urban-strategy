@@ -7,7 +7,7 @@ checks=[
 ('activation arterial 220 preserved','independentRoadManageCandidate(search,220)' in html),
 ('redevelopment frontage report item',"schemeRow('주택접도율',f.entry.frontage?.criterion" in html),
 ('redevelopment frontage overview actual',"['주택접도율',f.entry?.frontage?.value||'산정자료 미확보']" in html),
-('redevelopment frontage nonmandatory',"redevelopmentFrontageDisplayNote,false,{sourceId:'RENEWAL_ORD'" in html),
+('redevelopment frontage nonmandatory',"f.entry.frontage?.note||'도로대장·정비계획 도면 재확인',false,{sourceId:'RENEWAL_ORD'" in html),
 ('actual buffer search','search_metric = site_metric.buffer(float(radius_m))' in py),
 ('actual buffer road clip','intersection(search_metric)' in py),
 ]

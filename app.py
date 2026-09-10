@@ -38,6 +38,7 @@ from pyproj import CRS, Geod, Transformer
 import shapefile
 from shapely.geometry import GeometryCollection, MultiPolygon, Polygon, shape, mapping, box
 from shapely.ops import transform as geometry_transform, unary_union
+from shapely.prepared import prep
 from shapely.strtree import STRtree
 from shapely.validation import explain_validity
 
@@ -3166,8 +3167,19 @@ def _basic_unit_spatial_layers() -> Dict[str, Any]:
     }
 
 
-def _shared_edge_barrier(shared: Any, road_union: Any, strong_union: Any = None) -> tuple[bool, str, float]:
-    """두 기초단위구의 공통경계가 4m+ 도로/철도/하천에 의해 실제로 막히는지 판정한다."""
+def _shared_edge_barrier(
+    shared: Any,
+    road_union: Any,
+    strong_union: Any = None,
+    road_prepared: Any = None,
+    strong_prepared: Any = None,
+) -> tuple[bool, str, float]:
+    """두 기초단위구의 공통경계가 도로/철도/하천에 의해 막히는지 판정한다.
+
+    R22 성능개선: 고정된 union에 대한 반복 intersects predicate는 prepared geometry를
+    사용한다. 실제 중첩면적은 기존 원본 geometry의 intersection()으로 계산하므로
+    판정식·임계값·산정결과는 변경하지 않는다.
+    """
     try:
         length = float(shared.length)
         if length < 1.0:
@@ -3176,20 +3188,33 @@ def _shared_edge_barrier(shared: Any, road_union: Any, strong_union: Any = None)
         if corridor.is_empty or corridor.area <= 0:
             return False, 'empty_corridor', 0.0
         road_ratio = 0.0
-        if road_union is not None and not road_union.is_empty and corridor.intersects(road_union):
-            road_ratio = float(corridor.intersection(road_union).area) / float(corridor.area)
-            if road_ratio >= 0.22:
-                return True, 'road4m', road_ratio
-        if strong_union is not None and not strong_union.is_empty and corridor.intersects(strong_union):
-            strong_ratio = float(corridor.intersection(strong_union).area) / float(corridor.area)
-            if strong_ratio >= 0.12:
-                return True, 'rail_or_river', strong_ratio
+        if road_union is not None and not road_union.is_empty:
+            try:
+                road_hit = bool(road_prepared.intersects(corridor)) if road_prepared is not None else bool(corridor.intersects(road_union))
+            except Exception:
+                road_hit = bool(corridor.intersects(road_union))
+            if road_hit:
+                road_ratio = float(corridor.intersection(road_union).area) / float(corridor.area)
+                if road_ratio >= 0.22:
+                    return True, 'road4m', road_ratio
+        if strong_union is not None and not strong_union.is_empty:
+            try:
+                strong_hit = bool(strong_prepared.intersects(corridor)) if strong_prepared is not None else bool(corridor.intersects(strong_union))
+            except Exception:
+                strong_hit = bool(corridor.intersects(strong_union))
+            if strong_hit:
+                strong_ratio = float(corridor.intersection(strong_union).area) / float(corridor.area)
+                if strong_ratio >= 0.12:
+                    return True, 'rail_or_river', strong_ratio
         return False, 'mergeable', road_ratio
     except Exception:
         return False, 'geometry_error', 0.0
 
 
-def _basic_unit_component(start_idx: int, geoms: List[Any], tree: Any, road_union: Any, strong_union: Any, max_units: int = 240) -> tuple[set[int], bool]:
+def _basic_unit_component(
+    start_idx: int, geoms: List[Any], tree: Any, road_union: Any, strong_union: Any,
+    max_units: int = 240, road_prepared: Any = None, strong_prepared: Any = None,
+) -> tuple[set[int], bool]:
     selected = {int(start_idx)}
     queue = [int(start_idx)]
     hit_limit = False
@@ -3211,8 +3236,154 @@ def _basic_unit_component(start_idx: int, geoms: List[Any], tree: Any, road_unio
                     continue
             except Exception:
                 continue
-            blocked, _, _ = _shared_edge_barrier(shared, road_union, strong_union)
+            blocked, _, _ = _shared_edge_barrier(
+                shared, road_union, strong_union, road_prepared, strong_prepared
+            )
             if blocked:
+                continue
+            selected.add(j)
+            queue.append(j)
+            if len(selected) >= max_units:
+                hit_limit = True
+                return selected, hit_limit
+    return selected, hit_limit
+
+
+
+
+def _ensure_basic_unit_neighbors(
+    idx: int,
+    geoms: List[Any],
+    tree: Any,
+    neighbor_order: List[Optional[List[int]]],
+    shared_edges: Dict[tuple[int, int], Any],
+    invalid_edges: set[tuple[int, int]],
+    topology_stats: Optional[Dict[str, Any]] = None,
+) -> List[int]:
+    """R23: 방문한 기초단위구의 인접쌍만 lazy 계산하고 이후 모든 seed/pass/Rule에서 재사용한다."""
+    if idx < 0 or idx >= len(neighbor_order):
+        return []
+    cached = neighbor_order[idx]
+    if cached is not None:
+        if topology_stats is not None:
+            topology_stats['cache_hits'] = int(topology_stats.get('cache_hits', 0)) + 1
+        return cached
+
+    started = time.perf_counter()
+    order: List[int] = []
+    try:
+        candidates = tree.query(geoms[idx].buffer(0.8), predicate='intersects')
+    except Exception:
+        candidates = []
+    if topology_stats is not None:
+        topology_stats['query_count'] = int(topology_stats.get('query_count', 0)) + 1
+
+    for raw in candidates:
+        j = int(raw)
+        if j == idx:
+            continue
+        key = (idx, j) if idx < j else (j, idx)
+        if key in invalid_edges:
+            continue
+        shared = shared_edges.get(key)
+        if shared is None:
+            if topology_stats is not None:
+                topology_stats['shared_calc_count'] = int(topology_stats.get('shared_calc_count', 0)) + 1
+            try:
+                shared = geoms[idx].boundary.intersection(geoms[j].boundary)
+                if shared.is_empty or float(shared.length) < 1.0:
+                    invalid_edges.add(key)
+                    continue
+                shared_edges[key] = shared
+            except Exception:
+                invalid_edges.add(key)
+                continue
+        # 기존 tree.query 순서를 보존하여 max_units 조기종료 방문순서 변화 위험을 최소화한다.
+        order.append(j)
+
+    neighbor_order[idx] = order
+    if topology_stats is not None:
+        topology_stats['topology_ms'] = round(
+            float(topology_stats.get('topology_ms', 0.0)) + (time.perf_counter()-started)*1000.0, 3
+        )
+        topology_stats['materialized_node_count'] = int(topology_stats.get('materialized_node_count', 0)) + 1
+    return order
+
+
+def _build_basic_unit_neighbor_topology(geoms: List[Any], tree: Any) -> Dict[str, Any]:
+    """검증/진단용 full builder. 실제 R23 엔진은 _ensure_basic_unit_neighbors()의 lazy cache를 사용한다."""
+    neighbor_order: List[Optional[List[int]]] = [None for _ in geoms]
+    shared_edges: Dict[tuple[int, int], Any] = {}
+    invalid_edges: set[tuple[int, int]] = set()
+    stats: Dict[str, Any] = {'query_count':0,'shared_calc_count':0,'cache_hits':0,'topology_ms':0.0,'materialized_node_count':0}
+    for i in range(len(geoms)):
+        _ensure_basic_unit_neighbors(i, geoms, tree, neighbor_order, shared_edges, invalid_edges, stats)
+    return {
+        'neighbor_order': [x or [] for x in neighbor_order],
+        'shared_edges': shared_edges,
+        'invalid_edges': invalid_edges,
+        'query_count': stats['query_count'],
+        'edge_count': len(shared_edges),
+        'shared_calc_count': stats['shared_calc_count'],
+        'topology_ms': stats['topology_ms'],
+    }
+
+
+def _basic_unit_component_graph(
+    start_idx: int,
+    neighbor_order: List[Optional[List[int]]],
+    shared_edges: Dict[tuple[int, int], Any],
+    road_union: Any,
+    strong_union: Any,
+    max_units: int = 240,
+    road_prepared: Any = None,
+    strong_prepared: Any = None,
+    barrier_cache: Optional[Dict[tuple[int, int], tuple[bool, str, float]]] = None,
+    stats: Optional[Dict[str, int]] = None,
+    geoms: Optional[List[Any]] = None,
+    tree: Any = None,
+    invalid_edges: Optional[set[tuple[int, int]]] = None,
+    topology_stats: Optional[Dict[str, Any]] = None,
+) -> tuple[set[int], bool]:
+    """R23: lazy neighbor topology + component-pass 전용 barrier cache를 사용하는 BFS."""
+    cache = barrier_cache if barrier_cache is not None else {}
+    invalid = invalid_edges if invalid_edges is not None else set()
+    selected = {int(start_idx)}
+    queue = [int(start_idx)]
+    hit_limit = False
+    while queue:
+        idx = queue.pop(0)
+        if idx < 0 or idx >= len(neighbor_order):
+            continue
+        neighbors = neighbor_order[idx]
+        if neighbors is None:
+            if geoms is None or tree is None:
+                neighbors = []
+                neighbor_order[idx] = neighbors
+            else:
+                neighbors = _ensure_basic_unit_neighbors(
+                    idx, geoms, tree, neighbor_order, shared_edges, invalid, topology_stats
+                )
+        elif topology_stats is not None:
+            topology_stats['cache_hits'] = int(topology_stats.get('cache_hits', 0)) + 1
+        for j in neighbors:
+            if j == idx or j in selected:
+                continue
+            key = (idx, j) if idx < j else (j, idx)
+            result = cache.get(key)
+            if result is None:
+                shared = shared_edges.get(key)
+                if shared is None:
+                    continue
+                result = _shared_edge_barrier(
+                    shared, road_union, strong_union, road_prepared, strong_prepared
+                )
+                cache[key] = result
+                if stats is not None:
+                    stats['barrier_evaluations'] = int(stats.get('barrier_evaluations', 0)) + 1
+            elif stats is not None:
+                stats['barrier_cache_hits'] = int(stats.get('barrier_cache_hits', 0)) + 1
+            if result[0]:
                 continue
             selected.add(j)
             queue.append(j)
@@ -3360,6 +3531,14 @@ def _street_block_common_context(
             'common_prep_ms': round((time.perf_counter()-started)*1000.0, 2),
         }
 
+    # R23 lazy graph: 전체 750m를 선계산하지 않고 실제 flood-fill이 방문하는 node만 materialize한다.
+    neighbor_order: List[Optional[List[int]]] = [None for _ in geoms]
+    shared_edges: Dict[tuple[int, int], Any] = {}
+    neighbor_invalid_edges: set[tuple[int, int]] = set()
+    neighbor_topology_stats: Dict[str, Any] = {
+        'query_count':0,'shared_calc_count':0,'cache_hits':0,'topology_ms':0.0,'materialized_node_count':0
+    }
+
     return {
         'units': units,
         'to_metric': to_metric,
@@ -3374,6 +3553,10 @@ def _street_block_common_context(
         'geoms': geoms,
         'tree': tree,
         'initial': initial,
+        'neighbor_order': neighbor_order,
+        'shared_edges': shared_edges,
+        'neighbor_invalid_edges': neighbor_invalid_edges,
+        'neighbor_topology_stats': neighbor_topology_stats,
         'max_radius_m': float(max_radius_m),
         'common_prep_ms': round((time.perf_counter()-started)*1000.0, 2),
     }
@@ -3411,6 +3594,10 @@ def _street_block_apply_rule(
     geoms = context['geoms']
     tree = context['tree']
     initial = context['initial']
+    neighbor_order = context.get('neighbor_order')
+    shared_edges = context.get('shared_edges')
+    neighbor_invalid_edges = context.get('neighbor_invalid_edges')
+    neighbor_topology_stats = context.get('neighbor_topology_stats')
     max_radius_m = context['max_radius_m']
 
     road_min_width_m = max(0.0, float(road_min_width_m or 0.0))
@@ -3459,12 +3646,52 @@ def _street_block_apply_rule(
     strong_features: List[Dict[str, Any]] = []
     strong_metric: List[Any] = []
     strong_union = GeometryCollection()
+    component_pass_count = 0
+    component_seed_runs = 0
+    component_pass_ms: List[float] = []
+    prepared_build_ms: List[float] = []
+    component_barrier_evaluations: List[int] = []
+    component_barrier_cache_hits: List[int] = []
 
     def _components_for(road_barrier_union: Any) -> List[tuple[set[int], Any, float, bool]]:
+        nonlocal component_pass_count, component_seed_runs
+        pass_started = time.perf_counter()
+        prep_started = time.perf_counter()
+        road_prepared = None
+        strong_prepared = None
+        try:
+            if road_barrier_union is not None and not road_barrier_union.is_empty:
+                road_prepared = prep(road_barrier_union)
+        except Exception:
+            road_prepared = None
+        try:
+            if strong_union is not None and not strong_union.is_empty:
+                strong_prepared = prep(strong_union)
+        except Exception:
+            strong_prepared = None
+        prepared_build_ms.append(round((time.perf_counter()-prep_started)*1000.0, 3))
+        component_pass_count += 1
+
         out: List[tuple[set[int], Any, float, bool]] = []
         seen_keys = set()
+        barrier_cache: Dict[tuple[int, int], tuple[bool, str, float]] = {}
+        barrier_stats = {'barrier_evaluations': 0, 'barrier_cache_hits': 0}
+        use_graph = isinstance(neighbor_order, list) and isinstance(shared_edges, dict)
         for start in initial:
-            comp, hit_limit = _basic_unit_component(start, geoms, tree, road_barrier_union, strong_union)
+            component_seed_runs += 1
+            if use_graph:
+                comp, hit_limit = _basic_unit_component_graph(
+                    start, neighbor_order, shared_edges, road_barrier_union, strong_union,
+                    road_prepared=road_prepared, strong_prepared=strong_prepared,
+                    barrier_cache=barrier_cache, stats=barrier_stats,
+                    geoms=geoms, tree=tree, invalid_edges=neighbor_invalid_edges,
+                    topology_stats=neighbor_topology_stats,
+                )
+            else:
+                comp, hit_limit = _basic_unit_component(
+                    start, geoms, tree, road_barrier_union, strong_union,
+                    road_prepared=road_prepared, strong_prepared=strong_prepared,
+                )
             key = tuple(sorted(comp))
             if key in seen_keys:
                 continue
@@ -3477,6 +3704,9 @@ def _street_block_apply_rule(
             if ia > max(1.0, site_area * 0.002):
                 out.append((comp, merged, ia, hit_limit))
         out.sort(key=lambda x: x[2], reverse=True)
+        component_barrier_evaluations.append(int(barrier_stats['barrier_evaluations']))
+        component_barrier_cache_hits.append(int(barrier_stats['barrier_cache_hits']))
+        component_pass_ms.append(round((time.perf_counter()-pass_started)*1000.0, 2))
         return out
 
     components = _components_for(road_union)
@@ -3601,6 +3831,18 @@ def _street_block_apply_rule(
             'future_street_block_interface':'MOIS_BASIC_UNIT_OR_VERIFIED_PLANNING_ROAD_BLOCK',
             'engine_note':'현재 내장 기초단위구는 가로구역 후보 골격(ESTIMATE)이다. TL_SPRD_MANAGE ROAD_BT 폭원 근거와, 사용 가능할 때 TL_SPRD_RW 실제 도로면을 결합해 인접 기초단위구 병합 여부를 판단하며 법정 가로구역으로 자동확정하지 않는다. 향후 행안부 기초단위구/공식 가로구역 또는 검증된 도시계획시설도로 블록 자료가 연결되면 authoritative_street_block=true로 승격한다.',
             'common_prep_ms': context.get('common_prep_ms'), 'rule_apply_ms': rule_ms,
+            'prepared_geometry': True, 'component_pass_count': component_pass_count,
+            'component_seed_runs': component_seed_runs, 'component_pass_ms': component_pass_ms,
+            'prepared_build_ms': prepared_build_ms,
+            'component_barrier_evaluations': component_barrier_evaluations,
+            'component_barrier_cache_hits': component_barrier_cache_hits,
+            'neighbor_graph': True, 'neighbor_graph_mode':'lazy',
+            'neighbor_edge_count': len(shared_edges or {}),
+            'neighbor_query_count': (neighbor_topology_stats or {}).get('query_count'),
+            'neighbor_shared_calc_count': (neighbor_topology_stats or {}).get('shared_calc_count'),
+            'neighbor_topology_ms': (neighbor_topology_stats or {}).get('topology_ms'),
+            'neighbor_materialized_node_count': (neighbor_topology_stats or {}).get('materialized_node_count'),
+            'neighbor_cache_hits': (neighbor_topology_stats or {}).get('cache_hits'),
         }
     }
 
