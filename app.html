@@ -4232,13 +4232,20 @@ function refreshStationCenterMiniMaps(){
   }catch(e){}
 }
 function fitCompactMiniMap(mp,boundaryLayer,fallbackFeatures){
-  try{
-    let bounds=null;
-    if(boundaryLayer.getLayers().length)bounds=boundaryLayer.getBounds();
-    else if(fallbackFeatures?.getLayers?.().length)bounds=fallbackFeatures.getBounds();
-    if(bounds&&bounds.isValid())mp.fitBounds(bounds.pad(.08),{animate:false,maxZoom:19});
-  }catch(e){}
-  setTimeout(()=>{try{mp.invalidateSize(false);}catch(e){}},0);
+  // 접힘/펼침·초기 렌더 직후 Leaflet 컨테이너 폭/높이가 0 또는 이전값이면
+  // fitBounds가 서울 기본축척에 남아 대상지가 점처럼 보일 수 있다. invalidate 후 다음 tick에서 fit한다.
+  const fit=()=>{
+    try{
+      mp.invalidateSize(false);
+      let bounds=null;
+      if(boundaryLayer.getLayers().length)bounds=boundaryLayer.getBounds();
+      else if(fallbackFeatures?.getLayers?.().length)bounds=fallbackFeatures.getBounds();
+      if(bounds&&bounds.isValid())mp.fitBounds(bounds.pad(.08),{animate:false,maxZoom:19});
+      mp.invalidateSize(false);
+    }catch(e){}
+  };
+  try{mp.invalidateSize(false);}catch(e){}
+  setTimeout(fit,40);
 }
 
 function compactParcelBaseFeatures(){
@@ -4429,20 +4436,16 @@ async function analyzeSharedConservation(){
   sharedConservationAnalysis.biotope={known:false,present:null,area_m2:null,pct:null,features:[],affected_pnus:[],rows:[],geometry_basis:'NONE'};
   sharedConservationAnalysis.publicForest={known:false,present:null,area_m2:null,pct:null,features:[],affected_pnus:[],rows:[],geometry_basis:'NONE'};
   let biotopeExact=false,forestExact=false,nedData=null;
-  try{
-    const bio=await fetchBackendJson('/api/spatial/biotope-intersections',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry:activeGeometry})});
-    sharedConservationAnalysis.biotope=computeBiotopeFactFromBundled(bio);
-    biotopeExact=true;
-  }catch(e){
-    sharedConservationAnalysis.errors.push({source:'BIOTOPE_SHP',error:`비오톱1등급 내장 원본 조회 실패 · 필지조회 fallback 검토: ${String(e?.message||e)}`});
-  }
-  try{
-    const forest=await fetchBackendJson('/api/spatial/forest-classification-intersections',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry:activeGeometry})});
-    sharedConservationAnalysis.publicForest=computePublicForestFactFromBundled(forest);
-    forestExact=true;
-  }catch(e){
-    sharedConservationAnalysis.errors.push({source:'FOREST_CLASSIFICATION_SHP',error:`공익용산지 내장 원본 조회 실패 · 필지조회 fallback 검토: ${String(e?.message||e)}`});
-  }
+  const [bioRes,forestRes]=await Promise.allSettled([
+    fetchBackendJson('/api/spatial/biotope-intersections',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry:activeGeometry})}),
+    fetchBackendJson('/api/spatial/forest-classification-intersections',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry:activeGeometry})})
+  ]);
+  if(bioRes.status==='fulfilled'){
+    sharedConservationAnalysis.biotope=computeBiotopeFactFromBundled(bioRes.value);biotopeExact=true;
+  }else sharedConservationAnalysis.errors.push({source:'BIOTOPE_SHP',error:`비오톱1등급 내장 원본 조회 실패 · 필지조회 fallback 검토: ${String(bioRes.reason?.message||bioRes.reason||'응답실패')}`});
+  if(forestRes.status==='fulfilled'){
+    sharedConservationAnalysis.publicForest=computePublicForestFactFromBundled(forestRes.value);forestExact=true;
+  }else sharedConservationAnalysis.errors.push({source:'FOREST_CLASSIFICATION_SHP',error:`공익용산지 내장 원본 조회 실패 · 필지조회 fallback 검토: ${String(forestRes.reason?.message||forestRes.reason||'응답실패')}`});
   // 두 내장 원도형 중 하나라도 실패했을 때만 NED 필지조회를 보조자료로 사용한다.
   const pnus=[...selectedParcelPnus].filter(x=>/^\d{19}$/.test(String(x)));
   if((!biotopeExact||!forestExact)&&pnus.length){
@@ -5010,9 +5013,9 @@ async function independentRoadManageCandidate(searchGeometry,radiusM=220){
   try{
     const local=await fetchIndependentRoadFacts(radiusM);
     if((local.manage_features||[]).length){
-      return {id:'local-rw-manage-road-fact',features:local.manage_features||[],surface_features:local.surface_features||[],road_facts:local,errors};
+      return {id:'local-manage-road-fact',features:local.manage_features||[],surface_features:local.surface_features||[],road_facts:local,errors};
     }
-    errors.push('로컬 TL_SPRD_RW/TL_SPRD_MANAGE 도로 FACT 0건');
+    errors.push('로컬 TL_SPRD_MANAGE ROAD_BT 도로 FACT 0건');
   }catch(e){errors.push(`로컬 도로 FACT 조회 실패: ${String(e?.message||e)}`);}
   if(currentRoadManageFeatures.length)return {id:'road-cache',features:currentRoadManageFeatures,surface_features:[],road_facts:null,errors};
   const fallback=await trySpatialLayerCandidates(['TL_SPRD_MANAGE','LT_C_SPRD_MANAGE'],searchGeometry,['rds_man_no','RDS_MAN_NO']);
@@ -5036,12 +5039,15 @@ function schemeFeatureOverlapAreaM2(feature,site){
 function schemeExistingRoadInputs(roadFacts,minWidth,site,{allRoads=false}={}){
   const allManage=(roadFacts?.manage_features||[]).map(cloneFeature);
   const allSurfaces=(roadFacts?.surface_features||[]).map(cloneFeature);
-  const rwAreas=(roadFacts?.rw_features||[]).map(cloneFeature);
+  // R18: 실폭 RW 의존 중단. 구버전 응답에 rw_features가 있으면 읽을 수는 있지만,
+  // 새 MANAGE-only 백엔드에서는 ROAD_BT 중심선 버퍼면을 가로구역 separator/외곽경계 후보로 사용한다.
+  const legacyRwAreas=(roadFacts?.rw_features||[]).map(cloneFeature);
+  const rwAreas=legacyRwAreas.length?legacyRwAreas:allSurfaces.map(cloneFeature);
   const thresholdManage=allRoads?allManage.slice():allManage.filter(f=>{const w=schemeRoadWidthM(f);return Number.isFinite(w)&&w>=minWidth;});
   const thresholdSurfaces=allRoads?allSurfaces.slice():allSurfaces.filter(f=>{const w=schemeRoadWidthM(f);return Number.isFinite(w)&&w>=minWidth;});
 
   // 내부도로: 일반 제도는 임계폭(4m/6m) 이상만 제외한다. 성장잠재권은 운영기준상 '도로' 자체가 가로구역 경계이므로 폭원과 무관하게 모두 separator로 사용한다.
-  const cutters=thresholdSurfaces.map(f=>cloneFeatureWithProps(f,{_scheme_road_cutter:true,_scheme_road_source:'TL_SPRD_RW actual surface'}));
+  const cutters=thresholdSurfaces.map(f=>cloneFeatureWithProps(f,{_scheme_road_cutter:true,_scheme_road_source:'TL_SPRD_MANAGE ROAD_BT surface'}));
   for(const mf of thresholdManage){
     const matched=Number((mf.properties||{})._rw_match_count||0)>0;
     if(matched)continue;
@@ -5061,7 +5067,7 @@ function schemeExistingRoadInputs(roadFacts,minWidth,site,{allRoads=false}={}){
   // 선택사업지와 1㎡를 초과해 실질적으로 겹치는 도로는 내부도로로 보고 위 임계폭 기준만 적용한다.
   // 외곽 폐합도로는 서버의 2차 폐합연산에서만 사용한다. 여기서 모든 seed 밖 RW를
   // cutter로 다시 빼면 블록 내부의 4m/6m 미만 골목까지 잘못 제거되므로 후처리 cutter에는 넣지 않는다.
-  const outerRoads=rwAreas.filter(rf=>schemeFeatureOverlapAreaM2(rf,site)<=1.0).map(rf=>cloneFeatureWithProps(rf,{_scheme_outer_closure_candidate:true,_scheme_road_source:'TL_SPRD_RW outer-closure candidate'}));
+  const outerRoads=rwAreas.filter(rf=>schemeFeatureOverlapAreaM2(rf,site)<=1.0).map(rf=>cloneFeatureWithProps(rf,{_scheme_outer_closure_candidate:true,_scheme_road_source:'TL_SPRD_MANAGE ROAD_BT outer-closure candidate'}));
   return {allManage,allSurfaces,rwAreas,thresholdManage,thresholdSurfaces,outerRoads,cutters};
 }
 async function fetchSchemePlanningRoadBase(searchGeometry){
@@ -5401,9 +5407,11 @@ function activationArterialRouteDecision({roadFetchFailed=false,zoneFetchFailed=
   if(siteIncludes===true)return {status:'PASS',path:'대상지 자체 노선형 상업지역 편입 확인'};
   if(roadFetchFailed||zoneFetchFailed)return {status:'REVIEW',path:`공개 GIS 조회 실패 · ${roadFetchFailed?'주변 도로자료 확인불가':'상업지역 도형 확인불가'}${roadFetchFailed&&zoneFetchFailed?' · 상업지역 도형도 확인불가':''}`};
   if(candidateCount>0)return {status:'FAIL',path:'인접 노선형 상업지역 후보는 있으나 대상지·가로구역 편입 미확인'};
-  if(roadCount===0)return {status:'FAIL',path:'공개 GIS 정상조회 · 주변 도로 후보 0건 · 자동판정상 미충족'};
-  if(zoneCount===0)return {status:'FAIL',path:'공개 GIS 정상조회 · 주변 상업지역 도형 0건 · 자동판정상 미충족'};
-  return {status:'FAIL',path:'띠형 형상·도로 인접조건을 충족하는 노선형 상업지역 후보 없음'};
+  // 주변 도로/상업지역 0건은 실제 부재와 조회 누락을 자동으로 구분할 수 없다.
+  // 따라서 0건만으로 법적 미충족을 확정하지 않고 REVIEW로 둔다.
+  if(roadCount===0)return {status:'REVIEW',path:'주변 도로 후보 0건 · 원자료/조회범위 재확인 필요'};
+  if(zoneCount===0)return {status:'REVIEW',path:'주변 상업지역 도형 0건 · 원자료/조회범위 재확인 필요'};
+  return {status:'FAIL',path:'도로·상업지역 원자료는 확보되었으나 띠형 형상·도로 인접조건을 충족하는 후보 없음'};
 }
 async function analyzeActivationArterial(){
   if(!activeGeometry)return;
@@ -5412,7 +5420,7 @@ async function analyzeActivationArterial(){
   try{
     const site=turf.feature(activeGeometry),siteArea=Math.max(1,turf.area(site));
     const search=turf.buffer(site,220,{units:'meters'}).geometry;
-    const roadCandidate=currentRoadManageFeatures.length?Promise.resolve({id:'road-cache',features:currentRoadManageFeatures,errors:[]}):trySpatialLayerCandidates(['TL_SPRD_MANAGE','LT_C_SPRD_MANAGE'],search,['rds_man_no','RDS_MAN_NO']);
+    const roadCandidate=currentRoadManageFeatures.length?Promise.resolve({id:'road-cache',features:currentRoadManageFeatures,errors:[]}):independentRoadManageCandidate(search,220);
     const [zoneRes,roadRes]=await Promise.allSettled([
       fetchSpatialFeaturesBrowser('LT_C_UQ111',search,['unq_mnno','UNQ_MNNO','dgm_ar','DGM_AR','fid','OBJECTID','objectid']),
       roadCandidate
@@ -6097,9 +6105,13 @@ function renderIndependentSpatialStatusMaps(){
   set('spDevelopmentMapState',developmentAnalysis.error||planError?'일부 자료 미응답 · REVIEW':(planningAnalysis.loaded&&developmentAnalysis.loaded?'조회 완료':'GIS 미조회'));
 
   try{
-    const rb=ccRenewalStatusBoundary.getBounds();if(rb.isValid())ccRenewalStatusMini.fitBounds(rb.pad(.12),{animate:false,maxZoom:18});
-    const db=ccDevelopmentStatusBoundary.getBounds();if(db.isValid())ccDevelopmentStatusMini.fitBounds(db.pad(.12),{animate:false,maxZoom:18});
-    setTimeout(()=>{ccRenewalStatusMini.invalidateSize(false);ccDevelopmentStatusMini.invalidateSize(false);},0);
+    const refit=()=>{
+      ccRenewalStatusMini.invalidateSize(false);ccDevelopmentStatusMini.invalidateSize(false);
+      const rb=ccRenewalStatusBoundary.getBounds();if(rb.isValid())ccRenewalStatusMini.fitBounds(rb.pad(.12),{animate:false,maxZoom:18});
+      const db=ccDevelopmentStatusBoundary.getBounds();if(db.isValid())ccDevelopmentStatusMini.fitBounds(db.pad(.12),{animate:false,maxZoom:18});
+    };
+    ccRenewalStatusMini.invalidateSize(false);ccDevelopmentStatusMini.invalidateSize(false);
+    setTimeout(refit,40);
   }catch(e){}
 }
 
@@ -7184,34 +7196,55 @@ function computeSiteFrontageWidthCoverage(manageFeatures,siteGeometry,thresholdM
 async function fetchRoadNetwork(radiusM=240){
   if(!activeGeometry)return {road_polygons:[],manage:[],source:'none',errors:[],approximation:true,road_mode:'none',search_radius_m:radiusM,diagnostic:{mode:'NO_RESPONSE',provider_state:'NO_GEOMETRY'}};
   const errors=[];
-  // 도로 Fact는 VWorld TL_SPRD_MANAGE 도로중심선의 ROAD_BT만 사용한다.
-  // ROAD_BT가 없거나 유효하지 않은 구간은 폭원을 추정하지 않고 REVIEW로 남긴다.
-  let mg=[],usedSource='';
-  let providerState='VWORLD_PENDING',vworldFeatureCount=0;
+  // R18: 동일 ROAD_BT Fact를 가로구역/접도/간선도로가 공유하도록 서버 내장 TL_SPRD_MANAGE를 1순위로 사용한다.
+  // 서버 Fact가 없을 때만 VWorld WFS를 fallback한다. 실폭 RW는 사용하지 않는다.
+  let mg=[],surfaces=[],usedSource='',providerState='LOCAL_PENDING',localFeatureCount=0,vworldFeatureCount=0;
   try{
-    const zone=turf.buffer(turf.feature(activeGeometry),radiusM,{units:'meters'}).geometry;
-    const mgRes=await trySpatialLayerCandidates(['TL_SPRD_MANAGE','LT_C_SPRD_MANAGE'],zone,['rds_man_no','RDS_MAN_NO']);
-    errors.push(...(mgRes.errors||[]));
-    mg=mgRes.features||[];
-    vworldFeatureCount=mg.length;
-    if(mg.length){usedSource='VWorld TL_SPRD_MANAGE 도로중심선 + ROAD_BT';providerState='VWORLD_OK';}
-    else providerState='VWORLD_EMPTY';
-  }catch(e){
-    errors.push(`VWorld TL_SPRD_MANAGE 조회 실패: ${String(e?.message||e)}`);
-    providerState='VWORLD_ERROR';
+    const local=await fetchIndependentRoadFacts(radiusM);
+    mg=(local?.manage_features||[]).map(cloneFeature);
+    surfaces=(local?.surface_features||[]).map(cloneFeature);
+    localFeatureCount=mg.length;
+    if(mg.length){usedSource='서버 TL_SPRD_MANAGE ROAD_BT';providerState='LOCAL_OK';}
+    else providerState='LOCAL_EMPTY';
+  }catch(e){errors.push(`서버 TL_SPRD_MANAGE 조회 실패: ${String(e?.message||e)}`);providerState='LOCAL_ERROR';}
+
+  if(!mg.length){
+    try{
+      const zone=turf.buffer(turf.feature(activeGeometry),radiusM,{units:'meters'}).geometry;
+      const mgRes=await trySpatialLayerCandidates(['TL_SPRD_MANAGE','LT_C_SPRD_MANAGE'],zone,['rds_man_no','RDS_MAN_NO']);
+      errors.push(...(mgRes.errors||[]));
+      mg=mgRes.features||[];vworldFeatureCount=mg.length;
+      if(mg.length){usedSource='VWorld TL_SPRD_MANAGE 도로중심선 + ROAD_BT';providerState='VWORLD_OK';}
+      else if(providerState!=='LOCAL_ERROR')providerState='VWORLD_EMPTY';
+    }catch(e){errors.push(`VWorld TL_SPRD_MANAGE 조회 실패: ${String(e?.message||e)}`);providerState='VWORLD_ERROR';}
   }
-  const {derived,diagnostic}=roadPolygonsFromCenterlines(mg);
+
+  let derived=[];let diagnostic=null;
+  if(surfaces.length){
+    derived=surfaces.map(f=>{
+      const x=cloneFeature(f),w=schemeRoadWidthM(x);x.properties=Object.assign({},x.properties||{}, {_width_m:w,_qualifies4:Number.isFinite(w)&&w>=4,_qualifies6:Number.isFinite(w)&&w>=6,_qualifies8:Number.isFinite(w)&&w>=8});return x;
+    });
+    const raw=roadPolygonsFromCenterlines(mg);diagnostic=raw.diagnostic;
+    diagnostic.mode=derived.length?'WIDTH_OK':diagnostic.mode;
+    diagnostic.buffer_success_count=derived.length;
+  }else{
+    const raw=roadPolygonsFromCenterlines(mg);derived=raw.derived;diagnostic=raw.diagnostic;
+  }
   diagnostic.provider_state=providerState;
+  diagnostic.local_feature_count=localFeatureCount;
   diagnostic.vworld_feature_count=vworldFeatureCount;
   diagnostic.source=usedSource||'none';
   diagnostic.site_frontage=computeSiteFrontageWidthCoverage(mg,activeGeometry);
   if(derived.length){
-    return {road_polygons:derived,manage:mg,source:usedSource||'VWorld TL_SPRD_MANAGE 도로중심선 + ROAD_BT',errors,approximation:true,road_mode:'centerline_width_attribute',search_radius_m:radiusM,diagnostic};
+    return {road_polygons:derived,manage:mg,source:usedSource||'TL_SPRD_MANAGE ROAD_BT',errors,approximation:true,road_mode:'centerline_width_attribute',search_radius_m:radiusM,diagnostic};
   }
   return {road_polygons:[],manage:mg,source:usedSource||'none',errors,approximation:true,road_mode:'none',search_radius_m:radiusM,diagnostic};
 }
 function roadDiagnosticModeLabel(mode,providerState=''){
   const provider={
+    LOCAL_OK:'서버 TL_SPRD_MANAGE',
+    LOCAL_EMPTY:'서버 도로중심선 0건',
+    LOCAL_ERROR:'서버 도로중심선 요청 오류',
     VWORLD_OK:'VWorld TL_SPRD_MANAGE',
     VWORLD_EMPTY:'VWorld 도로중심선 0건',
     VWORLD_ERROR:'VWorld 도로중심선 요청 오류'
@@ -7363,7 +7396,7 @@ async function analyzeRoadAccess(){
 let siteReviewRunning=false;
 // 정확성 우선: 외부 공식자료가 느린 경우에도 성급히 REVIEW로 끊지 않도록 단계별 대기시간을 넉넉히 둔다.
 const ANALYSIS_STEP_TIMEOUT_MS=180000;
-const ANALYSIS_PROGRESS_ORDER=['도형면적','역세권 경계','연속지적','토지대장','건축물 공간','도시계획 GIS','상생주택 보전환경','정비사업 GIS','개발사업 GIS','의료시설','건축HUB','도로·접도','노선형 상업지역','제도별 가로구역','주변 공간현황','사업판정'];
+const ANALYSIS_PROGRESS_ORDER=['도형면적','역세권 경계','연속지적','토지대장','건축물 공간','도시계획 GIS','상생주택 보전환경','정비사업 GIS','개발사업 GIS','의료시설','학교 절대보호구역','건축HUB','도로·접도','노선형 상업지역','제도별 가로구역','주변 공간현황','사업판정'];
 const analysisProgressState={startedAt:0,timer:null,steps:new Map(),finished:false,finalState:'done'};
 function formatAnalysisElapsed(ms){const sec=Math.max(0,Math.floor(ms/1000)),m=Math.floor(sec/60),s=sec%60;return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;}
 function renderAnalysisProgress(){

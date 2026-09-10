@@ -2305,6 +2305,143 @@ def analyze_local_road_facts(geometry: Dict[str, Any], radius_m: float = 220.0) 
     }
 
 
+
+# -----------------------------------------------------------------------------
+# R18 pipeline stabilization: TL_SPRD_MANAGE ROAD_BT is the sole road-width Fact.
+# The legacy TL_SPRD_RW dependency is intentionally removed.  A buffered surface
+# derived from each MANAGE centerline + ROAD_BT is used only as a computational
+# separator/contact surface; it is not asserted to be an official road polygon.
+# -----------------------------------------------------------------------------
+ROAD_SHAPE_REQUIRED = tuple(f"TL_SPRD_MANAGE{ext}" for ext in (".shp", ".shx", ".dbf"))
+
+
+def _road_shape_base(stem: str) -> Optional[str]:
+    """Find a local road SHP base. R18 accepts flat-root MANAGE files as well as bundles."""
+    candidates = [
+        os.path.join(STRUCTURED_DATA_DIR, "road_shp_seoul", stem),
+        os.path.join(BASE_DIR, "road_shp_seoul", stem),
+        os.path.join(STRUCTURED_DATA_DIR, stem),
+        os.path.join(BASE_DIR, stem),
+    ]
+    for base in candidates:
+        required = [base + ext for ext in (".shp", ".shx", ".dbf")]
+        if all(os.path.isfile(q) and os.path.getsize(q) > 0 for q in required):
+            return base
+    cached = _road_shape_zip_cache_dir()
+    if cached:
+        base = os.path.join(cached, stem)
+        required = [base + ext for ext in (".shp", ".shx", ".dbf")]
+        if all(os.path.isfile(q) and os.path.getsize(q) > 0 for q in required):
+            return base
+    return None
+
+
+def analyze_local_road_facts(geometry: Dict[str, Any], radius_m: float = 220.0) -> Dict[str, Any]:
+    """Return local TL_SPRD_MANAGE centerlines and ROAD_BT-derived computational surfaces.
+
+    No TL_SPRD_RW geometry is read or required.  Width-buffer surfaces are explicitly
+    marked ESTIMATE and exist only to support frontage/street-block geometry operations.
+    """
+    manage_base = _road_shape_base("TL_SPRD_MANAGE")
+    if not manage_base:
+        return {
+            "status": "unavailable",
+            "rw_features": [], "manage_features": [], "surface_features": [], "match_links": [],
+            "metadata": {"reason": "TL_SPRD_MANAGE 원본 SHP 미설치", "road_mode": "manage_only"},
+        }
+    try:
+        site_wgs = _polygonal_only(shape(geometry))
+    except Exception as exc:
+        raise ValueError(f"구역계 GeoJSON을 읽을 수 없습니다: {exc}") from exc
+    if site_wgs is None or site_wgs.is_empty:
+        raise ValueError("구역계는 Polygon 또는 MultiPolygon이어야 합니다.")
+    if not site_wgs.is_valid:
+        site_wgs = _polygonal_only(site_wgs.buffer(0))
+    if site_wgs is None or site_wgs.is_empty:
+        raise ValueError("유효하지 않은 구역계입니다.")
+
+    to_metric = Transformer.from_crs(4326, 5179, always_xy=True).transform
+    to_wgs = Transformer.from_crs(5179, 4326, always_xy=True).transform
+    site_metric = geometry_transform(to_metric, site_wgs)
+    frame_metric = site_metric.buffer(float(radius_m)).envelope
+    rows = _road_shape_records("TL_SPRD_MANAGE", list(frame_metric.bounds))
+
+    manage_features: List[Dict[str, Any]] = []
+    surface_features: List[Dict[str, Any]] = []
+    width_known = 0
+    width_missing = 0
+    repaired = 0
+    for row in rows:
+        try:
+            gm = row["geometry"].intersection(frame_metric)
+            if gm is None or gm.is_empty:
+                continue
+            props = dict(row.get("properties") or {})
+            width = _road_width_m(props)
+            if width is None:
+                width_missing += 1
+            else:
+                width_known += 1
+            if row.get("geometry_quality") != "valid":
+                repaired += 1
+            props.update({
+                "_road_fact_source": "TL_SPRD_MANAGE ROAD_BT",
+                "_road_bt_m": width,
+                "_width_m": width,
+                "_geometry_quality": row.get("geometry_quality"),
+                "_review_reason": None if width is not None else "ROAD_BT 미확보",
+                "_rw_match_count": 0,
+            })
+            manage_features.append({
+                "type": "Feature",
+                "geometry": mapping(geometry_transform(to_wgs, gm)),
+                "properties": props,
+            })
+            if width is None or width <= 0:
+                continue
+            # Computational separator/contact surface only; not an official road-area polygon.
+            surf = gm.buffer(width / 2.0, cap_style=2, join_style=2).intersection(frame_metric)
+            if surf is None or surf.is_empty:
+                continue
+            surf = _polygonal_only(surf)
+            if surf is None or surf.is_empty:
+                continue
+            sprops = dict(props)
+            sprops.update({
+                "_road_surface_basis": "MANAGE_CENTERLINE_BUFFER_ROAD_BT",
+                "_road_surface_estimate": True,
+                "_scheme_surface_fallback": True,
+            })
+            surface_features.append({
+                "type": "Feature",
+                "geometry": mapping(geometry_transform(to_wgs, surf)),
+                "properties": sprops,
+            })
+        except Exception as exc:
+            logging.debug("MANAGE road row skipped: %s", exc)
+            continue
+
+    return {
+        "status": "matched" if manage_features else "none",
+        "rw_features": [],
+        "manage_features": manage_features,
+        "surface_features": surface_features,
+        "match_links": [],
+        "metadata": {
+            "source": "TL_SPRD_MANAGE ROAD_BT",
+            "road_mode": "manage_only_centerline_width",
+            "search_radius_m": float(radius_m),
+            "manage_count": len(manage_features),
+            "surface_count": len(surface_features),
+            "width_known_count": width_known,
+            "width_missing_count": width_missing,
+            "repaired_or_invalid_count": repaired,
+            "rw_used": False,
+            "note": "ROAD_BT 중심선 버퍼는 접도·가로구역 계산용 개략면이며 공식 도로구역/실폭도로면으로 확정하지 않음",
+        },
+    }
+
+
 def _school_absolute_protection_zip_path() -> Optional[str]:
     """국가공간정보 연속주제도 UO101 서울 교육환경보호구역 원본.
 
@@ -2451,6 +2588,141 @@ def analyze_school_absolute_protection_intersections(geometry: Dict[str, Any]) -
         "repaired_count": layers.get("repaired_count", 0),
         "criterion": "학교 출입문으로부터 50m 이내 사업대상지 제외 · UO101 UOA110 절대보호구역 도형 사용",
         "note": "절대보호구역 원본 도형과 대상지의 중첩을 계산하며, 상대보호구역(UOA120)은 이 판정에 사용하지 않음",
+    }
+
+
+
+# -----------------------------------------------------------------------------
+# R18: school absolute-protection analysis queries only the site's source-CRS bbox.
+# The previous first request transformed/indexed every UOA110 feature in Seoul and
+# could stall the UI for minutes on a small Render instance.
+# -----------------------------------------------------------------------------
+@lru_cache(maxsize=1)
+def _school_absolute_local_shape() -> Dict[str, Any]:
+    zip_path = _school_absolute_protection_zip_path()
+    if not zip_path:
+        return {"available": False, "reason": "school_protection_seoul_202608.zip 미설치"}
+    cache_dir = os.path.join("/tmp", "urban_strategy_school_uo101")
+    os.makedirs(cache_dir, exist_ok=True)
+    try:
+        with zipfile.ZipFile(zip_path) as zf:
+            names = zf.namelist()
+            stem = next((os.path.splitext(n)[0] for n in names if n.lower().endswith(".shp") and "UO101" in os.path.basename(n).upper()), None)
+            if not stem:
+                return {"available": False, "reason": "UO101 SHP를 ZIP에서 찾지 못함"}
+            base_name = os.path.basename(stem)
+            out_base = os.path.join(cache_dir, base_name)
+            for ext in (".shp", ".shx", ".dbf", ".prj"):
+                member = next((n for n in names if os.path.splitext(n)[0] == stem and n.lower().endswith(ext)), None)
+                if not member:
+                    if ext == ".prj":
+                        continue
+                    return {"available": False, "reason": f"UO101 {ext} 구성파일 누락"}
+                target = out_base + ext
+                if not (os.path.isfile(target) and os.path.getsize(target) > 0):
+                    with zf.open(member) as src, open(target, "wb") as dst:
+                        while True:
+                            chunk = src.read(1024 * 1024)
+                            if not chunk:
+                                break
+                            dst.write(chunk)
+            source_crs = CRS.from_user_input("EPSG:5174")
+            prj = out_base + ".prj"
+            if os.path.isfile(prj):
+                try:
+                    source_crs = CRS.from_wkt(Path(prj).read_text(encoding="utf-8", errors="ignore"))
+                except Exception:
+                    logging.warning("school local PRJ parse failed; EPSG:5174 fallback used")
+            return {"available": True, "base": out_base, "source_crs": source_crs, "file": os.path.basename(zip_path)}
+    except Exception as exc:
+        logging.exception("school local SHP prepare failed")
+        return {"available": False, "reason": str(exc)}
+
+
+def analyze_school_absolute_protection_intersections(geometry: Dict[str, Any]) -> Dict[str, Any]:
+    local = _school_absolute_local_shape()
+    if not local.get("available"):
+        raise FileNotFoundError(str(local.get("reason") or "학교 절대보호구역 원본 미설치"))
+    site = shape(geometry)
+    if site.geom_type not in {"Polygon", "MultiPolygon"} or site.is_empty:
+        raise ValueError("유효한 Polygon 또는 MultiPolygon 구역계가 필요합니다.")
+    if not site.is_valid:
+        site = site.buffer(0)
+    if site.is_empty or not site.is_valid:
+        raise ValueError("유효한 Polygon 또는 MultiPolygon 구역계가 필요합니다.")
+
+    source_crs = local["source_crs"]
+    to_source = Transformer.from_crs(4326, source_crs, always_xy=True).transform
+    to_wgs = Transformer.from_crs(source_crs, 4326, always_xy=True).transform
+    site_source = geometry_transform(to_source, site)
+    bbox = list(site_source.bounds)
+    reader = shapefile.Reader(local["base"], encoding="cp949", encodingErrors="replace")
+    fields = [f[0] for f in reader.fields[1:]]
+    hit_features: List[Dict[str, Any]] = []
+    overlap_features: List[Dict[str, Any]] = []
+    overlap_geoms = []
+    candidate_count = 0
+    repaired = 0
+    for sr in reader.iterShapeRecords(bbox=bbox):
+        try:
+            candidate_count += 1
+            props = {k: _json_property(v) for k, v in zip(fields, list(sr.record))}
+            if "UOA110" not in str(props.get("MNUM") or "").upper():
+                continue
+            geom_source = shape(sr.shape.__geo_interface__)
+            if geom_source.is_empty:
+                continue
+            quality = "valid"
+            if not geom_source.is_valid:
+                geom_source = geom_source.buffer(0)
+                quality = "repaired_buffer0"
+                repaired += 1
+            if geom_source.is_empty:
+                continue
+            geom = geometry_transform(to_wgs, geom_source)
+            if geom.is_empty or not geom.intersects(site):
+                continue
+            inter_geom = _polygonal_only(site.intersection(geom))
+            if inter_geom is None or inter_geom.is_empty:
+                continue
+            props["_zone_type"] = "ABSOLUTE_PROTECTION_UOA110"
+            props["_geometry_quality"] = quality
+            hit_features.append({"type": "Feature", "geometry": mapping(geom), "properties": props})
+            overlap_features.append({"type": "Feature", "geometry": mapping(inter_geom), "properties": props})
+            overlap_geoms.append(inter_geom)
+        except Exception:
+            continue
+
+    union_wgs = unary_union(overlap_geoms) if overlap_geoms else None
+    to_metric = Transformer.from_crs(4326, 5174, always_xy=True).transform
+    site_m2 = float(geometry_transform(to_metric, site).area)
+    overlap_m2 = float(geometry_transform(to_metric, union_wgs).area) if union_wgs is not None and not union_wgs.is_empty else 0.0
+    overlap_pct = (overlap_m2 / site_m2 * 100.0) if site_m2 > 0 else None
+    schools: List[str] = []
+    for f in hit_features:
+        pp = f.get("properties") or {}
+        name = str(pp.get("REMARK") or pp.get("ALIAS") or "절대보호구역").strip()
+        if name and name not in schools:
+            schools.append(name)
+    return {
+        "status": "matched" if hit_features else "none",
+        "fact_status": "EXCLUDED_AREA_PRESENT" if hit_features else "NO_OVERLAP",
+        "known": True,
+        "present": bool(hit_features),
+        "overlap_area_m2": overlap_m2,
+        "overlap_pct": overlap_pct,
+        "zone_count": len(hit_features),
+        "school_names": schools,
+        "features": hit_features,
+        "overlap_features": overlap_features,
+        "source": "국가공간정보 연속주제도 UO101 · UOA110 절대보호구역",
+        "source_type": "OFFLINE_SHP_LSMD_CONT_UO101_UOA110_BBOX",
+        "file": local.get("file"),
+        "record_count": None,
+        "bbox_candidate_count": candidate_count,
+        "repaired_count": repaired,
+        "criterion": "학교 출입문으로부터 50m 이내 사업대상지 제외 · UO101 UOA110 절대보호구역 도형 사용",
+        "note": "서울 전역을 사전 변환하지 않고 대상지 bbox 주변 UOA110 원도형만 조회·교차함",
     }
 
 
@@ -4101,22 +4373,37 @@ def _tb_hospital_snapshot_rows() -> List[Dict[str, Any]]:
     return out
 
 def _tb_hospital_rows_live_or_snapshot() -> tuple[List[Dict[str, Any]], Dict[str, Any]]:
-    """TbHospitalInfo live first; bundled monthly snapshot is a continuity fallback."""
+    """Use the bundled official monthly snapshot for interactive site analysis.
+
+    R17 queried up to 20,000 TbHospitalInfo rows (1000 rows/page) every time the
+    user drew a site.  That city-wide refresh is unrelated to the selected site
+    and was a major latency source.  The packaged snapshot is itself an official
+    TbHospitalInfo extract and is the stable FACT table for one analysis run.
+    Live refresh is used only when the snapshot is absent; updating the packaged
+    snapshot is a data-maintenance task, not a per-click task.
+    """
+    rows = _tb_hospital_snapshot_rows()
     key, key_env = _seoul_open_data_key_info()
+    if rows:
+        return rows, {
+            "service": "TbHospitalInfo", "mode": "official_snapshot_primary",
+            "rows": len(rows), "snapshot": "data/TbHospitalInfo_snapshot_20260808.csv",
+            "credential_env": key_env or None,
+            "note": "대상지 분석 시 도시 전체 실시간 재조회 생략; 패키지 공식 월간 스냅샷 사용",
+        }
     if key:
         try:
-            rows = _seoul_open_data_rows("TbHospitalInfo", 20000)
-            if rows:
-                return rows, {"service": "TbHospitalInfo", "mode": "live", "rows": len(rows), "credential_env": key_env}
+            live = _seoul_open_data_rows("TbHospitalInfo", 20000)
+            if live:
+                return live, {"service": "TbHospitalInfo", "mode": "live_snapshot_missing", "rows": len(live), "credential_env": key_env}
         except Exception as exc:
             live_error = str(exc)
         else:
             live_error = "empty response"
     else:
         live_error = "서울 열린데이터광장 인증키 미설정"
-    rows = _tb_hospital_snapshot_rows()
-    return rows, {
-        "service": "TbHospitalInfo", "mode": "snapshot_fallback", "rows": len(rows),
+    return [], {
+        "service": "TbHospitalInfo", "mode": "unavailable", "rows": 0,
         "snapshot": "data/TbHospitalInfo_snapshot_20260808.csv", "live_error": live_error,
     }
 
@@ -4350,11 +4637,8 @@ def _safe_medical_reference(geometry: Dict[str, Any]) -> Dict[str, Any]:
             screened.append(cand)
     screened.sort(key=lambda x: float(x.get("distance_point_m") or 1e12))
 
-    items: List[Dict[str, Any]] = []
-    parcel_calls = 0
-    for cand in screened:
+    def _resolve_medical_candidate(cand: Dict[str, Any]) -> Dict[str, Any]:
         lon, lat = float(cand["lon"]), float(cand["lat"])
-        parcel_calls += 1
         parcel = _representative_parcel_for_facility(lon=lon, lat=lat, address=str(cand.get("address") or ""))
         point_geom = {"type":"Point","coordinates":[lon,lat]}
         base = {
@@ -4365,25 +4649,24 @@ def _safe_medical_reference(geometry: Dict[str, Any]) -> Dict[str, Any]:
             "work_dttm":cand.get("work_dttm"),
         }
         for k in ("district","official_url"):
-            if cand.get(k) is not None: base[k]=cand.get(k)
+            if cand.get(k) is not None:
+                base[k]=cand.get(k)
         if parcel.get("status") != "resolved" or not parcel.get("feature"):
-            items.append({**base,
+            return {**base,
                 "boundary_status":"REVIEW", "boundary_basis":"REPRESENTATIVE_PARCEL_NOT_RESOLVED",
                 "boundary_note":f"대표필지 확정 실패: {parcel.get('reason') or parcel.get('status')}",
                 "auto_pass_eligible":False,
-            })
-            continue
+            }
         feature = parcel["feature"]
         try:
             metrics = _medical_boundary_metrics(site_wgs, feature["geometry"])
         except Exception as exc:
-            items.append({**base,
+            return {**base,
                 "boundary_status":"REVIEW", "boundary_basis":"REPRESENTATIVE_PARCEL_GEOMETRY_ERROR",
                 "boundary_note":f"대표필지 geometry 처리 실패: {exc}", "auto_pass_eligible":False,
-            })
-            continue
+            }
         is_offline_snapshot = parcel.get("basis") == "offline_cadastral_snapshot_202012"
-        items.append({**base,
+        return {**base,
             "distance_boundary_m":metrics.get("distance_boundary_m"), "within_350":metrics.get("within_350"),
             "buffer_350_geometry":metrics.get("buffer_350_geometry"), "facility_boundary_geometry":feature["geometry"],
             "primary_pnu":parcel.get("pnu"), "parcel_count":1,
@@ -4394,7 +4677,28 @@ def _safe_medical_reference(geometry: Dict[str, Any]) -> Dict[str, Any]:
             "source_type":"OFFLINE_CADASTRAL_SNAPSHOT_202012" if is_offline_snapshot else str(parcel.get("source_type") or "VWORLD_LIVE_CADASTRAL"),
             "boundary_note":parcel.get("boundary_note") if is_offline_snapshot else "공식 좌표가 포함되는 대표지번 1필지를 초기검토용 의료시설 부지로 적용",
             "auto_pass_eligible":True,
-        })
+        }
+
+    # Only nearby eligible facilities reach parcel resolution.  Resolve them in a
+    # small bounded pool so one slow VWorld request does not serialize every
+    # candidate; each failed candidate remains REVIEW rather than becoming PASS.
+    items: List[Dict[str, Any]] = []
+    parcel_calls = len(screened)
+    if screened:
+        with ThreadPoolExecutor(max_workers=min(4, len(screened))) as pool:
+            future_map = {pool.submit(_resolve_medical_candidate, cand): cand for cand in screened}
+            for fut in as_completed(future_map):
+                cand = future_map[fut]
+                try:
+                    items.append(fut.result())
+                except Exception as exc:
+                    items.append({
+                        "category":cand.get("category"), "name":cand.get("name"), "address":cand.get("address"),
+                        "geometry":{"type":"Point","coordinates":[float(cand["lon"]),float(cand["lat"])]},
+                        "distance_point_m":cand.get("distance_point_m"), "boundary_status":"REVIEW",
+                        "boundary_basis":"REPRESENTATIVE_PARCEL_LOOKUP_ERROR",
+                        "boundary_note":f"대표필지 조회 오류: {exc}", "auto_pass_eligible":False,
+                    })
 
     confirmed = [x for x in items if x.get("boundary_status") == "CONFIRMED" and x.get("facility_boundary_geometry")]
     confirmed_350 = [x for x in confirmed if x.get("within_350") is True]
@@ -5203,6 +5507,7 @@ def health():
         "map": "leaflet-draw",
         "vworld_configured": vworld_ready(),
         "build_marker": APP_BUILD_MARKER,
+        "pipeline_patch_marker": "R18_PIPELINE_STABILIZATION_20260910",
         "station_runtime_build_marker": STATION_RUNTIME_BUILD_MARKER,
         "seoul_open_data_configured": bool(_seoul_open_data_key()),
         "seoul_open_data_env": _seoul_open_data_key_info()[1] or None,
@@ -5214,7 +5519,7 @@ def health():
         "building_spatial_auto": "LT_C_SPBD_browser_direct_ready" if vworld_ready() else "needs_VWORLD_API_KEY",
         "building_hub": "ready" if building_hub_ready() else "needs_BUILDING_HUB_API_KEY",
         "land_ledger": "ladfrlList + getLandCharacteristics + geometry provisional",
-        "road_access": "VWorld TL_SPRD_MANAGE + ROAD_BT for cadastral/frontage calculations",
+        "road_access": "bundled TL_SPRD_MANAGE + ROAD_BT first; VWorld browser fallback; missing Fact remains REVIEW",
         "road_bundled_configured": bool(_road_zip_path()),
         "reference_data": reference_data,
         "reference_data_missing": [k for k, v in reference_data.items() if not v],
@@ -5235,10 +5540,10 @@ def health():
         "renewal_gis": "server-side UQ181/UQ120 intersection; legal-priority; promotion separate; full matched boundaries returned for status map",
         "development_gis": "VWorld district-unit plan + bundled Seoul UQ181 urban-development/public-housing/other legal project intersections",
         "safe_housing_location_paths": "station / arterial-road-side / medical-facility-center evaluated separately; OR combined",
-        "safe_medical_reference": "TbHospitalInfo general hospitals + official Seoul municipal hospitals/25 district health centers; one representative cadastral parcel and its 350m buffer",
+        "safe_medical_reference": "packaged official TbHospitalInfo monthly snapshot + official Seoul municipal hospitals/25 district health centers; nearby representative parcels resolved concurrently; 350m buffer",
         "safe_medical_key_env": _seoul_open_data_key_info()[1] or None,
         "road_width_gis": "VWorld TL_SPRD_MANAGE ROAD_BT is the sole road-width Fact source",
-        "street_block_gis": "SGIS 2025 basic-unit seed + VWorld road geometry with scheme-specific street-block rules: smallscale 6m existing roads + all urban-planning facility roads + statutory facilities, activation/station-complex 4m + nonbuildable facilities, growth-potential all roads + defined facilities; ESTIMATE until authoritative official block data is connected",
+        "street_block_gis": "SGIS 2025 basic-unit seed + shared TL_SPRD_MANAGE ROAD_BT geometry with scheme-specific street-block rules: smallscale 6m existing roads + all urban-planning facility roads + statutory facilities, activation/station-complex 4m + nonbuildable facilities, growth-potential all roads + defined facilities; ESTIMATE until authoritative official block data is connected",
         "street_block_future_interface": "MOIS basic-unit / official street-block or verified planning-road block -> authoritative_street_block=true",
         "arterial_road_future_interface": "official address-based road function/classification -> road_function / statutory_classification fields; width-only candidates remain REVIEW",
         "activation_arterial_gis": "Seoul published linear-commercial road list + VWorld LT_C_UQ111 zoning + TL_SPRD_MANAGE road centerlines; dedicated station-activation arterial map",
