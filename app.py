@@ -1627,6 +1627,173 @@ RENEWAL_PROJECT_TYPES = {
 }
 
 
+# R29: 서울플랜+ UQ120의 공식 사업유형/추진단계 코드표를 별도 '기존 추진사업 FACT'로 사용한다.
+# 이 레지스트리는 정비구역 법정 배제판정에 섞지 않고, 대상지에서 실제로 추진 중인 사업의
+# 명칭·유형·현재 단계를 보여주는 현황정보 전용이다.
+PLANPLUS_PROJECT_TYPES = {'BZ101': ('renewal', '신속통합기획'),
+ 'BZ102': ('renewal', '재개발(도시정비형)'),
+ 'BZ103': ('renewal', '재개발(주택정비형)'),
+ 'BZ104': ('renewal', '재건축(단독)'),
+ 'BZ105': ('renewal', '재건축(공동)'),
+ 'BZ107': ('renewal', '주거환경개선(관리형)'),
+ 'BZ108': ('renewal', '주거환경개선(정비형)'),
+ 'BZ201': ('smallscale', '모아타운'),
+ 'BZ202': ('smallscale', '가로주택정비사업'),
+ 'BZ203': ('smallscale', '자율주택정비사업'),
+ 'BZ204': ('smallscale', '소규모재건축사업'),
+ 'BZ205': ('smallscale', '소규모재개발사업'),
+ 'BZ301': ('station', '역세권 장기전세주택'),
+ 'BZ302': ('station', '역세권활성화사업'),
+ 'BZ303': ('station', '청년안심주택'),
+ 'BZ306': ('station', '미리내집'),
+ 'BZ401': ('promotion', '재정비촉진지구'),
+ 'BZ402': ('promotion', '재정비촉진구역'),
+ 'BZ403': ('promotion', '존치정비구역'),
+ 'BZ404': ('promotion', '존치관리구역'),
+ 'BZ501': ('national', '공공주택지구조성사업'),
+ 'BZ502': ('national', '도심 공공주택 복합사업'),
+ 'BZ601': ('other', '도시개발사업'),
+ 'BZ602': ('other', '리모델링활성화구역'),
+ 'BZ603': ('other', '시장정비사업'),
+ 'BZ604': ('other', '도시재생활성화지역')}
+PLANPLUS_STAGE_LABELS = {'PP0101': '대상지선정(추진중)',
+ 'PP0102': '대상지선정',
+ 'PP0103': '기획완료',
+ 'PP0104': '보류',
+ 'PP0201': '입안제안',
+ 'PP0202': '열람공고',
+ 'PP0203': '위원회심의',
+ 'PP0204': '구역지정',
+ 'PP0205': '추진위구성',
+ 'PP0206': '조합설립인가',
+ 'PP0207': '건축심의',
+ 'PP0208': '사업시행인가',
+ 'PP0209': '관리처분계획인가',
+ 'PP0210': '착공',
+ 'PP0211': '준공',
+ 'PP0301': '대상지선정',
+ 'PP0302': '정비계획수립',
+ 'PP0303': '위원회심의',
+ 'PP0304': '구역지정',
+ 'PP0305': '사업시행인가',
+ 'PP0306': '착공',
+ 'PP0307': '준공(일부)',
+ 'PP0308': '준공',
+ 'PP0401': '수립범위 자문',
+ 'PP0402': '대상지선정',
+ 'PP0403': '관리지역고시',
+ 'PP0404': '사전자문',
+ 'PP0405': '위원회심의',
+ 'PP0406': '관리지역고시',
+ 'PP0500': '조합설립인가 추진중(연번부여)',
+ 'PP0501': '조합설립인가',
+ 'PP0502': '건축심의',
+ 'PP0503': '사업시행인가',
+ 'PP0504': '착공',
+ 'PP0505': '준공',
+ 'PP0601': '주민합의체 구성',
+ 'PP0602': '건축심의',
+ 'PP0603': '사업시행인가',
+ 'PP0604': '착공',
+ 'PP0605': '준공',
+ 'PP0701': '조합설립추진중',
+ 'PP0702': '조합설립인가',
+ 'PP0703': '건축심의',
+ 'PP0704': '사업시행계획인가',
+ 'PP0705': '착공',
+ 'PP0706': '준공',
+ 'PP0801': '대상지선정',
+ 'PP0802': '사전검토',
+ 'PP0803': '입안제안',
+ 'PP0804': '열람공고',
+ 'PP0805': '위원회심의',
+ 'PP0806': '구역지정',
+ 'PP0807': '건축심의',
+ 'PP0808': '사업계획승인',
+ 'PP0809': '착공',
+ 'PP0810': '준공',
+ 'PP0901': '대상지선정',
+ 'PP0902': '통심위 사전자문',
+ 'PP0903': '입안제안',
+ 'PP0904': '열람공고',
+ 'PP0905': '위원회심의',
+ 'PP0906': '구역지정',
+ 'PP0907': '건축심의',
+ 'PP0908': '사업계획승인',
+ 'PP0909': '건축허가',
+ 'PP0910': '착공',
+ 'PP0911': '사용승인',
+ 'PP0912': '입주',
+ 'PP1001': '지구지정',
+ 'PP1002': '지구변경',
+ 'PP1101': '대상지선정',
+ 'PP1102': '촉진계획수립(변경)',
+ 'PP1103': '열람공고',
+ 'PP1104': '위원회심의',
+ 'PP1105': '구역지정',
+ 'PP1107': '추진위구성',
+ 'PP1108': '조합설립인가',
+ 'PP1109': '건축심의',
+ 'PP1110': '사업시행인가',
+ 'PP1111': '관리처분계획인가',
+ 'PP1112': '착공',
+ 'PP1113': '준공',
+ 'PP1201': '예정지구지정',
+ 'PP1202': '후보지선정',
+ 'PP1203': '지구지정',
+ 'PP1204': '설계공모완료',
+ 'PP1205': '사업계획승인',
+ 'PP1206': '착공',
+ 'PP1207': '준공',
+ 'PP1208': '입주중',
+ 'PP1209': '후보지철회',
+ 'PP1301': '입안제안',
+ 'PP1302': '열람공고',
+ 'PP1303': '위원회심의',
+ 'PP1304': '구역지정',
+ 'PP1305': '실시계획인가',
+ 'PP1306': '준공',
+ 'PP1401': '조합설립인가',
+ 'PP1402': '1차 안전진단',
+ 'PP1403': '건축심의',
+ 'PP1404': '리모델링허가승인',
+ 'PP1405': '2차 안전진단',
+ 'PP1406': '착공',
+ 'PP1407': '준공',
+ 'PP1501': '추진계획수립중',
+ 'PP1502': '추진계획승인',
+ 'PP1503': '조합설립인가',
+ 'PP1504': '사업시행계획인가',
+ 'PP1505': '관리처분계획인가',
+ 'PP1506': '착공',
+ 'PP1507': '준공',
+ 'PP1601': '대상지선정',
+ 'PP1602': '활성화계획수립',
+ 'PP1603': '마중물사업(추진중)',
+ 'PP1604': '사업완료',
+ 'PP1801': '대상지선정',
+ 'PP1802': '통심위 사전자문',
+ 'PP1803': '입안제안',
+ 'PP1804': '열람공고',
+ 'PP1805': '위원회심의',
+ 'PP1806': '구역지정',
+ 'PP1807': '건축심의/통합심의',
+ 'PP1808': '사업계획승인',
+ 'PP1809': '착공',
+ 'PP1810': '준공',
+ 'PP1901': '입주자 모집공고 완료',
+ 'PP2001': '입안제안',
+ 'PP2002': '열람공고',
+ 'PP2003': '위원회심의',
+ 'PP2004': '구역지정',
+ 'PP2005': '지구계획승인(변경)',
+ 'PP2006': '착공',
+ 'PP2007': '준공',
+ 'PP2101': '구역지정',
+ 'PP2102': '구역변경'}
+
+
+
 def _read_embedded_shapefile(zip_path: str, stem: str):
     with zipfile.ZipFile(zip_path) as archive:
         shp_name = next(n for n in archive.namelist() if n.upper().endswith(f"/{stem}.SHP") or n.upper() == f"{stem}.SHP")
@@ -1678,8 +1845,13 @@ def _renewal_reference_data():
                     "renewal_type": type_info[0],
                     "type_label": type_info[1],
                     "name": str(row.get("DGM_NM") or "미상구역").strip(),
+                    "source_feature_id": str(row.get("PRESENT_SN") or "").strip(),
                     "notice_no": str(row.get("NTFC_SN") or "").strip(),
-                    "notice_date": str(row.get("CREATE_DAT") or "").strip(),
+                    # CREATE_DAT은 고시일이 아니라 배포 데이터 생성일이므로 고시일로 오인하지 않는다.
+                    "notice_date": "",
+                    "data_reference_date": str(row.get("CREATE_DAT") or "").strip(),
+                    "project_stage_code": str(row.get("PROPEL_CD") or "").strip() if source == "project" else "",
+                    "project_stage_label": PLANPLUS_STAGE_LABELS.get(str(row.get("PROPEL_CD") or "").strip(), "") if source == "project" else "",
                 },
             })
 
@@ -1706,6 +1878,119 @@ def _renewal_spatial_index():
     features = fc["features"]
     geometries = [shape(feature["geometry"]) for feature in features]
     return features, geometries, STRtree(geometries)
+
+
+@lru_cache(maxsize=1)
+def _planplus_project_reference_data():
+    """서울플랜+ UQ120 전체 사업유형을 기존 추진사업 현황 FACT로 변환한다.
+
+    정비구역 판정용 `_renewal_reference_data()`와 의도적으로 분리한다.
+    UQ120의 CREATE_DAT은 고시일이 아닌 데이터 생성일이며, PROPEL_CD는 현재 추진단계 코드다.
+    """
+    transformer = Transformer.from_crs(5174, 4326, always_xy=True)
+    reader = _read_embedded_shapefile(RENEWAL_PROJECT_ZIP_PATH, "UPIS_C_UQ120")
+    fields = [f[0] for f in reader.fields[1:]]
+    features = []
+    for sr in reader.iterShapeRecords():
+        row = dict(zip(fields, sr.record))
+        code = str(row.get("SCLAS_CL") or row.get("ATRB_SE") or row.get("MLSFC_CL") or "").strip()
+        type_info = PLANPLUS_PROJECT_TYPES.get(code)
+        if type_info is None:
+            continue
+        try:
+            geom = shape(sr.shape.__geo_interface__)
+            if geom.is_empty:
+                continue
+            geom = geom.simplify(0.25, preserve_topology=True)
+            geom = geometry_transform(transformer.transform, geom)
+        except Exception:
+            continue
+        stage_code = str(row.get("PROPEL_CD") or "").strip()
+        group, type_label = type_info
+        features.append({
+            "type": "Feature",
+            "geometry": mapping(geom),
+            "properties": {
+                "source": "planplus_project",
+                "source_title": "서울 도시계획사업 현황(서울플랜+, UQ120)",
+                "source_layer": "UPIS_C_UQ120",
+                "source_feature_id": str(row.get("PRESENT_SN") or "").strip(),
+                "project_code": code,
+                "project_group": group,
+                "type_label": type_label,
+                "name": str(row.get("DGM_NM") or "미상사업").strip(),
+                "project_stage_code": stage_code,
+                "project_stage_label": PLANPLUS_STAGE_LABELS.get(stage_code, "단계코드 미확인" if stage_code else "추진단계 미입력"),
+                "group_code": str(row.get("GRP") or "").strip(),
+                "district_code": str(row.get("SIGNGU_SE") or "").strip(),
+                "notice_no": str(row.get("NTFC_SN") or "").strip(),
+                "notice_date": "",
+                "data_reference_date": str(row.get("CREATE_DAT") or "").strip(),
+                "history_status": "current_stage_only",
+            },
+        })
+    return {
+        "type": "FeatureCollection",
+        "name": "서울플랜+ 기존 추진사업 현황",
+        "features": features,
+        "metadata": {
+            "reference_month": "2026-02",
+            "source": "서울 도시계획사업 현황(서울플랜+, UQ120)",
+            "classification_source": "uq120_project.zip 내부 서울플랜+ 코드정의표",
+            "history_scope": "현재 추진단계까지 제공 · 단계별 고시/승인일 이력은 후속 결정고시 연계 필요",
+            "create_dat_semantics": "CREATE_DAT은 고시일이 아닌 데이터 생성일",
+        },
+    }
+
+
+@lru_cache(maxsize=1)
+def _planplus_project_spatial_index():
+    fc = _planplus_project_reference_data()
+    features = fc["features"]
+    geometries = [shape(feature["geometry"]) for feature in features]
+    return features, geometries, STRtree(geometries)
+
+
+def _planplus_project_intersections(site_wgs: Any, site_metric: Any, site_area: float, to_metric: Any, to_wgs: Any) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    features, geometries, tree = _planplus_project_spatial_index()
+    overlaps: List[Dict[str, Any]] = []
+    context_features: List[Dict[str, Any]] = []
+    for index in tree.query(site_wgs, predicate="intersects"):
+        feature = features[int(index)]
+        source_wgs = geometries[int(index)]
+        try:
+            intersection_wgs = _polygonal_only(site_wgs.intersection(source_wgs))
+            if intersection_wgs is None or intersection_wgs.is_empty:
+                continue
+            intersection_metric = _polygonal_only(geometry_transform(to_metric, intersection_wgs))
+            if intersection_metric is None or intersection_metric.is_empty:
+                continue
+            overlap_area = float(intersection_metric.area)
+            if overlap_area < 0.5:
+                continue
+            zone_metric = geometry_transform(to_metric, source_wgs)
+            zone_area = float(zone_metric.area)
+            result_geom = geometry_transform(to_wgs, intersection_metric.simplify(0.10, preserve_topology=True))
+        except Exception:
+            continue
+        props = dict(feature.get("properties") or {})
+        props.update({
+            "overlap_area_m2": round(overlap_area, 2),
+            "site_overlap_pct": round(overlap_area / site_area * 100, 4),
+            "zone_overlap_pct": round(overlap_area / zone_area * 100, 4) if zone_area > 0 else None,
+            "_overlap_area": round(overlap_area, 2),
+            "_overlap_pct": round(overlap_area / site_area * 100, 4),
+        })
+        overlaps.append({"type": "Feature", "geometry": mapping(result_geom), "properties": props})
+        context_props = dict(props)
+        context_props["_display_role"] = "source_project"
+        context_features.append({"type": "Feature", "geometry": feature.get("geometry"), "properties": context_props})
+    overlaps.sort(key=lambda f: (
+        -float(f["properties"].get("overlap_area_m2") or 0),
+        str(f["properties"].get("project_code") or ""),
+        str(f["properties"].get("name") or ""),
+    ))
+    return overlaps, context_features
 
 
 def _polygonal_only(geom):
@@ -1795,6 +2080,9 @@ def analyze_renewal_intersections(geometry: Dict[str, Any]) -> Dict[str, Any]:
     legal_promotions = [f for f in promotions if f["properties"].get("source") == "legal"]
     primary = (legal_non_promotion or non_promotion or [None])[0]
     primary_promotion = (legal_promotions or promotions or [None])[0]
+    project_registry_overlaps, project_registry_context = _planplus_project_intersections(
+        site_wgs, site_metric, site_area, to_metric, to_wgs
+    )
     return {
         "status": "matched" if overlaps else "none",
         "site_area_m2": round(site_area, 2),
@@ -1804,6 +2092,9 @@ def analyze_renewal_intersections(geometry: Dict[str, Any]) -> Dict[str, Any]:
         "primary_promotion": primary_promotion,
         "overlaps": overlaps,
         "context_features": context_features,
+        "project_registry_overlaps": project_registry_overlaps,
+        "project_registry_context_features": project_registry_context,
+        "project_registry_metadata": _planplus_project_reference_data()["metadata"],
         "metadata": _renewal_reference_data()["metadata"],
         "selection_rule": "법정 UQ181 우선 → 중첩면적 우선, 재정비촉진지구·구역은 별도 트랙",
     }
@@ -1876,7 +2167,8 @@ def _development_reference_data():
                 "type_label": label,
                 "name": name,
                 "notice_no": str(row.get("NTFC_SN") or "").strip(),
-                "notice_date": str(row.get("CREATE_DAT") or "").strip(),
+                "notice_date": "",
+                "data_reference_date": str(row.get("CREATE_DAT") or "").strip(),
             },
         })
     return {
