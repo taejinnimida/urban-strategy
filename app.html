@@ -1693,11 +1693,6 @@ body.service-layout-ready>.shell{display:none!important}
   <span class="candidate-legend-note">색이 진할수록 계획가능용적률이 높음</span>
 </div>
 </div>
-<section class="semiindustrial-review" id="semiindustrialReviewPanel">
-  <div class="semiindustrial-review-head"><div><b>준공업지역 정비·개발</b><span>용도지역이 준공업지역이면 공업지역정비사업·도정법 정비사업·준공업 허용 특례를 별도 묶음으로 비교합니다.</span></div><em id="semiindustrialReviewBadge">준공업지역 전용</em></div>
-  <div class="semiindustrial-review-grid" id="semiindustrialReviewGrid"></div>
-  <div class="semiindustrial-review-foot" id="semiindustrialReviewFoot">2040 서울 공업지역기본계획의 관리유형은 내부 참고 FACT로만 사용하고, 화면에서는 실제 실행 가능한 사업제도를 우선 표시합니다.</div>
-</section>
 <div class="cc-scheme-icons" id="ccSchemeIcons">
 <div class="cc-scheme-family-label" data-family="housing_renewal">주택정비사업 <small>도정법 · 공통 현황 Fact / 사업별 독립 판정</small></div>
 <button data-family="housing_renewal" data-scheme="redevelopment" onclick="showCandidateBasis('redevelopment')"><i>🏘</i><span>주택재개발</span><em>입력필요</em></button>
@@ -1734,6 +1729,11 @@ body.service-layout-ready>.shell{display:none!important}
 <button data-family="special_development" data-scheme="facility_complex_zone" onclick="showCandidateBasis('facility_complex_zone')"><i>⊞</i><span>도시계획시설입체복합</span><em>추후보완예정</em></button>
 <button data-family="special_development" data-scheme="mixed_use_zone" onclick="showCandidateBasis('mixed_use_zone')"><i>◫</i><span>복합용도구역</span><em>추후보완예정</em></button>
 </div>
+<section class="semiindustrial-review" id="semiindustrialReviewPanel">
+  <div class="semiindustrial-review-head"><div><b>준공업지역 정비·개발</b><span>용도지역이 준공업지역이면 공업지역정비사업·도정법 정비사업·준공업 허용 특례를 별도 묶음으로 비교합니다.</span></div><em id="semiindustrialReviewBadge">준공업지역 전용</em></div>
+  <div class="semiindustrial-review-grid" id="semiindustrialReviewGrid"></div>
+  <div class="semiindustrial-review-foot" id="semiindustrialReviewFoot">2040 서울 공업지역기본계획의 관리유형은 내부 참고 FACT로만 사용하고, 화면에서는 실제 실행 가능한 사업제도를 우선 표시합니다.</div>
+</section>
 <section class="ai-comprehensive-panel" id="aiComprehensivePanel" aria-live="polite">
   <div class="ai-comprehensive-head">
     <div><b>AI 종합분석</b><span>현재 FACT와 사업별 RULE 판정결과를 설명·비교합니다. AI가 사업을 새로 판정하지 않습니다.</span></div>
@@ -8375,8 +8375,15 @@ const STATION_SCHEME_ROUTE_LABELS={
   longterm:'단일역 역세권 전체포함',
   public_complex:'350m 대상지 면적 50% 이상',
   innovation_growth:'환승결절(2개 이상 노선) 역사 500m',
-  innovation_housing:'350/500m 대상지 면적 50% 이상'
+  innovation_housing:'350/500m 역세권 포함'
 };
+function stationSchemeRouteLabel(name){
+  if(name==='innovation_housing'){
+    const res=schemeResults[name]||latestSchemeModuleResults[name];
+    return res?.facts?.zoning?.current==='준공업'?'350/500m 대상지 전체포함':'350/500m 대상지 면적 50% 이상';
+  }
+  return STATION_SCHEME_ROUTE_LABELS[name]||'역세권 경로';
+}
 
 // 각 사업 Rule Module이 이미 내린 역세권 관련 row를 그대로 가져온다.
 // 이 요약표는 새 PASS/FAIL 규칙을 만들지 않는다.
@@ -8480,7 +8487,7 @@ function renderStationSchemeJudgments(){
     try{row=schemeStationRow(name);}catch(e){row={status:'REVIEW',value:'-',note:'판정 요약 중 오류 · 확인 필요'};}
     const meta=stationSchemeStatusMeta(row?.status);
     const evidence=stationSchemeEvidence(name,row);
-    const route=STATION_SCHEME_ROUTE_LABELS[name]||'역세권 경로';
+    const route=stationSchemeRouteLabel(name);
     return `<div class="station-scheme-row"><b>${escHtml(schemeNames[name]||name)}</b><span class="station-route">${escHtml(route)}</span><span class="scheme-tag ${meta.cls}">${meta.label}</span><span class="station-evidence">${escHtml(evidence)}</span></div>`;
   }).join('');
   root.innerHTML=head+rows;
@@ -11053,17 +11060,23 @@ function checkInnovationFromFacts(store,f){
     let loc='REVIEW',note='';
     const factory=f.zoning.factory;
     if(f.zoning.current==='준공업'){
-      if(f.zoning.factory_pct==null){loc='REVIEW';note='서울시 도시계획조례 별표17의 2008.1.31 기준 공장비율 확인 필요';}
-      else if(f.station.coverage350_pct!=null&&f.station.coverage350_pct>=99.999&&f.zoning.factory_pct<10)loc='PASS';
-      else if(f.station.coverage500_pct!=null&&f.station.coverage500_pct>=99.999&&f.zoning.factory_pct<10){loc='REVIEW';note='350~500m 구간은 시장 인정 필요';}
-      else loc='FAIL';
-      note=[note,`법정 공장비율 ${f.zoning.factory_pct==null?'-':Number(f.zoning.factory_pct).toFixed(1)+'%'} · ${factory?.note||''}`].filter(Boolean).join(' · ');
+      // 역세권 FACT는 법정 공장비율과 분리한다. 공장비율 미확정 때문에 역세권 자체를 REVIEW로 내리지 않는다.
+      if(f.station.coverage350_pct!=null&&f.station.coverage350_pct>=99.999)loc='PASS';
+      else if(f.station.coverage500_pct!=null&&f.station.coverage500_pct>=99.999){loc='REVIEW';note='350~500m 구간은 시장 인정 필요';}
+      else if(f.station.coverage350_pct!=null||f.station.coverage500_pct!=null)loc='FAIL';
     }else{
       if(f.station.coverage350_pct!=null&&f.station.coverage350_pct>=50)loc='PASS';
       else if(f.station.coverage500_pct!=null&&f.station.coverage500_pct>=50){loc='REVIEW';note='350~500m 구간은 시장 인정 필요';}
       else if(f.station.coverage350_pct!=null||f.station.coverage500_pct!=null)loc='FAIL';
     }
-    rows.push(schemeRow('입지','일반지역: 사업면적 과반 역세권 / 준공업: 사업면적 전체 역세권 + 법정 공장비율 10% 미만',`350m ${fmtSchemePct(f.station.coverage350_pct)} / 500m ${fmtSchemePct(f.station.coverage500_pct)}${f.zoning.current==='준공업'?` / 공장 ${fmtSchemePct(f.zoning.factory_pct)}`:''}`,loc,note,true,{sourceId:'INNOVATION_ORD',locator:'제5조제1항제1호'}));
+    rows.push(schemeRow('입지','일반지역: 사업면적 과반 역세권 / 준공업: 사업면적 전체 역세권',`350m ${fmtSchemePct(f.station.coverage350_pct)} / 500m ${fmtSchemePct(f.station.coverage500_pct)}`,loc,note,true,{sourceId:'INNOVATION_ORD',locator:'제5조제1항제1호'}));
+    if(f.zoning.current==='준공업'){
+      const factoryStatus=f.zoning.factory_pct==null?'REVIEW':f.zoning.factory_pct<10?'PASS':'FAIL';
+      const factoryNote=f.zoning.factory_pct==null
+        ?'서울시 도시계획조례 별표17의 2008.1.31 기준 공장비율 확인 필요 · 역세권 판정과 별도 하드게이트'
+        :`서울시 도시계획조례 별표17 공장비율 10% 미만 · ${factory?.note||''}`;
+      rows.push(schemeRow('공장비율','준공업지역: 법정 공장비율 10% 미만',f.zoning.factory_pct==null?'확인필요':fmtSchemePct(f.zoning.factory_pct),factoryStatus,factoryNote,true,{sourceId:'SEOUL_URBAN_PLAN_ORD',locator:'별표17'}));
+    }
     rows.push(schemeRow('노후도','20년 이상 건축물 60% 이상',ageFactValue(f.aging.assessment),f.aging.assessment?.status||'REVIEW',ageFactNote(f.aging.assessment),true,{sourceId:'INNOVATION_ORD',locator:'제5조제1항제2호'}));
     rows.push(schemeRow('면적','20,000㎡ 이상 60,000㎡ 이하',fmtSchemeArea(f.area.m2),f.area.m2==null?'REVIEW':f.area.m2>=20000&&f.area.m2<=60000?'PASS':'FAIL','',true,{sourceId:'INNOVATION_ORD',locator:'제5조제1항제3호'}));
     const allowed=['제2종일반주거(7층)','제2종일반주거','제3종일반주거','준주거','준공업'];
