@@ -317,6 +317,15 @@ body{background:#f4f5f7}
 .cc-scheme-family-label[data-family="special_housing"]{color:#7f56d9}
 .cc-scheme-family-label[data-family="urban_renewal"]{color:#b54708}
 .cc-scheme-family-label[data-family="special_development"]{color:#027a48}
+.cc-scheme-family-label[data-family="semiindustrial"]{color:#6941c6}
+.semiindustrial-review{display:none;margin:0 0 8px;border:1px solid #d6bbfb;border-radius:10px;background:#fcfaff;overflow:hidden}
+.semiindustrial-review.active{display:block}
+.semiindustrial-review-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;padding:8px 10px;background:#f4f3ff;border-bottom:1px solid #e9d7fe}
+.semiindustrial-review-head b{font-size:11px;color:#42307d}.semiindustrial-review-head span{display:block;font-size:7.5px;color:#6941c6;margin-top:2px}.semiindustrial-review-head em{font-style:normal;font-size:7.5px;font-weight:900;color:#5925dc;background:#ebe9fe;padding:3px 6px;border-radius:999px}
+.semiindustrial-review-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px;padding:7px}
+.semiindustrial-scheme-card{border:1px solid #e4e7ec;border-radius:7px;background:#fff;padding:6px;min-height:58px;cursor:pointer;text-align:left}.semiindustrial-scheme-card b{display:block;font-size:8.5px;color:#101828}.semiindustrial-scheme-card span{display:block;font-size:7px;color:#667085;line-height:1.35;margin-top:2px}.semiindustrial-scheme-card em{display:inline-block;margin-top:4px;font-style:normal;font-size:7px;font-weight:900;padding:2px 5px;border-radius:999px}.semiindustrial-scheme-card.PASS em{background:#ecfdf3;color:#067647}.semiindustrial-scheme-card.FAIL em{background:#fef3f2;color:#b42318}.semiindustrial-scheme-card.REVIEW em{background:#fffaeb;color:#b54708}.semiindustrial-scheme-card.INFO em,.semiindustrial-scheme-card.NOT_APPLICABLE em{background:#f2f4f7;color:#475467}
+.semiindustrial-review-foot{padding:0 9px 8px;font-size:7.2px;color:#667085;line-height:1.45}
+@media(max-width:1000px){.semiindustrial-review-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .cc-scheme-icons button{appearance:none;border:1px solid #d0d5dd;background:#f2f4f7;color:#98a2b3;min-height:50px;padding:5px 6px;cursor:pointer;display:grid;grid-template-columns:22px 1fr;grid-template-rows:1fr 1fr;align-items:center;text-align:left;transition:.12s}
 .cc-scheme-icons button i{grid-row:1/3;font-style:normal;font-size:17px;text-align:center;filter:grayscale(1);opacity:.55}
 .cc-scheme-icons button span{font-size:10px;font-weight:900;line-height:1.15}
@@ -1684,6 +1693,11 @@ body.service-layout-ready>.shell{display:none!important}
   <span class="candidate-legend-note">색이 진할수록 계획가능용적률이 높음</span>
 </div>
 </div>
+<section class="semiindustrial-review" id="semiindustrialReviewPanel">
+  <div class="semiindustrial-review-head"><div><b>준공업지역 정비·개발</b><span>용도지역이 준공업지역이면 공업지역정비사업·도정법 정비사업·준공업 허용 특례를 별도 묶음으로 비교합니다.</span></div><em id="semiindustrialReviewBadge">준공업지역 전용</em></div>
+  <div class="semiindustrial-review-grid" id="semiindustrialReviewGrid"></div>
+  <div class="semiindustrial-review-foot" id="semiindustrialReviewFoot">2040 서울 공업지역기본계획의 관리유형은 내부 참고 FACT로만 사용하고, 화면에서는 실제 실행 가능한 사업제도를 우선 표시합니다.</div>
+</section>
 <div class="cc-scheme-icons" id="ccSchemeIcons">
 <div class="cc-scheme-family-label" data-family="housing_renewal">주택정비사업 <small>도정법 · 공통 현황 Fact / 사업별 독립 판정</small></div>
 <button data-family="housing_renewal" data-scheme="redevelopment" onclick="showCandidateBasis('redevelopment')"><i>🏘</i><span>주택재개발</span><em>입력필요</em></button>
@@ -1987,22 +2001,22 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="spatial-mini-map" id="ccBuildingUseMiniMap"></div>
 </section>
 <section class="spatial-module site-analysis-card site-analysis-local" id="siteDetail_factoryUsage">
-<div class="spatial-module-head"><b>공장용도</b><span id="ccFactoryState">건축HUB 조회 전</span></div>
+<div class="spatial-module-head"><b>산업 및 공장비율</b><span id="ccFactoryState">건축HUB·토지대장 조회 전</span></div>
 <div class="spatial-metrics">
-<div><span>전체 건축물</span><b id="spFactoryTotal">-</b></div>
-<div><span>공장용도 건축물</span><b id="spFactoryCount">-</b></div>
-<div><span>공장건축물 비율</span><b id="spFactoryRatio">-</b></div>
-<div><span>산정기준</span><b id="spFactorySource">-</b></div>
+<div><span>공장비율</span><b id="spFactoryRatio">-</b></div>
+<div><span>산업비율</span><b id="spIndustrialRatio">-</b></div>
+<div><span>공장용도 건축물 비율</span><b id="spFactoryBuildingRatio">-</b></div>
+<div><span>분석상태</span><b id="spFactorySource">-</b></div>
 </div>
 <div class="spatial-caption" id="spFactoryMismatch" style="color:#b54708"></div>
 <div class="spatial-tags"><span class="map-legend-chip" style="--zone-fill:#f04438;--zone-border:#b42318">공장용도(동 특정)</span><span class="map-legend-chip" style="--zone-fill:#fec84b;--zone-border:#b54708">공장용도(필지단위)</span><span>일반건축물</span></div>
 <div class="spatial-caption">도면정보 · 건축물 관리번호가 확실히 일치하거나, 같은 필지에 건물·공장레코드가 각 1개뿐일 때만 개별 동을 강조합니다. 그 외에는 필지 단위로만 '공장용도 존재'를 표시하고 특정 동을 임의로 확정하지 않습니다.</div>
 <div class="spatial-mini-map" id="ccFactoryMiniMap"></div>
-<details class="site-analysis-details"><summary>공장용도 건축물 상세목록</summary><div class="road-condition-table-wrap">
+<details class="site-analysis-details"><summary>산업·공장 산정근거 및 건축물 상세목록</summary><div class="road-condition-table-wrap">
   <table class="road-condition-table"><thead><tr><th>순번</th><th>지번(PNU)</th><th>건물명</th><th>주용도</th><th>기타용도</th><th>사용승인일</th><th>매칭상태</th></tr></thead><tbody id="spFactoryTableBody"><tr><td colspan="7">건축HUB 조회 후 공장용도 건축물이 표시됩니다.</td></tr></tbody></table>
 </div>
 <button class="btn" id="spFactoryToggleBtn" type="button" onclick="toggleFactoryTableShowAll()" style="margin:6px">전체 건축물 보기</button></details>
-<div class="spatial-caption">산정기준 · 공장건축물 비율(동수 기준 초기검토) = 공장용도 건축물 수 ÷ 전체 건축물 수 × 100. 연면적·대지면적 비율이 아닙니다. 이 값은 역세권 장기전세(준공업 공장비율 10% 미만)와 도심복합개발 주거중심형(준공업 공장비율 10% 미만)이 동일하게 참조하는 공통 Fact입니다 — 여기서는 10% 충족/미충족을 판정하지 않습니다.</div>
+<div class="spatial-caption">세 지표는 서로 대체하지 않습니다. ① 공장비율은 서울시 도시계획조례 별표17의 2008.1.31 기준 공장부지 비율로, 공식·전문가입력 값이 없으면 현재 토지·건축물로 계산한 현황추정값만 표시하고 사업 PASS에는 사용하지 않습니다. ② 산업비율은 도시공업지역법상 종전산업비율 개념으로 산업시설 부지면적을 기준으로 하며, 건축HUB 용도만으로 산업업종을 확정할 수 없는 필지는 범위값으로 표시합니다. ③ 공장용도 건축물 비율은 공장용도 건축물 동수 ÷ 전체 건축물 동수의 현황 참고값입니다.</div>
 </section>
 <section class="spatial-module site-analysis-card site-analysis-context" id="siteDetail_station">
 <div class="spatial-module-head"><b>역세권</b><span>행안부 역사경계</span></div>
@@ -2514,7 +2528,8 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="scheme-field"><label>간선도로 경계 거리(m)</label><input id="scheme_arterial_distance" min="0" oninput="runAllSchemeChecks()" placeholder="안심주택용" type="number"/></div>
 <div class="scheme-field"><label>의료시설 경계 거리(m)</label><input id="scheme_medical_distance" min="0" oninput="runAllSchemeChecks()" placeholder="안심주택용" type="number"/></div>
 <div class="scheme-field"><label>계획 세대수</label><input id="scheme_planned_units" min="0" oninput="runAllSchemeChecks()" placeholder="예: 350" type="number"/></div>
-<div class="scheme-field"><label>공장비율(%)</label><input id="scheme_factory_ratio" max="100" min="0" oninput="runAllSchemeChecks()" placeholder="준공업지역" type="number"/></div>
+<div class="scheme-field"><label>공장비율(2008.1.31, %)</label><input id="scheme_factory_ratio" max="100" min="0" oninput="runAllSchemeChecks()" placeholder="공식값·전문가입력" type="number"/><small>서울시 도시계획조례 별표17 법정 공장비율. 현재 공장용도 동수비율과 다름</small></div>
+<div class="scheme-field"><label>종전 산업비율(%)</label><input id="scheme_industrial_ratio" max="100" min="0" oninput="runAllSchemeChecks()" placeholder="공식값·전문가입력" type="number"/><small>도시공업지역법 시행규칙 별표2의 종전산업비율. 자동값은 현황추정으로 별도 표시</small></div>
 <div class="scheme-field"><label>최대 공동주택단지 면적(㎡)</label><input id="scheme_apartment_max_area" min="0" oninput="runAllSchemeChecks()" placeholder="예: 8500" type="number"/></div>
 <div class="scheme-field"><label>최대 공동주택단지 비율(%)</label><input id="scheme_apartment_max_ratio" max="100" min="0" oninput="runAllSchemeChecks()" placeholder="예: 25" type="number"/></div>
 <div class="scheme-field"><label>토지등소유자 수</label><input id="scheme_landowner_count" min="1" oninput="runAllSchemeChecks()" placeholder="도심복합개발 직접시행 판단" type="number"/><small>미입력 시 필지수를 경고용 대리지표로만 사용</small></div><div class="scheme-field"><label>토지등소유자 동의율(%)</label><input id="scheme_owner_consent" max="100" min="0" oninput="runAllSchemeChecks()" placeholder="예: 70" type="number"/></div>
@@ -4157,6 +4172,7 @@ function developmentStatusStyle(f,strong=false){
   if(k==='district_plan'){color='#7a5af8';fill='#d9d6fe';}
   else if(k==='urban_development'){color='#175cd3';fill='#b2ddff';}
   else if(k==='public_housing'){color='#067647';fill='#abefc6';}
+  else if(k==='industrial_park'){color='#5925dc';fill='#d9d6fe';dash='4,3';}
   else {color='#b54708';fill='#fedf89';dash='6,4';}
   return {weight:strong?2.7:1.15,color,fillColor:fill,fillOpacity:strong?.36:.075,opacity:strong?1:.72,dashArray:dash};
 }
@@ -4337,52 +4353,41 @@ function refreshCommonParcelBases(){
 }
 let factoryTableShowAll=false;
 function toggleFactoryTableShowAll(){factoryTableShowAll=!factoryTableShowAll;renderFactoryUsageSpatialStatus();}
-// 공장용도 현황: 역세권 장기전세·도심복합개발 주거중심형이 참조하는 공통 Fact(store.site.factory_usage)를
-// 그대로 화면에 보여준다. 여기서는 10% 충족/미충족 같은 사업판정을 하지 않고 Fact만 표시한다.
+// 산업 및 공장비율 현황: 법정 공장비율·산업비율·공장용도 건축물 비율을 독립 FACT로 표시한다.
+// 여기서는 서로 다른 산식을 대체하지 않고, 각 사업모듈이 자신의 공식 기준에 맞는 FACT만 참조한다.
 function renderFactoryUsageSpatialStatus(){
   const state=document.getElementById('ccFactoryState');
-  const fu=analysisState.factory_usage||null;
+  const fu=analysisState.factory_usage||null,iu=analysisState.industrial_usage||analysisState.fact_store?.site?.industrial_usage||null;
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v==null?'-':String(v);};
   ccFactoryMiniBuildings.clearLayers();ccFactoryMiniBoundary.clearLayers();
   if(!fu){
-    if(state)state.textContent='건축HUB 조회 전';
-    set('spFactoryTotal','-');set('spFactoryCount','-');set('spFactoryRatio','-');set('spFactorySource','-');
+    if(state)state.textContent='건축HUB·토지대장 조회 전';
+    set('spFactoryRatio','-');set('spIndustrialRatio','-');set('spFactoryBuildingRatio','-');set('spFactorySource','-');
     const mm=document.getElementById('spFactoryMismatch');if(mm)mm.textContent='';
     const body=document.getElementById('spFactoryTableBody');if(body)body.innerHTML='<tr><td colspan="7">건축HUB 조회 후 공장용도 건축물이 표시됩니다.</td></tr>';
     return;
   }
-  if(!fu.total_building_count&&fu.source==='MANUAL'){
-    if(state)state.textContent='수기입력(건축HUB 자료 없음)';
-    set('spFactoryTotal','자료 없음');set('spFactoryCount','자료 없음');
-    set('spFactoryRatio',fu.factory_ratio_pct==null?'-':`${Number(fu.factory_ratio_pct).toFixed(1)}%`);
-    set('spFactorySource','사용자 입력 · 자동자료 미확보');
-    const mm=document.getElementById('spFactoryMismatch');if(mm)mm.textContent='자동 공장비율을 계산할 건축HUB 자료가 없어 수기값을 임시 사용합니다.';
-    const body=document.getElementById('spFactoryTableBody');if(body)body.innerHTML='<tr><td colspan="7">건축HUB 건축물 목록이 없어 공장 건축물 개별도형·목록은 표시하지 않습니다.</td></tr>';
-    return;
-  }
-  if(!fu.total_building_count){
-    if(state)state.textContent='건축HUB 조회 전';
-    set('spFactoryTotal','-');set('spFactoryCount','-');set('spFactoryRatio','-');set('spFactorySource','-');
-    const mm=document.getElementById('spFactoryMismatch');if(mm)mm.textContent='';
-    const body=document.getElementById('spFactoryTableBody');if(body)body.innerHTML='<tr><td colspan="7">건축HUB 조회 후 공장용도 건축물이 표시됩니다.</td></tr>';
-    return;
-  }
-  if(state)state.textContent=fu.source==='MANUAL'?'수기입력(건축물대장 자료 없음)':'건축HUB 표제부 AUTO';
-  set('spFactoryTotal',`${fu.total_building_count}동`);
-  set('spFactoryCount',`${fu.factory_building_count}동`);
-  set('spFactoryRatio',fu.factory_ratio_pct==null?'-':`${Number(fu.factory_ratio_pct).toFixed(1)}%`);
-  set('spFactorySource',fu.source==='MANUAL'?'수기입력':'건축HUB 표제부(동수 기준 초기검토)');
+  const legalFactory=fu.factory_ratio_pct;
+  const currentFactory=fu.factory_ratio_current_proxy_pct;
+  const factoryBuilding=fu.factory_building_ratio_pct;
+  if(state)state.textContent=legalFactory!=null?'공장비율 공식/전문가입력 + 자동 현황':'자동 현황분석 · 법정 기준값 별도확인';
+  set('spFactoryRatio',legalFactory!=null?`${Number(legalFactory).toFixed(1)}%`:currentFactory!=null?`현황추정 ${Number(currentFactory).toFixed(1)}%*`:'확인필요');
+  set('spIndustrialRatio',industrialUsageDisplay(iu));
+  set('spFactoryBuildingRatio',factoryBuilding==null?'-':`${Number(factoryBuilding).toFixed(1)}% (${fu.factory_building_count}/${fu.total_building_count}동)`);
+  set('spFactorySource',legalFactory!=null&&iu?.source==='MANUAL'?'공식/전문가입력':'자동+확인필요');
   const mm=document.getElementById('spFactoryMismatch');
-  if(mm)mm.textContent=fu.mismatch?`자동 ${Number(fu.mismatch.auto).toFixed(1)}% / 수기입력 ${Number(fu.mismatch.manual).toFixed(1)}% · 값 불일치 확인 필요`:'';
+  if(mm){
+    const notes=[];
+    if(legalFactory==null&&currentFactory!=null)notes.push(`공장비율 ${Number(currentFactory).toFixed(1)}%는 현재 공장·창고·정비공장/공장용지 현황추정이며 2008.1.31 법정 기준값을 대체하지 않음`);
+    if(iu?.status==='REVIEW')notes.push(`산업비율 ${industrialUsageDisplay(iu)} · ${iu.note||'업종·복합용도 확인 필요'}`);
+    mm.textContent=notes.join(' · ');
+  }
 
-  // 매칭된 건물 polygon만 강조(MATCHED). 필지 단위로만 확인된 경우(PARCEL_ONLY)는 다르게 표시하고,
-  // 개별 동을 특정할 수 없는 건 그대로 UNKNOWN(=일반건축물과 동일 표시)로 둔다.
+  // 매칭된 건물 polygon만 강조(MATCHED). 필지 단위로만 확인된 경우(PARCEL_ONLY)는 다르게 표시한다.
   const matchedKeys=new Set((fu.matched_features||[]).map(m=>m.feature_key).filter(Boolean));
   const ambiguousParcels=new Set(fu.ambiguous_parcels||[]);
   const clones=(currentBuildingFeatures||[]).map(f=>{
-    const c2=cloneFeature(f);
-    const key=String((c2.properties||{})._building_key||'');
-    const pnu=String((c2.properties||{}).pnu||'');
+    const c2=cloneFeature(f),key=String((c2.properties||{})._building_key||''),pnu=String((c2.properties||{}).pnu||'');
     c2.properties=c2.properties||{};
     if(key&&matchedKeys.has(key))c2.properties._factory_status='MATCHED';
     else if(pnu&&ambiguousParcels.has(pnu))c2.properties._factory_status='PARCEL_ONLY';
@@ -4392,25 +4397,16 @@ function renderFactoryUsageSpatialStatus(){
   if(activeGeometry)ccFactoryMiniBoundary.addData({type:'Feature',geometry:activeGeometry,properties:{}});
   fitCompactMiniMap(ccFactoryMini,ccFactoryMiniBoundary,ccFactoryMiniBuildings);
 
-  const idByRecordId=new Map((fu.factory_records||[]).map(r=>[r.id,r]));
   const matchStatusByRecordId=new Map();
   for(const m of (fu.matched_features||[]))matchStatusByRecordId.set(m.record_id,'매칭됨');
   for(const id of (fu.unmatched_factory_records||[]))matchStatusByRecordId.set(id,'필지단위(동 특정불가)');
   const recordsToShow=factoryTableShowAll?(analysisState.fact_store?.site?.building?.records||[]):(fu.factory_records||[]);
   const body=document.getElementById('spFactoryTableBody');
   if(body){
-    if(!recordsToShow.length){
-      body.innerHTML='<tr><td colspan="7">공장용도로 판정된 건축물이 없습니다.</td></tr>';
-    }else{
-      body.innerHTML=recordsToShow.map((r,i)=>{
-        const isFactory=isFactoryBuildingRecord(r);
-        const matchLabel=isFactory?(matchStatusByRecordId.get(r.id)||'필지단위(동 특정불가)'):'-';
-        return `<tr><td>${i+1}</td><td>${escHtml(r.pnu||'-')}</td><td>${escHtml(r.building_name||'-')}</td><td>${escHtml(r.main_use||'-')}</td><td>${escHtml(r.other_use||'-')}</td><td>${escHtml(r.approval_date||'-')}</td><td>${escHtml(matchLabel)}</td></tr>`;
-      }).join('');
-    }
+    if(!recordsToShow.length)body.innerHTML='<tr><td colspan="7">공장용도로 판정된 건축물이 없습니다.</td></tr>';
+    else body.innerHTML=recordsToShow.map((r,i)=>{const isFactory=isFactoryBuildingRecord(r),matchLabel=isFactory?(matchStatusByRecordId.get(r.id)||'필지단위(동 특정불가)'):'-';return `<tr><td>${i+1}</td><td>${escHtml(r.pnu||'-')}</td><td>${escHtml(r.building_name||'-')}</td><td>${escHtml(r.main_use||'-')}</td><td>${escHtml(r.other_use||'-')}</td><td>${escHtml(r.approval_date||'-')}</td><td>${escHtml(matchLabel)}</td></tr>`;}).join('');
   }
-  const toggleBtn=document.getElementById('spFactoryToggleBtn');
-  if(toggleBtn)toggleBtn.textContent=factoryTableShowAll?'공장용도만 보기':'전체 건축물 보기';
+  const toggleBtn=document.getElementById('spFactoryToggleBtn');if(toggleBtn)toggleBtn.textContent=factoryTableShowAll?'공장용도만 보기':'전체 건축물 보기';
 }
 function renderZoningSpatialStatus(){
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
@@ -6030,8 +6026,8 @@ const planningAnalysis={
 };
 const renewalAnalysis={loaded:false,loading:false,features:[],contextFeatures:[],overlaps:[],projectRegistryOverlaps:[],projectRegistryContextFeatures:[],projectRegistryMetadata:{},metadata:{},error:''};
 // 별도 개발사업 현황도. 지구단위계획은 기존 VWorld LT_C_UPISUQ161 결과를 재사용하고,
-// 도시개발·공공주택지구·기타 법정 사업구역은 기준 ZIP의 서울 UQ181 SHP를 서버 중첩한다.
-const developmentAnalysis={loaded:false,loading:false,contextFeatures:[],overlaps:[],metadata:{},error:''};
+// 도시개발·공공주택지구·기타 법정 사업구역은 서울 UQ181 SHP를 서버 중첩하고, 산업단지는 VWorld LT_C_DAMDAN 전용경계를 별도로 조회한다.
+const developmentAnalysis={loaded:false,loading:false,contextFeatures:[],overlaps:[],industrialParks:[],industrialParkContextFeatures:[],industrialParkMetadata:{},metadata:{},error:''};
 const hillAnalysis={loaded:false,loading:false,status:'unavailable',source_status:'',intersects:null,overlap_area_m2:null,overlap_pct:null,distance_m:null,contextFeatures:[],overlaps:[],metadata:{},error:''};
 const safeMedicalAnalysis={loaded:false,loading:false,status:'unavailable',items:[],metadata:{},errors:[],warnings:[],sourceStats:{},nearbyCounts:{},message:''};
 const schoolAbsoluteProtectionAnalysis={loaded:false,loading:false,status:'unavailable',known:false,present:null,overlapAreaM2:null,overlapPct:null,zoneCount:0,schoolNames:[],features:[],overlapFeatures:[],source:'',sourceType:'',file:'',error:''};
@@ -6106,7 +6102,7 @@ function resetPlanningAnalysis(){
   planningAnalysis.requestToken=(planningAnalysis.requestToken||0)+1;
   resetPlanningCoreAnalysis();
   renewalAnalysis.loaded=false;renewalAnalysis.loading=false;renewalAnalysis.features=[];renewalAnalysis.contextFeatures=[];renewalAnalysis.overlaps=[];renewalAnalysis.projectRegistryOverlaps=[];renewalAnalysis.projectRegistryContextFeatures=[];renewalAnalysis.projectRegistryMetadata={};renewalAnalysis.error='';
-  developmentAnalysis.loaded=false;developmentAnalysis.loading=false;developmentAnalysis.contextFeatures=[];developmentAnalysis.overlaps=[];developmentAnalysis.metadata={};developmentAnalysis.error='';
+  developmentAnalysis.loaded=false;developmentAnalysis.loading=false;developmentAnalysis.contextFeatures=[];developmentAnalysis.overlaps=[];developmentAnalysis.industrialParks=[];developmentAnalysis.industrialParkContextFeatures=[];developmentAnalysis.industrialParkMetadata={};developmentAnalysis.metadata={};developmentAnalysis.error='';
   hillAnalysis.loaded=false;hillAnalysis.loading=false;hillAnalysis.status='unavailable';hillAnalysis.source_status='';hillAnalysis.intersects=null;hillAnalysis.overlap_area_m2=null;hillAnalysis.overlap_pct=null;hillAnalysis.distance_m=null;hillAnalysis.contextFeatures=[];hillAnalysis.overlaps=[];hillAnalysis.metadata={};hillAnalysis.error='';
   safeMedicalAnalysis.loaded=false;safeMedicalAnalysis.loading=false;safeMedicalAnalysis.status='unavailable';safeMedicalAnalysis.items=[];safeMedicalAnalysis.metadata={};safeMedicalAnalysis.errors=[];safeMedicalAnalysis.warnings=[];safeMedicalAnalysis.sourceStats={};safeMedicalAnalysis.nearbyCounts={};safeMedicalAnalysis.message='';
   schoolAbsoluteProtectionAnalysis.loaded=false;schoolAbsoluteProtectionAnalysis.loading=false;schoolAbsoluteProtectionAnalysis.status='unavailable';schoolAbsoluteProtectionAnalysis.known=false;schoolAbsoluteProtectionAnalysis.present=null;schoolAbsoluteProtectionAnalysis.overlapAreaM2=null;schoolAbsoluteProtectionAnalysis.overlapPct=null;schoolAbsoluteProtectionAnalysis.zoneCount=0;schoolAbsoluteProtectionAnalysis.schoolNames=[];schoolAbsoluteProtectionAnalysis.features=[];schoolAbsoluteProtectionAnalysis.overlapFeatures=[];schoolAbsoluteProtectionAnalysis.source='';schoolAbsoluteProtectionAnalysis.sourceType='';schoolAbsoluteProtectionAnalysis.file='';schoolAbsoluteProtectionAnalysis.error='';
@@ -6218,12 +6214,15 @@ async function analyzeDevelopmentZones(){
     });
     developmentAnalysis.contextFeatures=data.context_features||[];
     developmentAnalysis.overlaps=data.overlaps||[];
+    developmentAnalysis.industrialParks=data.industrial_parks||[];
+    developmentAnalysis.industrialParkContextFeatures=data.industrial_park_context_features||[];
+    developmentAnalysis.industrialParkMetadata=data.industrial_park_metadata||{};
     developmentAnalysis.metadata=data.metadata||{};
     developmentAnalysis.loaded=true;
     return developmentAnalysis.overlaps;
   }catch(e){
     developmentAnalysis.error=String(e.message||e);
-    developmentAnalysis.contextFeatures=[];developmentAnalysis.overlaps=[];developmentAnalysis.loaded=false;
+    developmentAnalysis.contextFeatures=[];developmentAnalysis.overlaps=[];developmentAnalysis.industrialParks=[];developmentAnalysis.industrialParkContextFeatures=[];developmentAnalysis.industrialParkMetadata={};developmentAnalysis.loaded=false;
     return [];
   }finally{developmentAnalysis.loading=false;}
 }
@@ -6299,6 +6298,8 @@ function renderIndependentSpatialStatusMaps(){
   }
   for(const f of developmentAnalysis.contextFeatures||[])developmentFull.push(f);
   for(const f of developmentAnalysis.overlaps||[])developmentOverlap.push(f);
+  for(const f of developmentAnalysis.industrialParkContextFeatures||[])developmentFull.push(f);
+  for(const f of developmentAnalysis.industrialParks||[])developmentOverlap.push(f);
   if(developmentFull.length)ccDevelopmentStatusContext.addData({type:'FeatureCollection',features:developmentFull});
   if(developmentOverlap.length)ccDevelopmentStatusOverlap.addData({type:'FeatureCollection',features:developmentOverlap});
 
@@ -8762,7 +8763,9 @@ const RULE_SOURCE_CATALOG={
   GROWTH:{type:'운영기준',title:'서울특별시 성장잠재권 활성화사업 운영기준',effective:'2026-05-28',locator:'제2장 사업유형·대상지 / 제3장 계획수립 / 제4장 공공기여',url:'https://www.seoul.go.kr/news/news_report.do?nttNo=458724',verified:true},
   SHARED:{type:'운영기준',title:'민간토지 활용 공공주택 건립 운영기준(상생주택)',effective:'2025-03-18 · 공식 페이지 2026-04-02 확인',locator:'제2장 제1절·제3장 제1절',url:'https://news.seoul.go.kr/citybuild/archives/517910',verified:true},
   HOUSING_ACT:{type:'법률·시행령',title:'주택법 제15조 및 주택법 시행령 제27조',effective:'주택법 시행령 2026-08-04',locator:'사업계획승인 대상',url:'https://www.law.go.kr/%EB%B2%95%EB%A0%B9/%EC%A3%BC%ED%83%9D%EB%B2%95',verified:true},
-  SEOUL_URBAN_PLAN_ORD:{type:'조례',title:'서울특별시 도시계획 조례',effective:'2026-07-13',locator:'제48조 용도지역 안에서의 용적률',url:'https://www.law.go.kr/ordinInfoP.do?ordinId=2000719',verified:true},
+  SEOUL_URBAN_PLAN_ORD:{type:'조례',title:'서울특별시 도시계획 조례',effective:'2026-07-13',locator:'제48조 용도지역 안에서의 용적률 · 별표17 준공업지역 공장비율',url:'https://www.law.go.kr/ordinInfoP.do?ordinId=2000719',verified:true},
+  INDUSTRIAL_BASIC_2040:{type:'법정 기본계획',title:'2040 서울 공업지역기본계획',effective:'2026-03-12 공고',locator:'공업지역 관리유형 · 산업혁신구역·산업정비구역 · 산업비율·밀도관리',url:'https://urban.seoul.go.kr/',verified:true},
+  INDUSTRIAL_ACT:{type:'법률·시행령·시행규칙',title:'도시 공업지역의 관리 및 활성화에 관한 특별법령',effective:'2026-03-12 현행',locator:'공업지역기본계획 · 산업혁신구역 · 산업정비구역 · 시행규칙 제19조·별표2 산업유지비율',url:'https://www.law.go.kr/lsInfoP.do?lsId=014220',verified:true},
   HOUSING_STANDARDS:{type:'대통령령',title:'주택건설기준 등에 관한 규정',effective:'2026-06-30',locator:'주택단지·부대복리시설·도로 등 설계기준',url:'https://law.go.kr/LSW/lsInfoP.do?lsId=004948',verified:true}
 };
 const SCHEME_SOURCE_DEFAULT={
@@ -8910,11 +8913,39 @@ function schemeStatus(cond){
   if(cond===null || cond===undefined)return 'REVIEW';
   return cond?'PASS':'FAIL';
 }
+// R30 공통 판정정책
+// - 동의율은 토지 자체의 사업가능성 하드게이트가 아니라 사업자가 추진단계에서 확보해야 하는 전제조건이다.
+// - 계획으로 정할 수 있는 세대수·주택연면적·공급방식·설계기준 등은 현재 미입력/미충족을 이유로 사업가능성을 낮추지 않는다.
+//   검토서에는 삭제하지 않고 '계획반영필요'로 남긴다.
+function schemeDecisionPolicyRole(item,rule='',meta={}){
+  if(meta?.policyRole)return meta.policyRole;
+  const i=String(item||'').replace(/\s+/g,' '),t=`${i} ${String(rule||'')}`;
+  if(/동의|동의율/.test(t))return 'PREREQUISITE';
+  if(/계획 세대수|계획세대수|인허가 경로·세대수|주택 연면적|어르신 공급조건|주택단지 설계기준|차량 진출입/.test(i))return 'PLAN';
+  if(/용도지역 변경 범위|용적률 계획기준|공공기여 기준|용적률·공공기여|용적률·계획기준|계획기준·사업구조/.test(i))return 'PLAN';
+  return '';
+}
+function schemeRowDisplay(r){
+  if(r?.policyRole==='PREREQUISITE')return {cls:'INFO',label:'사업추진 전제조건'};
+  if(r?.policyRole==='PLAN')return {cls:'INFO',label:'계획반영필요'};
+  if(r?.status==='PASS')return {cls:'PASS',label:r?.conditional?'충족·단서':'충족'};
+  if(r?.status==='FAIL')return {cls:'FAIL',label:'미달'};
+  if(r?.status==='REVIEW')return {cls:'REVIEW',label:r?.conditional?'조건부':'확인'};
+  return {cls:'INFO',label:'정보'};
+}
 function schemeRow(item,rule,value,status,note='',required=true,meta={}){
   const resolved=ruleSourceFor(activeRuleScheme,item);
   const source=meta.sourceId?RULE_SOURCE_CATALOG[meta.sourceId]:resolved.source;
   let finalStatus=status;
   let finalNote=note;
+  const policyRole=schemeDecisionPolicyRole(item,rule,meta);
+  if(policyRole==='PREREQUISITE'){
+    finalStatus='INFO';required=false;
+    finalNote=[note,'법정 동의요건은 사업자가 사업추진 단계에서 확보하는 전제조건이며 초기 사업가능성 PASS/FAIL/REVIEW에는 사용하지 않음'].filter(Boolean).join(' · ');
+  }else if(policyRole==='PLAN'){
+    finalStatus='INFO';required=false;
+    finalNote=[note,'사업계획 수립·설계 단계에서 기준을 반영하며 현재 미입력·미충족을 이유로 초기 사업가능성을 낮추지 않음'].filter(Boolean).join(' · ');
+  }
   // 초기 사업가능성 검토 원칙: 자료 미확보/사실관계 미확정(REVIEW)을 법적 미충족(FAIL)로 강제변환하지 않는다.
   // FAIL은 해당 사업모듈이 예외·완화경로까지 검토한 뒤 명시적으로 반환한 경우에만 유지한다.
   const evaluatedStatus=finalStatus;
@@ -8923,9 +8954,9 @@ function schemeRow(item,rule,value,status,note='',required=true,meta={}){
   const caveat=conditional?(meta.caveat||finalNote||'심의·협의 등 후속 절차 필요'):'';
   const trust=conditional?{code:'CONDITIONAL',label:'조건부'}:ruleTrust(finalStatus,value,finalNote,source||{});
   return {
-    item,rule,value:value??'-',status:finalStatus,evaluatedStatus,note:finalNote,required,hardGate,conditional,caveat,decisionPath:meta.decisionPath||'',
-    gap:meta.gap||ruleGapText(rule,value,finalStatus),
-    action:meta.action||(conditional?caveat:ruleActionText(item,finalStatus,finalNote)),
+    item,rule,value:value??'-',status:finalStatus,evaluatedStatus,note:finalNote,required,hardGate,conditional,caveat,decisionPath:meta.decisionPath||'',policyRole,
+    gap:policyRole?(meta.gap||'-'):(meta.gap||ruleGapText(rule,value,finalStatus)),
+    action:meta.action||(policyRole==='PREREQUISITE'?'사업추진 전제조건 · 법정 동의요건 확보':policyRole==='PLAN'?'계획반영필요 · 사업계획·설계에서 해당 기준 반영':conditional?caveat:ruleActionText(item,finalStatus,finalNote)),
     alternatives:meta.alternatives||schemeAlternativeText(activeRuleScheme,finalStatus),trust:trust.code,trustLabel:trust.label,
     sourceId:meta.sourceId||resolved.id,sourceType:source?.type||'근거확인',sourceTitle:source?.title||'공식 원문 연결 필요',
     sourceEffective:source?.effective||'미확인',sourceLocator:meta.locator||ruleLocatorFor(activeRuleScheme,item,source?.locator||'-'),sourceUrl:source?.url||'',sourceVerified:source?.verified===true
@@ -9592,6 +9623,7 @@ function commonSchemeData(){
     medicalDist:schemeNum('scheme_medical_distance'),
     units:schemeNum('scheme_planned_units'),
     factory:schemeNum('scheme_factory_ratio'),
+    industrialRatio:schemeNum('scheme_industrial_ratio'),
     aptMaxArea:schemeNum('scheme_apartment_max_area'),
     aptMaxRatio:schemeNum('scheme_apartment_max_ratio'),
     landownerCount:schemeNum('scheme_landowner_count'),
@@ -9751,7 +9783,7 @@ function renewalSpatialFacts(){
 function developmentSpatialFacts(){
   const overlaps=(developmentAnalysis.overlaps||[]).map(f=>{
     const p=f.properties||{};
-    return {name:p.name||p.zone_name||'-',kind:p.development_kind||'other',source:p.source||'unknown',
+    return {name:p.name||p.zone_name||'-',kind:p.development_kind||'other',code:p.code||'',type_label:p.type_label||'',source:p.source||'unknown',source_title:p.source_title||'',data_reference_date:p.data_reference_date||'',
       overlap_area_m2:Number(p._overlap_area||0),overlap_pct:Number(p._overlap_pct||0)};
   });
   const districtPlans=(planningAnalysis.districtPlans||[]).filter(x=>Number(x.area||0)>0.5).map(x=>({
@@ -9760,7 +9792,8 @@ function developmentSpatialFacts(){
   const planningDistricts=(planningAnalysis.districts||[]).filter(x=>Number(x.area||0)>0.5).map(x=>({name:x.name||'-',area_m2:Number(x.area||0),layer:x.layer||''}));
   const planningFacilities=(planningAnalysis.facilities||[]).filter(x=>Number(x.area||0)>0.5).map(x=>({name:x.name||'-',category:x.category||'',area_m2:Number(x.area||0),layer:x.layer||''}));
   const planningRestrictions=(planningAnalysis.restrictions||[]).filter(x=>Number(x.area||0)>0.5).map(x=>({name:x.name||'-',area_m2:Number(x.area||0),layer:x.layer||''}));
-  return {loaded:developmentAnalysis.loaded,error:developmentAnalysis.error||'',overlaps,
+  const industrialParks=(developmentAnalysis.industrialParks||[]).map(f=>{const p=f.properties||{};return {name:p.name||'산업단지',dan_id:p.dan_id||'',dan_type:p.dan_type||'',type_label:p.type_label||'산업단지',source:p.source_title||'',overlap_area_m2:Number(p._overlap_area||p.overlap_area_m2||0),overlap_pct:Number(p._overlap_pct||p.site_overlap_pct||0)};});
+  return {loaded:developmentAnalysis.loaded,error:developmentAnalysis.error||'',overlaps,industrial_parks:industrialParks,industrial_park_metadata:developmentAnalysis.industrialParkMetadata||{},
     district_plan_loaded:planningAnalysis.loaded,
     district_plan_error:(planningAnalysis.errors||[]).some(x=>x.id==='LT_C_UPISUQ161'),district_plans:districtPlans,
     planning_districts:planningDistricts,planning_facilities:planningFacilities,planning_restrictions:planningRestrictions,
@@ -9814,14 +9847,18 @@ function buildSiteFactStore(){
       building:{total:Number(analysisState.metrics.total_buildings||0),records:buildingRecords,source:'건축HUB 표제부',
         note:'공통 현황은 사용승인일·구조·용도·연면적 등 사실값만 저장하며 법적 노후도 판정은 derived.age에서 제도별로 수행'},
       factory_usage:computeFactoryUsageFact(buildingRecords,currentBuildingFeatures,c.factory),
+      industrial_usage:computeIndustrialUsageFact(buildingRecords,c.industrialRatio),
       renewal:renewalSpatialFacts(),development:developmentSpatialFacts()
     },
     derived:{age:null},family_specific:{},scheme_specific:{}
   };
   store.derived.age=buildAgeDerivedFacts(c,store.site.building.records);
+  store.family_specific.semiindustrial=buildSemiindustrialDevelopmentFacts(store);
   latestSiteFactStore=store;
   analysisState.fact_store=store;
   analysisState.factory_usage=store.site.factory_usage;
+  analysisState.industrial_usage=store.site.industrial_usage;
+  analysisState.semiindustrial_review=store.family_specific.semiindustrial;
   return store;
 }
 
@@ -10084,8 +10121,10 @@ function safeHousingSpatialFacts(store){
   // 의료시설 중심지역은 입지유형 자체가 어르신 전용인 것이 아니다.
   // 자연녹지·제1종일반주거에서 의료시설 중심지역을 적용하는 경우에 별도 어르신 공급조건을 확인한다.
   const specialLowZone=['자연녹지','제1종일반주거'].includes(c.zoning);
-  const lowZoneElderCondition=specialLowZone?(c.safeSupplyType==='elder100'?'PASS':'REVIEW'):'INFO';
-  const locationExempt=specialLowZone&&c.safeSupplyType==='elder100';
+  const lowZoneElderCondition='INFO';
+  // 자연녹지·제1종일반주거의 어르신 100% 공급은 현재 토지의 기정 Fact가 아니라 사업계획으로 반영할 조건이다.
+  // 따라서 특별경로 자체는 열어 두고 공급조건은 '계획반영필요'로 분리한다.
+  const locationExempt=specialLowZone;
   const typ=schemeVal('safe_location_type')||'auto';
   const paths={station,arterial,medical};
   let selected=null;
@@ -10121,7 +10160,7 @@ function safeHousingSpatialFacts(store){
       spatialFactRow('중심지역 포함률',coverage==null?'-':`${Number(coverage).toFixed(1)}%`,coverage==null?'REVIEW':'CONFIRMED','대상지 50% 이상 포함 원칙 · 미달 시 통합심의 인정/추가 공공기여 검토'),
       spatialFactRow('학교 출입구 50m',schoolAbsoluteValue,schoolAbsoluteStatus==='PASS'?'CONFIRMED':schoolAbsoluteStatus,schoolAbsolute.known?'국가공간정보 UO101 UOA110 절대보호구역 원본 중첩으로 판정':'절대보호구역 원본 미확보 · 추가 확인 필요'),
       spatialFactRow('서울도심 배제범위',characteristic.length?characteristic.map(x=>x.name).join(' / '):'전용 경계 미연결','REVIEW','율곡·사직로 이북 및 퇴계로 이남 등 운영기준 배제범위 공식 경계 확인'),
-      spatialFactRow('의료시설 저용도지역 어르신 조건',specialLowZone?(c.safeSupplyType==='elder100'?'어르신 100% 공급':'공급조건 미확인'):'비해당',specialLowZone&&c.safeSupplyType==='elder100'?'CONFIRMED':specialLowZone?'REVIEW':'CONFIRMED','자연녹지·제1종일반주거 특례 적용 시 확인')
+      spatialFactRow('의료시설 저용도지역 어르신 조건',specialLowZone?(c.safeSupplyType==='elder100'?'어르신 100% 공급 계획 입력':'계획반영필요 · 어르신 100% 공급'):'비해당','INFO','자연녹지·제1종일반주거 특례의 공급조건은 사업계획 수립 시 반영하며 초기 입지판정에는 사용하지 않음')
     ]
   };
   store.scheme_specific.safe=fact;return fact;
@@ -10152,12 +10191,12 @@ function checkSafeFromFacts(store,f){
   let zoneStatus='REVIEW',zoneNote='용도지역별 변경기준 적용';
   if(f.zoning.current){
     if(['제2종일반주거(7층)','제2종일반주거','제3종일반주거','준주거','준공업','근린상업','일반상업'].includes(f.zoning.current))zoneStatus='PASS';
-    else if(f.zoning.special_low_zone){zoneStatus=f.zoning.supply_type==='elder100'?'PASS':'FAIL';zoneNote='자연녹지·제1종일반주거는 어르신 임대주택 100% 특례 적용 시 검토';}
+    else if(f.zoning.special_low_zone){zoneStatus='PASS';zoneNote='자연녹지·제1종일반주거 특별경로 가능 · 어르신 임대주택 100% 공급은 계획반영필요';}
     else zoneStatus='FAIL';
   }
   rows.push(schemeRow('용도지역','운영기준상 용도지역 변경·유지 가능범위',f.zoning.current||'-',zoneStatus,zoneNote,true,{sourceId:'SAFE_OP',locator:'4-3-1'}));
   if(f.zoning.special_low_zone){
-    rows.push(schemeRow('어르신 공급조건','자연녹지·제1종일반주거 특례 적용 시 임대주택 입주자 전원 어르신',f.zoning.supply_type==='elder100'?'어르신 100% 공급':'미확인/다른 공급유형',f.zoning.supply_type==='elder100'?'PASS':'FAIL','의료시설 중심지역 자체를 어르신 전용 입지로 판정하지 않음',true,{sourceId:'SAFE_OP',locator:'3-2-1·4-3-1'}));
+    rows.push(schemeRow('어르신 공급조건','자연녹지·제1종일반주거 특례 적용 시 임대주택 입주자 전원 어르신',f.zoning.supply_type==='elder100'?'어르신 100% 공급 계획 입력':'어르신 100% 공급 계획 반영 필요','INFO','의료시설 중심지역 자체를 어르신 전용 입지로 판정하지 않음',false,{sourceId:'SAFE_OP',locator:'3-2-1·4-3-1',policyRole:'PLAN'}));
   }
 
   // 위치유형별 도로계획 기준은 사업대상지 입지 판정과 분리한다.
@@ -10224,9 +10263,13 @@ function checkSharedHousingFromFacts(store,f){
   const targetFail=f.target.low_use===false&&f.target.private_proposal===false;
   const targetValue=`저이용·유휴 ${f.target.low_use==null?'미확인':f.target.low_use?'해당':'비해당'} / 민간제안 ${f.target.private_proposal==null?'미확인':f.target.private_proposal?'의사 확인':'의사 없음'}`;
   rows.push(schemeRow('사업대상','민간의 저이용·유휴토지등 또는 이 사업을 희망하여 민간이 제안하는 토지',targetValue,targetPass?'PASS':targetFail?'FAIL':targetKnown?'REVIEW':'REVIEW','두 경로를 별도 현황 Fact로 확인하고 OR 판정',true,{sourceId:'SHARED',locator:'1-3-4·2-1-1'}));
-  const scaleKnown=f.scale.area_m2!=null||f.scale.units!=null;
-  const scalePass=(f.scale.area_m2!=null&&f.scale.area_m2>=3000)||(f.scale.units!=null&&f.scale.units>=100);
-  rows.push(schemeRow('사업대상지 규모','부지면적 3,000㎡ 이상 또는 공동주택 100세대 이상',`면적 ${fmtSchemeArea(f.scale.area_m2)} / ${f.scale.units==null?'-':f.scale.units+'세대'}`,!scaleKnown?'REVIEW':scalePass?'PASS':'REVIEW','기본 규모 미달 시 사전검토·위원회 결정에 따른 조정 가능 여부 확인',true,{sourceId:'SHARED',locator:'2-1-2'}));
+  const scaleAreaPass=f.scale.area_m2!=null&&f.scale.area_m2>=3000;
+  const scaleValue=`면적 ${fmtSchemeArea(f.scale.area_m2)} / ${f.scale.units==null?'-':f.scale.units+'세대'}`;
+  if(scaleAreaPass){
+    rows.push(schemeRow('사업대상지 규모','부지면적 3,000㎡ 이상 또는 공동주택 100세대 이상',scaleValue,'PASS','부지면적만으로 기본 규모요건 충족',true,{sourceId:'SHARED',locator:'2-1-2'}));
+  }else{
+    rows.push(schemeRow('계획 세대수','부지면적 3,000㎡ 미만이면 공동주택 100세대 이상 계획으로 규모기준 반영',scaleValue,'INFO','현재 부지면적은 3,000㎡ 미만 · 계획세대수는 사업계획 수립 시 반영',false,{sourceId:'SHARED',locator:'2-1-2',policyRole:'PLAN'}));
+  }
 
   const cons=f.conservation,items=[['도시자연공원구역',cons.urban_natural_park],['개발제한구역',cons.development_restriction],['비오톱 1등급',cons.biotope_grade1],['공익용산지',cons.public_interest_forest]];
   const knownAll=items.every(([,x])=>x.known),hits=items.filter(([,x])=>x.present===true).map(([n])=>n);
@@ -10429,9 +10472,8 @@ function longtermSpatialFacts(store){
   if(c.zoning){
     if(baseZones.includes(c.zoning))zoneStatus='PASS';
     else if(c.zoning==='준공업'){
-      if(factoryPct==null){zoneStatus='REVIEW';zoneNote='준공업지역 공장비율 확인 필요';}
-      else if(factoryUsage?.mismatch){zoneStatus='REVIEW';zoneNote=`준공업지역 공장비율 자동/수기 값 불일치 · 자동 ${fmtSchemePct(factoryUsage.mismatch.auto)} / 수기 ${fmtSchemePct(factoryUsage.mismatch.manual)}`;}
-      else {zoneStatus=factoryPct<10?'PASS':'FAIL';zoneNote='준공업지역은 공장비율 10% 미만';}
+      if(factoryPct==null){const proxy=factoryUsage?.factory_ratio_current_proxy_pct;zoneStatus='REVIEW';zoneNote=`준공업지역 법정 공장비율(2008.1.31 기준) 확인 필요${proxy!=null?` · 현재 현황추정 ${fmtSchemePct(proxy)}는 판정에 미사용`:''}`;}
+      else {zoneStatus=factoryPct<10?'PASS':'FAIL';zoneNote='서울시 도시계획조례 별표17 공장비율 10% 미만';}
     }else zoneStatus='FAIL';
   }
   const age=resolvedSchemeAgeFact(store,'longterm',route);
@@ -10439,7 +10481,7 @@ function longtermSpatialFacts(store){
     route:{selected:route,label:route==='redevelopment'?'정비계획 방식':'지구단위계획 방식'},
     location:{selected_type:locationType,station:{status:stationStatus,class_name:stationClass,distance_m:longtermStation?.distance_m??c.dist,coverage350_pct:cov350,coverage500_pct:cov500,name:longtermStation?.name||c.stationName||'',note:stationNote,candidate_count:(c.nearbyStations||[]).length},
       arterial_intersection:{status:arterialStatus,distance_m:c.arterialIntersectionDist,has20_width_candidate:c.has20Width,function_confirmed:roadEvidence?.function_confirmed===true,perimeter20_pct:c.road20Perimeter,road_quality:c.roadQuality,evidence:roadEvidence,note:arterialStatus==='PASS'?'공개 GIS 산정상 교차지 200m·20m 폭원·둘레 1/8 충족 · 도로기능은 결과서 단서에 따라 재검토':(roadEvidence?.note||'공개 GIS 산정상 기준 미충족 또는 계산자료 없음')}},
-    zoning:{current:c.zoning||'',factory_pct:factoryPct,status:zoneStatus,note:zoneNote},area:{m2:c.area,min_m2:minArea,status:areaStatus,note:areaNote},units:{count:c.units,status:'INFO',target_min:100,note:c.units==null?'계획수립 후 100세대 이상 확보 여부 반영':c.units>=100?'계획안 기준 100세대 이상':'계획안 조정 단계에서 100세대 이상 확보 필요'},
+    zoning:{current:c.zoning||'',factory_pct:factoryPct,factory_current_proxy_pct:factoryUsage?.factory_ratio_current_proxy_pct??null,status:zoneStatus,note:zoneNote},area:{m2:c.area,min_m2:minArea,status:areaStatus,note:areaNote},units:{count:c.units,status:'INFO',target_min:100,note:c.units==null?'계획수립 후 100세대 이상 확보 여부 반영':c.units>=100?'계획안 기준 100세대 이상':'계획안 조정 단계에서 100세대 이상 확보 필요'},
     exclusions:{special_character_area:(()=>{
       const ev=longtermCharacteristicAreaEvidence(),manual=c.excluded===true;
       const low=ev.lowrise||[],cult=ev.cultural_districts||[],herit=ev.heritage||[];
@@ -10473,18 +10515,18 @@ function checkLongtermFromFacts(store,f){
   else rows.push(schemeRow('역세권등','간선도로 교차지 도로경계 200m + 폭20m 이상 간선도로 구역둘레 1/8 이상 접면',`교차 ${f.location.arterial_intersection.distance_m??'-'}m / 20m 폭원 ${f.location.arterial_intersection.has20_width_candidate==null?'-':f.location.arterial_intersection.has20_width_candidate?'O':'X'} / 간선기능 ${f.location.arterial_intersection.function_confirmed?'확인':'미확인'} / 접면 ${fmtSchemePct(f.location.arterial_intersection.perimeter20_pct)}`,f.location.arterial_intersection.status,f.location.arterial_intersection.note,true,{sourceId:'LONGTERM_OP',locator:'1-3-2·2-1-1'}));
   rows.push(schemeRow('용도지역','2종(7층 포함)·3종·준주거 / 준공업은 공장비율 10% 미만',f.zoning.current||'-',f.zoning.status,f.zoning.note,true,{sourceId:'LONGTERM_OP',locator:'2-1-2'}));
   rows.push(schemeRow('대상지 면적',`${f.area.min_m2.toLocaleString('ko-KR')}~20,000㎡ 원칙 · 30,000㎡까지 위원회 인정 가능`,fmtSchemeArea(f.area.m2),f.area.status,f.area.note,true,{sourceId:'LONGTERM_OP',locator:'2-1-4 가목'}));
-  rows.push(schemeRow('계획 세대수','100세대 이상은 사업계획 수립·규모계획 단계에서 확보',f.units.count==null?'계획 이후 반영':`${f.units.count}세대 · 계획값`, 'INFO',f.units.note,false,{sourceId:'LONGTERM_OP',locator:'2-1-4 가목'}));
+  rows.push(schemeRow('계획 세대수','100세대 이상은 사업계획 수립·규모계획 단계에서 확보',f.units.count==null?'계획반영필요':`${f.units.count}세대 · 계획값`, 'INFO',f.units.note,false,{sourceId:'LONGTERM_OP',locator:'2-1-4 가목',policyRole:'PLAN'}));
   rows.push(schemeRow('노후도',f.route.selected==='district'?'지구단위계획 방식: 20년 이상 건축물 1/2 이상':'정비계획 방식: 30년 이상 건축물 60% 이상',ageFactValue(f.aging.assessment),f.aging.assessment?.status||'REVIEW',ageFactNote(f.aging.assessment),true,{sourceId:'LONGTERM_OP',locator:'2-1-4 나목'}));
   const ex=f.exclusions.special_character_area,ev=ex.evidence||{};
   rows.push(schemeRow('입지 특성화·제외지역','전용·제1종 일반주거지역, 역사문화 경관지구·국가유산보호구역 등 자동연결 가능 항목',ex.value,ex.status,ex.note,true,{sourceId:'LONGTERM_OP',locator:'2-1-3·2-1-5'}));
   rows.push(schemeRow('구릉지 후속확인','구릉지 연접 등 공개 원도형으로 자동확정하기 어려운 항목은 사업계획 전 별도 확인',ex.hill?.value||'공식 구릉지 원도형 미연결',ex.hill?.status||'REVIEW',ex.hill?.note||'후속 현장·원도형 확인',false,{sourceId:'LONGTERM_OP',locator:'2-1-3·2-1-5'}));
   if(f.route.selected==='district'){
     const st=f.consent.land_pct==null?'REVIEW':f.consent.land_pct>=50?'PASS':'REVIEW';
-    rows.push(schemeRow('사업추진 동의','토지면적 50% 이상은 사전검토 신청·사업추진 단계에서 확보',f.consent.land_pct==null?'사업추진 이후 충족':fmtSchemePct(f.consent.land_pct),'INFO','초기 대상지 입지판정에는 사용하지 않고 사업추진 단계 체크리스트로 관리',false,{sourceId:'LONGTERM_OP',locator:'2-2-3'}));
+    rows.push(schemeRow('사업추진 동의','토지면적 50% 이상은 사전검토 신청·사업추진 단계에서 확보',f.consent.land_pct==null?'사업추진 전제조건':fmtSchemePct(f.consent.land_pct),'INFO','초기 대상지 입지판정에는 사용하지 않고 사업추진 단계 체크리스트로 관리',false,{sourceId:'LONGTERM_OP',locator:'2-2-3',policyRole:'PREREQUISITE'}));
   }else{
     const v=[f.consent.owner_pct,f.consent.land_pct,f.consent.road20_owner_pct,f.consent.road20_land_pct];
     const ok=!v.some(x=>x==null)&&f.consent.owner_pct>=40&&f.consent.land_pct>=40&&f.consent.road20_owner_pct>=50&&f.consent.road20_land_pct>=50;
-    rows.push(schemeRow('사업추진 동의','토지등소유자 40% + 토지면적 40% + 20m 도로접면 필지 소유자·면적 각 50%는 사업추진 단계에서 확보',v.some(x=>x==null)?'사업추진 이후 충족':`소유 ${fmtSchemePct(f.consent.owner_pct)} / 토지 ${fmtSchemePct(f.consent.land_pct)} / 도로소유 ${fmtSchemePct(f.consent.road20_owner_pct)} / 도로토지 ${fmtSchemePct(f.consent.road20_land_pct)}`,'INFO','초기 대상지 입지판정에는 사용하지 않고 사전검토·사업추진 체크리스트로 관리',false,{sourceId:'LONGTERM_OP',locator:'2-2-3'}));
+    rows.push(schemeRow('사업추진 동의','토지등소유자 40% + 토지면적 40% + 20m 도로접면 필지 소유자·면적 각 50%는 사업추진 단계에서 확보',v.some(x=>x==null)?'사업추진 전제조건':`소유 ${fmtSchemePct(f.consent.owner_pct)} / 토지 ${fmtSchemePct(f.consent.land_pct)} / 도로소유 ${fmtSchemePct(f.consent.road20_owner_pct)} / 도로토지 ${fmtSchemePct(f.consent.road20_land_pct)}`,'INFO','초기 대상지 입지판정에는 사용하지 않고 사전검토·사업추진 체크리스트로 관리',false,{sourceId:'LONGTERM_OP',locator:'2-2-3',policyRole:'PREREQUISITE'}));
   }
   rows.push(schemeRow('용적률 계획기준',f.planning.density.zone,f.planning.density.far,'INFO',f.planning.density.special700_location_candidate?`700% 특례는 자동확정 아님 · ${f.planning.density.special700_condition}`:'기본 상한/법적상한 적용',false,{sourceId:'LONGTERM_OP',locator:'제3장'}));
   rows.push(schemeRow('공공기여 기준','완화용적률의 1/2 이상',f.planning.density.contribution,'INFO','장기전세주택 우선 공급',false,{sourceId:'LONGTERM_OP',locator:'3-1-1·3-1-2'}));
@@ -10501,7 +10543,7 @@ function publicComplexSpatialFacts(store){
   const cov350=publicStation?.coverage350??(c.stationAuto?c.coverage350:c.coverage);
   const commercial={coverage350_pct:cov350,distance_m:publicStation?.distance_m??c.dist,station_name:publicStation?.name||c.stationName||'',candidate_count:(c.nearbyStations||[]).length,underdeveloped:c.underdeveloped,zoning:c.zoning||'',road4_faces:c.road4Faces,has8:c.has8};
   const stationWithin350=stationAnalysis.loaded?bestStationByDistance(x=>x.distance_m!=null&&Number(x.distance_m)<=350):null;
-  const industrial={zoning:c.zoning||'',underdeveloped:c.underdeveloped,semiindustrial_plan:{known:false,value:'2030 준공업지역 종합발전계획 사업기준(면적·산업시설비율) 연계자료 미확보'},special_far_exception:(c.area!=null&&c.area>=10000&&((stationWithin350!=null)||(!stationAnalysis.loaded&&c.dist!=null&&c.dist<=350)||c.has20Width===true)),special_far_station:stationWithin350?{name:stationWithin350.name,distance_m:stationWithin350.distance_m}:null};
+  const industrial={zoning:c.zoning||'',underdeveloped:c.underdeveloped,industrial_usage:store.site.industrial_usage||null,basic_plan:{title:'2040 서울 공업지역기본계획',status:c.zoning==='준공업'?'INFO':'REFERENCE'}};
   const additional=[
     {key:'small_parcel',label:'과소토지 90㎡ 이하 30% 이상',value:c.smallParcelRatio,status:c.smallParcelRatio==null?'REVIEW':c.smallParcelRatio>=30?'PASS':'FAIL'},
     {key:'house_density',label:'호수밀도 50호/ha 이상',value:c.houseDensity,status:c.houseDensity==null?'REVIEW':c.houseDensity>=50?'PASS':'FAIL'},
@@ -10545,7 +10587,9 @@ function checkPublicComplexFromFacts(store,f){
     rows.push(schemeRow('용도지역','준공업지역',f.zoning.current||'-',f.zoning.current?(f.zoning.current==='준공업'?'PASS':'FAIL'):'REVIEW','',true,{sourceId:'PUBLIC_COMPLEX',locator:'시행령 별표 4의2'}));
     rows.push(schemeRow('면적','5,000㎡ 이상',fmtSchemeArea(f.area.m2),f.area.m2==null?'REVIEW':f.area.m2>=5000?'PASS':'FAIL','',true,{sourceId:'PUBLIC_COMPLEX',locator:'시행령 별표 4의2'}));
     rows.push(schemeRow('산업시설 정비필요','공장·산업시설 노후 또는 주거지 인접으로 정비 필요',f.industrial.underdeveloped==null?'-':f.industrial.underdeveloped?'해당':'비해당',factBoolStatus(f.industrial.underdeveloped),'현장·산업시설 현황 확인',true,{sourceId:'PUBLIC_COMPLEX',locator:'시행령 별표 4의2'}));
-    rows.push(schemeRow('준공업 종합발전계획','2030 준공업지역 종합발전계획상 면적·산업시설비율 등 사업기준',f.industrial.semiindustrial_plan.value,'REVIEW',f.industrial.special_far_exception?'1만㎡ 이상 + 역350m/20m도로 조건으로 용적률 기준 예외 가능':'공식 종합발전계획 세부 Fact 추가 필요',true,{sourceId:'PUBLIC_COMPLEX_GUIDE',locator:'별표 1의10 서울 주거산업융합'}));
+    const iu=f.industrial.industrial_usage||{};
+    const iuValue=industrialUsageDisplay(iu);
+    rows.push(schemeRow('공업지역기본계획 연계','2040 서울 공업지역기본계획의 산업비율·공업지역정비수단을 별도 FACT로 병행 검토',iuValue,'INFO','주거산업융합지구의 현행 법정 입지요건과 2040 법정 공업지역기본계획 현황을 분리 · 기본계획 연계자료 미확보만으로 REVIEW 처리하지 않음',false,{sourceId:'INDUSTRIAL_BASIC_2040',locator:'공업지역 관리 및 활성화 방향 · 산업비율·공업지역정비구역'}));
   }else{
     rows.push(schemeRow('저층주거·기반시설','노후 저층주거지가 밀집하고 기반시설이 열악하여 계획적 개발 필요',f.housing.lowrise_bad?'해당':'미확인',f.housing.lowrise_bad?'PASS':'REVIEW','현장·도시조직 현황 확인',true,{sourceId:'PUBLIC_COMPLEX',locator:'시행령 별표 4의2'}));
     rows.push(schemeRow('면적','10,000㎡ 이상',fmtSchemeArea(f.area.m2),f.area.m2==null?'REVIEW':f.area.m2>=10000?'PASS':'FAIL','',true,{sourceId:'PUBLIC_COMPLEX',locator:'시행령 별표 4의2'}));
@@ -10614,54 +10658,294 @@ function matchFactoryBuildingFeatures(factoryRecords,buildingFeatures){
   }
   return {matched,unmatched,ambiguous_parcels:[...ambiguousParcels]};
 }
-// 공간현황 공통 Fact. 역세권 장기전세·도심복합개발 주거중심형이 이 하나의 결과를 공유 참조한다.
-// 산식은 고정: 공장용도 건축물 수 ÷ 전체 건축물 수 × 100 (동수 기준 초기검토). 연면적·대지면적 비율로 바꾸지 않는다.
+// 준공업지역 산업·공장 현황은 서로 다른 법정 개념을 분리한다.
+// 1) 법정 공장비율: 서울시 도시계획조례 별표17의 2008.1.31 기준 공장부지 비율.
+//    현재 데이터로 그 과거시점 비율을 확정하지 않으며, 공식/전문가 입력값만 사업 PASS/FAIL에 사용한다.
+// 2) 산업비율(종전산업비율): 도시공업지역법 시행규칙 별표2의 산업시설 부지면적 비율.
+//    건축HUB·토지대장으로 자동 산정 가능한 범위를 보조 추정하되 업종/복합용도 미확정은 범위값으로 보존한다.
+// 3) 공장용도 건축물 비율: 공장용도 건축물 동수 ÷ 전체 건축물 동수. 순수 현황 참고값이다.
+function isFactoryRatioCurrentRecord(r){
+  return /공장|창고시설|자동차[^\n]*정비|정비공장/.test(`${r?.main_use||''} ${r?.other_use||''}`);
+}
+function parcelAreaFactByPnu(){
+  const out=new Map();
+  for(const pnu of selectedParcelPnus){
+    const f=parcelFeatureMap.get(String(pnu));if(!f)continue;
+    const p=f.properties||{},ledger=p.land_ledger||{};
+    const area=Number(p.official_area_m2??p._analysis_area_m2??p.geometry_area_m2);
+    if(!(Number.isFinite(area)&&area>0))continue;
+    out.set(String(pnu),{area,land_category:normalizedLandCategory(ledger.lndcgrCodeNm||parseJibunLandCategory(p.jibun||'')),ownership:String(ledger.posesnSeCodeNm||'')});
+  }
+  return out;
+}
+function computeFactoryLandCurrentProxy(records){
+  const rows=Array.isArray(records)?records:[],areaByPnu=parcelAreaFactByPnu();
+  const byPnu=new Map();for(const r of rows){const p=String(r.pnu||'');if(!p)continue;if(!byPnu.has(p))byPnu.set(p,[]);byPnu.get(p).push(r);}
+  let total=0,factoryArea=0,known=0;
+  const factoryPnus=[];
+  for(const [pnu,info] of areaByPnu){
+    total+=info.area;known++;
+    const rs=byPnu.get(pnu)||[];
+    const hit=info.land_category==='공장용지'||rs.some(isFactoryRatioCurrentRecord);
+    if(hit){factoryArea+=info.area;factoryPnus.push(pnu);}
+  }
+  return {site_area_m2:total,factory_area_m2:factoryArea,pct:total>0?factoryArea/total*100:null,parcel_count:known,factory_parcels:factoryPnus,reference_date:'CURRENT',quality:total>0?'ESTIMATE':'NONE',note:'현재 토지대장 지목·건축HUB 용도에 따른 현황추정. 법정 공장비율의 2008.1.31 기준값을 대체하지 않음'};
+}
+function industrialRecordClass(r){
+  const t=`${r?.main_use||''} ${r?.other_use||''}`;
+  if(/공장|산업시설|산업지원시설|연구소|연구개발|소프트웨어|정보통신|데이터센터|물류시설|물류터미널/.test(t))return 'INDUSTRIAL';
+  if(/지식산업센터|업무시설|교육연구시설|창고시설|자동차관련시설/.test(t))return 'AMBIGUOUS';
+  return 'NONINDUSTRIAL';
+}
+function computeIndustrialUsageFact(records,manualPct=null){
+  const manual=manualPct!=null&&Number.isFinite(Number(manualPct))?Number(manualPct):null;
+  const rows=Array.isArray(records)?records:[],areaByPnu=parcelAreaFactByPnu(),byPnu=new Map();
+  for(const r of rows){const p=String(r.pnu||'');if(!p)continue;if(!byPnu.has(p))byPnu.set(p,[]);byPnu.get(p).push(r);}
+  let siteArea=0,lowerArea=0,estimateArea=0,upperArea=0,ambiguousArea=0,classifiedParcels=0;
+  const details=[];
+  for(const [pnu,info] of areaByPnu){
+    siteArea+=info.area;
+    const rs=byPnu.get(pnu)||[];
+    if(!rs.length){
+      if(info.land_category==='공장용지'){ambiguousArea+=info.area;upperArea+=info.area;details.push({pnu,status:'AMBIGUOUS',area_m2:info.area,basis:'공장용지이나 현 산업시설 입지 미확인'});}else{classifiedParcels++;details.push({pnu,status:'NONINDUSTRIAL',area_m2:info.area,basis:'산업시설 건축물 미확인'});}continue;
+    }
+    const ind=rs.filter(r=>industrialRecordClass(r)==='INDUSTRIAL'),amb=rs.filter(r=>industrialRecordClass(r)==='AMBIGUOUS'),non=rs.filter(r=>industrialRecordClass(r)==='NONINDUSTRIAL');
+    if(ind.length===rs.length){lowerArea+=info.area;estimateArea+=info.area;upperArea+=info.area;classifiedParcels++;details.push({pnu,status:'INDUSTRIAL',area_m2:info.area,basis:'산업기능 명시 건축물'});continue;}
+    if(!ind.length&&!amb.length){classifiedParcels++;details.push({pnu,status:'NONINDUSTRIAL',area_m2:info.area,basis:'비산업 용도 건축물'});continue;}
+    const totalFloor=rs.reduce((a,r)=>a+(Number(r.total_floor_area_m2)||0),0),indFloor=ind.reduce((a,r)=>a+(Number(r.total_floor_area_m2)||0),0),ambFloor=amb.reduce((a,r)=>a+(Number(r.total_floor_area_m2)||0),0);
+    let low=0,est=0,up=info.area;
+    if(totalFloor>0){
+      const knownShare=Math.max(0,Math.min(1,indFloor/totalFloor)),possibleShare=Math.max(0,Math.min(1,(indFloor+ambFloor)/totalFloor));
+      // 도시공업지역법 시행규칙 별표2 비고 다: 복합건축물은 산업시설 연면적을 부지면적으로 환산하되,
+      // 산업시설 연면적이 50% 이상이면 해당 부지면적 전체를 산업시설 부지면적으로 산정한다.
+      low=knownShare>=0.5?info.area:info.area*knownShare;
+      est=low;
+      up=possibleShare>=0.5?info.area:info.area*possibleShare;
+    }
+    lowerArea+=low;estimateArea+=est;upperArea+=up;ambiguousArea+=Math.max(0,up-low);
+    details.push({pnu,status:'AMBIGUOUS',area_m2:info.area,lower_industrial_area_m2:low,upper_industrial_area_m2:up,basis:'복합·업종 미확정 건축물 포함 · 산업시설 연면적 50% 이상 시 부지면적 전체 산입'});
+  }
+  const lower=siteArea>0?lowerArea/siteArea*100:null,estimate=siteArea>0?estimateArea/siteArea*100:null,upper=siteArea>0?upperArea/siteArea*100:null;
+  if(manual!=null)return {industrial_ratio_pct:manual,estimated_pct:estimate,lower_pct:lower,upper_pct:upper,manual_ratio_pct:manual,status:'CONFIRMED',source:'MANUAL',site_area_m2:siteArea,industrial_area_m2:siteArea*manual/100,ambiguous_area_m2:ambiguousArea,details,note:'공식자료·전문가 입력 종전산업비율 사용'};
+  const exact=siteArea>0&&ambiguousArea<0.01&&lower!=null&&upper!=null&&Math.abs(lower-upper)<0.01;
+  return {industrial_ratio_pct:exact?lower:null,estimated_pct:estimate,lower_pct:lower,upper_pct:upper,manual_ratio_pct:null,status:exact?'CONFIRMED':siteArea>0?'REVIEW':'UNKNOWN',source:siteArea>0?'BUILDING_HUB_PARCEL_ESTIMATE':'NONE',site_area_m2:siteArea,industrial_area_m2:exact?lowerArea:null,ambiguous_area_m2:ambiguousArea,details,note:exact?'선택필지와 건축HUB 용도가 전부 명확하여 산업시설 부지비율 자동산정':'건축물 용도만으로 소프트웨어·연구개발·문화산업 등 산업업종과 복합용도 산업연면적을 모두 확정할 수 없어 범위값으로 표시'};
+}
+function industrialUsageDisplay(iu){
+  if(!iu)return '-';
+  if(iu.industrial_ratio_pct!=null)return `${Number(iu.industrial_ratio_pct).toFixed(1)}%${iu.source==='MANUAL'?' · 공식/전문가입력':''}`;
+  if(iu.lower_pct!=null&&iu.upper_pct!=null)return `${Number(iu.lower_pct).toFixed(1)}~${Number(iu.upper_pct).toFixed(1)}% · 현황추정 범위`;
+  return '확인필요';
+}
 function computeFactoryUsageFact(records,buildingFeatures,manualPct){
   const rows=Array.isArray(records)?records:[];
   const total=rows.length;
   const factoryRecords=rows.filter(isFactoryBuildingRecord);
   const factoryCount=factoryRecords.length;
-  const autoPct=total?factoryCount/total*100:null;
+  const buildingPct=total?factoryCount/total*100:null;
   const match=matchFactoryBuildingFeatures(factoryRecords,buildingFeatures);
   const manual=manualPct!=null&&Number.isFinite(Number(manualPct))?Number(manualPct):null;
-  let pct=autoPct,source=total?'BUILDING_HUB':'NONE',mismatch=null;
-  if(autoPct!=null){
-    if(manual!=null&&Math.abs(manual-autoPct)>=0.05)mismatch={auto:autoPct,manual};
-  }else if(manual!=null){
-    // 건축물대장 자료가 아예 없을 때만 수기값을 대체 사용한다 — 자동값이 있는데 조용히 덮어쓰지 않는다.
-    pct=manual;source='MANUAL';
-  }
+  const currentProxy=computeFactoryLandCurrentProxy(rows);
   return {
     total_building_count:total,
     factory_building_count:factoryCount,
-    factory_ratio_pct:pct,
+    factory_building_ratio_pct:buildingPct,
+    // 법정 공장비율은 2008.1.31 기준 공식값만 사용한다. 현재 현황추정으로 조용히 대체하지 않는다.
+    factory_ratio_pct:manual,
+    factory_ratio_status:manual!=null?'CONFIRMED':'REVIEW',
+    factory_ratio_reference_date:'2008-01-31',
+    factory_ratio_current_proxy_pct:currentProxy.pct,
+    factory_ratio_current_proxy:currentProxy,
     manual_ratio_pct:manual,
-    mismatch,
-    source,
-    calculation_basis:'BUILDING_COUNT',
+    source:manual!=null?'MANUAL':total||currentProxy.site_area_m2?'CURRENT_PROXY_ONLY':'NONE',
+    calculation_basis:'LEGAL_FACTORY_RATIO_SEPARATED_FROM_BUILDING_COUNT',
     factory_records:factoryRecords,
     matched_features:match.matched,
     unmatched_factory_records:match.unmatched,
     ambiguous_parcels:match.ambiguous_parcels,
-    quality:total?'AUTO':source==='MANUAL'?'MANUAL':'NONE'
+    quality:manual!=null?'MANUAL_CONFIRMED':total?'ESTIMATE':'NONE'
   };
 }
-// innovation_housing 등 기존 소비 코드가 기대하던 {pct,factory_count,total_count,source,note} 모양으로
-// 공통 Fact를 어댑팅한다 — 공통 Fact 도입 때문에 소비측 코드를 대거 고치지 않기 위한 최소 변경 지점.
 function factoryUsageAsSchemeFact(factoryUsage){
   const fu=factoryUsage||{};
-  const note=fu.mismatch
-    ?`자동 ${fmtSchemePct(fu.mismatch.auto)} / 수기입력 ${fmtSchemePct(fu.mismatch.manual)} · 값 불일치 확인 필요`
-    :(fu.total_building_count?'공간현황 공장용도 Fact(건축물 동수 기준 초기검토) 참조':'건축물대장 자료 없음');
-  return {pct:fu.factory_ratio_pct??null,factory_count:fu.factory_building_count??0,total_count:fu.total_building_count??0,source:fu.source||'NONE',note};
+  const note=fu.factory_ratio_pct!=null
+    ?`서울시 도시계획조례 별표17 공장비율 ${fmtSchemePct(fu.factory_ratio_pct)} · 2008.1.31 기준 공식/전문가 입력`
+    :(fu.factory_ratio_current_proxy_pct!=null?`법정 공장비율 미확정 · 현재 공장부지 현황추정 ${fmtSchemePct(fu.factory_ratio_current_proxy_pct)} · 2008.1.31 기준자료 필요`:'법정 공장비율 자료 없음');
+  return {pct:fu.factory_ratio_pct??null,factory_count:fu.factory_building_count??0,total_count:fu.total_building_count??0,building_pct:fu.factory_building_ratio_pct??null,current_proxy_pct:fu.factory_ratio_current_proxy_pct??null,source:fu.source||'NONE',note};
 }
-function innovationFactoryBuildingRatio(records,manualPct=null){
+
+// ---------- 2040 서울 공업지역기본계획: 준공업지역 전용 FACT / 실행수단 ----------
+// 관리유형 4종은 화면의 사업카드가 아니라 내부 참고 FACT로 유지한다.
+// 사용자에게는 산업혁신구역·산업정비구역 및 기존 법정사업을 실제 실행수단으로 보여준다.
+function semiindustrialRatioThresholdFact(iu,threshold,direction='gte'){
+  const x=iu||{},exact=Number.isFinite(Number(x.industrial_ratio_pct))?Number(x.industrial_ratio_pct):null;
+  const lo=Number.isFinite(Number(x.lower_pct))?Number(x.lower_pct):null,hi=Number.isFinite(Number(x.upper_pct))?Number(x.upper_pct):null;
+  let status='REVIEW';
+  if(exact!=null)status=direction==='lt'?(exact<threshold?'PASS':'FAIL'):(exact>=threshold?'PASS':'FAIL');
+  else if(lo!=null&&hi!=null){
+    if(direction==='lt')status=hi<threshold?'PASS':lo>=threshold?'FAIL':'REVIEW';
+    else status=lo>=threshold?'PASS':hi<threshold?'FAIL':'REVIEW';
+  }
+  return {status,threshold,direction,value:industrialUsageDisplay(x),lower_pct:lo,upper_pct:hi,exact_pct:exact};
+}
+function semiindustrialBuildingAgeFact(records,years=20,threshold=50){
+  const stat=boundedRatio(records||[],r=>rawFactAgeState(r,years));
+  return {status:thresholdStatus(stat,threshold),years,threshold,...stat,value:stat.total?`${Number(stat.old).toLocaleString('ko-KR',{maximumFractionDigits:1})}/${Number(stat.total).toLocaleString('ko-KR',{maximumFractionDigits:1})}${stat.unknown?` · 미확인 ${Number(stat.unknown).toLocaleString('ko-KR',{maximumFractionDigits:1})}`:''} (${Number(stat.lower).toFixed(1)}~${Number(stat.upper).toFixed(1)}%)`:'자료 없음'};
+}
+function semiindustrialFacilityAgeFact(records,years=20,threshold=50){
   const rows=Array.isArray(records)?records:[];
-  const total=rows.length;
-  const factoryCount=rows.filter(isFactoryBuildingRecord).length;
-  const autoPct=total?factoryCount/total*100:null;
-  if(manualPct!=null)return {pct:Number(manualPct),factory_count:factoryCount,total_count:total,source:'MANUAL',note:'전문가 입력 공장비율 사용'};
-  return {pct:autoPct,factory_count:factoryCount,total_count:total,source:total?'BUILDING_COUNT_PROXY':'NONE',note:total?'초기검토 산식: 건축HUB 표제부상 공장용도 건축물 수 ÷ 전체 건축물 수 × 100':'건축물대장 자료 없음'};
+  let total=0,old=0,unknown=0,definite=0,ambiguous=0;
+  for(const r of rows){
+    const cls=industrialRecordClass(r);
+    if(cls==='NONINDUSTRIAL')continue;
+    total+=1;
+    if(cls==='AMBIGUOUS'){ambiguous+=1;unknown+=1;continue;}
+    definite+=1;
+    const age=rawFactAgeState(r,years);
+    if(age==='OLD')old+=1;else if(age!=='NOT_OLD')unknown+=1;
+  }
+  if(!total)return {status:'REVIEW',years,threshold,total:0,old:0,unknown:0,definite,ambiguous,lower:null,upper:null,value:'산업시설 용도자료 확인필요'};
+  const lower=old/total*100,upper=(old+unknown)/total*100;
+  const stat={total,old,unknown,known:total-unknown,lower,upper,ratio:unknown?null:lower};
+  return {status:thresholdStatus(stat,threshold),years,threshold,definite,ambiguous,...stat,value:`${old}/${total}개${unknown?` · 산업용도/연식 미확인 ${unknown}`:''} (${lower.toFixed(1)}~${upper.toFixed(1)}%)`};
+}
+function semiindustrialBasicPlanApplicability(store){
+  const d=store.site?.spatial_evidence?.development||store.site?.development||{};
+  const meta=d.industrial_park_metadata||{};
+  const parks=(d.industrial_parks||[]).filter(x=>Number(x.overlap_area_m2||0)>0.5);
+  // 2040 서울 공업지역기본계획은 산업단지 등 타법으로 결정된 공업지역을 적용대상에서 제외한다.
+  // 산업단지 판정은 UQ181 보조코드가 아니라 국토교통부 VWorld LT_C_DAMDAN 전용 경계를 우선한다.
+  if(meta.available===true){
+    if(!parks.length)return {status:'PASS',value:'공업지역기본계획 적용대상',note:'VWorld LT_C_DAMDAN 산업단지 전용경계 중첩 없음',overlap_pct:0,hits:[],source:'VWorld LT_C_DAMDAN'};
+    const pct=Math.min(100,parks.reduce((a,x)=>a+Math.max(0,Number(x.overlap_pct||0)),0));
+    const names=[...new Set(parks.map(x=>x.name||x.type_label||'산업단지'))];
+    if(pct>=99.5)return {status:'NOT_APPLICABLE',value:`산업단지 중첩 ${pct.toFixed(1)}%`,note:`${names.join(', ')} · 타법 관리 산업단지로 2040 서울 공업지역기본계획 적용대상에서 제외`,overlap_pct:pct,hits:parks,source:'VWorld LT_C_DAMDAN'};
+    return {status:'REVIEW',value:`산업단지 일부 중첩 ${pct.toFixed(1)}%`,note:`${names.join(', ')} · 산업단지와 일반 준공업지역이 혼재하므로 구역 분리 검토`,overlap_pct:pct,hits:parks,source:'VWorld LT_C_DAMDAN'};
+  }
+  // 전용 경계 API가 실패한 때에만 UQ181의 UQ5700/UQ1400을 보조근거로 사용한다. 미중첩을 PASS로 쓰지 않는다.
+  const overlaps=d.overlaps||[];
+  const hits=overlaps.filter(x=>String(x.code||'')==='UQ1400'||(String(x.code||'')==='UQ5700'&&/공단|산업/.test(`${x.type_label||''} ${x.name||''}`))||/산업단지|농공단지/.test(`${x.type_label||''} ${x.name||''}`));
+  if(!hits.length)return {status:'REVIEW',value:'산업단지 전용경계 확인필요',note:`VWorld LT_C_DAMDAN 미응답${meta.error?` · ${meta.error}`:''} · UQ181 보조자료 미중첩만으로 적용대상을 확정하지 않음`,overlap_pct:0,hits:[],source:'UQ181_FALLBACK'};
+  const pct=Math.min(100,hits.reduce((a,x)=>a+Math.max(0,Number(x.overlap_pct||0)),0));
+  const names=[...new Set(hits.map(x=>x.name||x.type_label||'산업단지'))];
+  if(pct>=99.5)return {status:'NOT_APPLICABLE',value:`타법 공업용지 중첩 ${pct.toFixed(1)}%`,note:`${names.join(', ')} · UQ181 보조확인`,overlap_pct:pct,hits,source:'UQ181_FALLBACK'};
+  return {status:'REVIEW',value:`타법 공업용지 일부 중첩 ${pct.toFixed(1)}%`,note:`${names.join(', ')} · 전용 산업단지 경계 재확인`,overlap_pct:pct,hits,source:'UQ181_FALLBACK'};
+}
+function buildSemiindustrialDevelopmentFacts(store){
+  const c=store?.common||{},active=c.zoning==='준공업',area=Number(c.area),parcelCount=Number(store?.site?.parcel_count||0);
+  const iu=store?.site?.industrial_usage||{},fu=store?.site?.factory_usage||{},records=store?.site?.building?.records||[];
+  if(!active)return {active:false,zoning:c.zoning||'',status:'NOT_APPLICABLE',note:'준공업지역이 아닌 경우 전용 분기 비활성'};
+
+  const basicPlanApplicability=semiindustrialBasicPlanApplicability(store);
+  const age20=semiindustrialBuildingAgeFact(records,20,50);
+  const industrialAge20=semiindustrialFacilityAgeFact(records,20,50);
+  const industrial10=semiindustrialRatioThresholdFact(iu,10,'gte');
+  const residential10=semiindustrialRatioThresholdFact(iu,10,'lt');
+  const sizeInnovation=Number.isFinite(area)&&area>0?(area>=5000?{status:'PASS',value:fmtSchemeArea(area),note:'5,000㎡ 이상'}:parcelCount===1?{status:'PASS',value:fmtSchemeArea(area),note:'5,000㎡ 미만이나 단일필지 예외 검토 가능'}:{status:'FAIL',value:fmtSchemeArea(area),note:'5,000㎡ 미만 다필지'}):{status:'REVIEW',value:'면적 확인필요',note:'사업구역 면적 미확정'};
+  const sizeRenewal=Number.isFinite(area)&&area>0?{status:area>=5000?'PASS':'FAIL',value:fmtSchemeArea(area),note:'산업정비구역 5,000㎡ 이상'}:{status:'REVIEW',value:'면적 확인필요',note:'사업구역 면적 미확정'};
+
+  // 산업혁신구역 지정대상은 네 가지 중 어느 하나. 자동으로 확인 가능한 것은 20년 이상 노후건축물 50% 경로뿐이다.
+  // 대규모 공장이전·공공시설 이전·저이용부지는 별도 사실확인 전 REVIEW로 보존한다.
+  const innovationTarget=age20.status==='PASS'
+    ?{status:'PASS',value:`20년 이상 노후건축물 50% 경로 · ${age20.value}`,note:'공장이전·공공시설 이전·저이용부지 경로는 별도 확인'}
+    :{status:'REVIEW',value:`노후건축물 ${age20.value}`,note:'노후도 경로가 확정되지 않아도 대규모 공장이전부지·공공시설 이전부지·미개발/저이용부지 중 하나면 지정대상 가능'};
+  const innovationStatus=basicPlanApplicability.status==='NOT_APPLICABLE'?'NOT_APPLICABLE':sizeInnovation.status==='FAIL'?'FAIL':basicPlanApplicability.status!=='PASS'?'REVIEW':(sizeInnovation.status==='PASS'&&innovationTarget.status==='PASS'?'PASS':'REVIEW');
+  const singleFactoryCandidate=parcelCount===1&&Number(fu.factory_ratio_current_proxy_pct)>=50;
+  const innovation={status:innovationStatus,area:sizeInnovation,target:innovationTarget,age20,single_factory_candidate:singleFactoryCandidate,
+    planned_industrial_share:{status:'INFO',value:'가용 총연면적 50% 이상',note:'산업혁신구역 계획 수립 시 반영하는 계획기준 · 현황 사업가능성 하드게이트 아님'},
+    density:{status:'INFO',value:'도시혁신구역 동시지정 시 용도·건폐율·용적률·높이 별도계획',note:'기본계획에서 일률 용적률 확정값을 제시하지 않음'},
+    criteria:[
+      {item:'용도지역',rule:'준공업지역',value:'준공업지역',status:'PASS',note:'용도지역 FACT'},
+      {item:'기본계획 적용대상',rule:'타법에 따라 결정된 공업지역(산업단지 등)은 적용 제외',value:basicPlanApplicability.value,status:basicPlanApplicability.status,note:basicPlanApplicability.note},
+      {item:'규모',rule:'5,000㎡ 이상 · 단일필지는 5,000㎡ 이하 가능',value:sizeInnovation.value,status:sizeInnovation.status,note:sizeInnovation.note},
+      {item:'지정대상',rule:'대규모 공장이전부지 / 20년 이상 노후건축물 50% 이상 / 공공시설 이전부지 / 미개발·저이용부지 중 하나',value:innovationTarget.value,status:innovationTarget.status,note:innovationTarget.note},
+      {item:'산업기능 계획',rule:'복합시설용지의 산업시설 가용총연면적 50% 이상',value:'계획반영필요',status:'INFO',note:'현황 산업비율과 구분'},
+      {item:'밀도',rule:'도시혁신구역 동시지정 가능',value:'별도 도시혁신계획으로 밀도 설정',status:'INFO',note:'위원회 심의 등 후속 계획'}
+    ]};
+
+  // 산업정비구역은 5,000㎡ 이상이 공통 규모기준이다. 세부 유형은 각 지정기준을 독립 표시한다.
+  // 산업비율 10% 이상은 산업주거복합/지역산업육성의 하나의 명시적 경로이므로 확인되면 후보 PASS로 본다.
+  const activationEvidence=industrialAge20.status==='PASS'
+    ?{status:'PASS',value:`20년 이상 노후 산업시설 50% 경로 · ${industrialAge20.value}`,note:'8m 이상 도로율 10% 이하·지원기반시설 열악/공장이전·폐업 증가 경로는 별도 확인'}
+    :{status:'REVIEW',value:`노후 산업시설 ${industrialAge20.value}`,note:'다른 지정경로(도로율·지원기반시설·공장이전/폐업 증가)가 남아 있어 자동 FAIL하지 않음'};
+  const mixedEvidence=industrial10.status==='PASS'
+    ?{status:'PASS',value:`산업비율 ${industrial10.value}`,note:'산업비율 10% 이상 경로 충족'}
+    :{status:'REVIEW',value:`산업비율 ${industrial10.value}`,note:industrial10.status==='FAIL'?'산업비율 10% 미만이나 주거밀집지 인접·산업/주거 혼재 경로는 별도 확인':'산업비율 범위가 10% 기준을 가로질러 확인필요'};
+  const regionalEvidence=industrial10.status==='PASS'
+    ?{status:'PASS',value:`산업비율 ${industrial10.value}`,note:'산업비율 10% 이상 경로 충족'}
+    :{status:'REVIEW',value:`산업비율 ${industrial10.value}`,note:industrial10.status==='FAIL'?'특정업종 밀집·지역특화산업 생태계 경로는 별도 확인':'산업비율 또는 특화업종 밀집 여부 확인'};
+  const subtypePass=[activationEvidence,mixedEvidence,regionalEvidence].some(x=>x.status==='PASS');
+  const renewalStatus=basicPlanApplicability.status==='NOT_APPLICABLE'?'NOT_APPLICABLE':sizeRenewal.status==='FAIL'?'FAIL':basicPlanApplicability.status!=='PASS'?'REVIEW':(sizeRenewal.status==='PASS'&&subtypePass?'PASS':'REVIEW');
+  const renewal={status:renewalStatus,area:sizeRenewal,industrial_age20:industrialAge20,industrial_ratio10:industrial10,
+    subtypes:{industrial_activation:activationEvidence,industrial_residential:mixedEvidence,regional_industry:regionalEvidence},
+    maintenance_ratio:{status:'INFO',value:industrialUsageDisplay(iu),note:'종전산업비율 50% 미만은 종전산업비율, 50% 이상은 50% + 1/5×(종전산업비율-50%)을 산업유지비율로 적용'},
+    criteria:[
+      {item:'용도지역',rule:'준공업지역',value:'준공업지역',status:'PASS',note:'용도지역 FACT'},
+      {item:'기본계획 적용대상',rule:'타법에 따라 결정된 공업지역(산업단지 등)은 적용 제외',value:basicPlanApplicability.value,status:basicPlanApplicability.status,note:basicPlanApplicability.note},
+      {item:'규모',rule:'5,000㎡ 이상',value:sizeRenewal.value,status:sizeRenewal.status,note:sizeRenewal.note},
+      {item:'산업활성화구역',rule:'노후 산업시설 50% 이상 / 8m 이상 도로율 10% 이하 / 지원기반시설 열악·공장이전·폐업 증가 중 하나',value:activationEvidence.value,status:activationEvidence.status,note:activationEvidence.note},
+      {item:'산업주거복합구역',rule:'산업비율 10% 이상 또는 주거밀집지 인접·산업/주거 혼재',value:mixedEvidence.value,status:mixedEvidence.status,note:mixedEvidence.note},
+      {item:'지역산업육성구역',rule:'산업비율 10% 이상 또는 특정업종 밀집·지역특화산업 생태계',value:regionalEvidence.value,status:regionalEvidence.status,note:regionalEvidence.note},
+      {item:'산업유지비율',rule:'종전산업비율에 따른 산업기능 확보',value:industrialUsageDisplay(iu),status:'INFO',note:'계획단계에서 법정 산업유지비율 반영'}
+    ]};
+
+  let managementHint={status:'REVIEW',value:'관리유형 확인필요',note:'관리유형은 사용자 사업카드가 아니라 내부 참고 FACT'};
+  if(residential10.status==='PASS')managementHint={status:'INFO',value:'주거정비형 가능성',note:'산업비율 10% 미만 · 공식 관리유형 공간도면 확인 전 확정하지 않음'};
+  else if(industrial10.status==='PASS')managementHint={status:'INFO',value:'산업계 관리유형 검토',note:'산업비율 10% 이상 · 산업혁신/정비/관리형은 산업기반·지역여건 및 공식 관리유형을 추가 확인'};
+
+  return {active:true,zoning:'준공업',status:'CONFIRMED',industrial_usage:iu,factory_usage:fu,basic_plan_applicability:basicPlanApplicability,management_hint:managementHint,
+    innovation,renewal,source:{title:'2040 서울 공업지역기본계획',law:'도시공업지역법 및 시행규칙 제19조·별표2'},
+    note:'관리유형은 내부 참고, 실행 가능한 법정 사업수단은 별도 패널에서 비교'};
+}
+function semiindustrialResultLabel(status){return status==='PASS'?'검토가능':status==='FAIL'?'적용곤란':status==='NOT_APPLICABLE'?'적용대상 아님':status==='INFO'?'선택검토':'확인필요'}
+function semiindustrialExistingSchemeCard(name,title,note=''){
+  const st=ccCandidateState[name]||safeCandidateState(name),d=candidateDisplayState(name,st);
+  const status=['available','alternative'].includes(d.kind)?'PASS':d.kind==='unavailable'?'FAIL':'REVIEW';
+  return {title:title||schemeNames[name]||name,status,label:d.label||semiindustrialResultLabel(status),note:note||d.action||'',onclick:`showCandidateBasis('${name}')`};
+}
+function renderSemiindustrialDevelopmentPanel(){
+  const panel=document.getElementById('semiindustrialReviewPanel'),grid=document.getElementById('semiindustrialReviewGrid'),foot=document.getElementById('semiindustrialReviewFoot'),badge=document.getElementById('semiindustrialReviewBadge');
+  if(!panel||!grid)return;
+  const store=latestSiteFactStore||analysisState.fact_store,fact=store?.family_specific?.semiindustrial;
+  if(!store||store.common?.zoning!=='준공업'||!fact?.active){panel.classList.remove('active');grid.innerHTML='';return;}
+  panel.classList.add('active');
+  if(badge)badge.textContent=`준공업지역 · 산업비율 ${industrialUsageDisplay(store.site?.industrial_usage)}`;
+  const cards=[];
+  cards.push({title:'산업혁신구역',status:fact.innovation.status,label:semiindustrialResultLabel(fact.innovation.status),note:`${fact.innovation.area.note} · ${fact.innovation.target.note}`,onclick:`openSemiindustrialSchemeDetail('innovation')`});
+  cards.push({title:'산업정비구역',status:fact.renewal.status,label:semiindustrialResultLabel(fact.renewal.status),note:`5,000㎡+ · 산업활성화/산업주거복합/지역산업육성`,onclick:`openSemiindustrialSchemeDetail('renewal')`});
+  cards.push(semiindustrialExistingSchemeCard('reconstruction','재건축','기존 공동주택단지는 도정법 재건축 독립판정'));
+  cards.push(semiindustrialExistingSchemeCard('redevelopment','주택재개발','다필지·노후 주거지 등 도정법 주택재개발 독립판정'));
+  cards.push(semiindustrialExistingSchemeCard('urban_redevelopment','도시정비형 재개발','준공업지역 정비가능구역 등 기존 도시정비형 Rule 적용'));
+  const sr=schemeResults.smallscale?.facts?.routes?.redevelopment||store.scheme_specific?.smallscale?.routes?.redevelopment;
+  cards.push({title:'소규모재개발',status:sr?.status||'REVIEW',label:semiindustrialResultLabel(sr?.status||'REVIEW'),note:sr?.value||'준공업지역 입지 + 1,500~5,000㎡ 등 독립기준',onclick:`showSmallscaleRouteBasis('redevelopment')`});
+  cards.push(semiindustrialExistingSchemeCard('safe','안심주택','준공업지역 허용 여부와 입지·노후도 등 기존 Rule 적용'));
+  cards.push(semiindustrialExistingSchemeCard('longterm','역세권 장기전세','준공업지역은 법정 공장비율 10% 미만 등 별도 Rule 적용'));
+  const pc=schemeResults.public_complex?.route_results?.industrial;
+  cards.push({title:'도심공공주택복합 · 주거산업융합',status:pc?.overall||'REVIEW',label:semiindustrialResultLabel(pc?.overall||'REVIEW'),note:'준공업지역·5,000㎡+·산업시설 정비필요 · 구 2030 계획 미연계 REVIEW 제거',onclick:`activePublicComplexRoute='industrial';showCandidateBasis('public_complex')`});
+  cards.push(semiindustrialExistingSchemeCard('innovation_housing','도심복합 주거중심형','준공업지역 입지는 법정 공장비율 10% 미만 등 별도 Rule 적용'));
+  const prior=semiindustrialExistingSchemeCard('prior_negotiation','사전협상(선택)','');
+  const a=Number(store.common?.area);
+  if(Number.isFinite(a)&&a>=5000){prior.status='INFO';prior.label='선택검토';prior.note='5,000㎡ 이상 대규모 유휴·이전부지 등 대상요건과 도시계획 변경 필요성을 별도 확인 · 다른 사업을 배제하지 않음';}
+  else prior.note=prior.note||'대규모 유휴·이전부지 등 대상요건과 면적기준 별도 확인 · 선택형 전략';
+  cards.push(prior);
+  grid.innerHTML=cards.map(c=>`<button type="button" class="semiindustrial-scheme-card ${escHtml(c.status||'REVIEW')}" onclick="${c.onclick||''}"><b>${escHtml(c.title)}</b><span>${escHtml(c.note||'')}</span><em>${escHtml(c.label||semiindustrialResultLabel(c.status))}</em></button>`).join('');
+  if(foot)foot.textContent=`2040 공업지역 관리유형은 내부 참고 FACT로 유지 · 공장비율 ${store.site.factory_usage?.factory_ratio_pct==null?'법정 2008 기준 확인필요':fmtSchemePct(store.site.factory_usage.factory_ratio_pct)} / 산업비율 ${industrialUsageDisplay(store.site.industrial_usage)} / 공장용도 건축물 비율 ${fmtSchemePct(store.site.factory_usage?.factory_building_ratio_pct)} · 세 값은 상호 대체하지 않음`;
+}
+function openSemiindustrialSchemeDetail(kind){
+  const store=latestSiteFactStore||analysisState.fact_store,f=store?.family_specific?.semiindustrial;if(!f?.active)return;
+  const x=kind==='innovation'?f.innovation:f.renewal,label=kind==='innovation'?'산업혁신구역':'산업정비구역';
+  const title=document.getElementById('schemeDetailPopupTitle'),body=document.getElementById('schemeDetailPopupBody');if(!body)return;
+  if(title)title.textContent=`${label} 기초검토서`;
+  const rows=(x.criteria||[]).map(r=>`<tr><th>${escHtml(r.item)}</th><td>${escHtml(r.rule)}</td><td>${escHtml(r.value||'-')}</td><td><span class="scheme-tag ${escHtml(r.status||'REVIEW')}">${escHtml(r.status==='PASS'?'충족':r.status==='FAIL'?'미충족':r.status==='NOT_APPLICABLE'?'적용대상 아님':r.status==='INFO'?'계획/참고':'확인필요')}</span></td><td>${escHtml(r.note||'-')}</td></tr>`).join('');
+  body.innerHTML=`<div class="activation-sheet"><div class="activation-sheet-title"><div><h3>${escHtml(label)}</h3><p>2040 서울 공업지역기본계획 + 도시공업지역법 기반 초기 지정가능성</p></div><div class="activation-feasibility"><span>초기검토</span><b class="${escHtml(x.status||'REVIEW')}">${escHtml(semiindustrialResultLabel(x.status||'REVIEW'))}</b></div></div><section class="activation-section"><h4>검토결과</h4><table class="activation-table"><thead><tr><th>항목</th><th>기준</th><th>대상지 현황</th><th>판정</th><th>후속</th></tr></thead><tbody>${rows}</tbody></table></section><div class="scheme-modal-note"><b>산업·공장비율</b> 공장비율(별표17 2008.1.31) · 산업비율(도시공업지역법상 종전산업비율) · 공장용도 건축물 동수비율은 서로 다른 FACT이며 대체 사용하지 않습니다.<br/><b>관리유형</b> 산업혁신형·산업정비형·산업관리형·주거정비형은 내부 참고 FACT로만 사용하며 공식 관리유형 공간도면 확인 전 자동 확정하지 않습니다.</div></div>`;
+  appendBaseReviewDisclaimer(kind==='innovation'?'urban_innovation_zone':'urban_redevelopment');
+  openReviewModal('schemeDetailModal');
+}
+
+function innovationFactoryBuildingRatio(records,manualPct=null){
+  // Legacy adapter retained for regression compatibility. 자동 동수비율은 법정 공장비율 pct로 반환하지 않는다.
+  const rows=Array.isArray(records)?records:[],total=rows.length,factoryCount=rows.filter(isFactoryBuildingRecord).length;
+  const buildingPct=total?factoryCount/total*100:null,manual=manualPct!=null&&Number.isFinite(Number(manualPct))?Number(manualPct):null;
+  return {pct:manual,building_pct:buildingPct,factory_count:factoryCount,total_count:total,source:manual!=null?'MANUAL':'BUILDING_COUNT_REFERENCE_ONLY',note:manual!=null?'2008.1.31 기준 공식/전문가 공장비율 입력':'공장용도 건축물 동수비율은 현황 참고값이며 법정 공장비율 PASS/FAIL에 사용하지 않음'};
 }
 function innovationApartmentPrecheck(records,siteArea,manualArea=null,manualRatio=null){
   const rows=Array.isArray(records)?records:[];
@@ -10725,7 +11009,8 @@ function innovationSpatialFacts(store,typ){
     fact.spatial_status_rows=[
       spatialFactRow('사업유형','주거중심형','CONFIRMED','서울시 조례 제5조 핵심 사업추진조건'),
       spatialFactRow('역세권 350m/500m 포함률',`350m ${fmtSchemePct(cov350)}${best350?'('+best350.name+')':''} / 500m ${fmtSchemePct(cov500)}${best500?'('+best500.name+')':''}`,cov350!=null||cov500!=null?'CONFIRMED':'REVIEW','주변 모든 역을 역별 계산 후 가장 높은 단일역 포함률 사용 · 일반지역 과반 / 준공업 전체'),
-      spatialFactRow('공장건축물 비율(초기검토)',factory.pct==null?'-':`${Number(factory.pct).toFixed(1)}% (${factory.factory_count}/${factory.total_count}동)`,c.zoning==='준공업'?(factory.pct==null?'REVIEW':'CONFIRMED'):'INFO','공장용도 건축물 수 ÷ 전체 건축물 수 ×100'),
+      spatialFactRow('법정 공장비율',c.zoning==='준공업'?(factory.pct==null?'확인필요':fmtSchemePct(factory.pct)):'비해당',c.zoning==='준공업'?(factory.pct==null?'REVIEW':'CONFIRMED'):'INFO','서울시 도시계획조례 별표17 2008.1.31 기준값 · 현재 공장용도 건축물 비율로 대체하지 않음'),
+      spatialFactRow('공장용도 건축물 비율(참고)',factory.building_pct==null?'-':`${Number(factory.building_pct).toFixed(1)}% (${factory.factory_count}/${factory.total_count}동)`,'INFO','공장용도 건축물 수 ÷ 전체 건축물 수 ×100 · 법정 공장비율과 별개'),
       spatialFactRow('20년 이상 노후도',ageFactValue(age),age?'CONFIRMED':'REVIEW','전체 건축물 중 20년 이상 60%'),
       spatialFactRow('공동주택단지 제한',apartment.has_apartment===false?'공동주택 없음':`최대 ${fmtSchemeArea(apartment.max_area_m2)} / ${fmtSchemePct(apartment.max_ratio_pct)}`,apartment.status==='PASS'?'CONFIRMED':'REVIEW','각 단지 1만㎡ 이하 + 사업구역 면적의 30% 이하')
     ];
@@ -10768,25 +11053,23 @@ function checkInnovationFromFacts(store,f){
     let loc='REVIEW',note='';
     const factory=f.zoning.factory;
     if(f.zoning.current==='준공업'){
-      const factoryMismatch=store.site.factory_usage?.mismatch;
-      if(f.zoning.factory_pct==null)loc='REVIEW';
-      else if(factoryMismatch){loc='REVIEW';note='공장비율 자동/수기 값 불일치로 확인 필요';}
+      if(f.zoning.factory_pct==null){loc='REVIEW';note='서울시 도시계획조례 별표17의 2008.1.31 기준 공장비율 확인 필요';}
       else if(f.station.coverage350_pct!=null&&f.station.coverage350_pct>=99.999&&f.zoning.factory_pct<10)loc='PASS';
       else if(f.station.coverage500_pct!=null&&f.station.coverage500_pct>=99.999&&f.zoning.factory_pct<10){loc='REVIEW';note='350~500m 구간은 시장 인정 필요';}
       else loc='FAIL';
-      note=[note,`공장건축물 비율 ${f.zoning.factory_pct==null?'-':Number(f.zoning.factory_pct).toFixed(1)+'%'} (${factory?.factory_count??'-'}/${factory?.total_count??'-'}동) · ${factory?.note||''}`].filter(Boolean).join(' · ');
+      note=[note,`법정 공장비율 ${f.zoning.factory_pct==null?'-':Number(f.zoning.factory_pct).toFixed(1)+'%'} · ${factory?.note||''}`].filter(Boolean).join(' · ');
     }else{
       if(f.station.coverage350_pct!=null&&f.station.coverage350_pct>=50)loc='PASS';
       else if(f.station.coverage500_pct!=null&&f.station.coverage500_pct>=50){loc='REVIEW';note='350~500m 구간은 시장 인정 필요';}
       else if(f.station.coverage350_pct!=null||f.station.coverage500_pct!=null)loc='FAIL';
     }
-    rows.push(schemeRow('입지','일반지역: 사업면적 과반 역세권 / 준공업: 사업면적 전체 역세권 + 공장건축물 비율 10% 미만',`350m ${fmtSchemePct(f.station.coverage350_pct)} / 500m ${fmtSchemePct(f.station.coverage500_pct)}${f.zoning.current==='준공업'?` / 공장 ${fmtSchemePct(f.zoning.factory_pct)}`:''}`,loc,note,true,{sourceId:'INNOVATION_ORD',locator:'제5조제1항제1호'}));
+    rows.push(schemeRow('입지','일반지역: 사업면적 과반 역세권 / 준공업: 사업면적 전체 역세권 + 법정 공장비율 10% 미만',`350m ${fmtSchemePct(f.station.coverage350_pct)} / 500m ${fmtSchemePct(f.station.coverage500_pct)}${f.zoning.current==='준공업'?` / 공장 ${fmtSchemePct(f.zoning.factory_pct)}`:''}`,loc,note,true,{sourceId:'INNOVATION_ORD',locator:'제5조제1항제1호'}));
     rows.push(schemeRow('노후도','20년 이상 건축물 60% 이상',ageFactValue(f.aging.assessment),f.aging.assessment?.status||'REVIEW',ageFactNote(f.aging.assessment),true,{sourceId:'INNOVATION_ORD',locator:'제5조제1항제2호'}));
     rows.push(schemeRow('면적','20,000㎡ 이상 60,000㎡ 이하',fmtSchemeArea(f.area.m2),f.area.m2==null?'REVIEW':f.area.m2>=20000&&f.area.m2<=60000?'PASS':'FAIL','',true,{sourceId:'INNOVATION_ORD',locator:'제5조제1항제3호'}));
     const allowed=['제2종일반주거(7층)','제2종일반주거','제3종일반주거','준주거','준공업'];
     rows.push(schemeRow('용도지역','서울시 시행규칙상 제안 가능 용도지역',f.zoning.current||'-',f.zoning.current?(allowed.includes(f.zoning.current)?'PASS':'FAIL'):'REVIEW','핵심 사업추진조건 결과에는 미반영',false,{sourceId:'INNOVATION_RULE',locator:'제4조'}));
     rows.push(schemeRow('추가 접도 적정성','서울시 시행규칙상 접도요건',summarizeRoadList(f.road),'REVIEW','핵심 사업추진조건 결과와 분리 · 도로 기능자료 보강 후 후속검토',false,{sourceId:'INNOVATION_RULE',locator:'제2조·제4조'}));
-    rows.push(schemeRow('주택 연면적','사업 후 주택 연면적 비율 등 세부 사업계획 조건',fmtSchemePct(f.housing.planned_floor_pct),f.housing.planned_floor_pct==null?'REVIEW':f.housing.planned_floor_pct>=50?'PASS':'FAIL','핵심 사업추진조건 결과에는 미반영',false,{sourceId:'INNOVATION',locator:'시행령 제2조'}));
+    rows.push(schemeRow('주택 연면적','사업 후 주택 연면적 비율 등 세부 사업계획 조건',f.housing.planned_floor_pct==null?'계획반영필요':fmtSchemePct(f.housing.planned_floor_pct),'INFO','사업계획 수립 시 법정 주택 연면적 비율을 반영 · 초기 대상지 가능성 판정에는 미사용',false,{sourceId:'INNOVATION',locator:'시행령 제2조',policyRole:'PLAN'}));
   }
   const a=f.apartment||{};
   const aptValue=a.has_apartment===false?'공동주택단지 없음':`최대 ${fmtSchemeArea(a.max_area_m2)} / 사업구역 대비 ${fmtSchemePct(a.max_ratio_pct)}`;
@@ -11145,11 +11428,11 @@ function generalHousingSpatialFacts(store){
   // 민간 주택개발은 주택정비사업 Family Fact/노후도/과소필지/주택접도율을 진입조건으로 사용하지 않는다.
   const c=store.common,z=store.site.spatial_evidence?.zoning||{};
   const units=c.units;
-  let approvalStatus='REVIEW',approvalRoute='계획 세대수 입력 필요',approvalNote='계획 세대수에 따라 주택법 사업계획승인 또는 건축허가 등 인허가 경로 구분';
+  let approvalStatus='INFO',approvalRoute='계획반영필요 · 계획 세대수에 따라 인허가 경로 확정',approvalNote='계획 세대수는 사업가능성 기준이 아니라 주택법 사업계획승인 또는 건축허가 등 후속 인허가 경로를 정하는 계획변수';
   if(units!=null){
-    if(units>=50){approvalStatus='PASS';approvalRoute='주택법 사업계획승인 대상';approvalNote='공동주택 30세대 이상 일반기준을 명확히 초과';}
-    else if(units>=30){approvalStatus='REVIEW';approvalRoute='30~49세대 · 주택유형별 승인기준 확인';approvalNote='공동주택은 30세대 이상이 사업계획승인 대상 원칙이나, 일정 단지형 연립·다세대 등은 50세대 기준 예외가 있어 주택유형·진입도로 등 요건 확인 전 자동확정하지 않음';}
-    else{approvalStatus='PASS';approvalRoute='30세대 미만 · 건축법상 허가 등 경로 검토';approvalNote='주택법 사업계획승인 규모 미만이 사업불가를 의미하지 않음';}
+    if(units>=50){approvalRoute='주택법 사업계획승인 경로 계획';approvalNote='입력 계획값 기준 50세대 이상 · 사업가능성 판정과 분리';}
+    else if(units>=30){approvalRoute='30~49세대 · 주택유형별 승인경로 계획';approvalNote='공동주택 30세대 이상 원칙과 일정 연립·다세대 등의 50세대 예외를 사업계획 수립 시 적용';}
+    else{approvalRoute='30세대 미만 · 건축법상 허가 등 경로 계획';approvalNote='사업계획승인 규모 미만은 사업불가가 아니며 후속 인허가 경로만 달라짐';}
   }
   const commonHousingZones=['제1종일반주거','제2종일반주거(7층)','제2종일반주거','제3종일반주거','준주거','근린상업','일반상업','중심상업'];
   let zoningStatus='REVIEW',zoningNote='용도지역 공식자료 및 주택 허용용도 확인 필요';
@@ -11163,7 +11446,7 @@ function generalHousingSpatialFacts(store){
     planning_context:{conflicts,development_overlaps:dev.overlaps||[],district_plans:dev.district_plans||[]},planning:{density},spatial_status_rows:[]
   };
   fact.spatial_status_rows=[
-    spatialFactRow('계획 세대수',units==null?'-':`${units}세대`,units==null?'REVIEW':'CONFIRMED',approvalRoute),
+    spatialFactRow('계획 세대수',units==null?'계획반영필요':`${units}세대 · 계획값`,'INFO',approvalRoute),
     spatialFactRow('용도지역',c.zoning||'-',z.known?'CONFIRMED':'REVIEW',zoningNote),
     spatialFactRow('도시계획 중첩',conflicts.length?`${conflicts.length}건 계획시설·제한 중첩`:dev.loaded?'특이 중첩 없음':'GIS 미확인',dev.loaded?'CONFIRMED':'REVIEW','개별 개발제한은 상세 도면에서 확인'),
     spatialFactRow('법정용적률',density.far,z.known?'CONFIRMED':'REVIEW','서울특별시 도시계획 조례 제48조')
@@ -11173,7 +11456,7 @@ function generalHousingSpatialFacts(store){
 function checkGeneralHousingFromFacts(store,f){
   const rows=[];
   rows.push(schemeRow('사업체계','정비사업 여부와 관계없이 대상 토지의 주택개발 가능성과 주택법·건축법상 인허가 경로를 독립 검토','민간 주택개발 독립검토','INFO','노후도·과소필지·주택접도율 등 정비사업 입안요건을 사업진입조건으로 사용하지 않음',false,{sourceId:'HOUSING_ACT',locator:'주택법 제15조 및 건축법상 허가체계'}));
-  rows.push(schemeRow('인허가 경로·세대수','공동주택 30세대 이상은 주택법 사업계획승인 대상 원칙 · 일정 연립·다세대 등은 50세대 기준 예외',f.approval.units==null?f.approval.route:`${f.approval.units}세대 · ${f.approval.route}`,f.approval.status,f.approval.note,true,{sourceId:'HOUSING_ACT',locator:'주택법 제15조 / 주택법 시행령 제27조제1항제2호'}));
+  rows.push(schemeRow('인허가 경로·세대수','공동주택 30세대 이상은 주택법 사업계획승인 대상 원칙 · 일정 연립·다세대 등은 50세대 기준 예외',f.approval.units==null?f.approval.route:`${f.approval.units}세대 · ${f.approval.route}`,f.approval.status,f.approval.note,false,{sourceId:'HOUSING_ACT',locator:'주택법 제15조 / 주택법 시행령 제27조제1항제2호',policyRole:'PLAN'}));
   rows.push(schemeRow('용도지역·주거용도','현 용도지역에서 계획 주택유형의 허용 여부와 지구단위·도시계획 제한을 확인',f.zoning.current||'-',f.zoning.status,f.zoning.note,true,{sourceId:'SEOUL_URBAN_PLAN_ORD',locator:'용도지역별 건축물 용도 제한 및 관련 별표 · 개별 지구단위계획 재확인'}));
   rows.push(schemeRow('법정용적률','현 용도지역의 서울시 조례 용적률을 기본 상한으로 검토',f.planning.density.far,'INFO',f.planning.density.zone,false,{sourceId:'SEOUL_URBAN_PLAN_ORD',locator:'제48조'}));
   rows.push(schemeRow('도시계획 중첩','도시계획시설·지구단위계획·개발구역 등 중첩 시 해당 결정도서 우선 적용',f.planning_context.conflicts.length?`${f.planning_context.conflicts.length}건 확인`:store.site.development.loaded?'특이 중첩 없음':'자료 미확인',store.site.development.loaded?'INFO':'REVIEW','공간현황 도면과 결정고시를 함께 확인',false,{sourceId:'PLANNING_GIS',locator:'용도지역·도시계획시설·지구단위계획·개발구역 공간중첩 / 개별 결정고시 재확인'}));
@@ -12226,7 +12509,7 @@ function renderAllSchemeSheets(){
       <td>${escHtml(r.item)}</td>
       <td>${escHtml(r.rule)}</td>
       <td>${escHtml(r.value)}</td>
-      <td><span class="scheme-tag ${r.status}">${r.status==='PASS'?'충족':r.status==='FAIL'?'미달':r.status==='REVIEW'?'확인':'정보'}</span></td>
+      <td>${(()=>{const d=schemeRowDisplay(r);return `<span class="scheme-tag ${d.cls}">${escHtml(d.label)}</span>`;})()}</td>
       <td>${escHtml(r.gap||'-')}</td>
       <td>${escHtml(r.action||'-')}${r.alternatives?`<small class="rule-alternative">대안 · ${escHtml(r.alternatives)}</small>`:''}</td>
       <td><span class="rule-trust ${escHtml(r.trust||'CONDITIONAL')}">${escHtml(r.trustLabel||'조건부')}</span></td>
@@ -12360,6 +12643,7 @@ function runAllSchemeChecks(){
     safeSchemeUiStep('scheme-spatial',()=>renderSchemeSpecificSpatialStatus(store),uiErrors);
   }
   safeSchemeUiStep('candidate',()=>updateCandidateSchemes(),uiErrors);
+  safeSchemeUiStep('semiindustrial-review',()=>renderSemiindustrialDevelopmentPanel(),uiErrors);
   safeSchemeUiStep('ai-analysis',()=>scheduleAiComprehensiveAnalysis(),uiErrors);
   safeSchemeUiStep('comparison',()=>renderSchemeComparison(),uiErrors);
   safeSchemeUiStep('sheets',()=>renderAllSchemeSheets(),uiErrors);
@@ -12800,7 +13084,7 @@ function renderMobileSelectedScheme(name){
     body.innerHTML=rows.length?rows.map(r=>`<div class="mobile-criterion-card">
       <div class="mobile-criterion-top">
         <b>${escHtml(r.item)}</b>
-        <span class="scheme-tag ${r.status}">${r.status==='PASS'?'충족':r.status==='FAIL'?'미달':r.status==='REVIEW'?'확인':'정보'}</span>
+        ${(()=>{const d=schemeRowDisplay(r);return `<span class="scheme-tag ${d.cls}">${escHtml(d.label)}</span>`;})()}
       </div>
       <div class="mobile-criterion-rule">${escHtml(r.rule)}</div>
       <div class="mobile-criterion-value">${escHtml(r.value)}</div>
@@ -13522,6 +13806,8 @@ function buildAiComprehensiveSummary(){
     const gaps=rows.filter(r=>r?.required!==false&&(r?.status==='FAIL'||r?.status==='REVIEW')).slice(0,6).map(r=>({
       item:aiCompactText(r.item,80),status:r.status||'REVIEW',value:aiCompactText(r.value,100),gap:aiCompactText(r.gap,100),action:aiCompactText(r.action,120),note:aiCompactText(r.note||r.caveat,120)
     }));
+    const planning_required=rows.filter(r=>r?.policyRole==='PLAN').slice(0,6).map(r=>({item:aiCompactText(r.item,80),value:aiCompactText(r.value,100),action:'계획반영필요'}));
+    const prerequisites=rows.filter(r=>r?.policyRole==='PREREQUISITE').slice(0,6).map(r=>({item:aiCompactText(r.item,80),value:aiCompactText(r.value,100),action:'사업추진 전제조건'}));
     const legal=[];
     for(const r of rows){
       if(!r?.sourceTitle)continue;
@@ -13531,7 +13817,7 @@ function buildAiComprehensiveSummary(){
     }
     return {
       scheme:name,business:schemeNames[name],family:schemeFamilyLabel(name),status:aiDecisionStatus(name,res,st,display),engine_status:res.overall||'REVIEW',display_label:aiCompactText(display.label,100),condition_change:display.kind==='adjustable'?aiCompactText(display.action,140):'',
-      strengths:(res.strengths||[]).slice(0,3).map(x=>aiCompactText(x,120)),risks:(res.risks||[]).slice(0,3).map(x=>aiCompactText(x,120)),followups:(res.followups||[]).slice(0,3).map(x=>aiCompactText(x,120)),gaps,
+      strengths:(res.strengths||[]).slice(0,3).map(x=>aiCompactText(x,120)),risks:(res.risks||[]).slice(0,3).map(x=>aiCompactText(x,120)),followups:(res.followups||[]).slice(0,3).map(x=>aiCompactText(x,120)),gaps,planning_required,prerequisites,
       far:aiCompactText(den.far||'',120),zoning_up:aiCompactText(den.zone||'',100),public_contribution:aiCompactText(den.contribution||'',120),legal_basis:legal
     };
   }).filter(Boolean);
@@ -14369,7 +14655,7 @@ function evaluatePublicComplexRoutes(store,facts){
   for(const typ of ['commercial','industrial','housing']){
     const routeFacts={...facts,type:typ,type_label:publicComplexTypeLabel(typ),planning:{...facts.planning,density:publicComplexDensity(store.common,typ)}};
     const rows=checkPublicComplexFromFacts(store,routeFacts),overall=overallScheme(rows),density=routeFacts.planning.density;
-    routeResults[typ]={type:typ,label:publicComplexTypeLabel(typ),facts:routeFacts,rows,overall,density,...moduleStrengthRisk(rows,['도시재생사업 인허가 공간자료 연결','주거산업융합은 2030 준공업지역 종합발전계획 세부 Fact 보완','주택공급활성화의 주택접도율·지하주거 Fact 보완'])};
+    routeResults[typ]={type:typ,label:publicComplexTypeLabel(typ),facts:routeFacts,rows,overall,density,...moduleStrengthRisk(rows,['도시재생사업 인허가 공간자료 연결','주거산업융합은 2040 서울 공업지역기본계획 현황 FACT와 별도 연계','주택공급활성화의 주택접도율·지하주거 Fact 보완'])};
   }
   const requested=schemeVal('public_complex_type');
   let selected=(requested&&requested!=='auto')?requested:null;
@@ -15442,8 +15728,9 @@ function activationFeasibilityLabel(status){
 function activationRowByItem(res,item){return (res?.rows||[]).find(r=>r.item===item)||null;}
 function activationStatusCell(r){
   if(!r)return '<span class="scheme-tag REVIEW">확인필요</span>';
-  const label=r.status==='PASS'?(r.conditional?'충족·단서':'충족'):r.status==='FAIL'?'불충족':r.status==='INFO'?'계획':r.conditional?'조건부':'확인필요';
-  return `<span class="scheme-tag ${escHtml(r.status||'REVIEW')}">${escHtml(label)}</span>`;
+  const d=schemeRowDisplay(r);
+  const label=r?.policyRole?d.label:(r.status==='PASS'?(r.conditional?'충족·단서':'충족'):r.status==='FAIL'?'불충족':r.status==='REVIEW'?(r.conditional?'조건부':'확인필요'):'계획');
+  return `<span class="scheme-tag ${escHtml(d.cls||'REVIEW')}">${escHtml(label)}</span>`;
 }
 function renderActivationDetailPopup(){
   const title=document.getElementById('schemeDetailPopupTitle');
@@ -15500,7 +15787,7 @@ function renderActivationDetailPopup(){
       <div style="padding:8px 10px;font-size:8px;line-height:1.6;color:#475467"><b>강점</b> ${escHtml(strengths)}<br><b>약점</b> ${escHtml(risks)}<br><b>추가확인</b> ${escHtml(follow)}</div></section>
     <section class="activation-section"><h4>3. 계획기준</h4><table class="activation-table"><thead><tr><th>검토항목</th><th>적용가능 범위</th><th>적용조건·해석</th><th>근거</th></tr></thead><tbody>${planRows}</tbody></table></section>
     <section class="activation-section"><h4>4. 추진일정</h4><div class="activation-procedure">${stepHtml}</div><div style="padding:0 9px 9px;font-size:8px;color:#667085">사업대상지 선정 후 12개월 이내 주민제안서 제출이 원칙이며, 자문·협의·위원회 일정과 사업방식에 따라 실제 기간은 달라질 수 있습니다.</div></section>
-    <div class="scheme-modal-note"><b>판정구조</b> 현황 Fact Store → 역세권활성화 전용 공간체크 → 전용 Rule Module → 본 검토서 → 사업우선순위 순으로 같은 데이터를 사용합니다. 위원회 심의·지원자문단 인정·동의율 등은 사업 자체를 임의로 부정하지 않고 조건부 또는 후속 결정으로 분리합니다.</div>
+    <div class="scheme-modal-note"><b>판정구조</b> 현황 Fact Store → 역세권활성화 전용 공간체크 → 전용 Rule Module → 본 검토서 → 사업우선순위 순으로 같은 데이터를 사용합니다. 위원회 심의·지원자문단 인정은 후속 결정으로 분리하고, 동의율은 사업자가 확보해야 할 사업추진 전제조건으로만 표시하여 사업가능성 판정에는 사용하지 않습니다.</div>
   </div>`;
 }
 function renderPriorityPreview(){
@@ -15547,7 +15834,7 @@ function schemeSheetSourceFor(scheme,item,sourceId='',locator=''){
 }
 function schemeSheetResultRows(res,groupFor,excludeItems=[]){
   const excluded=new Set(excludeItems||[]);
-  return (res?.rows||[]).filter(r=>!excluded.has(r.item)&&r.status!=='INFO').map(r=>`<tr>
+  return (res?.rows||[]).filter(r=>!excluded.has(r.item)&&(r.status!=='INFO'||!!r.policyRole)).map(r=>`<tr>
     <td class="group">${escHtml(groupFor(r.item))}</td><td><b>${escHtml(r.item||'-')}</b></td>
     <td>${escHtml(r.rule||'-')}</td><td>${escHtml(r.value??'-')}</td>
     <td>${activationStatusCell(r)}<div class="activation-next">${escHtml(r.action||r.note||'-')}</div></td>
@@ -15580,14 +15867,14 @@ function schemeSpecificResultRows(res,groups,excludeItems=[]){
   let out='';
   (groups||[]).forEach(g=>{
     rows.forEach((r,i)=>{
-      if(used.has(i)||excluded.has(r.item)||r.status==='INFO')return;
+      if(used.has(i)||excluded.has(r.item)||(r.status==='INFO'&&!r.policyRole))return;
       if(!(g.items||[]).includes(r.item))return;
       used.add(i);
       out+=`<tr><td class="group">${escHtml(g.label)}</td><td><b>${escHtml(r.item||'-')}</b></td><td>${escHtml(r.rule||'-')}</td><td>${escHtml(r.value??'-')}</td><td>${activationStatusCell(r)}<div class="activation-next">${escHtml(r.action||r.note||'-')}</div></td><td>${schemeSheetSourceCell(r)}</td></tr>`;
     });
   });
   rows.forEach((r,i)=>{
-    if(used.has(i)||excluded.has(r.item)||r.status==='INFO')return;
+    if(used.has(i)||excluded.has(r.item)||(r.status==='INFO'&&!r.policyRole))return;
     out+=`<tr><td class="group">기타 확인</td><td><b>${escHtml(r.item||'-')}</b></td><td>${escHtml(r.rule||'-')}</td><td>${escHtml(r.value??'-')}</td><td>${activationStatusCell(r)}<div class="activation-next">${escHtml(r.action||r.note||'-')}</div></td><td>${schemeSheetSourceCell(r)}</td></tr>`;
   });
   return out;
@@ -15765,13 +16052,12 @@ function renderLongtermDetailPopup(){
     {label:'입지유형',items:['역세권등']},
     {label:'대상지 현황',items:['용도지역','대상지 면적','노후도']},
     {label:'입지제한',items:['입지 특성화·제외지역','구릉지 후속확인']},
-    {label:'계획·추진후 조건',items:['계획 세대수','사업추진 동의']}
-  ],['용적률 계획기준','공공기여 기준']);
+    {label:'사업추진 전제조건',items:['사업추진 동의']}
+  ],['계획 세대수','용적률 계획기준','공공기여 기준']);
   const density=f.planning?.density||{};
   const planRows=[
     `<tr><td><b>추진방식</b></td><td>${escHtml(f.route?.label||'-')}</td><td>${escHtml(f.route?.selected==='redevelopment'?'정비계획 기준의 노후도·법적상한 적용':'지구단위계획 기준의 노후도·계획기준 적용')}</td><td>${schemeSheetSourceFor('longterm','추진방식','LONGTERM_OP','제1장 제3절·제2장 제1절')}</td></tr>`,
-    `<tr><td><b>계획 세대수</b></td><td>${escHtml(f.units?.count==null?'계획 이후 반영':f.units.count+'세대')}</td><td>100세대 이상은 사업계획 수립단계에서 확보하며 초기 대상지 입지판정에는 사용하지 않음</td><td>${schemeSheetSourceFor('longterm','계획 세대수','LONGTERM_OP','2-1-4 가목')}</td></tr>`,
-    `<tr><td><b>사업추진 동의</b></td><td>${escHtml(f.route?.selected==='redevelopment'?'정비계획 방식 동의요건':'지구단위계획 방식 토지면적 동의요건')}</td><td>현재 미확보여도 대상지 입지판정을 유보하지 않고 사전검토·사업추진 단계에서 충족</td><td>${schemeSheetSourceFor('longterm','사업추진 동의','LONGTERM_OP','2-2-3')}</td></tr>`,
+    `<tr><td><b>계획 세대수</b></td><td>${escHtml(f.units?.count==null?'계획반영필요':f.units.count+'세대')}</td><td><b>계획반영필요</b> · 100세대 이상은 사업계획 수립단계에서 확보하며 초기 대상지 입지판정에는 사용하지 않음</td><td>${schemeSheetSourceFor('longterm','계획 세대수','LONGTERM_OP','2-1-4 가목')}</td></tr>`,
     `<tr><td><b>용도지역 변경방향</b></td><td>${escHtml(density.zone||'-')}</td><td>현황 용도지역과 입지구분에 따라 종상향 검토</td><td>${schemeSheetSourceFor('longterm','용도지역 변경방향','LONGTERM_OP','제3장 용도지역·용적률 계획기준')}</td></tr>`,
     schemeSpecificPlanRow(res,'용적률 계획기준','용적률 계획기준',density.far||null,density.special700_location_candidate?'700% 특례 입지후보이나 활성화 필요성·위원회 인정이 추가로 필요':'기본·상한·법적상한을 추진방식별로 구분'),
     schemeSpecificPlanRow(res,'공공기여 기준','장기전세·공공기여',density.contribution||null,'완화용적률의 일부를 장기전세주택 등으로 우선 제공')
@@ -15804,7 +16090,7 @@ function renderPublicComplexDetailPopup(){
   const tabs=['commercial','industrial','housing'].map(k=>{const x=routeResults[k]||{},st=x.overall||f.routes?.[k]?.status||'REVIEW';return `<button class="smallscale-route-tab ${escHtml(st)} ${k===typ?'active':''}" onclick="selectPublicComplexPopupRoute('${k}')">${escHtml(publicComplexTypeLabel(k))} · ${escHtml(st==='PASS'?'충족':st==='FAIL'?'불충족':'확인필요')}</button>`;}).join('');
   const resultRows=schemeSpecificResultRows(viewRes,[
     {label:'공통조건',items:['정비구역 배제','도시개발구역 배제','도시재생사업 인허가 배제','노후도']},
-    {label:'유형별 대상지요건',items:['역세권 범위','용도지역','도로','저개발성','면적','산업시설 정비필요','준공업 종합발전계획','저층주거·기반시설','추가 입지요건']}
+    {label:'유형별 대상지요건',items:['역세권 범위','용도지역','도로','저개발성','면적','산업시설 정비필요','공업지역기본계획 연계','저층주거·기반시설','추가 입지요건']}
   ],['사업유형','사업시행 구조','제도 유효기간','용적률·공공성']);
   const density=rr.density||publicComplexDensity(store.common,typ);
   const planRows=[
@@ -15825,7 +16111,7 @@ function renderPublicComplexDetailPopup(){
   <section class="activation-section"><h4>2. ${escHtml(publicComplexTypeLabel(typ))} 검토결과</h4><table class="activation-table"><thead><tr><th>구분</th><th>검토항목</th><th>기준</th><th>대상지 현황</th><th>판정·후속</th><th>근거</th></tr></thead><tbody>${resultRows}</tbody></table>${schemeDetailSummary(viewRes)}</section>
   <section class="activation-section"><h4>3. 사업구조·계획기준</h4><table class="activation-table"><thead><tr><th>검토항목</th><th>적용가능 범위</th><th>적용조건·해석</th><th>근거</th></tr></thead><tbody>${planRows}</tbody></table></section>
   <section class="activation-section"><h4>4. 추진일정</h4><div class="activation-procedure">${steps}</div></section>
-  <div class="scheme-modal-note"><b>판정구조</b> 공통배제·20년 이상 60% 노후도는 세 유형이 공유하는 FACT입니다. 주거상업고밀지구는 350m·용도지역·4m/8m 도로, 주거산업융합지구는 준공업지역·2030 준공업지역 종합발전계획, 주택공급활성화지구는 저층주거·면적·용도지역·추가입지요건을 서로 독립 RULE로 판정합니다. 주민동의율은 지구지정 시 사업추진 가능성 판단요소로 후속 관리합니다.</div></div>`;
+  <div class="scheme-modal-note"><b>판정구조</b> 공통배제·20년 이상 60% 노후도는 세 유형이 공유하는 FACT입니다. 주거상업고밀지구는 350m·용도지역·4m/8m 도로, 주거산업융합지구는 준공업지역·5,000㎡·산업시설 정비필요 요건을 판정하고 2040 서울 공업지역기본계획은 별도 현황 FACT로 병행하며, 주택공급활성화지구는 저층주거·면적·용도지역·추가입지요건을 서로 독립 RULE로 판정합니다. 주민동의율은 지구지정 시 사업추진 가능성 판단요소로 후속 관리합니다.</div></div>`;
 }
 
 function renderInnovationDetailPopup(name){
@@ -15846,7 +16132,7 @@ function renderInnovationDetailPopup(name){
     <tr><th>공동주택단지</th><td colspan="3">${escHtml(apt.has_apartment===false?'건축물대장상 공동주택 용도 없음':`최대단지 ${fmtSchemeArea(apt.max_area_m2)} / 사업구역 대비 ${fmtSchemePct(apt.max_ratio_pct)} · ${apt.note||''}`)}</td></tr>
   </tbody></table></section>
   <section class="activation-section"><h4>2. 사업추진조건 판정</h4><table class="activation-table"><thead><tr><th>구분</th><th>검토항목</th><th>기준</th><th>대상지 현황</th><th>판정·후속</th><th>근거</th></tr></thead><tbody>${resultRows}</tbody></table>${schemeDetailSummary(res)}</section>
-  <div class="scheme-modal-note"><b>판정범위</b> ${f.type==='growth'?'성장거점형은 입지·5,000㎡ 이상·공동주택단지 제한을 핵심 추진조건으로 판정합니다. 중심지 경로의 20m 간선도로는 행안부 도로 기능자료 연계 전까지 확인필요로 둡니다.':'주거중심형은 역세권 입지·20년 이상 노후도 60%·2만~6만㎡·공동주택단지 제한을 핵심 추진조건으로 판정합니다. 준공업지역 공장비율은 현재 건축물대장상 공장용도 건축물 수/전체 건축물 수로 초기검토합니다.'}<br/>시행규칙상 용도지역·추가 접도·제외지역, 지정신청 동의·시행자 조건은 핵심 결과와 분리한 후속검토입니다.</div></div>`;
+  <div class="scheme-modal-note"><b>판정범위</b> ${f.type==='growth'?'성장거점형은 입지·5,000㎡ 이상·공동주택단지 제한을 핵심 추진조건으로 판정합니다. 중심지 경로의 20m 간선도로는 행안부 도로 기능자료 연계 전까지 확인필요로 둡니다.':'주거중심형은 역세권 입지·20년 이상 노후도 60%·2만~6만㎡·공동주택단지 제한을 핵심 추진조건으로 판정합니다. 준공업지역 공장비율은 서울시 도시계획조례 별표17의 2008.1.31 기준 공식값만 PASS/FAIL에 사용하며 현재 공장용도 건축물 비율은 별도 현황참고로 분리합니다.'}<br/>시행규칙상 용도지역·추가 접도·제외지역, 지정신청 동의·시행자 조건은 핵심 결과와 분리한 후속검토입니다.</div></div>`;
 }
 
 function renderUrbanRedevelopmentDetailPopup(){

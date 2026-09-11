@@ -247,6 +247,7 @@ VWORLD_SEARCH_URL = "https://api.vworld.kr/req/search"
 VWORLD_LAND_URL = "https://api.vworld.kr/ned/data/getLandCharacteristics"
 VWORLD_PROXY_URL = "https://map.vworld.kr/proxy.do?url="
 VWORLD_LAYER_PARCEL = "LP_PA_CBND_BUBUN"
+VWORLD_LAYER_INDUSTRIAL_PARK = "LT_C_DAMDAN"
 SMALL_PARCEL_THRESHOLD_M2 = 90.0
 
 logger = logging.getLogger("urban_strategy.vworld")
@@ -802,6 +803,71 @@ def _building_hub_attachment_pnu(row: Dict[str, Any]) -> Optional[str]:
     ji = _digits4(row.get("atchJi") or row.get("ji"))
     pnu = f"{sigungu}{bjdong}{land_code}{bun}{ji}"
     return pnu if len(pnu) == 19 and pnu.isdigit() else None
+
+
+def _vworld_features_in_bbox(layer: str, target_geom, size: int = 1000, max_pages: int = 5) -> List[Dict[str, Any]]:
+    """VWorld polygon layer의 target bbox 후보를 조회한 뒤 실제 교차도형만 반환한다.
+
+    산업단지 경계(LT_C_DAMDAN)처럼 서버에서 최신 공간경계를 확인해야 하는
+    레이어에 사용한다. VWorld 2D Data API의 10㎢ BOX 제한을 초과하면 명시적으로
+    REVIEW 경로로 넘기기 위해 예외를 발생시킨다.
+    """
+    if not _vworld_key():
+        raise RuntimeError("VWorld API 키가 설정되지 않았습니다.")
+    minx, miny, maxx, maxy = target_geom.bounds
+    bbox_poly = box(minx, miny, maxx, maxy)
+    bbox_area, _ = GEOD.geometry_area_perimeter(bbox_poly)
+    if abs(float(bbox_area)) > 10_000_000:
+        raise RuntimeError(f"VWorld {layer} 조회 범위가 10㎢를 넘습니다.")
+
+    all_features: List[Dict[str, Any]] = []
+    seen = set()
+    page_size = min(max(int(size), 1), 1000)
+    for page in range(1, max_pages + 1):
+        params = {
+            "key": _vworld_key(), "domain": _vworld_domain(),
+            "service": "data", "version": "2.0", "request": "getfeature",
+            "format": "json", "size": page_size, "page": page,
+            "geometry": "true", "attribute": "true", "crs": "EPSG:4326",
+            "data": layer, "geomfilter": f"BOX({minx},{miny},{maxx},{maxy})",
+        }
+        resp, route = _vworld_get(VWORLD_DATA_URL, params=params, timeout=20)
+        if resp.status_code >= 400:
+            raise RuntimeError(f"VWorld {layer} HTTP {resp.status_code}: {resp.text[:240]}")
+        try:
+            payload = resp.json()
+        except Exception as exc:
+            raise RuntimeError(f"VWorld {layer} JSON 응답 해석 실패") from exc
+        status = str((payload.get("response") or {}).get("status") or "").upper()
+        if status == "NOT_FOUND":
+            break
+        if status != "OK":
+            raise RuntimeError(_response_error_message(payload))
+        fc = (((payload.get("response") or {}).get("result") or {}).get("featureCollection") or {})
+        feats = fc.get("features") or []
+        for f in feats:
+            fid = str(f.get("id") or "")
+            props = dict(f.get("properties") or {})
+            if not fid:
+                lowered = {str(k).lower(): v for k, v in props.items()}
+                fid = str(lowered.get("dan_id") or lowered.get("id") or "")
+            if fid and fid in seen:
+                continue
+            if not f.get("geometry"):
+                continue
+            try:
+                g = shape(f["geometry"])
+                if g.is_empty or not g.intersects(target_geom):
+                    continue
+            except Exception:
+                continue
+            if fid:
+                seen.add(fid)
+            all_features.append({"type": "Feature", "id": f.get("id"), "geometry": f.get("geometry"), "properties": props})
+        logger.info("VWorld bbox layer=%s route=%s page=%s hits=%s", layer, route, page, len(feats))
+        if len(feats) < page_size:
+            break
+    return all_features
 
 
 def _vworld_features_at_point(layer: str, lon: float, lat: float, size: int = 100) -> List[Dict[str, Any]]:
@@ -2176,7 +2242,7 @@ def _development_reference_data():
         "name": "서울시 도시계획·개발사업 법정구역",
         "features": features,
         "metadata": {
-            "reference_month": "2026-02",
+            "reference_month": "2026-09",
             "source": "서울 의제처리구역 위치정보(UQ181)",
             "classification_source": "uq181_legal.zip 내부 레이어표_181.xlsx",
             "disclaimer": "공개 GIS 중첩은 초기검토용 참고값이며 최종 결정고시·사업계획·지구지정 도서를 재확인해야 합니다.",
@@ -2190,6 +2256,83 @@ def _development_spatial_index():
     features = fc["features"]
     geometries = [shape(feature["geometry"]) for feature in features]
     return features, geometries, STRtree(geometries)
+
+
+def analyze_industrial_park_intersections(geometry: Dict[str, Any]) -> Dict[str, Any]:
+    """VWorld 최신 산업단지 경계(LT_C_DAMDAN)와 대상지를 실제 중첩한다.
+
+    2040 서울 공업지역기본계획은 산업단지 등 다른 법률로 결정된 공업지역을
+    적용대상에서 제외하므로, UQ181의 보조코드가 아니라 전국 산업단지 전용
+    경계 레이어를 우선 사용한다.
+    """
+    site_wgs = _polygonal_only(shape(geometry))
+    if site_wgs is None or site_wgs.is_empty:
+        raise ValueError("구역계는 Polygon 또는 MultiPolygon이어야 합니다.")
+    if not site_wgs.is_valid:
+        site_wgs = _polygonal_only(site_wgs.buffer(0))
+    if site_wgs is None or site_wgs.is_empty or not site_wgs.is_valid:
+        raise ValueError("유효하지 않은 구역계입니다.")
+
+    candidates = _vworld_features_in_bbox(VWORLD_LAYER_INDUSTRIAL_PARK, site_wgs, size=200, max_pages=3)
+    to_metric = Transformer.from_crs(4326, 5174, always_xy=True).transform
+    site_metric = geometry_transform(to_metric, site_wgs)
+    site_area = float(site_metric.area)
+    overlaps: List[Dict[str, Any]] = []
+    context_features: List[Dict[str, Any]] = []
+    for f in candidates:
+        try:
+            source_wgs = _polygonal_only(shape(f.get("geometry")))
+            if source_wgs is None or source_wgs.is_empty:
+                continue
+            inter = _polygonal_only(site_wgs.intersection(source_wgs))
+            if inter is None or inter.is_empty:
+                continue
+            inter_metric = _polygonal_only(geometry_transform(to_metric, inter))
+            if inter_metric is None or inter_metric.is_empty:
+                continue
+            overlap_area = float(inter_metric.area)
+            if overlap_area < 0.5:
+                continue
+            source_area = float(geometry_transform(to_metric, source_wgs).area)
+        except Exception:
+            continue
+        raw = dict(f.get("properties") or {})
+        low = {str(k).lower(): _json_property(v) for k, v in raw.items()}
+        name = str(low.get("dan_name") or low.get("dan_nm") or low.get("name") or "산업단지").strip()
+        dan_id = str(low.get("dan_id") or low.get("dan_cd") or "").strip()
+        dan_type_raw = str(low.get("dan_type") or low.get("type") or "").strip()
+        type_label = {"1": "국가산업단지", "2": "일반산업단지", "3": "도시첨단산업단지", "4": "농공단지"}.get(dan_type_raw, "산업단지")
+        props = {
+            "source": "vworld_live_industrial_park",
+            "source_title": "VWorld 산업단지 경계(LT_C_DAMDAN)",
+            "source_layer": VWORLD_LAYER_INDUSTRIAL_PARK,
+            "development_kind": "industrial_park",
+            "dan_id": dan_id,
+            "dan_type": dan_type_raw,
+            "type_label": type_label,
+            "name": name,
+            "overlap_area_m2": round(overlap_area, 2),
+            "site_overlap_pct": round(overlap_area / site_area * 100, 4) if site_area > 0 else None,
+            "zone_overlap_pct": round(overlap_area / source_area * 100, 4) if source_area > 0 else None,
+            "_overlap_area": round(overlap_area, 2),
+            "_overlap_pct": round(overlap_area / site_area * 100, 4) if site_area > 0 else None,
+        }
+        overlaps.append({"type": "Feature", "geometry": mapping(inter), "properties": props})
+        context_features.append({"type": "Feature", "geometry": f.get("geometry"), "properties": {**props, "_display_role": "source_zone"}})
+    overlaps.sort(key=lambda f: (-float((f.get("properties") or {}).get("overlap_area_m2") or 0), str((f.get("properties") or {}).get("name") or "")))
+    return {
+        "status": "matched" if overlaps else "none",
+        "overlaps": overlaps,
+        "context_features": context_features,
+        "metadata": {
+            "available": True,
+            "source": "VWorld 2D Data API",
+            "source_layer": VWORLD_LAYER_INDUSTRIAL_PARK,
+            "source_title": "국토교통부 산업단지 단지경계",
+            "source_type": "VWORLD_LIVE",
+            "note": "국가·일반·도시첨단·농공단지 전용 경계. 2040 서울 공업지역기본계획 적용제외 판정에 사용",
+        },
+    }
 
 
 def analyze_development_intersections(geometry: Dict[str, Any]) -> Dict[str, Any]:
@@ -2245,11 +2388,32 @@ def analyze_development_intersections(geometry: Dict[str, Any]) -> Dict[str, Any
         context_features.append({"type": "Feature", "geometry": feature.get("geometry"), "properties": context_props})
 
     overlaps.sort(key=lambda f: (-float(f["properties"].get("overlap_area_m2") or 0), str(f["properties"].get("name") or "")))
+    industrial_parks, industrial_park_context, industrial_park_metadata = [], [], {
+        "available": False, "source_layer": VWORLD_LAYER_INDUSTRIAL_PARK, "error": "미조회"
+    }
+    try:
+        industrial_result = analyze_industrial_park_intersections(geometry)
+        industrial_parks = industrial_result.get("overlaps") or []
+        industrial_park_context = industrial_result.get("context_features") or []
+        industrial_park_metadata = industrial_result.get("metadata") or {}
+    except Exception as exc:
+        industrial_park_metadata = {
+            "available": False,
+            "source": "VWorld 2D Data API",
+            "source_layer": VWORLD_LAYER_INDUSTRIAL_PARK,
+            "source_title": "국토교통부 산업단지 단지경계",
+            "source_type": "VWORLD_LIVE",
+            "error": str(exc),
+        }
+        logger.warning("industrial park boundary analysis unavailable: %s", exc)
     return {
         "status": "matched" if overlaps else "none",
         "site_area_m2": round(site_area, 2),
         "overlaps": overlaps,
         "context_features": context_features,
+        "industrial_parks": industrial_parks,
+        "industrial_park_context_features": industrial_park_context,
+        "industrial_park_metadata": industrial_park_metadata,
         "metadata": _development_reference_data()["metadata"],
     }
 
@@ -6073,7 +6237,7 @@ def health():
         "site_status_card": "neutral raw land/building facts + visible regime-specific aging facts + scheme-specific supplemental facts",
         "planning_gis": "VWorld zoning/district/facility/district-unit-plan polygon intersection engine",
         "renewal_gis": "server-side UQ181/UQ120 intersection; legal-priority; promotion separate; full matched boundaries returned for status map",
-        "development_gis": "VWorld district-unit plan + bundled Seoul UQ181 urban-development/public-housing/other legal project intersections",
+        "development_gis": "VWorld district-unit plan + bundled Seoul UQ181 legal projects + VWorld LT_C_DAMDAN industrial-park boundaries",
         "safe_housing_location_paths": "station / arterial-road-side / medical-facility-center evaluated separately; OR combined",
         "safe_medical_reference": "packaged official TbHospitalInfo monthly snapshot + official Seoul municipal hospitals/25 district health centers; nearby representative parcels resolved concurrently; 350m buffer",
         "safe_medical_key_env": _seoul_open_data_key_info()[1] or None,
