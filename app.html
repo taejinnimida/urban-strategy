@@ -10621,7 +10621,7 @@ function checkStationComplexFromFacts(store,f){
     else zoneStatus='FAIL';
   }
   rows.push(schemeRow('용도지역','준주거지역 또는 제2·3종일반주거지역의 준주거 변경 검토',f.zoning.current||'-',zoneStatus,zoneNote,true,{sourceId:'STATION_COMPLEX',locator:'적용대상 용도지역'}));
-  {const h=f.exclusions.hill||{};const hv=h.known?`대표표고 ${h.elevation_m==null?'-':Number(h.elevation_m).toFixed(1)+'m'} / 평균경사 ${h.slope_deg==null?'-':Number(h.slope_deg).toFixed(1)+'°'} / 동시충족 ${h.overlap_pct==null?'-':Number(h.overlap_pct).toFixed(1)+'%'}${h.distance_m!=null&&h.distance_m>0?' / 최근접 '+Number(h.distance_m).toFixed(1)+'m':''}`:'지형 FACT 미확보';rows.push(schemeRow('구릉지','구릉지 제외·연접 여부',hv,'REVIEW',h.known?'플랫폼 산출 지형 FACT 확보 · 최신 적용기준과 연접 조건 확인 후 최종판정':'지형 FACT 확인 필요',true,{sourceId:'STATION_COMPLEX',locator:'적용대상 제외지역'}));}
+  {const h=f.exclusions.hill||{};const hv=h.known?`대표표고 ${h.elevation_m==null?'-':Number(h.elevation_m).toFixed(1)+'m'} / 평균경사 ${h.slope_deg==null?'-':Number(h.slope_deg).toFixed(1)+'°'} / 40m+10° 동시충족 ${h.overlap_pct==null?'-':Number(h.overlap_pct).toFixed(1)+'%'}${h.distance_m!=null&&h.distance_m>0?' / 최근접 '+Number(h.distance_m).toFixed(1)+'m':''}`:'지형 FACT 미확보';const hs=h.known?(h.intersects===true?'FAIL':'PASS'):'REVIEW';const hn=!h.known?'구릉지 지형 FACT 확인 필요':h.intersects===true?'해발고도 40m 이상 + 경사도 10° 이상 구릉지 직접중첩 · 사업대상지 제외':'40m+10° 동시충족 구릉지 직접중첩 없음';rows.push(schemeRow('구릉지','해발고도 40m 이상 + 경사도 10° 이상 구릉지 제외',hv,hs,hn,true,{sourceId:'STATION_COMPLEX',locator:'적용대상 제외지역'}));}
   rows.push(schemeRow('저층주거지 인접','저층주거지·구릉지 연접 시 용도지역 변경 제한 · 도로 이격 제3종은 예외 가능','인접분석 미확인','REVIEW','인접 용도지역 공간현황 추가 필요',true,{sourceId:'STATION_COMPLEX',locator:'적용대상 용도지역 변경 제한'}));
   rows.push(schemeRow('특성관리지구','역사도심기본계획상 특성관리지구 제외',f.exclusions.characteristic.hits.length?f.exclusions.characteristic.hits.map(x=>x.name).join(' / '):'전용 경계 미연결','REVIEW','공식 경계 미확보',true,{sourceId:'STATION_COMPLEX',locator:'적용대상 제외지역'}));
   rows.push(schemeRow('정비구역·예정구역','도시정비법상 정비구역·정비예정구역 제외',f.exclusions.renewal.value,f.exclusions.renewal.status,f.exclusions.renewal.note,true,{sourceId:'STATION_COMPLEX',locator:'적용대상 제외지역'}));
@@ -10737,8 +10737,12 @@ function longtermSpatialFacts(store){
       const autoKnown=ev.zoning_known&&ev.landscape_known&&ev.heritage_known;
       const status=hits.length?'FAIL':autoKnown?'PASS':'REVIEW';
       const value=hits.length?hits.join(' · '):autoKnown?'전용·1종/역사문화 경관지구/국가유산보호구역 중첩 없음':'일부 공식 공간자료 미확인';
-      return {status,value,note:'자동판정: UQ111 전용·1종, UQ121 역사문화특화경관지구, LT_C_UO301 국가유산보호구역. 구릉지는 별도 후속확인으로 분리',evidence:ev,
-        hill:{status:store.site.hill?.known===true?(store.site.hill.intersects===true?'REVIEW':'INFO'):'REVIEW',value:store.site.hill?.known===true?(store.site.hill.intersects===true?`플랫폼 참조구릉지 직접중첩 ${Number(store.site.hill.overlap_pct||0).toFixed(1)}% · 연접조건 세부검토`:`직접중첩 없음${store.site.hill.distance_m!=null?' · 최근접 '+Number(store.site.hill.distance_m).toFixed(1)+'m':''}`):'구릉지 지형 FACT 미연결',note:'서울시 공식 등고선·표고점 기반 플랫폼 산출 지형 FACT · 구릉지 연접 여부와 법적 적용은 운영기준·현장조건 확인 후 반영'}};
+      const hillKnown=store.site.hill?.known===true,hillDirect=hillKnown&&store.site.hill.intersects===true,hillDistance=hillKnown&&store.site.hill.distance_m!=null?Number(store.site.hill.distance_m):null,hillAdjacent=hillKnown&&!hillDirect&&hillDistance!=null&&hillDistance<=0;
+      const hillStatus=!hillKnown?'REVIEW':(hillDirect||hillAdjacent?'FAIL':'PASS');
+      const hillValue=!hillKnown?'구릉지 지형 FACT 미연결':hillDirect?`플랫폼 참조구릉지 직접중첩 ${Number(store.site.hill.overlap_pct||0).toFixed(1)}%`:hillAdjacent?'플랫폼 참조구릉지 연접':'직접중첩·연접 없음'+(hillDistance!=null?` · 최근접 ${hillDistance.toFixed(1)}m`:``);
+      const hillNote=!hillKnown?'서울시 공식 등고선·표고점 기반 플랫폼 산출 지형 FACT 확인 필요':(hillDirect||hillAdjacent)?'원칙적 제외 · 운영기준 2-1-5에 따라 관련 위원회 인정 시 구릉지 조건 포함·완화 가능. 다만 특성주거지·자연환경 보호 및 경사·재해·안전 등 계획조건을 종합검토하므로 완화를 전제로 사업가능 판정하지 않음':'구릉지 직접중첩·연접 없음';
+      return {status,value,note:'자동판정: UQ111 전용·1종, UQ121 역사문화특화경관지구, LT_C_UO301 국가유산보호구역. 구릉지는 플랫폼 지형 FACT로 별도 독립판정',evidence:ev,
+        hill:{status:hillStatus,value:hillValue,note:hillNote,direct:hillDirect,adjacent:hillAdjacent,distance_m:hillDistance,overlap_pct:store.site.hill?.overlap_pct??null}};
     })()},
     aging:{assessment:age},consent:{owner_pct:c.ownerConsent,land_pct:c.landConsent,road20_owner_pct:c.road20OwnerConsent,road20_land_pct:c.road20LandConsent},planning:{density:longtermDensity(c,store.site.station)},
     spatial_status_rows:[]
@@ -10753,7 +10757,7 @@ function longtermSpatialFacts(store){
     spatialFactRow('전용·제1종 일반주거지역',fact.exclusions.special_character_area.evidence.lowrise.length?fact.exclusions.special_character_area.evidence.lowrise.map(x=>`${x.name} ${x.pct.toFixed(1)}%`).join(' / '):'중첩 없음',fact.exclusions.special_character_area.evidence.zoning_known?'CONFIRMED':'REVIEW','서울시 UQ111 SHP / VWorld LT_C_UQ111'),
     spatialFactRow('역사문화특화경관지구',fact.exclusions.special_character_area.evidence.cultural_districts.length?fact.exclusions.special_character_area.evidence.cultural_districts.map(x=>x.name).join(' / '):'중첩 없음',fact.exclusions.special_character_area.evidence.landscape_known?'CONFIRMED':'REVIEW','서울시 UQ121 경관지구 SHP'),
     spatialFactRow('국가유산보호구역',fact.exclusions.special_character_area.evidence.heritage.length?fact.exclusions.special_character_area.evidence.heritage.map(x=>x.name).join(' / '):'중첩 없음',fact.exclusions.special_character_area.evidence.heritage_known?'CONFIRMED':'REVIEW','VWorld LT_C_UO301 · 서울시 CUL211/CUL210 및 국가유산청 SHP 별도 대조'),
-    spatialFactRow('구릉지',fact.exclusions.special_character_area.hill.value,fact.exclusions.special_character_area.hill.status==='INFO'?'CONFIRMED':'REVIEW',fact.exclusions.special_character_area.hill.note)
+    spatialFactRow('구릉지',fact.exclusions.special_character_area.hill.value,fact.exclusions.special_character_area.hill.status==='REVIEW'?'REVIEW':'CONFIRMED',fact.exclusions.special_character_area.hill.note)
   ];
   store.scheme_specific.longterm=fact;return fact;
 }
@@ -10767,7 +10771,7 @@ function checkLongtermFromFacts(store,f){
   rows.push(schemeRow('노후도',f.route.selected==='district'?'지구단위계획 방식: 20년 이상 건축물 1/2 이상':'정비계획 방식: 30년 이상 건축물 60% 이상',ageFactValue(f.aging.assessment),f.aging.assessment?.status||'REVIEW',ageFactNote(f.aging.assessment),true,{sourceId:'LONGTERM_OP',locator:'2-1-4 나목'}));
   const ex=f.exclusions.special_character_area,ev=ex.evidence||{};
   rows.push(schemeRow('입지 특성화·제외지역','전용·제1종 일반주거지역, 역사문화 경관지구·국가유산보호구역 등 자동연결 가능 항목',ex.value,ex.status,ex.note,true,{sourceId:'LONGTERM_OP',locator:'2-1-3·2-1-5'}));
-  rows.push(schemeRow('구릉지 후속확인','구릉지 직접중첩·연접은 플랫폼 지형 FACT를 참고하되 사업계획 전 최신 운영기준으로 별도 확인',ex.hill?.value||'구릉지 지형 FACT 미연결',ex.hill?.status||'REVIEW',ex.hill?.note||'후속 현장·원도형 확인',false,{sourceId:'LONGTERM_OP',locator:'2-1-3·2-1-5'}));
+  rows.push(schemeRow('구릉지','전용·제1종일반주거지역, 구릉지 연접부 등 양호한 저층주거지 보전·자연환경 보호가 필요한 지역은 원칙적 제외',ex.hill?.value||'구릉지 지형 FACT 미연결',ex.hill?.status||'REVIEW',ex.hill?.note||'구릉지 지형 FACT 확인 필요',true,{sourceId:'LONGTERM_OP',locator:'2-1-3·2-1-5'}));
   if(f.route.selected==='district'){
     const st=f.consent.land_pct==null?'REVIEW':f.consent.land_pct>=50?'PASS':'REVIEW';
     rows.push(schemeRow('사업추진 동의','토지면적 50% 이상은 사전검토 신청·사업추진 단계에서 확보',f.consent.land_pct==null?'사업추진 전제조건':fmtSchemePct(f.consent.land_pct),'INFO','초기 대상지 입지판정에는 사용하지 않고 사업추진 단계 체크리스트로 관리',false,{sourceId:'LONGTERM_OP',locator:'2-2-3',policyRole:'PREREQUISITE'}));
@@ -11557,7 +11561,7 @@ function redevelopmentSpatialFacts(store){
     area:{m2:area,status:areaStatus,note:areaNote,exception_confirmed:!!c.areaExceptionApproved,conditional:areaConditional},
     aging:{assessment:age},
     entry:{small_parcel_pct:small,small_status:smallStatus,house_density:hd,density_status:densityStatus,frontage,frontage_status:frontageStatus,additional_status:extraStatus,additional_note:extraNote},
-    planning:{density:densityForScheme('redevelopment',c,store)},
+    planning:{density:densityForScheme('redevelopment',c,store),hill:{known:store.site.hill?.known===true,intersects:store.site.hill?.intersects??null,overlap_pct:store.site.hill?.overlap_pct??null,distance_m:store.site.hill?.distance_m??null,elevation_m:store.site.hill?.elevation_m??null,slope_deg:store.site.hill?.slope_deg??null}},
     spatial_status_rows:[]
   };
   fact.spatial_status_rows=[
@@ -11574,7 +11578,8 @@ function redevelopmentSpatialFacts(store){
     spatialFactRow('주택접도율(6m 기준)',frontage?.value||'산정자료 미확보',frontage?.status||'REVIEW',frontage?.note||'도로중심선 기반 개략산정',
       {criterionStatus:frontageStatus,criterionRule:'폭 6m 이상 도로에 길이 4m 이상 접한 대지의 건축물 비율 40% 이하',criterionNote:frontage?.note||'',criterionItem:'주택접도율'}),
     spatialFactRow('호수밀도',hd==null?'-':`${Number(hd).toFixed(1)}호/ha`,hd==null?'REVIEW':'CONFIRMED','추가 입안요건 기준 60호/ha 이상',
-      {criterionStatus:densityStatus,criterionRule:'60호/ha 이상',criterionNote:densityStatus==='FAIL'&&hd!=null?`기준 대비 ${(60-Number(hd)).toFixed(2)}호/ha 부족`:'',criterionItem:'호수밀도'})
+      {criterionStatus:densityStatus,criterionRule:'60호/ha 이상',criterionNote:densityStatus==='FAIL'&&hd!=null?`기준 대비 ${(60-Number(hd)).toFixed(2)}호/ha 부족`:'',criterionItem:'호수밀도'}),
+    spatialFactRow('구릉지 계획조건',fact.planning.hill.known?(fact.planning.hill.intersects?`40m+10° 동시충족 ${Number(fact.planning.hill.overlap_pct||0).toFixed(1)}%`:`직접중첩 없음${fact.planning.hill.distance_m!=null?' · 최근접 '+Number(fact.planning.hill.distance_m).toFixed(1)+'m':''}`):'지형 FACT 미확보',fact.planning.hill.known?'CONFIRMED':'REVIEW','재개발 사업진입 조건이 아니라 용도지역 상향·경관·지형순응 계획조건으로 사용')
   ];
   store.scheme_specific.redevelopment=fact;return fact;
 }
@@ -11589,6 +11594,7 @@ function checkRedevelopmentFromFacts(store,f){
   const redevelopmentFrontageStatus=f.entry.frontage?.status||'REVIEW';
   rows.push(schemeRow('주택접도율',f.entry.frontage?.criterion||'폭 6m 이상 도로에 대지경계가 연속 4m 이상 접한 대지의 건축물 비율 40% 이하',f.entry.frontage?.value||'미산정',redevelopmentFrontageStatus,f.entry.frontage?.note||'도로대장·정비계획 도면 재확인',false,{sourceId:'RENEWAL_ORD',locator:'제2조제10호·제6조제1항제2호나목'}));
   rows.push(schemeRow('호수밀도','60호/ha 이상',f.entry.house_density==null?'-':`${Number(f.entry.house_density).toFixed(1)}호/ha`,f.entry.density_status,'추가 입안요건 세부항목',false,{sourceId:'RENEWAL_ORD',locator:'제2조제5호·제6조제1항제2호다목'}));
+  {const h=f.planning.hill||{};const hv=h.known?(h.intersects?`40m+10° 동시충족 ${Number(h.overlap_pct||0).toFixed(1)}%`:`직접중첩 없음${h.distance_m!=null?' · 최근접 '+Number(h.distance_m).toFixed(1)+'m':''}`):'지형 FACT 미확보';const hn=!h.known?'지형 FACT 확인 필요':h.intersects?'구릉지 해당 · 사업진입 배제조건 아님. 용도지역 상향은 가급적 현 용도지역 유지 원칙을 우선 검토하고 경관·지형·재해안전 계획을 함께 검토':'구릉지 직접중첩 없음 · 필요 시 인접여건을 계획단계에서 검토';rows.push(schemeRow('구릉지 계획조건','구릉지는 재개발 사업진입 요건이 아니라 용도지역 상향·경관관리 등 계획조건',hv,'INFO',hn,false,{sourceId:'RENEWAL_PLAN',locator:'주택정비형 재개발사업 부문 · 경관관리 및 보전이 필요한 지역'}));}
   rows.push(schemeRow('용적률·계획기준','2030 기본계획 및 정비계획의 용도지역·기준/허용/상한용적률을 적용',f.planning.density.far,'INFO',f.planning.density.contribution,false,{sourceId:'RENEWAL_PLAN',locator:'주택정비형 재개발사업 부문 · 역세권 정비사업 용도지역 상향기준'}));
   return rows;
 }
@@ -11905,23 +11911,27 @@ function smallscaleSpatialFacts(store){
   else if(moa==='candidate'){moaValue='후보지·검토대상';moaNote='관리계획 승인 여부 확인';}
   else if(moa==='none'){moaStatus='FAIL';moaValue='현재 관리지역 미지정';moaNote='현재 모아타운 관리지역 특례 비적용';}
 
+  const moaHill=store.site.hill||{};
+  const moaHillValue=moaHill.known===true?(moaHill.intersects===true?`40m+10° 동시충족 ${Number(moaHill.overlap_pct||0).toFixed(1)}%`:`직접중첩 없음${moaHill.distance_m!=null?' · 최근접 '+Number(moaHill.distance_m).toFixed(1)+'m':''}`):'지형 FACT 미확보';
+  const moaHillNote=moaHill.known!==true?'구릉지 지형 FACT 확인 필요':moaHill.intersects===true?'구릉지는 모아주택·모아타운 사업진입 배제조건이 아니라 지형순응·높이·경관·재해안전 등 통합심의 계획조건으로 반영':'구릉지 직접중첩 없음 · 필요 시 주변 지형여건을 관리계획·통합심의에서 검토';
   const routes={
     autonomous:{label:'자율주택정비',status:autonomousStatus,value:`${autoTarget.value} · ${stock.autonomous_label} · 노후도 ${ageFactValue(age)}`,source_id:'SMALL_AUTONOMOUS',criteria:autonomousCriteria},
     block:{label:'가로주택정비',status:blockStatus,conditional:(blockAreaConditional||blockSiteAreaConditional)&&blockStatus==='REVIEW',value:`가로구역 ${blockArea==null?'-':fmtSchemeArea(blockArea)} · 검토구역 편입 ${Number.isFinite(scopeCoverage)?scopeCoverage.toFixed(1)+'%':'-'} · 가로구역 점유 ${sb.site_share_of_block_pct==null?'-':Number(sb.site_share_of_block_pct).toFixed(1)+'%'} · 사업구역 ${fmtSchemeArea(c.area)} · ${stock.block_label} · 노후도 ${ageFactValue(age)}`,source_id:'SMALL_BLOCK',criteria:blockCriteria},
     reconstruction:{label:'소규모재건축',status:reconStatus,value:`${complexValue} · ${fmtSchemeArea(c.area)} · ${reconUnits==null?'세대수 미산정':reconUnits+'세대'} · 노후도 ${ageFactValue(age)}`,source_id:'SMALL_RECONSTRUCTION',criteria:reconCriteria},
     redevelopment:{label:'소규모재개발',status:srStatus,value:`${srLocationValue} · ${fmtSchemeArea(c.area)} · 노후도 ${ageFactValue(age)} · 접도 ${srRoad8Status==='PASS'&&srRoad4Status==='PASS'?'충족':srRoad8Status==='FAIL'||srRoad4Status==='FAIL'?'불충족':'확인필요'}`,source_id:'SMALL_REDEVELOPMENT',criteria:srCriteria,station:smallRedevelopmentStation?{name:smallRedevelopmentStation.name,distance_m:smallRedevelopmentStation.distance_m}:null},
-    moa:{label:'모아타운·모아주택 추진경로',status:moaStatus,value:moaValue,source_id:'MOA_POLICY',criteria:[smallscaleCriterion('관리지역·모아타운', '소규모주택정비 관리지역·관리계획 지정 여부',moaValue,moaStatus,moaNote,'MOA_POLICY','관리지역·관리계획')]}
+    moa:{label:'모아타운·모아주택 추진경로',status:moaStatus,value:moaValue,source_id:'MOA_POLICY',criteria:[smallscaleCriterion('관리지역·모아타운', '소규모주택정비 관리지역·관리계획 지정 여부',moaValue,moaStatus,moaNote,'MOA_POLICY','관리지역·관리계획'),smallscaleCriterion('구릉지 계획조건','구릉지는 사업진입 배제조건이 아니라 관리계획·통합심의의 지형순응·높이·경관 등 계획조건',moaHillValue,'INFO',moaHillNote,'MOA_POLICY','모아주택·모아타운 계획·심의기준')]}
   };
   const statutoryStatuses=['autonomous','block','reconstruction','redevelopment'].map(k=>routes[k].status);
   const aggregate=statutoryStatuses.includes('PASS')?'PASS':statutoryStatuses.includes('REVIEW')?'REVIEW':'FAIL';
-  const fact={family:{key:'smallscale',label:'소규모주택정비 4개 법정사업'},management_area:{status:moa,age_threshold_pct:ageThreshold},aging:{assessment:age},stock,autonomous_target:autoTarget,street_block:{auto_known:autoBlockKnown,analysis_scope_m2:blockArea,analysis_scope_connected:scopeConnected,area_limit_m2:blockAreaLimit,area_basic_limit_m2:blockAreaBasicLimit,area_conditional_limit_m2:blockAreaConditionalLimit,site_area_limit_m2:blockSiteAreaLimit,site_area_basic_limit_m2:blockSiteAreaBasicLimit,site_area_conditional_limit_m2:blockSiteAreaConditionalLimit,site_area_conditional:blockSiteAreaConditional,site_area_status:blockSiteAreaStatus,street_status:blockStreetStatus,existing_road_cutter_count:existingRoadCutters,planning_road_cutter_count:planningRoadCutters,multi_block:sb.multi_block===true,coverage_pct:sb.block_coverage_of_site_pct,site_share_of_block_pct:sb.site_share_of_block_pct,quality:sb.quality,status:sb.status},routes,aggregate_status:aggregate,planning:{density:densityForScheme('smallscale',c)},spatial_status_rows:[]};
+  const fact={family:{key:'smallscale',label:'소규모주택정비 4개 법정사업'},management_area:{status:moa,age_threshold_pct:ageThreshold},aging:{assessment:age},stock,autonomous_target:autoTarget,street_block:{auto_known:autoBlockKnown,analysis_scope_m2:blockArea,analysis_scope_connected:scopeConnected,area_limit_m2:blockAreaLimit,area_basic_limit_m2:blockAreaBasicLimit,area_conditional_limit_m2:blockAreaConditionalLimit,site_area_limit_m2:blockSiteAreaLimit,site_area_basic_limit_m2:blockSiteAreaBasicLimit,site_area_conditional_limit_m2:blockSiteAreaConditionalLimit,site_area_conditional:blockSiteAreaConditional,site_area_status:blockSiteAreaStatus,street_status:blockStreetStatus,existing_road_cutter_count:existingRoadCutters,planning_road_cutter_count:planningRoadCutters,multi_block:sb.multi_block===true,coverage_pct:sb.block_coverage_of_site_pct,site_share_of_block_pct:sb.site_share_of_block_pct,quality:sb.quality,status:sb.status},routes,aggregate_status:aggregate,planning:{density:densityForScheme('smallscale',c),hill:{known:moaHill.known===true,intersects:moaHill.intersects??null,overlap_pct:moaHill.overlap_pct??null,distance_m:moaHill.distance_m??null}},spatial_status_rows:[]};
   fact.spatial_status_rows=[
     spatialFactRow('소규모정비 노후도',ageFactValue(age),age.status==='PASS'||age.status==='FAIL'?'CONFIRMED':'REVIEW',`관리지역 상태에 따라 적용 기준 ${ageThreshold}%`),
     spatialFactRow('건축물대장 주택수·세대수',`단독 ${stock.detached_count}호 · 다세대/연립 ${stock.multi_row_units==null?'-':stock.multi_row_units+'세대'} · 아파트/연립 재건축세대 ${stock.reconstruction_units==null?'-':stock.reconstruction_units+'세대'}`,stock.records_available?'CONFIRMED':'REVIEW','자율·가로·소규모재건축의 주택수/세대수 판정에 직접 사용'),
     spatialFactRow('가로주택정비 가로구역',blockArea==null?'자동분석 미확보':`${Number(blockArea).toLocaleString('ko-KR',{maximumFractionDigits:0})}㎡ · 검토구역 편입률 ${Number.isFinite(scopeCoverage)?scopeCoverage.toFixed(1)+'%':'-'} · 가로구역 점유율 ${sb.site_share_of_block_pct==null?'-':Number(sb.site_share_of_block_pct).toFixed(1)+'%'}`,autoBlockKnown?'CONFIRMED':'REVIEW',moa==='designated'?`검토구역은 seed로 사용 · 하나의 산정 가로구역 안에 포함되는지 확인 · 일반도로 6m+ · 도시계획시설 도로 및 법정 경계시설 반영 · 관리지역 가로구역 40,000㎡ 미만`:`검토구역은 seed로 사용 · 하나의 산정 가로구역 안에 포함되는지 확인 · 일반도로 6m+ · 도시계획시설 도로 및 법정 경계시설 반영 · 서울 기본 13,000㎡ 미만, 지방도시계획위원회 심의 시 20,000㎡ 미만 가능`),
     spatialFactRow('자율주택 사업대상지',autoTarget.value,autoTarget.status==='PASS'?'CONFIRMED':'REVIEW',autoTarget.note),
     spatialFactRow('소규모재개발 접도',`8m ${srRoad8Status==='PASS'?'충족':srRoad8Status==='FAIL'?'불충족':'미산정'} · 4m ${srRoad4Status==='PASS'?'충족':srRoad4Status==='FAIL'?'불충족':'미산정'}`,srRoad8Status==='REVIEW'||srRoad4Status==='REVIEW'?'REVIEW':'CONFIRMED','접도는 별도 개선과제이나 Fact 확보 시 PASS/FAIL 즉시 반영'),
-    spatialFactRow('모아타운·관리지역',moaValue,moa==='designated'?'CONFIRMED':'REVIEW',moaNote)
+    spatialFactRow('모아타운·관리지역',moaValue,moa==='designated'?'CONFIRMED':'REVIEW',moaNote),
+    spatialFactRow('모아주택 구릉지 계획조건',moaHillValue,moaHill.known===true?'CONFIRMED':'REVIEW',moaHillNote)
   ];
   store.scheme_specific.smallscale=fact;return fact;
 }
@@ -12012,9 +12022,9 @@ const SCHEME_MODULES={
   },
   station_complex:{
     id:'station_complex',version:'current-source-review',collectFacts:stationComplexSpatialFacts,
-    evaluate(store,facts){const rows=checkStationComplexFromFacts(store,facts),overall=overallScheme(rows),density=facts.planning.density,sr=moduleStrengthRisk(rows,['구릉지·저층주거지 인접 수동확인']);return {module:'station_complex',facts,rows,overall,density,...sr};}
+    evaluate(store,facts){const rows=checkStationComplexFromFacts(store,facts),overall=overallScheme(rows),density=facts.planning.density,sr=moduleStrengthRisk(rows,['저층주거지 인접 수동확인']);return {module:'station_complex',facts,rows,overall,density,...sr};}
   },
-  longterm:{id:'longterm',version:'2026-03-06',collectFacts:longtermSpatialFacts,evaluate(store,facts){const rows=checkLongtermFromFacts(store,facts),overall=overallScheme(rows),density=facts.planning.density,sr=moduleStrengthRisk(rows,['구릉지 등 미확보 제외지역 수동확인']);return {module:'longterm',facts,rows,overall,density,...sr};}},
+  longterm:{id:'longterm',version:'2026-03-06',collectFacts:longtermSpatialFacts,evaluate(store,facts){const rows=checkLongtermFromFacts(store,facts),overall=overallScheme(rows),density=facts.planning.density,sr=moduleStrengthRisk(rows,['미확보 제외지역 수동확인']);return {module:'longterm',facts,rows,overall,density,...sr};}},
   public_complex:{id:'public_complex',version:'2026-07-08-guide-annex1-10-r17',collectFacts:publicComplexSpatialFacts,evaluate(store,facts){return evaluatePublicComplexRoutes(store,facts);}},
   innovation_growth:{id:'innovation_growth',version:'2026-07-01-seoul-rule-2026-06-01',collectFacts(store){return innovationSpatialFacts(store,'growth');},evaluate(store,facts){const rows=checkInnovationFromFacts(store,facts),overall=overallScheme(rows),density=facts.planning.density,sr=moduleStrengthRisk(rows,['도로위계 사용자 제공자료 연결·서울시 제외지역 공식자료 확인']);return {module:'innovation_growth',facts,rows,overall,density,...sr};}},
   innovation_housing:{id:'innovation_housing',version:'2026-07-01-seoul-rule-2026-06-01',collectFacts(store){return innovationSpatialFacts(store,'housing');},evaluate(store,facts){const rows=checkInnovationFromFacts(store,facts),overall=overallScheme(rows),density=facts.planning.density,sr=moduleStrengthRisk(rows,['도로위계 사용자 제공자료 연결·서울시 제외지역 공식자료 확인']);return {module:'innovation_housing',facts,rows,overall,density,...sr};}},
@@ -16288,7 +16298,7 @@ function renderLongtermDetailPopup(){
   const resultRows=schemeSpecificResultRows(res,[
     {label:'입지유형',items:['역세권등']},
     {label:'대상지 현황',items:['용도지역','대상지 면적','노후도']},
-    {label:'입지제한',items:['입지 특성화·제외지역','구릉지 후속확인']},
+    {label:'입지제한',items:['입지 특성화·제외지역','구릉지']},
     {label:'사업추진 전제조건',items:['사업추진 동의']}
   ],['계획 세대수','용적률 계획기준','공공기여 기준']);
   const density=f.planning?.density||{};
@@ -16311,7 +16321,7 @@ function renderLongtermDetailPopup(){
   <section class="activation-section"><h4>2. 검토결과</h4><table class="activation-table"><thead><tr><th>구분</th><th>검토항목</th><th>기준</th><th>대상지 현황</th><th>판정·후속</th><th>근거</th></tr></thead><tbody>${resultRows}</tbody></table>${schemeDetailSummary(res)}</section>
   <section class="activation-section"><h4>3. 계획기준</h4><table class="activation-table"><thead><tr><th>검토항목</th><th>적용가능 범위</th><th>적용조건·해석</th><th>근거</th></tr></thead><tbody>${planRows}</tbody></table></section>
   <section class="activation-section"><h4>4. 추진일정</h4><div class="activation-procedure">${steps}</div></section>
-  <div class="scheme-modal-note"><b>판정구조</b> 350/500m 전체포함률·간선도로 교차지역 200m·20m 도로 접면비·용도지역·추진방식별 노후도를 공간현황에 먼저 만들고 동일 Fact로 검토합니다.</div></div>`;
+  <div class="scheme-modal-note"><b>구릉지 판정</b> 구릉지 직접중첩·연접은 원칙적 제외로 불충족 판정합니다. 운영기준 2-1-5에 따라 관련 위원회 인정 시 포함·완화 가능하지만, 특성주거지·자연환경 보호 및 경사·재해·안전 등 계획조건을 별도로 검토하므로 완화를 전제로 사업가능으로 표시하지 않습니다.<br><b>판정구조</b> 350/500m 전체포함률·간선도로 교차지역 200m·20m 도로 접면비·용도지역·추진방식별 노후도·구릉지 FACT를 동일 현황데이터에서 검토합니다.</div></div>`;
 }
 
 function renderPublicComplexDetailPopup(){
@@ -16460,7 +16470,7 @@ function renderRemainingSchemeDetailPopup(name){
       subtitle:'서울시 정비조례 제6조 주택정비형 재개발 입안요건',feasibility:'사업진입 가능성',
       status:[['대상지 유형',f.site_character?.label||'-'],['면적',fmtSchemeArea(f.area?.m2)],['노후도',ageFactValue(f.aging?.assessment)],['과소필지',fmtSchemePct(f.entry?.small_parcel_pct)],['주택접도율',f.entry?.frontage?.value||'산정자료 미확보'],['호수밀도',f.entry?.house_density==null?'-':`${Number(f.entry.house_density).toFixed(1)}호/ha`],['정비구역 현황',f.official?.value||'-']],
       groups:[{label:'기본 입안요건',items:['대상지 유형','구역면적','노후도']},{label:'추가 입안요건',items:['추가 입안요건','과소필지','주택접도율','호수밀도']}],
-      planItems:['용적률·계획기준'],
+      planItems:['구릉지 계획조건','용적률·계획기준'],
       steps:[['공간현황·입안요건 확인','면적·노후도·과소필지·주택접도율·호수밀도 Fact 확인'],['정비계획 입안 준비','토지이용·기반시설·밀도·공공성 계획'],['주민공람·의견청취','관련부서 협의 및 법정 의견청취'],['도시계획위원회 심의·고시','정비구역 지정 및 정비계획 결정'],['조합·사업시행 절차','조합설립·사업시행인가·관리처분 등']],
       note:'주택접도율은 6m 기준 자동산정값이 명확하면 40% 이하/초과를 충족·불충족으로 판정하고, 과소필지·주택접도율·호수밀도 중 하나 이상 충족 여부를 추가 입안요건 종합판정에 반영합니다. ROAD_BT 중심선 기반 공간정밀도는 공식 도로대장·결정도서로 재확인합니다.'
     },
