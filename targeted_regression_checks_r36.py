@@ -24,7 +24,10 @@ check('R36 mismatch diagnostic message','지적상 도로와 현행 중심선 �
 
 # Core R35/R26 decision formulas remain present and unchanged in intent.
 check('activation still uses 4m two faces plus 8m one face',"const activationOk=activationKnown&&Number(c.road4Faces)>=2&&c.has8===true;" in html)
-check('site road face count formula retained',"const faceCountAt=t=>touchedGroups.filter(g=>Number(g.thresholdContact?.[t]?.total_m||0)>=0.5).length;" in html)
+if 'function buildFrontageFacesFromAcceptedSegments' in html:
+    check('site road face count intentionally upgraded by R38',"const faceCountAt=t=>frontageFaces.filter(f=>Number(f.threshold_contact?.[t]||0)>=0.5).length;" in html)
+else:
+    check('site road face count formula retained',"const faceCountAt=t=>touchedGroups.filter(g=>Number(g.thresholdContact?.[t]?.total_m||0)>=0.5).length;" in html)
 check('road centerline width buffer formula retained',"const buffered=turf.buffer(mf,w/2,{units:'meters',steps:8});" in html)
 check('frontage sample formula retained',"const step=0.5;" in html and "turf.along(line,(d+seg/2)/1000" in html)
 check('route commercial R35 retained','MODEL_REFERENCE · 노선형 상업지역 판정용 참조도형' in html)
