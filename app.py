@@ -1647,6 +1647,44 @@ def _center_reference_data():
     with open(CENTER_REFERENCE_PATH, encoding="utf-8") as fp:
         return json.load(fp)
 
+
+ROUTE_COMMERCIAL_REFERENCE_PATH = _data_path("route_commercial_reference.geojson")
+@lru_cache(maxsize=1)
+def _route_commercial_reference_data():
+    """역세권활성화 간선가로형 검토용 내부 판정모형 참조도형.
+
+    법정 용도지역 원도나 서울시 공식 노선형 상업지역 도형이 아니다.
+    일반 용도지역 FACT를 대체하지 않고 간선가로형 입지판정에만 사용한다.
+    """
+    try:
+        with open(ROUTE_COMMERCIAL_REFERENCE_PATH, encoding="utf-8") as fp:
+            data = json.load(fp)
+    except FileNotFoundError:
+        return {
+            "type": "FeatureCollection",
+            "name": "route_commercial_model_reference",
+            "metadata": {
+                "available": False,
+                "source_type": "MODEL_REFERENCE",
+                "legal_source": False,
+                "reference_name": "노선형 상업지역 판정용 참조도형",
+                "reason": "route_commercial_reference.geojson 미설치",
+            },
+            "features": [],
+        }
+    if not isinstance(data, dict) or data.get("type") != "FeatureCollection":
+        raise RuntimeError("route_commercial_reference.geojson 형식 오류")
+    meta = dict(data.get("metadata") or {})
+    meta.update({
+        "available": True,
+        "source_type": "MODEL_REFERENCE",
+        "legal_source": False,
+        "reference_name": meta.get("reference_name") or "노선형 상업지역 판정용 참조도형",
+        "model_use": meta.get("model_use") or "역세권활성화 간선가로형 검토 전용",
+    })
+    data["metadata"] = meta
+    return data
+
 # 역명 -> 해당 역과 공간적으로 확실히 연결된 출입구 좌표 목록.
 # 원본(TL_SPSB_ENTRC)에는 소속 역을 가리키는 속성 키가 없어, 배포 전 오프라인
 # 전처리 단계에서 stations.json 폴리곤 기준 최근접 매칭 + 애매하면 제외(margin
@@ -6181,6 +6219,12 @@ def reference_renewal_zones():
     return _renewal_reference_data()
 
 
+@app.get("/api/reference/route-commercial")
+def reference_route_commercial():
+    """역세권활성화 간선가로형 내부 판정모형용 노선형 상업지역 참조도형."""
+    return _route_commercial_reference_data()
+
+
 def _reference_data_readiness() -> Dict[str, bool]:
     return {
         "stations": os.path.isfile(_data_path("stations.json")),
@@ -6192,6 +6236,7 @@ def _reference_data_readiness() -> Dict[str, bool]:
         "biotope": os.path.isfile(_data_path("biotope_seoul.zip")),
         "public_forest": os.path.isfile(_data_path("forest_classification_seoul_202608.zip")),
         "school_protection": os.path.isfile(_data_path("school_protection_seoul_202608.zip")),
+        "route_commercial_model": os.path.isfile(_data_path("route_commercial_reference.geojson")),
         "basic_unit": bool(_basic_unit_zip_path()),
     }
 
