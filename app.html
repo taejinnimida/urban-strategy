@@ -87,6 +87,7 @@
 .road-condition-table th{position:sticky;top:0;background:#f9fafb;z-index:1;font-size:8px}
 .road-condition-table .under4{color:#b42318;font-weight:900}.road-condition-table .wide{color:#067647;font-weight:800}
 .road-condition-note{padding:8px 10px;background:#f8fafc;color:#475467;font-size:9px;line-height:1.5}
+.road-frontage-map-legend span{display:inline-flex;align-items:center;gap:5px}.road-frontage-map-legend i{display:inline-block;width:16px;height:3px;border-radius:2px;vertical-align:middle}.road-frontage-map-legend .f8{background:#175cd3;height:4px}.road-frontage-map-legend .f4{background:#067647;height:4px}.road-frontage-map-legend .fu4{background:#b42318;height:4px}.road-frontage-map-legend .fcad{background:#f79009;height:3px;border-top:1px dashed #f79009}
 .road-condition-diag-box{border-bottom:1px solid #eaecf0;background:#fffaeb}
 .road-condition-diag-head{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid #fef0c7}
 .road-condition-diag-head b{font-size:10px;color:#93370d}.road-condition-diag-head span{font-size:8px;color:#b54708}
@@ -2144,7 +2145,8 @@ body.service-layout-ready>.shell{display:none!important}
   </div>
   <div class="road-condition-note" id="rcRoadNote"><b>분석 원칙</b> · ROAD_BT는 폭원·접도 공간현황에만 사용합니다. 4m 미만 여부와 폭원별 접도연장·접도율은 자동산정하지만, 건축법상 도로 인정 여부·사도/현황도로·도로위계는 별도 공부와 현장확인이 필요합니다.</div>
 </div>
-<div class="spatial-caption">도면정보 · 대상지 경계와 TL_SPRD_MANAGE ROAD_BT 폭원 Fact를 함께 표시합니다. 법정 도로 인정 여부는 기존 단서와 같이 별도 확인합니다.</div>
+<div class="spatial-tags road-frontage-map-legend" id="spRoadMapLegend"><span><i class="f8"></i>8m+ 인정 접도</span><span><i class="f4"></i>4~8m 인정 접도</span><span><i class="fu4"></i>4m 미만 접도</span><span><i class="fcad"></i>지목 도로 접면후보</span><span>회색 점선=TL_SPRD_MANAGE 중심선</span></div>
+<div class="spatial-caption" id="spRoadMapDiagnostic">도면정보 · 현재 접도엔진이 실제로 인정한 대상지 경계구간을 직접 표시합니다. 주황 점선은 연속지적·토지대장상 지목이 도로인 필지와 맞닿은 후보구간으로, 현재 ROAD_BT 접도판정에는 사용하지 않는 진단 레이어입니다.</div>
 <div class="spatial-mini-map" id="ccRoadConditionMiniMap"></div>
 </section>
 <section class="spatial-module site-analysis-card site-analysis-diagnostic site-analysis-wide" id="siteDetail_schemeRoad">
@@ -4085,8 +4087,14 @@ const ccHeritageBoundary=L.geoJSON(null,{style:{weight:2.8,color:'#101828',fillO
 
 const ccRoadConditionMini=L.map('ccRoadConditionMiniMap',{zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,doubleClickZoom:false,boxZoom:false,keyboard:false,touchZoom:false}).setView([37.5665,126.9780],16);
 const ccRoadConditionParcelBase=L.geoJSON(null,{style:compactParcelBaseStyle}).addTo(ccRoadConditionMini);
-const ccRoadConditionRoads=L.geoJSON(null,{style:f=>{const w=Number((f.properties||{})._width_m);let c='#98a2b3',fill='#eaecf0';if(Number.isFinite(w)&&w>=8){c='#175cd3';fill='#b2ddff';}else if(Number.isFinite(w)&&w>=6){c='#067647';fill='#abefc6';}else if(Number.isFinite(w)&&w>=4){c='#b54708';fill='#fedf89';}else if(Number.isFinite(w)){c='#b42318';fill='#fecdca';}return {weight:1.2,color:c,fillColor:fill,fillOpacity:.42};},onEachFeature:(f,l)=>{const p=f.properties||{},w=Number(p._width_m);l.bindTooltip(`${escHtml(p._road_name||p.ROAD_NM||'도로')} · ${Number.isFinite(w)?w.toFixed(1)+'m':'폭원 미확인'}`);}}).addTo(ccRoadConditionMini);
-const ccRoadConditionBoundary=L.geoJSON(null,{style:{weight:2.8,color:'#101828',fillOpacity:0}}).addTo(ccRoadConditionMini);
+const ccRoadConditionCadastralRoads=L.geoJSON(null,{style:{weight:1.2,color:'#f79009',fillColor:'#fedf89',fillOpacity:.12,dashArray:'5,4'},onEachFeature:(f,l)=>{const p=f.properties||{};l.bindTooltip(`지목 도로 · ${escHtml(p.jibun||p.PNU||p.pnu||'필지')}`);}}).addTo(ccRoadConditionMini);
+const ccRoadConditionRoads=L.geoJSON(null,{style:f=>{const w=Number((f.properties||{})._width_m);let c='#98a2b3',fill='#eaecf0';if(Number.isFinite(w)&&w>=8){c='#175cd3';fill='#b2ddff';}else if(Number.isFinite(w)&&w>=6){c='#067647';fill='#abefc6';}else if(Number.isFinite(w)&&w>=4){c='#b54708';fill='#fedf89';}else if(Number.isFinite(w)){c='#b42318';fill='#fecdca';}return {weight:1.05,color:c,fillColor:fill,fillOpacity:.20};},onEachFeature:(f,l)=>{const p=f.properties||{},w=Number(p._width_m);l.bindTooltip(`${escHtml(p._road_name||p.ROAD_NM||'도로')} · ${Number.isFinite(w)?w.toFixed(1)+'m':'폭원 미확인'}`);}}).addTo(ccRoadConditionMini);
+const ccRoadConditionCenterlines=L.geoJSON(null,{style:{weight:1.25,color:'#667085',opacity:.78,dashArray:'4,4'},onEachFeature:(f,l)=>{const p=f.properties||{},w=cleanNum(pickPropCI(p,ROAD_WIDTH_PROP_CANDIDATES));l.bindTooltip(`도로중심선 · ${escHtml(p.ROAD_NM||p.road_nm||p.RN||'도로명 미확인')}${w!=null?' · ROAD_BT '+Number(w).toFixed(1)+'m':' · 폭원 미확인'}`);}}).addTo(ccRoadConditionMini);
+const ccRoadConditionBoundary=L.geoJSON(null,{style:{weight:1.8,color:'#101828',fillOpacity:0}}).addTo(ccRoadConditionMini);
+const ccRoadConditionCadFrontage=L.geoJSON(null,{style:{weight:3.4,color:'#f79009',opacity:.95,dashArray:'7,4'},onEachFeature:(f,l)=>{const p=f.properties||{};l.bindTooltip(`지목 도로 접면후보 · ${escHtml(p._frontage_road_name||'지목상 도로')} · ${Number(p._frontage_contact_m||0).toFixed(1)}m · 현 판정 미반영`);}}).addTo(ccRoadConditionMini);
+const ccRoadConditionFrontageUnder4=L.geoJSON(null,{style:{weight:4.5,color:'#b42318',opacity:1},onEachFeature:(f,l)=>{const p=f.properties||{};l.bindTooltip(`${escHtml(p._frontage_road_name||'도로')} · ${Number(p._width_m||0).toFixed(1)}m · 접도 ${Number(p._frontage_contact_m||0).toFixed(1)}m`);}}).addTo(ccRoadConditionMini);
+const ccRoadConditionFrontage4=L.geoJSON(null,{style:{weight:4.8,color:'#067647',opacity:1},onEachFeature:(f,l)=>{const p=f.properties||{};l.bindTooltip(`${escHtml(p._frontage_road_name||'도로')} · ${Number(p._width_m||0).toFixed(1)}m · 4m+ 인정 접도 ${Number(p._frontage_contact_m||0).toFixed(1)}m`);}}).addTo(ccRoadConditionMini);
+const ccRoadConditionFrontage8=L.geoJSON(null,{style:{weight:5.4,color:'#175cd3',opacity:1},onEachFeature:(f,l)=>{const p=f.properties||{};l.bindTooltip(`${escHtml(p._frontage_road_name||'도로')} · ${Number(p._width_m||0).toFixed(1)}m · 8m+ 인정 접도 ${Number(p._frontage_contact_m||0).toFixed(1)}m`);}}).addTo(ccRoadConditionMini);
 
 
 
@@ -4662,7 +4670,23 @@ function renderHeritageSpatialStatus(){
   set('spHeritageCount',planningAnalysis.loaded?`${rows.filter(x=>Number(x.area||0)>.5).length}건`:'미조회');set('spHeritageArea',planningAnalysis.loaded?`${Math.round(area).toLocaleString('ko-KR')}㎡`:'-');set('spHeritagePct',planningAnalysis.loaded?`${(area/siteArea*100).toFixed(1)}%`:'-');set('spHeritageNames',names.length?names.slice(0,3).join(' · '):(planningAnalysis.loaded?'보호구역 중첩 없음':'-'));set('spHeritageState',err?'VWorld 일부 확인 필요 · WMS 교차확인':planningAnalysis.loaded?'VWorld 보호구역 + WMS':'GIS 미조회');refreshHeritageWmsOverlay();fitCompactMiniMap(ccHeritageMini,ccHeritageBoundary,ccHeritageVector);
 }
 function renderRoadConditionMiniMap(){
-  ccRoadConditionRoads.clearLayers();ccRoadConditionBoundary.clearLayers();if(!activeGeometry)return;ccRoadConditionBoundary.addData(turf.feature(activeGeometry));if(currentRoadWidthFeatures?.length)ccRoadConditionRoads.addData({type:'FeatureCollection',features:currentRoadWidthFeatures.map(cloneFeature)});fitCompactMiniMap(ccRoadConditionMini,ccRoadConditionBoundary,ccRoadConditionRoads);
+  for(const lyr of [ccRoadConditionCadastralRoads,ccRoadConditionRoads,ccRoadConditionCenterlines,ccRoadConditionBoundary,ccRoadConditionCadFrontage,ccRoadConditionFrontageUnder4,ccRoadConditionFrontage4,ccRoadConditionFrontage8])lyr.clearLayers();
+  const diag=document.getElementById('spRoadMapDiagnostic');
+  if(!activeGeometry){if(diag)diag.textContent='도면정보 · 구역 설정 후 현재 접도엔진의 인정 경계구간과 지목 도로 접면후보를 비교 표시합니다.';return;}
+  const site=turf.feature(activeGeometry),viz=roadConditionFrontageVisualFacts();
+  if(viz.cadastralRoads.length)ccRoadConditionCadastralRoads.addData({type:'FeatureCollection',features:viz.cadastralRoads});
+  if(currentRoadWidthFeatures?.length)ccRoadConditionRoads.addData({type:'FeatureCollection',features:currentRoadWidthFeatures.map(cloneFeature)});
+  if(currentRoadManageFeatures?.length)ccRoadConditionCenterlines.addData({type:'FeatureCollection',features:currentRoadManageFeatures.map(cloneFeature)});
+  ccRoadConditionBoundary.addData(site);
+  if(viz.cadastral.length)ccRoadConditionCadFrontage.addData({type:'FeatureCollection',features:viz.cadastral});
+  const under=viz.accepted.filter(f=>(f.properties||{})._frontage_class==='ROAD_UNDER4'),f4=viz.accepted.filter(f=>(f.properties||{})._frontage_class==='ROAD_4_8'),f8=viz.accepted.filter(f=>(f.properties||{})._frontage_class==='ROAD_8_PLUS');
+  if(under.length)ccRoadConditionFrontageUnder4.addData({type:'FeatureCollection',features:under});if(f4.length)ccRoadConditionFrontage4.addData({type:'FeatureCollection',features:f4});if(f8.length)ccRoadConditionFrontage8.addData({type:'FeatureCollection',features:f8});
+  try{ccRoadConditionCadFrontage.bringToFront();ccRoadConditionFrontageUnder4.bringToFront();ccRoadConditionFrontage4.bringToFront();ccRoadConditionFrontage8.bringToFront();}catch(e){}
+  if(diag){
+    const roadNames=[...new Set(viz.accepted.map(f=>(f.properties||{})._frontage_road_name).filter(Boolean))],cadNames=[...new Set(viz.cadastral.map(f=>(f.properties||{})._frontage_road_name).filter(Boolean))];
+    diag.innerHTML=`도면정보 · 현재 ROAD_BT 엔진 인정 접도도로 <b>${roadNames.length}개</b>${roadNames.length?` (${roadNames.map(escHtml).join(' · ')})`:''} · 지목 도로 접면후보 <b>${cadNames.length}개</b>. <b>주황 구간이 있는데 파랑/초록/빨강 인정구간이 없으면 지적상 도로와 현행 중심선 버퍼 판정의 불일치 후보입니다.</b>`;
+  }
+  fitCompactMiniMap(ccRoadConditionMini,ccRoadConditionBoundary,ccRoadConditionRoads);
 }
 
 function renderSharedConservationSpatialStatus(){
@@ -7329,6 +7353,61 @@ function roadFeatureIdentity(f,index=0){
   if(name)return `name:${name.replace(/\s+/g,'')}`;
   const rncd=String(pickPropCI(p,['RN_CD','rn_cd'])||'').trim();if(rncd)return `rncd:${rncd}`;
   return String(pickPropCI(p,['RDS_MAN_NO','rds_man_no','RW_SN','rw_sn'])||`road-${index}`);
+}
+// R36 접도 시각화 전용. 판정식은 건드리지 않고 현재 엔진이 인정한 경계구간을 그대로 도면화한다.
+// 지목상 도로필지 접면은 주황 진단 레이어로만 표시하며 현행 PASS/FAIL 입력에는 사용하지 않는다.
+function frontageBoundarySegments(site,surfaces,{stepM=.5,toleranceM=.45,sourceType='ROAD_BT'}={}){
+  if(!site?.geometry||!(surfaces||[]).length)return [];
+  const prepared=[];
+  (surfaces||[]).forEach((f,index)=>{
+    if(!f?.geometry)return;
+    let hitGeom=null;try{hitGeom=turf.buffer(f,Math.max(.05,Number(toleranceM)||.45),{units:'meters'});}catch(e){hitGeom=f;}
+    const p=f.properties||{},w=cleanNum(p._width_m??pickPropCI(p,ROAD_WIDTH_PROP_CANDIDATES));
+    const isCad=sourceType==='CADASTRAL_ROAD';
+    const name=isCad?`지목상 도로${p.jibun?' '+p.jibun:''}`:String(p._road_name||p.ROAD_NM||p.road_nm||p.RN||'도로명 미확인');
+    const key=isCad?`cad:${String(parcelKey(f)||p.PNU||p.pnu||index)}`:roadFeatureIdentity(f,index);
+    prepared.push({feature:f,hitGeom,key,run_key:`${key}:${index}`,name,width:w,index});
+  });
+  const out=[];
+  for(const line of boundaryLines(site)){
+    const len=turf.length(line,{units:'kilometers'})*1000;if(!(len>0))continue;
+    let run=null;
+    const finish=()=>{
+      if(!run)return;
+      if(run.coords.length>=2&&run.length_m>=.1){
+        const cls=sourceType==='CADASTRAL_ROAD'?'CADASTRAL_ROAD':run.hit.width==null?'ROAD_UNKNOWN':run.hit.width>=8?'ROAD_8_PLUS':run.hit.width>=4?'ROAD_4_8':'ROAD_UNDER4';
+        const ft=turf.lineString(run.coords,{_frontage_class:cls,_frontage_source:sourceType,_frontage_key:run.hit.key,_frontage_road_name:run.hit.name,_width_m:run.hit.width,_frontage_contact_m:run.length_m});
+        out.push(ft);
+      }
+      run=null;
+    };
+    for(let d=0;d<len;d+=stepM){
+      const seg=Math.min(stepM,len-d),mid=turf.along(line,(d+seg/2)/1000,{units:'kilometers'});
+      let hit=null;
+      for(const cand of prepared){
+        try{if(turf.booleanPointInPolygon(mid,cand.hitGeom)){if(!hit||(Number(cand.width)||0)>(Number(hit.width)||0))hit=cand;}}catch(e){}
+      }
+      if(!hit){finish();continue;}
+      if(!run||run.hit.run_key!==hit.run_key){finish();const a=turf.along(line,d/1000,{units:'kilometers'});run={hit,coords:[a.geometry.coordinates],length_m:0};}
+      const b=turf.along(line,(d+seg)/1000,{units:'kilometers'});run.coords.push(b.geometry.coordinates);run.length_m+=seg;
+    }
+    finish();
+  }
+  return out;
+}
+function roadConditionCadastralRoadFeatures(){
+  const out=[],seen=new Set();
+  const add=f=>{
+    if(!f?.geometry||!projectParcelIsRoad(f))return;
+    const k=String(parcelKey(f)||f.id||JSON.stringify(turf.bbox(f)));if(seen.has(k))return;seen.add(k);out.push(cloneFeature(f));
+  };
+  for(const f of ccContextParcelFeatures||[])add(f);for(const f of parcelFeatureMap.values())add(f);
+  return out;
+}
+function roadConditionFrontageVisualFacts(){
+  if(!activeGeometry)return {accepted:[],cadastral:[],cadastralRoads:[]};
+  const site=turf.feature(activeGeometry),cadastralRoads=roadConditionCadastralRoadFeatures();
+  return {accepted:frontageBoundarySegments(site,currentRoadWidthFeatures||[],{stepM:.5,toleranceM:.45,sourceType:'ROAD_BT'}),cadastral:frontageBoundarySegments(site,cadastralRoads,{stepM:.5,toleranceM:.45,sourceType:'CADASTRAL_ROAD'}),cadastralRoads};
 }
 function siteRoadNetworkStats(site,roads){
   if(!site)return {faceCount:null,road4Faces:null,road6Faces:null,road8Faces:null,road20Faces:null,road35Faces:null,maxWidth:null,has8:null,has20Width:null,road4Perimeter:null,road6Perimeter:null,road8Perimeter:null,road20Perimeter:null,road35Perimeter:null,perimeterM:null,contact4M:null,contact6M:null,contact8M:null,contact20M:null,contact35M:null,max20ContactM:null,max35ContactM:null,roads:[],estimateUsed:false};
