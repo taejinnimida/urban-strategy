@@ -1973,6 +1973,26 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="shared-conservation-note" id="spSharedConservationErrorDetail" style="display:none"></div>
 <div class="spatial-mini-map" id="ccSharedConservationMiniMap"></div>
 </section>
+<section class="spatial-module site-analysis-card site-analysis-local" id="siteDetail_hill">
+<div class="spatial-module-head"><b>구릉지 분석</b><span id="spHillState">공식 지형원자료 기반 · 분석 전</span></div>
+<div class="spatial-metrics">
+<div><span>대표표고(중앙값)</span><b id="spHillElevation">-</b></div>
+<div><span>최저~최고 표고</span><b id="spHillElevationRange">-</b></div>
+<div><span>평균 지형경사</span><b id="spHillSlopeMean">-</b></div>
+<div><span>최대 지형경사</span><b id="spHillSlopeMax">-</b></div>
+</div>
+<div class="spatial-metrics">
+<div><span>표고 40m 이상</span><b id="spHillElev40Area">-</b></div>
+<div><span>경사 10° 이상</span><b id="spHillSlope10Area">-</b></div>
+<div><span>40m+10° 동시충족</span><b id="spHillCombinedArea">-</b></div>
+<div><span>최근접 동시충족 영역</span><b id="spHillDistance">-</b></div>
+</div>
+<div class="spatial-tags"><span class="map-legend-chip" style="--zone-fill:#fef0c7;--zone-border:#b54708">표고 40m 이상</span><span class="map-legend-chip" style="--zone-fill:#b2ddff;--zone-border:#175cd3">경사 10° 이상</span><span class="map-legend-chip" style="--zone-fill:#d9d6fe;--zone-border:#6938ef">40m+10° 동시충족</span><span>검은선: 대상지</span></div>
+<div class="spatial-caption">도면정보 · 서울시 1:5,000 등고선·표고점(2025-03-18 추출본, EPSG:5174)을 전처리한 20m 지형격자에서 표고와 Horn 3×3 지형경사(degree)를 산출합니다. 대상지 통계와 중첩면적은 공통 FACT이며 사업별 기준은 각 Rule Module에서 별도 해석합니다.</div>
+<div class="shared-conservation-note">정확성 단서 · 본 도면은 <b>서울시 공식 구릉지 SHP가 아니라</b> 서울시 공식 수치지형 원자료로 플랫폼이 산출한 초기검토용 참조도형입니다. 표고 40m·경사 10° 경계부는 20m 격자 및 보간오차가 있으므로 인허가 단계에서 원도·측량성과로 재확인합니다.</div>
+<div class="shared-conservation-note" id="spHillQualityNote">자료품질 · 분석 전</div>
+<div class="spatial-mini-map" id="ccHillMiniMap"></div>
+</section>
 <section class="spatial-module site-analysis-card site-analysis-local" id="siteDetail_building">
 <div class="spatial-module-head"><b>건축물</b><span id="ccBuildingState">구역 설정 전</span></div>
 <div class="spatial-metrics">
@@ -2175,19 +2195,7 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="station-scheme-list" id="frontageSchemeSummary"><div class="station-scheme-row head"><b>사업방식</b><span>판정</span><span>접도 근거</span></div><div class="station-scheme-row"><b>분석 전</b><span class="scheme-tag INFO">-</span><span>구역계를 설정하고 검토하기를 눌러야 계산됩니다.</span></div></div>
 <div class="spatial-caption">역세권활성화·역세권복합개발·도심공공주택복합의 대상지 경계 접도 면수 기준을 비교합니다. 도정법 접도율과 간선도로 폭원 기준은 이 표에 섞지 않습니다.</div>
 </section>
-<section class="spatial-module site-analysis-hidden" id="siteDetail_hill" style="display:none">
-<div class="spatial-module-head"><b>구릉지 현황도</b><span id="spHillState">공개 SHP 미확보</span></div>
-<div class="spatial-metrics">
-<div><span>공식 SHP</span><b id="spHillSource">-</b></div>
-<div><span>대상지 중첩</span><b id="spHillOverlap">-</b></div>
-<div><span>중첩 비율</span><b id="spHillPct">-</b></div>
-<div><span>최근접 거리</span><b id="spHillDistance">-</b></div>
-</div>
-<div class="spatial-tags"><span class="map-legend-chip" style="--zone-fill:#d6bbfb;--zone-border:#6938ef">구릉지 원도형</span><span>대상지 경계</span></div>
-<div class="spatial-caption">도면정보 · 구릉지 공개 SHP 원본을 확보하지 못했습니다. 현재 자동 판정에 사용하지 않습니다.</div>
-<div class="shared-conservation-note">정확성 단서 · 구릉지는 공개 SHP 미확보 항목으로 남기며 수동검토(REVIEW)만 합니다.</div>
-<div class="spatial-mini-map" id="ccHillMiniMap"></div>
-</section>
+
 <section class="spatial-module site-analysis-extra" id="siteDetail_schemeSpecific">
 <div class="spatial-module-head"><b>사업별 추가 현황</b><span id="spSchemeFactState">독립모듈 연계</span></div>
 <div class="spatial-age-list" id="spSchemeFactList"><div class="spatial-age-row"><div class="spatial-age-name"><b>분석 전</b><span>사업방식별 추가 공간·현황조건</span></div><div class="spatial-age-value"><strong>-</strong><small>사업별 독립모듈이 필요한 현황을 이 영역에 등록합니다.</small></div><em class="spatial-age-status REVIEW">미확인</em></div></div>
@@ -4245,8 +4253,8 @@ const ccSharedForestParcels=L.geoJSON(null,{style:{weight:2,color:'#854a0e',fill
 const ccSharedConservationBoundary=L.geoJSON(null,{style:{weight:3,color:'#101828',fillOpacity:0}}).addTo(ccSharedConservationMini);
 const ccHillMini=L.map('ccHillMiniMap',{zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,doubleClickZoom:false,boxZoom:false,keyboard:false,touchZoom:false}).setView([37.5665,126.9780],15);
 const ccHillParcelBase=L.geoJSON(null,{style:compactParcelBaseStyle}).addTo(ccHillMini);
-const ccHillContext=L.geoJSON(null,{style:{weight:1.5,color:'#6938ef',fillColor:'#d6bbfb',fillOpacity:.18,dashArray:'4,2'},onEachFeature:(f,l)=>l.bindTooltip(`${escHtml(f.properties?.category||'구릉지')} · 서울시 공식 원도형`)}).addTo(ccHillMini);
-const ccHillOverlap=L.geoJSON(null,{style:{weight:2.4,color:'#5925dc',fillColor:'#9e77ed',fillOpacity:.46},onEachFeature:(f,l)=>l.bindTooltip(`${escHtml(f.properties?.category||'구릉지')} · 대상지 중첩`)}).addTo(ccHillMini);
+const ccHillContext=L.geoJSON(null,{style:f=>{const c=f.properties?.category_code||'';if(c==='elevation_ge_40m')return {weight:1,color:'#b54708',fillColor:'#fef0c7',fillOpacity:.22};if(c==='slope_ge_10deg')return {weight:1,color:'#175cd3',fillColor:'#b2ddff',fillOpacity:.22};return {weight:1.8,color:'#6938ef',fillColor:'#d9d6fe',fillOpacity:.38};},onEachFeature:(f,l)=>l.bindTooltip(`${escHtml(f.properties?.category||'구릉지 지형참조')} · 플랫폼 산출 FACT`)}).addTo(ccHillMini);
+const ccHillOverlap=L.geoJSON(null,{style:{weight:2.6,color:'#5925dc',fillColor:'#9e77ed',fillOpacity:.48},onEachFeature:(f,l)=>l.bindTooltip(`${escHtml(f.properties?.category||'동시충족 영역')} · 대상지 중첩`)}).addTo(ccHillMini);
 const ccHillBoundary=L.geoJSON(null,{style:{weight:3,color:'#101828',fillOpacity:0}}).addTo(ccHillMini);
 
 const ccSchemeRoadMini=L.map('ccSchemeRoadMiniMap',{zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,doubleClickZoom:false,boxZoom:false,keyboard:false,touchZoom:false}).setView([37.5665,126.9780],15);
@@ -6077,7 +6085,7 @@ const renewalAnalysis={loaded:false,loading:false,features:[],contextFeatures:[]
 // 별도 개발사업 현황도. 지구단위계획은 기존 VWorld LT_C_UPISUQ161 결과를 재사용하고,
 // 도시개발·공공주택지구·기타 법정 사업구역은 서울 UQ181 SHP를 서버 중첩하고, 산업단지는 VWorld LT_C_DAMDAN 전용경계를 별도로 조회한다.
 const developmentAnalysis={loaded:false,loading:false,contextFeatures:[],overlaps:[],industrialParks:[],industrialParkContextFeatures:[],industrialParkMetadata:{},metadata:{},error:''};
-const hillAnalysis={loaded:false,loading:false,status:'unavailable',source_status:'',intersects:null,overlap_area_m2:null,overlap_pct:null,distance_m:null,contextFeatures:[],overlaps:[],metadata:{},error:''};
+const hillAnalysis={loaded:false,loading:false,status:'unavailable',source_status:'',intersects:null,overlap_area_m2:null,overlap_pct:null,distance_m:null,site_area_m2:null,valid_terrain_area_m2:null,nodata_area_m2:null,nodata_pct:null,pixel_count_in_site:0,elevation:{},slope:{},reference_areas:{},contextFeatures:[],overlaps:[],metadata:{},error:''};
 const safeMedicalAnalysis={loaded:false,loading:false,status:'unavailable',items:[],metadata:{},errors:[],warnings:[],sourceStats:{},nearbyCounts:{},message:''};
 const schoolAbsoluteProtectionAnalysis={loaded:false,loading:false,status:'unavailable',known:false,present:null,overlapAreaM2:null,overlapPct:null,zoneCount:0,schoolNames:[],features:[],overlapFeatures:[],source:'',sourceType:'',file:'',error:''};
 const sharedConservationAnalysis={
@@ -6152,7 +6160,7 @@ function resetPlanningAnalysis(){
   resetPlanningCoreAnalysis();
   renewalAnalysis.loaded=false;renewalAnalysis.loading=false;renewalAnalysis.features=[];renewalAnalysis.contextFeatures=[];renewalAnalysis.overlaps=[];renewalAnalysis.projectRegistryOverlaps=[];renewalAnalysis.projectRegistryContextFeatures=[];renewalAnalysis.projectRegistryMetadata={};renewalAnalysis.error='';
   developmentAnalysis.loaded=false;developmentAnalysis.loading=false;developmentAnalysis.contextFeatures=[];developmentAnalysis.overlaps=[];developmentAnalysis.industrialParks=[];developmentAnalysis.industrialParkContextFeatures=[];developmentAnalysis.industrialParkMetadata={};developmentAnalysis.metadata={};developmentAnalysis.error='';
-  hillAnalysis.loaded=false;hillAnalysis.loading=false;hillAnalysis.status='unavailable';hillAnalysis.source_status='';hillAnalysis.intersects=null;hillAnalysis.overlap_area_m2=null;hillAnalysis.overlap_pct=null;hillAnalysis.distance_m=null;hillAnalysis.contextFeatures=[];hillAnalysis.overlaps=[];hillAnalysis.metadata={};hillAnalysis.error='';
+  hillAnalysis.loaded=false;hillAnalysis.loading=false;hillAnalysis.status='unavailable';hillAnalysis.source_status='';hillAnalysis.intersects=null;hillAnalysis.overlap_area_m2=null;hillAnalysis.overlap_pct=null;hillAnalysis.distance_m=null;hillAnalysis.site_area_m2=null;hillAnalysis.valid_terrain_area_m2=null;hillAnalysis.nodata_area_m2=null;hillAnalysis.nodata_pct=null;hillAnalysis.pixel_count_in_site=0;hillAnalysis.elevation={};hillAnalysis.slope={};hillAnalysis.reference_areas={};hillAnalysis.contextFeatures=[];hillAnalysis.overlaps=[];hillAnalysis.metadata={};hillAnalysis.error='';
   safeMedicalAnalysis.loaded=false;safeMedicalAnalysis.loading=false;safeMedicalAnalysis.status='unavailable';safeMedicalAnalysis.items=[];safeMedicalAnalysis.metadata={};safeMedicalAnalysis.errors=[];safeMedicalAnalysis.warnings=[];safeMedicalAnalysis.sourceStats={};safeMedicalAnalysis.nearbyCounts={};safeMedicalAnalysis.message='';
   schoolAbsoluteProtectionAnalysis.loaded=false;schoolAbsoluteProtectionAnalysis.loading=false;schoolAbsoluteProtectionAnalysis.status='unavailable';schoolAbsoluteProtectionAnalysis.known=false;schoolAbsoluteProtectionAnalysis.present=null;schoolAbsoluteProtectionAnalysis.overlapAreaM2=null;schoolAbsoluteProtectionAnalysis.overlapPct=null;schoolAbsoluteProtectionAnalysis.zoneCount=0;schoolAbsoluteProtectionAnalysis.schoolNames=[];schoolAbsoluteProtectionAnalysis.features=[];schoolAbsoluteProtectionAnalysis.overlapFeatures=[];schoolAbsoluteProtectionAnalysis.source='';schoolAbsoluteProtectionAnalysis.sourceType='';schoolAbsoluteProtectionAnalysis.file='';schoolAbsoluteProtectionAnalysis.error='';
   sharedConservationAnalysis.loaded=false;sharedConservationAnalysis.loading=false;sharedConservationAnalysis.status='unavailable';sharedConservationAnalysis.errors=[];sharedConservationAnalysis.urbanPark={known:false,present:null,area_m2:null,pct:null,features:[]};sharedConservationAnalysis.greenbelt={known:false,present:null,area_m2:null,pct:null,features:[]};sharedConservationAnalysis.biotope={known:false,present:null,area_m2:null,pct:null,features:[],affected_pnus:[],rows:[],geometry_basis:'NONE'};sharedConservationAnalysis.publicForest={known:false,present:null,area_m2:null,pct:null,features:[],affected_pnus:[],rows:[],geometry_basis:'NONE'};sharedConservationAnalysis.source={geometry_basis:'mixed'};
@@ -6231,6 +6239,8 @@ async function analyzeHillZones(){
     const data=await fetchBackendJson('/api/spatial/hill-intersections',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry:activeGeometry})});
     hillAnalysis.status=data.status||'unavailable';hillAnalysis.source_status=data.source_status||'';hillAnalysis.intersects=data.intersects;
     hillAnalysis.overlap_area_m2=data.overlap_area_m2;hillAnalysis.overlap_pct=data.overlap_pct;hillAnalysis.distance_m=data.distance_m;
+    hillAnalysis.site_area_m2=data.site_area_m2;hillAnalysis.valid_terrain_area_m2=data.valid_terrain_area_m2;hillAnalysis.nodata_area_m2=data.nodata_area_m2;hillAnalysis.nodata_pct=data.nodata_pct;hillAnalysis.pixel_count_in_site=Number(data.pixel_count_in_site||0);
+    hillAnalysis.elevation=data.elevation||{};hillAnalysis.slope=data.slope||{};hillAnalysis.reference_areas=data.reference_areas||{};
     hillAnalysis.contextFeatures=data.context_features||[];hillAnalysis.overlaps=data.overlaps||[];hillAnalysis.metadata=data.metadata||{};hillAnalysis.loaded=true;
   }catch(e){
     hillAnalysis.loaded=false;hillAnalysis.status='error';hillAnalysis.error=String(e.message||e);hillAnalysis.contextFeatures=[];hillAnalysis.overlaps=[];
@@ -6240,16 +6250,23 @@ async function analyzeHillZones(){
 function renderHillSpatialStatus(){
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
   ccHillContext.clearLayers();ccHillOverlap.clearLayers();ccHillBoundary.clearLayers();
-  if(!activeGeometry){set('spHillState','구역 설정 전');set('spHillSource','-');set('spHillOverlap','-');set('spHillPct','-');set('spHillDistance','-');return;}
+  if(!activeGeometry){for(const id of ['spHillElevation','spHillElevationRange','spHillSlopeMean','spHillSlopeMax','spHillElev40Area','spHillSlope10Area','spHillCombinedArea','spHillDistance'])set(id,'-');set('spHillState','구역 설정 전');set('spHillQualityNote','자료품질 · 구역 설정 전');return;}
   ccHillBoundary.addData(turf.feature(activeGeometry));
   if(hillAnalysis.contextFeatures?.length)ccHillContext.addData({type:'FeatureCollection',features:hillAnalysis.contextFeatures});
   if(hillAnalysis.overlaps?.length)ccHillOverlap.addData({type:'FeatureCollection',features:hillAnalysis.overlaps});
-  const ready=hillAnalysis.metadata?.available===true;
-  set('spHillSource',ready?(hillAnalysis.metadata?.source_file||'연결됨'):'원 SHP 미연결');
-  set('spHillOverlap',hillAnalysis.intersects==null?'확인 불가':hillAnalysis.intersects?`${Math.round(hillAnalysis.overlap_area_m2||0).toLocaleString('ko-KR')}㎡`:'중첩 없음');
-  set('spHillPct',hillAnalysis.overlap_pct==null?'-':`${Number(hillAnalysis.overlap_pct).toFixed(1)}%`);
-  set('spHillDistance',hillAnalysis.distance_m==null?'-':`${Number(hillAnalysis.distance_m).toFixed(1)}m`);
-  set('spHillState',hillAnalysis.loading?'조회 중':hillAnalysis.error?'조회 오류':ready?'공식 원도형 조회 완료':'공식 원도형 필요');
+  const ready=hillAnalysis.metadata?.available===true,e=hillAnalysis.elevation||{},sl=hillAnalysis.slope||{},ra=hillAnalysis.reference_areas||{};
+  const m2=v=>v==null?'-':`${Math.round(Number(v)).toLocaleString('ko-KR')}㎡`;
+  set('spHillElevation',e.representative_m==null?'-':`${Number(e.representative_m).toFixed(1)}m`);
+  set('spHillElevationRange',(e.min_m==null||e.max_m==null)?'-':`${Number(e.min_m).toFixed(1)}~${Number(e.max_m).toFixed(1)}m`);
+  set('spHillSlopeMean',sl.mean_degree==null?'-':`${Number(sl.mean_degree).toFixed(1)}°`);
+  set('spHillSlopeMax',sl.max_degree==null?'-':`${Number(sl.max_degree).toFixed(1)}°`);
+  set('spHillElev40Area',m2(ra.elevation_ge_40m_sqm));
+  set('spHillSlope10Area',m2(ra.slope_ge_10deg_sqm));
+  set('spHillCombinedArea',hillAnalysis.overlap_area_m2==null?'-':`${m2(hillAnalysis.overlap_area_m2)} · ${Number(hillAnalysis.overlap_pct||0).toFixed(1)}%`);
+  set('spHillDistance',hillAnalysis.distance_m==null?'-':hillAnalysis.distance_m<=0?'직접 중첩':`${Number(hillAnalysis.distance_m).toFixed(1)}m`);
+  const nod=Number(hillAnalysis.nodata_pct||0),res=hillAnalysis.metadata?.resolution_m;
+  set('spHillQualityNote',ready?`자료품질 · ${res?res+'m 격자 · ':''}대상지 지형자료 결측 ${nod.toFixed(2)}% · ${hillAnalysis.pixel_count_in_site||0}셀 교차분석 · source_type ${hillAnalysis.metadata?.source_type||'PLATFORM_DERIVED_REFERENCE'}`:'자료품질 · 지형참조 미연결');
+  set('spHillState',hillAnalysis.loading?'분석 중':hillAnalysis.error?'분석 오류':ready?(hillAnalysis.status==='partial'?'지형 FACT 부분확인':'지형 FACT 분석 완료'):'지형참조 필요');
   fitCompactMiniMap(ccHillMini,ccHillBoundary,ccHillOverlap.getLayers().length?ccHillOverlap:ccHillContext);
 }
 
@@ -7862,11 +7879,12 @@ async function runAllAutoAnalyses(options={}){
   // 대형 공간자료·외부 API는 순차 실행한다. 작은 Render 인스턴스에서 SHP 2종 동시 적재로 HTML 오류/프로세스 재시작이 나는 가능성을 낮춘다.
   results.push(await safeAnalysisStep('도시계획 GIS',analyzePlanningGIS,240000,{onTimeout:cancelPlanningAnalysis,classify:v=>({status:(v?.error_count||0)>0?'partial':'fulfilled',detail:v?.queried?`성공 ${v.ok}/${v.queried} 레이어`:''})}));
   results.push(await safeAnalysisStep('상생주택 보전환경',analyzeSharedConservation,300000,{classify:v=>{const known=[v?.urbanPark?.known,v?.greenbelt?.known,v?.biotope?.known,v?.publicForest?.known].filter(Boolean).length;return {status:known===4?(v?.errors?.length?'partial':'fulfilled'):(known>0?'partial':'rejected'),detail:`${known}/4 기준 확인${v?.biotope?.area_m2!=null?` · 비오톱 ${Math.round(v.biotope.area_m2).toLocaleString('ko-KR')}㎡`:v?.biotope?.affected_pnus?.length?` · 비오톱 ${v.biotope.affected_pnus.length}필지`:''}${v?.publicForest?.area_m2!=null?` · 공익용산지 ${Math.round(v.publicForest.area_m2).toLocaleString('ko-KR')}㎡`:v?.publicForest?.affected_pnus?.length?` · 공익용산지 ${v.publicForest.affected_pnus.length}필지`:''}`};}}));
+  results.push(await safeAnalysisStep('구릉지 지형 FACT',analyzeHillZones,180000,{classify:v=>{const ready=v?.loaded&&v?.metadata?.available===true;if(!ready)return {status:'rejected',detail:v?.error||'지형참조 미연결'};const st=v?.status==='partial'?'partial':'fulfilled';return {status:st,detail:`대표표고 ${v?.elevation?.representative_m==null?'-':Number(v.elevation.representative_m).toFixed(1)+'m'} · 평균경사 ${v?.slope?.mean_degree==null?'-':Number(v.slope.mean_degree).toFixed(1)+'°'} · 40m+10° ${Math.round(Number(v?.overlap_area_m2||0)).toLocaleString('ko-KR')}㎡ (${Number(v?.overlap_pct||0).toFixed(1)}%)`};}}));
   results.push(await safeAnalysisStep('정비사업 GIS',async()=>{await analyzeRenewalZones();return {error:renewalAnalysis.error,overlaps:renewalAnalysis.overlaps?.length||0};},180000,{classify:v=>({status:v?.error?'rejected':'fulfilled',detail:v?.error?String(v.error).slice(0,120):`중첩 ${v?.overlaps||0}건`})}));
   results.push(await safeAnalysisStep('개발사업 GIS',async()=>{await analyzeDevelopmentZones();return {error:developmentAnalysis.error,overlaps:developmentAnalysis.overlaps?.length||0};},180000,{classify:v=>({status:v?.error?'rejected':'fulfilled',detail:v?.error?String(v.error).slice(0,120):`중첩 ${v?.overlaps||0}건`})}));
   results.push(await safeAnalysisStep('의료시설',async()=>{await analyzeSafeMedicalReference();return {status:safeMedicalAnalysis.status,error_count:safeMedicalAnalysis.errors?.length||0,item_count:safeMedicalAnalysis.items?.length||0};},240000,{classify:v=>({status:v?.status==='error'?'rejected':(v?.error_count?'partial':'fulfilled'),detail:`후보 ${v?.item_count||0}건${v?.error_count?` · 오류 ${v.error_count}`:''}`})}));
   results.push(await safeAnalysisStep('학교 절대보호구역',analyzeSchoolAbsoluteProtection,240000,{classify:v=>({status:v?.loaded&&v?.known?'fulfilled':'rejected',detail:v?.loaded&&v?.known?`UOA110 중첩 ${Number(v.zoneCount||0)}건 · ${Math.round(Number(v.overlapAreaM2||0)).toLocaleString('ko-KR')}㎡`:(v?.error||'공식 SHP 미확보')})}));
-  try{renderPlanningGIS();renderPlanningFacilitySpatialStatus();renderDowntownCharacteristicSpatialStatus();renderSharedConservationSpatialStatus();renderIndependentSpatialStatusMaps();renderSchoolAbsoluteProtectionSpatialStatus();}catch(e){console.warn('[site-review] 독립 GIS 최종렌더',e);}
+  try{renderPlanningGIS();renderPlanningFacilitySpatialStatus();renderDowntownCharacteristicSpatialStatus();renderSharedConservationSpatialStatus();renderHillSpatialStatus();renderIndependentSpatialStatusMaps();renderSchoolAbsoluteProtectionSpatialStatus();}catch(e){console.warn('[site-review] 독립 GIS 최종렌더',e);}
 
   results.push(await safeAnalysisStep('건축HUB',analyzeBuildingHub,300000,{onTimeout:cancelBuildingHubAnalysis,classify:v=>{
     if(!v)return {status:'rejected',detail:'응답 없음'};
@@ -9987,8 +10005,8 @@ function heritageSpatialEvidenceFacts(){
   return {loaded:!!planningAnalysis.loaded,known:!!planningAnalysis.loaded&&!failed,status:failed?'REVIEW':planningAnalysis.loaded?'CONFIRMED':'REVIEW',rows,source:'VWorld LT_C_UO301',errors:errors.filter(x=>x.id==='LT_C_UO301')};
 }
 function hillSpatialEvidenceFacts(){
-  const available=hillAnalysis?.metadata?.available===true;
-  return {loaded:!!hillAnalysis.loaded,known:!!hillAnalysis.loaded&&available,status:hillAnalysis.status||'unavailable',source_status:hillAnalysis.source_status||'',intersects:available?hillAnalysis.intersects:null,overlap_area_m2:Number.isFinite(Number(hillAnalysis.overlap_area_m2))?Number(hillAnalysis.overlap_area_m2):null,overlap_pct:Number.isFinite(Number(hillAnalysis.overlap_pct))?Number(hillAnalysis.overlap_pct):null,distance_m:Number.isFinite(Number(hillAnalysis.distance_m))?Number(hillAnalysis.distance_m):null,metadata:{...(hillAnalysis.metadata||{})},error:hillAnalysis.error||''};
+  const available=hillAnalysis?.metadata?.available===true,known=!!hillAnalysis.loaded&&available&&hillAnalysis.status!=='unavailable'&&hillAnalysis.status!=='error';
+  return {loaded:!!hillAnalysis.loaded,known,status:hillAnalysis.status||'unavailable',source_status:hillAnalysis.source_status||'',source_type:hillAnalysis.metadata?.source_type||'',intersects:known?hillAnalysis.intersects:null,overlap_area_m2:Number.isFinite(Number(hillAnalysis.overlap_area_m2))?Number(hillAnalysis.overlap_area_m2):null,overlap_pct:Number.isFinite(Number(hillAnalysis.overlap_pct))?Number(hillAnalysis.overlap_pct):null,distance_m:Number.isFinite(Number(hillAnalysis.distance_m))?Number(hillAnalysis.distance_m):null,nodata_pct:Number.isFinite(Number(hillAnalysis.nodata_pct))?Number(hillAnalysis.nodata_pct):null,elevation:{...(hillAnalysis.elevation||{})},slope:{...(hillAnalysis.slope||{})},reference_areas:{...(hillAnalysis.reference_areas||{})},elevation_m:Number.isFinite(Number(hillAnalysis.elevation?.representative_m))?Number(hillAnalysis.elevation.representative_m):null,slope_deg:Number.isFinite(Number(hillAnalysis.slope?.mean_degree))?Number(hillAnalysis.slope.mean_degree):null,metadata:{...(hillAnalysis.metadata||{})},error:hillAnalysis.error||''};
 }
 function sharedConservationSpatialEvidenceFacts(){
   const a=sharedConservationAnalysis||{};
@@ -10489,7 +10507,7 @@ function stationComplexSpatialFacts(store){
     zoning:{current:c.zoning||'',lowrise_adjacent:null,hill_adjacent:null},
     road:{road4_faces:road4Faces,has8,max_width_m:road.max_width_m,roads:road.roads||[],evidence:store.site.spatial_evidence?.roads?.station_complex||null},
     area:{m2:c.area,station_linked_convenience:null},
-    exclusions:{renewal,characteristic:{hits:characteristic},hill:{elevation_m:null,slope_deg:null}},
+    exclusions:{renewal,characteristic:{hits:characteristic},hill:{known:store.site.hill?.known===true,elevation_m:store.site.hill?.elevation_m??null,slope_deg:store.site.hill?.slope_deg??null,intersects:store.site.hill?.intersects??null,overlap_area_m2:store.site.hill?.overlap_area_m2??null,overlap_pct:store.site.hill?.overlap_pct??null,distance_m:store.site.hill?.distance_m??null,source_type:store.site.hill?.source_type||''}},
     aging:{assessment:age},
     consent:{land_pct:c.landConsent},
     planning:{density:stationComplexDensity(c),center:c.center||'',center_label:c.centerLabel||''},
@@ -10498,7 +10516,7 @@ function stationComplexSpatialFacts(store){
       spatialFactRow('사업대상지/가로구역 점유율',siteShare==null?'-':`${Number(siteShare).toFixed(1)}%`,siteShare!=null&&blockAuthoritative?'CONFIRMED':'REVIEW','선정사업지 면적 ÷ 해당 가로구역 면적 · 1/2 이상 원칙 · 단일토지 등 위원회 인정 시 1/2 미만 가능'),
       spatialFactRow('4m 이상 도로 접면 수',road4Faces==null?'-':`${road4Faces}면`,road4Faces==null?'REVIEW':'CONFIRMED',summarizeRoadList(road)),
       spatialFactRow('8m 이상 도로',has8==null?'-':has8?'확보':'미확보',has8==null?'REVIEW':'CONFIRMED','최소 한 면 폭 8m 이상'),
-      spatialFactRow('구릉지','공개 SHP 미확보','REVIEW','자동판정 제외 · 수동검토'),
+      spatialFactRow('구릉지',store.site.hill?.known===true?`대표표고 ${store.site.hill.elevation_m==null?'-':Number(store.site.hill.elevation_m).toFixed(1)+'m'} · 평균경사 ${store.site.hill.slope_deg==null?'-':Number(store.site.hill.slope_deg).toFixed(1)+'°'} · 동시충족 ${store.site.hill.overlap_pct==null?'-':Number(store.site.hill.overlap_pct).toFixed(1)+'%'}`:'지형 FACT 미확보',store.site.hill?.known===true?'CONFIRMED':'REVIEW','서울시 공식 등고선·표고점 기반 플랫폼 산출 FACT · 사업별 제외판정은 최신 기준 별도 적용'),
       spatialFactRow('저층주거지 인접','인접 용도지역 공간분석 미구현','REVIEW','제1·2종전용, 제1종일반 인접 여부 및 도로 이격 확인 필요'),
       spatialFactRow('특성관리지구',characteristic.length?characteristic.map(x=>x.name).join(' / '):'전용 경계 미연결','REVIEW','역사도심 기본계획 특성관리지구 여부'),
       spatialFactRow('정비구역·예정구역',renewal.value,renewal.status==='REVIEW'?'REVIEW':'CONFIRMED',renewal.note),
@@ -10540,7 +10558,7 @@ function checkStationComplexFromFacts(store,f){
     else zoneStatus='FAIL';
   }
   rows.push(schemeRow('용도지역','준주거지역 또는 제2·3종일반주거지역의 준주거 변경 검토',f.zoning.current||'-',zoneStatus,zoneNote,true,{sourceId:'STATION_COMPLEX',locator:'적용대상 용도지역'}));
-  rows.push(schemeRow('구릉지','구릉지 제외·연접 여부','공개 SHP 미확보','REVIEW','자동판정 제외 · 수동검토',true,{sourceId:'STATION_COMPLEX',locator:'적용대상 제외지역'}));
+  {const h=f.exclusions.hill||{};const hv=h.known?`대표표고 ${h.elevation_m==null?'-':Number(h.elevation_m).toFixed(1)+'m'} / 평균경사 ${h.slope_deg==null?'-':Number(h.slope_deg).toFixed(1)+'°'} / 동시충족 ${h.overlap_pct==null?'-':Number(h.overlap_pct).toFixed(1)+'%'}${h.distance_m!=null&&h.distance_m>0?' / 최근접 '+Number(h.distance_m).toFixed(1)+'m':''}`:'지형 FACT 미확보';rows.push(schemeRow('구릉지','구릉지 제외·연접 여부',hv,'REVIEW',h.known?'플랫폼 산출 지형 FACT 확보 · 최신 적용기준과 연접 조건 확인 후 최종판정':'지형 FACT 확인 필요',true,{sourceId:'STATION_COMPLEX',locator:'적용대상 제외지역'}));}
   rows.push(schemeRow('저층주거지 인접','저층주거지·구릉지 연접 시 용도지역 변경 제한 · 도로 이격 제3종은 예외 가능','인접분석 미확인','REVIEW','인접 용도지역 공간현황 추가 필요',true,{sourceId:'STATION_COMPLEX',locator:'적용대상 용도지역 변경 제한'}));
   rows.push(schemeRow('특성관리지구','역사도심기본계획상 특성관리지구 제외',f.exclusions.characteristic.hits.length?f.exclusions.characteristic.hits.map(x=>x.name).join(' / '):'전용 경계 미연결','REVIEW','공식 경계 미확보',true,{sourceId:'STATION_COMPLEX',locator:'적용대상 제외지역'}));
   rows.push(schemeRow('정비구역·예정구역','도시정비법상 정비구역·정비예정구역 제외',f.exclusions.renewal.value,f.exclusions.renewal.status,f.exclusions.renewal.note,true,{sourceId:'STATION_COMPLEX',locator:'적용대상 제외지역'}));
@@ -10587,7 +10605,7 @@ function longtermCharacteristicAreaEvidence(store=null){
     const z=store.site?.spatial_evidence?.zoning||{},d=store.site?.development||{},h=store.site?.heritage||{};
     const lowrise=(z.rows||[]).filter(r=>/제1종전용주거|제2종전용주거|제1종일반주거/.test(String(r.name||''))).map(r=>({name:r.name,area_m2:Number(r.area_m2||0),pct:Number(r.pct||0)}));
     const culturalDistricts=(d.planning_districts||[]).filter(x=>x.layer==='LT_C_UQ121'&&Number(x.area_m2||0)>0.5&&/역사문화/.test(String(x.name||''))).map(x=>({name:x.name||'역사문화특화경관지구',area_m2:Number(x.area_m2||0),source:'서울시 UQ121 경관지구 SHP / VWorld LT_C_UQ121'}));
-    return {lowrise,cultural_districts:culturalDistricts,heritage:[...(h.rows||[])],zoning_known:z.known===true,landscape_known:d.district_plan_loaded===true&&!(d.planning_errors||[]).some(x=>x.id==='LT_C_UQ121'),heritage_known:h.known===true,hill_shp_available:store.site?.hill?.known===true,source_files:{zoning:'UQ111_용도지역(도시지역)_202602.zip',landscape:'UQ121_용도지구(경관지구)_202602.zip',seoul_heritage:'CUL211_문화재지정구역_202602.zip',seoul_heritage_linear:'CUL210_문화재지정구역(선형)_202602.zip',heritage_agency:'국가유산청 지정유산/현상변경허용기준 SHP 다운로드 서비스'}};
+    return {lowrise,cultural_districts:culturalDistricts,heritage:[...(h.rows||[])],zoning_known:z.known===true,landscape_known:d.district_plan_loaded===true&&!(d.planning_errors||[]).some(x=>x.id==='LT_C_UQ121'),heritage_known:h.known===true,hill_shp_available:store.site?.hill?.known===true,hill_reference_available:store.site?.hill?.known===true,source_files:{zoning:'UQ111_용도지역(도시지역)_202602.zip',landscape:'UQ121_용도지구(경관지구)_202602.zip',seoul_heritage:'CUL211_문화재지정구역_202602.zip',seoul_heritage_linear:'CUL210_문화재지정구역(선형)_202602.zip',heritage_agency:'국가유산청 지정유산/현상변경허용기준 SHP 다운로드 서비스'}};
   }
   const total=Math.max(1,Number(document.getElementById('area_m2')?.value)||currentSpatialAreaM2()||1);
   const zoningRows=planningAnalysis.loaded?planningZoningRows(total):[];
@@ -10595,7 +10613,7 @@ function longtermCharacteristicAreaEvidence(store=null){
   const culturalDistricts=(planningAnalysis.districts||[]).filter(x=>x.layer==='LT_C_UQ121'&&Number(x.area||0)>0.5&&/역사문화/.test(String(x.name||x.feature?.properties?._planning_name||''))).map(x=>({name:x.name||'역사문화특화경관지구',area_m2:Number(x.area||0),source:'서울시 UQ121 경관지구 SHP / VWorld LT_C_UQ121'}));
   const heritage=(planningAnalysis.heritage||[]).filter(x=>Number(x.area||0)>0.5).map(x=>({name:x.name||'국가유산보호구역',area_m2:Number(x.area||0),source:'VWorld LT_C_UO301 · 국가유산보호도'}));
   const errors=planningAnalysis.errors||[];
-  return {lowrise,cultural_districts:culturalDistricts,heritage,zoning_known:planningAnalysis.loaded&&!errors.some(x=>x.id==='LT_C_UQ111'),landscape_known:planningAnalysis.loaded&&!errors.some(x=>x.id==='LT_C_UQ121'),heritage_known:planningAnalysis.loaded&&!errors.some(x=>x.id==='LT_C_UO301'),hill_shp_available:false,source_files:{zoning:'UQ111_용도지역(도시지역)_202602.zip',landscape:'UQ121_용도지구(경관지구)_202602.zip',seoul_heritage:'CUL211_문화재지정구역_202602.zip',seoul_heritage_linear:'CUL210_문화재지정구역(선형)_202602.zip',heritage_agency:'국가유산청 지정유산/현상변경허용기준 SHP 다운로드 서비스'}};
+  return {lowrise,cultural_districts:culturalDistricts,heritage,zoning_known:planningAnalysis.loaded&&!errors.some(x=>x.id==='LT_C_UQ111'),landscape_known:planningAnalysis.loaded&&!errors.some(x=>x.id==='LT_C_UQ121'),heritage_known:planningAnalysis.loaded&&!errors.some(x=>x.id==='LT_C_UO301'),hill_shp_available:false,hill_reference_available:false,source_files:{zoning:'UQ111_용도지역(도시지역)_202602.zip',landscape:'UQ121_용도지구(경관지구)_202602.zip',seoul_heritage:'CUL211_문화재지정구역_202602.zip',seoul_heritage_linear:'CUL210_문화재지정구역(선형)_202602.zip',heritage_agency:'국가유산청 지정유산/현상변경허용기준 SHP 다운로드 서비스'}};
 }
 
 // ============================================================
@@ -10657,7 +10675,7 @@ function longtermSpatialFacts(store){
       const status=hits.length?'FAIL':autoKnown?'PASS':'REVIEW';
       const value=hits.length?hits.join(' · '):autoKnown?'전용·1종/역사문화 경관지구/국가유산보호구역 중첩 없음':'일부 공식 공간자료 미확인';
       return {status,value,note:'자동판정: UQ111 전용·1종, UQ121 역사문화특화경관지구, LT_C_UO301 국가유산보호구역. 구릉지는 별도 후속확인으로 분리',evidence:ev,
-        hill:{status:store.site.hill?.known===true?(store.site.hill.intersects===true?'REVIEW':'INFO'):'REVIEW',value:store.site.hill?.known===true?(store.site.hill.intersects===true?'구릉지 원도형 중첩/연접 세부검토':'원도형 직접중첩 없음'):'공식 구릉지 원도형 미연결',note:'구릉지 연접 여부는 운영기준 원도형/현장조건 확인 후 반영'}};
+        hill:{status:store.site.hill?.known===true?(store.site.hill.intersects===true?'REVIEW':'INFO'):'REVIEW',value:store.site.hill?.known===true?(store.site.hill.intersects===true?`플랫폼 참조구릉지 직접중첩 ${Number(store.site.hill.overlap_pct||0).toFixed(1)}% · 연접조건 세부검토`:`직접중첩 없음${store.site.hill.distance_m!=null?' · 최근접 '+Number(store.site.hill.distance_m).toFixed(1)+'m':''}`):'구릉지 지형 FACT 미연결',note:'서울시 공식 등고선·표고점 기반 플랫폼 산출 지형 FACT · 구릉지 연접 여부와 법적 적용은 운영기준·현장조건 확인 후 반영'}};
     })()},
     aging:{assessment:age},consent:{owner_pct:c.ownerConsent,land_pct:c.landConsent,road20_owner_pct:c.road20OwnerConsent,road20_land_pct:c.road20LandConsent},planning:{density:longtermDensity(c,store.site.station)},
     spatial_status_rows:[]
@@ -10686,7 +10704,7 @@ function checkLongtermFromFacts(store,f){
   rows.push(schemeRow('노후도',f.route.selected==='district'?'지구단위계획 방식: 20년 이상 건축물 1/2 이상':'정비계획 방식: 30년 이상 건축물 60% 이상',ageFactValue(f.aging.assessment),f.aging.assessment?.status||'REVIEW',ageFactNote(f.aging.assessment),true,{sourceId:'LONGTERM_OP',locator:'2-1-4 나목'}));
   const ex=f.exclusions.special_character_area,ev=ex.evidence||{};
   rows.push(schemeRow('입지 특성화·제외지역','전용·제1종 일반주거지역, 역사문화 경관지구·국가유산보호구역 등 자동연결 가능 항목',ex.value,ex.status,ex.note,true,{sourceId:'LONGTERM_OP',locator:'2-1-3·2-1-5'}));
-  rows.push(schemeRow('구릉지 후속확인','구릉지 연접 등 공개 원도형으로 자동확정하기 어려운 항목은 사업계획 전 별도 확인',ex.hill?.value||'공식 구릉지 원도형 미연결',ex.hill?.status||'REVIEW',ex.hill?.note||'후속 현장·원도형 확인',false,{sourceId:'LONGTERM_OP',locator:'2-1-3·2-1-5'}));
+  rows.push(schemeRow('구릉지 후속확인','구릉지 직접중첩·연접은 플랫폼 지형 FACT를 참고하되 사업계획 전 최신 운영기준으로 별도 확인',ex.hill?.value||'구릉지 지형 FACT 미연결',ex.hill?.status||'REVIEW',ex.hill?.note||'후속 현장·원도형 확인',false,{sourceId:'LONGTERM_OP',locator:'2-1-3·2-1-5'}));
   if(f.route.selected==='district'){
     const st=f.consent.land_pct==null?'REVIEW':f.consent.land_pct>=50?'PASS':'REVIEW';
     rows.push(schemeRow('사업추진 동의','토지면적 50% 이상은 사전검토 신청·사업추진 단계에서 확보',f.consent.land_pct==null?'사업추진 전제조건':fmtSchemePct(f.consent.land_pct),'INFO','초기 대상지 입지판정에는 사용하지 않고 사업추진 단계 체크리스트로 관리',false,{sourceId:'LONGTERM_OP',locator:'2-2-3',policyRole:'PREREQUISITE'}));
@@ -16191,7 +16209,7 @@ function renderStationComplexDetailPopup(){
     <tr><th>250m→가로구역 포함률</th><td>${escHtml(f.station?.catchment_block_share_pct==null?'-':Number(f.station.catchment_block_share_pct).toFixed(1)+'%')}</td><th>대상지→가로구역 점유율</th><td>${escHtml(f.block?.share_pct==null?'-':Number(f.block.share_pct).toFixed(1)+'%')}</td></tr>
     <tr><th>가로구역 자료상태</th><td>${escHtml(f.station?.catchment_block_authoritative?'공식':'추정/미확정')}</td><th>도로요건</th><td>${escHtml(`4m 이상 ${f.road?.road4_faces??'-'}면 / 8m 이상 ${f.road?.has8==null?'-':f.road.has8?'확보':'미확보'}`)}</td></tr>
     <tr><th>도시계획계 노후도</th><td>${escHtml(ageFactValue(f.aging?.assessment))}</td><th>주요 도로</th><td>${escHtml(summarizeRoadList(f.road))}</td></tr>
-    <tr><th>구릉지</th><td>${f.exclusions?.hill?.elevation_m==null?'고도·경사 공식자료 미확보':'확인'}</td><th>저층주거지 인접</th><td>${escHtml(f.zoning?.lowrise_adjacent==null?'공간분석 미확인':String(f.zoning.lowrise_adjacent))}</td></tr>
+    <tr><th>구릉지</th><td>${f.exclusions?.hill?.elevation_m==null?'표고·경사 지형 FACT 미확보':`${Number(f.exclusions.hill.elevation_m).toFixed(1)}m / ${f.exclusions.hill.slope_deg==null?'-':Number(f.exclusions.hill.slope_deg).toFixed(1)+'°'}`}</td><th>저층주거지 인접</th><td>${escHtml(f.zoning?.lowrise_adjacent==null?'공간분석 미확인':String(f.zoning.lowrise_adjacent))}</td></tr>
   </tbody></table></section>
   <section class="activation-section"><h4>2. 검토결과</h4><table class="activation-table"><thead><tr><th>구분</th><th>검토항목</th><th>기준</th><th>대상지 현황</th><th>판정·후속</th><th>근거</th></tr></thead><tbody>${resultRows}</tbody></table>${schemeDetailSummary(res)}</section>
   <section class="activation-section"><h4>3. 계획기준</h4><table class="activation-table"><thead><tr><th>검토항목</th><th>적용가능 범위</th><th>적용조건·해석</th><th>근거</th></tr></thead><tbody>${planRows}</tbody></table></section>

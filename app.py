@@ -15,6 +15,8 @@ import hmac
 import threading
 import time
 import uuid
+import sys
+from array import array
 from collections import deque
 import xml.etree.ElementTree as ET
 from datetime import date, datetime
@@ -22,6 +24,7 @@ from zoneinfo import ZoneInfo
 from urllib.parse import quote, unquote
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import lru_cache
+from pathlib import Path
 
 import requests
 try:
@@ -4660,205 +4663,312 @@ def _admin_auth(credentials: Optional[HTTPBasicCredentials] = Depends(ADMIN_SECU
 
 
 # ============================================================
-# 서울 구릉지 공식 원도형 (도시·주거환경정비기본계획/생활권계획)
-# - 공식 계획의 구릉지 기준: 해발고도 40m 이상 + 경사도 10도 이상
-# - 운영 플랫폼에서는 임의 DEM 재생성 도형을 확정값으로 사용하지 않는다.
-# - 서울시 원 SHP/ZIP을 SEOUL_HILL_SHP_PATH 또는 아래 파일명으로 배치하면
-#   대상구역 중첩·최근접 거리를 서버에서 계산한다.
+# 서울 구릉지 지형 FACT (R37)
+# - 서울시 공식 1:5,000 등고선·표고점(2025-03-18 추출본)을 전처리하여
+#   20m 지형격자(표고 + Horn 3x3 경사도)를 생성한 플랫폼 산출 참조자료.
+# - 법정 '구릉지 원도형'을 사칭하지 않으며 source_type=PLATFORM_DERIVED_REFERENCE.
+# - 표고 40m / 경사 10도는 공통 지형 FACT를 만들기 위한 참조 임계값이다.
+#   사업별 PASS/FAIL은 각 사업의 최신 RULE에서 별도로 결정한다.
 # ============================================================
-HILL_SOURCE_CANDIDATES = (
-    "hill_seoul.zip", "seoul_hill.zip", "seoul_hillside.zip", "hillside_seoul.zip",
-    "구릉지.zip", "서울시_구릉지.zip", "서울시구릉지.zip",
-)
-HILL_SOURCE_ENV = "SEOUL_HILL_SHP_PATH"
-HILL_SOURCE_TITLE = "서울시 도시·주거환경정비기본계획/생활권계획 구릉지 원도형"
-HILL_CRITERION = "해발고도 40m 이상 AND 경사도 10도 이상"
+HILL_GRID_META_FILE = "hill_terrain_20m_meta.json"
+HILL_GRID_ELEV_FILE = "hill_elevation_20m_i16.zlib"
+HILL_GRID_SLOPE_FILE = "hill_slope_20m_i16.zlib"
+HILL_SOURCE_TITLE = "서울시 등고선·표고점(1:5,000) 기반 플랫폼 산출 구릉지 지형참조"
+HILL_SOURCE_TYPE = "PLATFORM_DERIVED_REFERENCE"
+HILL_REFERENCE_ELEVATION_M = 40.0
+HILL_REFERENCE_SLOPE_DEG = 10.0
+HILL_REFERENCE_CRITERION = "표고 40m 이상 AND 지형경사 10도 이상 (공통 FACT 참조임계값)"
 
 
-def _hill_zip_path() -> Optional[str]:
-    env = os.getenv(HILL_SOURCE_ENV, "").strip()
-    candidates = []
-    if env:
-        candidates.append(env if os.path.isabs(env) else os.path.join(DATA_DIR, env))
-    candidates.extend(_data_path(name) for name in HILL_SOURCE_CANDIDATES)
-    for path in candidates:
-        if path and os.path.isfile(path):
-            return path
-    return None
-
-
-def _decode_zip_prj(raw: bytes) -> str:
-    for enc in ("utf-8", "cp949", "euc-kr", "latin1"):
-        try:
-            return raw.decode(enc).strip()
-        except Exception:
-            pass
-    return ""
-
-
-def _hill_source_crs(zf: zipfile.ZipFile, shp_name: str) -> CRS:
-    stem = shp_name.rsplit(".", 1)[0]
-    prj_name = next((n for n in zf.namelist() if n.rsplit(".",1)[0].lower() == stem.lower() and n.lower().endswith('.prj')), None)
-    if prj_name:
-        try:
-            txt = _decode_zip_prj(zf.read(prj_name))
-            if txt:
-                return CRS.from_wkt(txt)
-        except Exception:
-            logging.exception("failed to parse hill SHP PRJ")
-    # 서울시 생활권/UPIS 공간자료의 공개 SHP 기본좌표계와 동일한 fallback.
-    return CRS.from_epsg(5174)
-
-
-def _hill_category_from_row(row: Dict[str, Any]) -> str:
-    texts = [str(v or '').strip() for v in row.values()]
-    merged = ' '.join(texts)
-    if re.search(r"훼손\s*\(?우려\)?|훼손우려", merged):
-        return "훼손(우려) 구릉지"
-    if "양호" in merged and "구릉" in merged:
-        return "양호한 구릉지"
-    if "양호" in merged:
-        return "양호한 구릉지"
-    if "구릉" in merged:
-        return next((t for t in texts if "구릉" in t), "구릉지")
-    return "구릉지"
-
-
-@lru_cache(maxsize=1)
-def _hill_reference_data() -> Dict[str, Any]:
-    zip_path = _hill_zip_path()
-    if not zip_path:
-        return {
-            "type":"FeatureCollection", "features":[],
-            "metadata":{
-                "available":False, "source_title":HILL_SOURCE_TITLE,
-                "criterion":HILL_CRITERION, "source_path":None,
-                "status":"OFFICIAL_SHP_NOT_BUNDLED",
-                "note":"공식 구릉지 원도형 SHP를 찾지 못했습니다. 임의 DEM 복원도형으로 자동 PASS/FAIL하지 않습니다.",
-            },
-        }
-    with zipfile.ZipFile(zip_path) as zf:
-        shp_names = [n for n in zf.namelist() if n.lower().endswith('.shp') and not n.endswith('/')]
-        if not shp_names:
-            raise RuntimeError(f"구릉지 ZIP에 SHP가 없습니다: {os.path.basename(zip_path)}")
-        # 원본 ZIP에 여러 SHP가 있을 때 파일명에 구릉/hill이 있는 것을 우선한다.
-        shp_name = next((n for n in shp_names if re.search(r"구릉|hill|slope", n, re.I)), shp_names[0])
-        stem = shp_name.rsplit('.',1)[0]
-        dbf_name = next((n for n in zf.namelist() if n.rsplit('.',1)[0].lower()==stem.lower() and n.lower().endswith('.dbf')), None)
-        shx_name = next((n for n in zf.namelist() if n.rsplit('.',1)[0].lower()==stem.lower() and n.lower().endswith('.shx')), None)
-        if not dbf_name:
-            raise RuntimeError(f"구릉지 SHP의 DBF가 없습니다: {shp_name}")
-        kwargs={"shp":io.BytesIO(zf.read(shp_name)),"dbf":io.BytesIO(zf.read(dbf_name)),"encoding":"cp949"}
-        if shx_name: kwargs["shx"]=io.BytesIO(zf.read(shx_name))
-        try:
-            reader=shapefile.Reader(**kwargs)
-        except UnicodeDecodeError:
-            kwargs["encoding"]="utf-8"
-            reader=shapefile.Reader(**kwargs)
-        fields=[f[0] for f in reader.fields[1:]]
-        src_crs=_hill_source_crs(zf, shp_name)
-        to_wgs=Transformer.from_crs(src_crs,4326,always_xy=True).transform
-        features=[]
-        for sr in reader.iterShapeRecords():
-            row=dict(zip(fields,sr.record))
-            try:
-                geom=_polygonal_only(shape(sr.shape.__geo_interface__))
-                if geom is None or geom.is_empty: continue
-                if not geom.is_valid: geom=_polygonal_only(geom.buffer(0))
-                if geom is None or geom.is_empty: continue
-                # 0.25m 단순화는 원자료 정밀도를 해치지 않으면서 웹 payload를 줄인다.
-                geom=geom.simplify(0.25,preserve_topology=True)
-                geom=geometry_transform(to_wgs,geom)
-            except Exception:
-                continue
-            name=str(row.get('DGM_NM') or row.get('NAME') or row.get('NM') or '').strip()
-            features.append({
-                "type":"Feature","geometry":mapping(geom),
-                "properties":{
-                    "category":_hill_category_from_row(row),
-                    "name":name,
-                    "source_title":HILL_SOURCE_TITLE,
-                    "source_file":os.path.basename(zip_path),
-                    "source_layer":shp_name,
-                    "criterion":HILL_CRITERION,
-                }
-            })
+def _hill_grid_paths() -> Dict[str, str]:
     return {
-        "type":"FeatureCollection","features":features,
-        "metadata":{
-            "available":True,"source_title":HILL_SOURCE_TITLE,"criterion":HILL_CRITERION,
-            "source_file":os.path.basename(zip_path),"source_layer":shp_name,
-            "source_crs":src_crs.to_string(),"feature_count":len(features),
-            "status":"OFFICIAL_SHP_READY",
-            "note":"서울시 공식 원도형으로만 확정 중첩을 계산합니다.",
-        }
+        "meta": _data_path(HILL_GRID_META_FILE),
+        "elevation": _data_path(HILL_GRID_ELEV_FILE),
+        "slope": _data_path(HILL_GRID_SLOPE_FILE),
     }
 
 
 @lru_cache(maxsize=1)
-def _hill_spatial_index():
-    fc=_hill_reference_data(); features=fc.get('features') or []
-    geoms=[shape(f['geometry']) for f in features]
-    return features, geoms, STRtree(geoms) if geoms else None
+def _hill_grid_meta() -> Dict[str, Any]:
+    paths = _hill_grid_paths()
+    if not all(os.path.isfile(paths[k]) for k in ("meta", "elevation", "slope")):
+        missing = [os.path.basename(paths[k]) for k in ("meta", "elevation", "slope") if not os.path.isfile(paths[k])]
+        return {
+            "available": False,
+            "status": "TERRAIN_REFERENCE_NOT_BUNDLED",
+            "source_type": HILL_SOURCE_TYPE,
+            "source_title": HILL_SOURCE_TITLE,
+            "criterion": HILL_REFERENCE_CRITERION,
+            "missing_files": missing,
+            "note": "서울시 공식 등고선·표고점 기반 전처리 결과가 설치되지 않았습니다.",
+        }
+    with open(paths["meta"], encoding="utf-8") as fp:
+        meta = json.load(fp)
+    meta = dict(meta or {})
+    meta.update({
+        "available": True,
+        "status": "TERRAIN_REFERENCE_READY",
+        "source_type": HILL_SOURCE_TYPE,
+        "source_title": HILL_SOURCE_TITLE,
+        "criterion": HILL_REFERENCE_CRITERION,
+        "source_file": meta.get("source_file") or "서울시 등고선.zip",
+    })
+    return meta
+
+
+@lru_cache(maxsize=1)
+def _hill_grid_arrays():
+    meta = _hill_grid_meta()
+    if not meta.get("available"):
+        return None, None
+    paths = _hill_grid_paths()
+    expected = int(meta["width"]) * int(meta["height"])
+    elev = array("h")
+    elev.frombytes(zlib.decompress(Path(paths["elevation"]).read_bytes()))
+    slope = array("h")
+    slope.frombytes(zlib.decompress(Path(paths["slope"]).read_bytes()))
+    if sys.byteorder != "little":
+        elev.byteswap(); slope.byteswap()
+    if len(elev) != expected or len(slope) != expected:
+        raise RuntimeError(f"구릉지 지형격자 길이 불일치: expected={expected}, elev={len(elev)}, slope={len(slope)}")
+    return elev, slope
+
+
+def _hill_grid_cell(meta: Dict[str, Any], row: int, col: int) -> Polygon:
+    res = float(meta["resolution_m"]); ox = float(meta["origin_x_west_edge"]); oy = float(meta["origin_y_north_edge"])
+    x0 = ox + col * res; x1 = x0 + res
+    y1 = oy - row * res; y0 = y1 - res
+    return box(x0, y0, x1, y1)
+
+
+def _hill_grid_window(meta: Dict[str, Any], geom_metric, extra_m: float = 0.0):
+    g = geom_metric.buffer(extra_m) if extra_m > 0 else geom_metric
+    minx, miny, maxx, maxy = g.bounds
+    res = float(meta["resolution_m"]); ox = float(meta["origin_x_west_edge"]); oy = float(meta["origin_y_north_edge"])
+    width = int(meta["width"]); height = int(meta["height"])
+    c0 = max(0, int(math.floor((minx - ox) / res)))
+    c1 = min(width - 1, int(math.floor((maxx - ox) / res)))
+    r0 = max(0, int(math.floor((oy - maxy) / res)))
+    r1 = min(height - 1, int(math.floor((oy - miny) / res)))
+    return r0, r1, c0, c1
+
+
+def _hill_grid_values(meta: Dict[str, Any], elev, slope, row: int, col: int):
+    idx = row * int(meta["width"]) + col
+    nodata = int(meta.get("nodata_i16", -32768))
+    er = int(elev[idx]); sr = int(slope[idx])
+    e = None if er == nodata else er / float((meta.get("scales") or {}).get("elevation_per_meter", 10.0))
+    s = None if sr == nodata else sr / float((meta.get("scales") or {}).get("slope_per_degree", 100.0))
+    return e, s
+
+
+def _weighted_mean(pairs):
+    den = sum(a for _, a in pairs)
+    return (sum(v * a for v, a in pairs) / den) if den > 0 else None
+
+
+def _weighted_median(pairs):
+    if not pairs:
+        return None
+    ordered = sorted((float(v), float(a)) for v, a in pairs if a > 0)
+    total = sum(a for _, a in ordered)
+    acc = 0.0
+    for v, a in ordered:
+        acc += a
+        if acc >= total * 0.5:
+            return v
+    return ordered[-1][0]
+
+
+def _hill_feature_from_metric(geom_metric, category_code: str, category_label: str, to_wgs):
+    if geom_metric is None or geom_metric.is_empty:
+        return None
+    try:
+        g = geom_metric.buffer(0) if not geom_metric.is_valid else geom_metric
+        g = g.simplify(1.0, preserve_topology=True)
+        gw = geometry_transform(to_wgs, g)
+    except Exception:
+        return None
+    return {"type":"Feature", "geometry":mapping(gw), "properties":{
+        "category_code":category_code, "category":category_label,
+        "source_type":HILL_SOURCE_TYPE, "source_title":HILL_SOURCE_TITLE,
+        "criterion":HILL_REFERENCE_CRITERION,
+    }}
+
+
+def _hill_nearest_combined_distance(site_metric, meta, elev, slope, start_m: float = 500.0, max_m: float = 8000.0):
+    radius = start_m
+    best = None
+    while radius <= max_m:
+        r0, r1, c0, c1 = _hill_grid_window(meta, site_metric, radius)
+        for r in range(r0, r1 + 1):
+            for c in range(c0, c1 + 1):
+                e, s = _hill_grid_values(meta, elev, slope, r, c)
+                if e is None or s is None or e < HILL_REFERENCE_ELEVATION_M or s < HILL_REFERENCE_SLOPE_DEG:
+                    continue
+                cell = _hill_grid_cell(meta, r, c)
+                d = float(site_metric.distance(cell))
+                if d <= radius and (best is None or d < best):
+                    best = d
+                    if best <= 0:
+                        return 0.0
+        if best is not None:
+            return best
+        radius *= 2.0
+    return None
 
 
 def analyze_hill_intersections(geometry: Dict[str, Any]) -> Dict[str, Any]:
     try:
-        site_wgs=_polygonal_only(shape(geometry))
+        site_wgs = _polygonal_only(shape(geometry))
     except Exception as exc:
         raise ValueError(f"구역계 GeoJSON을 읽을 수 없습니다: {exc}") from exc
     if site_wgs is None or site_wgs.is_empty:
         raise ValueError("구역계는 Polygon 또는 MultiPolygon이어야 합니다.")
     if not site_wgs.is_valid:
-        site_wgs=_polygonal_only(site_wgs.buffer(0))
+        site_wgs = _polygonal_only(site_wgs.buffer(0))
     if site_wgs is None or site_wgs.is_empty:
         raise ValueError("유효하지 않은 구역계입니다.")
-    fc=_hill_reference_data(); meta=dict(fc.get('metadata') or {})
-    if not meta.get('available'):
+
+    meta = dict(_hill_grid_meta() or {})
+    if not meta.get("available"):
         return {
-            "status":"unavailable","source_status":"OFFICIAL_SHP_NOT_BUNDLED",
-            "intersects":None,"overlap_area_m2":None,"overlap_pct":None,"distance_m":None,
-            "overlaps":[],"context_features":[],"metadata":meta,
+            "status":"unavailable", "source_status":meta.get("status") or "TERRAIN_REFERENCE_NOT_BUNDLED",
+            "intersects":None, "overlap_area_m2":None, "overlap_pct":None, "distance_m":None,
+            "elevation":{}, "slope":{}, "reference_areas":{},
+            "overlaps":[], "context_features":[], "metadata":meta,
         }
-    features,geoms,tree=_hill_spatial_index()
-    to_metric=Transformer.from_crs(4326,5174,always_xy=True).transform
-    site_metric=geometry_transform(to_metric,site_wgs); site_area=float(site_metric.area)
-    overlaps=[]; context=[]; union_parts=[]
-    for idx in tree.query(site_wgs,predicate='intersects'):
-        i=int(idx); src=geoms[i]
+    elev, slope = _hill_grid_arrays()
+    if elev is None or slope is None:
+        raise RuntimeError("구릉지 지형격자를 읽지 못했습니다.")
+
+    to_metric = Transformer.from_crs(4326, int(str(meta.get("grid_crs","EPSG:5174")).split(":")[-1]), always_xy=True).transform
+    to_wgs = Transformer.from_crs(int(str(meta.get("grid_crs","EPSG:5174")).split(":")[-1]), 4326, always_xy=True).transform
+    site_metric = geometry_transform(to_metric, site_wgs)
+    site_area = float(site_metric.area)
+    r0, r1, c0, c1 = _hill_grid_window(meta, site_metric, 0)
+
+    elev_pairs=[]; slope_pairs=[]
+    area_e40=0.0; area_s10=0.0; area_combined=0.0; valid_area=0.0; nodata_area=0.0
+    combined_parts=[]
+    inspected_cells=0
+    for r in range(r0, r1 + 1):
+        for c in range(c0, c1 + 1):
+            cell = _hill_grid_cell(meta, r, c)
+            if not cell.intersects(site_metric):
+                continue
+            try:
+                inter = cell.intersection(site_metric)
+            except Exception:
+                continue
+            a = float(inter.area)
+            if a <= 0.01:
+                continue
+            inspected_cells += 1
+            e, s = _hill_grid_values(meta, elev, slope, r, c)
+            if e is None:
+                nodata_area += a
+                continue
+            valid_area += a
+            elev_pairs.append((e, a))
+            if s is not None:
+                slope_pairs.append((s, a))
+            if e >= HILL_REFERENCE_ELEVATION_M:
+                area_e40 += a
+            if s is not None and s >= HILL_REFERENCE_SLOPE_DEG:
+                area_s10 += a
+            if s is not None and e >= HILL_REFERENCE_ELEVATION_M and s >= HILL_REFERENCE_SLOPE_DEG:
+                area_combined += a
+                combined_parts.append(inter)
+
+    e_vals=[v for v,_ in elev_pairs]; s_vals=[v for v,_ in slope_pairs]
+    overlap_pct=(area_combined/site_area*100.0) if site_area>0 else None
+    distance_m=0.0 if area_combined>0.5 else _hill_nearest_combined_distance(site_metric, meta, elev, slope)
+
+    # 도면은 대상지 주변 400m 범위에서 세 FACT 레이어를 동적으로 벡터화한다.
+    context_geom = site_metric.buffer(400.0)
+    cr0, cr1, cc0, cc1 = _hill_grid_window(meta, context_geom, 0)
+    elev_cells=[]; slope_cells=[]; combined_cells=[]
+    for r in range(cr0, cr1 + 1):
+        for c in range(cc0, cc1 + 1):
+            e, s = _hill_grid_values(meta, elev, slope, r, c)
+            if e is None and s is None:
+                continue
+            cell = _hill_grid_cell(meta, r, c)
+            if not cell.intersects(context_geom):
+                continue
+            if e is not None and e >= HILL_REFERENCE_ELEVATION_M:
+                elev_cells.append(cell)
+            if s is not None and s >= HILL_REFERENCE_SLOPE_DEG:
+                slope_cells.append(cell)
+            if e is not None and s is not None and e >= HILL_REFERENCE_ELEVATION_M and s >= HILL_REFERENCE_SLOPE_DEG:
+                combined_cells.append(cell)
+
+    context_features=[]
+    for cells, code, label in (
+        (elev_cells,"elevation_ge_40m","표고 40m 이상"),
+        (slope_cells,"slope_ge_10deg","지형경사 10° 이상"),
+        (combined_cells,"combined_reference","표고40m + 경사10° 동시충족"),
+    ):
+        if not cells: continue
         try:
-            inter=_polygonal_only(site_wgs.intersection(src))
-            if inter is None or inter.is_empty: continue
-            inter_m=_polygonal_only(geometry_transform(to_metric,inter))
-            if inter_m is None or inter_m.is_empty or inter_m.area<0.5: continue
+            geom = unary_union(cells).intersection(context_geom)
+            feat = _hill_feature_from_metric(geom, code, label, to_wgs)
+            if feat: context_features.append(feat)
         except Exception:
             continue
-        union_parts.append(inter_m)
-        props=dict(features[i].get('properties') or {})
-        props['overlap_area_m2']=round(float(inter_m.area),2)
-        overlaps.append({"type":"Feature","geometry":mapping(inter),"properties":props})
-        context.append(features[i])
-    union=unary_union(union_parts) if union_parts else None
-    overlap_area=float(union.area) if union is not None and not union.is_empty else 0.0
-    distance_m=0.0 if overlap_area>0 else None
-    nearest_feature=None
-    if overlap_area<=0 and tree is not None and geoms:
+
+    overlaps=[]
+    if combined_parts:
         try:
-            nearest_idx=int(tree.nearest(site_wgs)); nearest=geoms[nearest_idx]
-            nearest_feature=features[nearest_idx]
-            distance_m=float(site_metric.distance(geometry_transform(to_metric,nearest)))
-            # 연접 판단을 사용자가 검증할 수 있도록 최근접 공식 도형도 반환한다.
-            context=[nearest_feature]
+            feat=_hill_feature_from_metric(unary_union(combined_parts),"combined_overlap","대상지 내 동시충족 영역",to_wgs)
+            if feat: overlaps.append(feat)
         except Exception:
-            distance_m=None
+            pass
+
+    quality = "CONFIRMED" if valid_area >= site_area*0.98 else ("PARTIAL" if valid_area>0 else "NO_DATA")
+    meta.update({
+        "quality":quality,
+        "reference_kind":"terrain_grid",
+        "reference_note":"서울시 공식 등고선·표고점에서 플랫폼이 생성한 20m 지형격자이며 법정 구릉지 원도형이 아닙니다.",
+    })
     return {
-        "status":"confirmed","source_status":"OFFICIAL_SHP_READY",
-        "intersects":overlap_area>0.5,
-        "overlap_area_m2":round(overlap_area,2),
-        "overlap_pct":round(overlap_area/site_area*100,4) if site_area>0 else None,
+        "status":"confirmed" if quality=="CONFIRMED" else ("partial" if quality=="PARTIAL" else "unavailable"),
+        "source_status":"TERRAIN_REFERENCE_READY",
+        "intersects":area_combined>0.5,
+        "overlap_area_m2":round(area_combined,2),
+        "overlap_pct":round(overlap_pct,4) if overlap_pct is not None else None,
         "distance_m":round(distance_m,2) if distance_m is not None else None,
-        "overlaps":overlaps,"context_features":context,"metadata":meta,
+        "site_area_m2":round(site_area,2),
+        "valid_terrain_area_m2":round(valid_area,2),
+        "nodata_area_m2":round(nodata_area,2),
+        "nodata_pct":round(nodata_area/site_area*100.0,4) if site_area>0 else None,
+        "pixel_count_in_site":inspected_cells,
+        "elevation":{
+            "min_m":round(min(e_vals),2) if e_vals else None,
+            "max_m":round(max(e_vals),2) if e_vals else None,
+            "mean_m":round(_weighted_mean(elev_pairs),2) if elev_pairs else None,
+            "representative_m":round(_weighted_median(elev_pairs),2) if elev_pairs else None,
+        },
+        "slope":{
+            "min_degree":round(min(s_vals),2) if s_vals else None,
+            "max_degree":round(max(s_vals),2) if s_vals else None,
+            "mean_degree":round(_weighted_mean(slope_pairs),2) if slope_pairs else None,
+        },
+        "reference_areas":{
+            "elevation_ge_40m_sqm":round(area_e40,2),
+            "slope_ge_10deg_sqm":round(area_s10,2),
+            "combined_sqm":round(area_combined,2),
+        },
+        "overlaps":overlaps,
+        "context_features":context_features,
+        "metadata":meta,
     }
+
+
+def _hill_reference_data() -> Dict[str, Any]:
+    """기존 hill-status API 호환용 메타데이터 래퍼."""
+    return {"type":"FeatureCollection","features":[],"metadata":dict(_hill_grid_meta() or {})}
 
 SEOUL_OPEN_DATA_BASE = "http://openapi.seoul.go.kr:8088"
 # 서울시 공공의료 공식 페이지(시립병원 건강돌봄 네트워크, 2024-03-18)에
@@ -6237,6 +6347,7 @@ def _reference_data_readiness() -> Dict[str, bool]:
         "public_forest": os.path.isfile(_data_path("forest_classification_seoul_202608.zip")),
         "school_protection": os.path.isfile(_data_path("school_protection_seoul_202608.zip")),
         "route_commercial_model": os.path.isfile(_data_path("route_commercial_reference.geojson")),
+        "hill_terrain_model": all(os.path.isfile(_data_path(x)) for x in (HILL_GRID_META_FILE,HILL_GRID_ELEV_FILE,HILL_GRID_SLOPE_FILE)),
         "basic_unit": bool(_basic_unit_zip_path()),
     }
 
@@ -6304,8 +6415,8 @@ def health():
         "scheme_module_api": "2026-09-02-r22-station-area-frontage-no-hierarchy",
         "independent_scheme_modules": "16 independent modules including smallscale 5-route family and prior_negotiation; urban_innovation_zone / facility_complex_zone / mixed_use_zone remain future shells",
         "scheme_specific_spatial_checks": "scheme module may request additional official spatial facts; missing facts remain REVIEW, never inferred PASS",
-        "hill_official_gis": "disabled_public_shp_not_found",
-        "hill_official_file": None,
+        "hill_terrain_fact": "Seoul 1:5,000 contour + spot-height official source -> platform-derived 20m terrain grid; 40m elevation / 10deg terrain-slope reference layers; not an official hill polygon",
+        "hill_terrain_file": HILL_GRID_META_FILE if reference_data.get("hill_terrain_model") else None,
         "spatial_evidence_maps": "common cadastral base + colored zoning + scheme-specific road/frontage facts + safe-housing medical reference; map facts and scheme facts share one Fact Store",
         "purpose_filter": "safe-housing rule module runs only when purpose=housing_rental; other schemes keep existing purpose/candidate logic",
         "provenance_ui": True,
@@ -6432,7 +6543,7 @@ def hill_status():
 
 @app.post("/api/spatial/hill-intersections")
 def hill_intersections(inp: GeometryInput):
-    """서울시 공식 구릉지 원도형과 대상구역의 중첩/최근접 거리를 계산합니다."""
+    """서울시 공식 등고선·표고점 기반 플랫폼 지형참조와 대상구역을 분석합니다."""
     try:
         return analyze_hill_intersections(inp.geometry)
     except ValueError as exc:
@@ -6443,7 +6554,7 @@ def hill_intersections(inp: GeometryInput):
     finally:
         if _prototype_low_memory_mode():
             try:
-                _hill_spatial_index.cache_clear(); _hill_reference_data.cache_clear()
+                _hill_grid_arrays.cache_clear(); _hill_grid_meta.cache_clear()
             except Exception:
                 pass
 

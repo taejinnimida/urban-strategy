@@ -1,0 +1,77 @@
+{
+  "format_version": "HILL_TERRAIN_GRID_V1",
+  "source_type": "PLATFORM_DERIVED_REFERENCE",
+  "source_title": "서울시 등고선·표고점(1:5,000) 기반 플랫폼 산출 지형참조",
+  "source_file": "서울시 등고선.zip",
+  "source_extract_date": "2025-03-18",
+  "source_crs": "EPSG:5174",
+  "grid_crs": "EPSG:5174",
+  "resolution_m": 20.0,
+  "origin_x_west_edge": 179260.0,
+  "origin_y_north_edge": 466560.0,
+  "width": 1846,
+  "height": 1516,
+  "nodata": -9999.0,
+  "dtype": "int16_little_endian",
+  "row_order": "north_to_south",
+  "cell_value_location": "cell_center",
+  "interpolation": "LinearNDInterpolator(TIN) from simplified contours + spot heights",
+  "contour_simplify_m": 15.0,
+  "slope_algorithm": "Horn 3x3, degree",
+  "reference_thresholds": {
+    "elevation_ge_m": 40.0,
+    "slope_ge_degree": 10.0
+  },
+  "legal_status_note": "법정 구릉지 원도형이 아니라 서울시 공식 수치지형 원자료로 플랫폼이 산출한 초기검토용 참조 FACT. 사업별 법적 기준은 RULE에서 별도 적용.",
+  "input_counts": {
+    "contour_features": 8570,
+    "spot_height_points": 45870,
+    "interpolation_nodes": 275764
+  },
+  "coverage": {
+    "elevation_valid_cells": 1984156,
+    "slope_valid_cells": 1977442,
+    "combined_reference_cells": 480749,
+    "combined_reference_area_sqm_cell_center": 192299600.0
+  },
+  "elevation_stats_m": {
+    "min": 0.4699188470840454,
+    "max": 767.8120727539062,
+    "mean": 80.40848541259766
+  },
+  "slope_stats_degree": {
+    "min": 0.0,
+    "max": 72.30516815185547,
+    "mean": 7.296115875244141,
+    "p50": 3.8260302543640137,
+    "p90": 19.96826171875,
+    "p95": 25.688087463378906,
+    "p99": 36.877899169921875
+  },
+  "files": {
+    "elevation": {
+      "name": "hill_elevation_20m_i16.zlib",
+      "sha256": "a8a6ec3162e7c2ca2f43057cebc4a0618e2733d9015e1e1984ba211de75d1ed8"
+    },
+    "slope": {
+      "name": "hill_slope_20m_i16.zlib",
+      "sha256": "a68ce6ef3dbc741881df1b97fa05a4767947f58d3964891970679456ee36dc0e"
+    }
+  },
+  "nodata_i16": -32768,
+  "scales": {
+    "elevation_per_meter": 10.0,
+    "slope_per_degree": 100.0
+  },
+  "validation": {
+    "2025_spot_height_holdout_10pct": {
+      "n": 4500,
+      "median_abs_error_m": 1.16,
+      "mean_abs_error_m": 1.86,
+      "p90_abs_error_m": 4.27,
+      "p95_abs_error_m": 5.89,
+      "bias_m": -0.01
+    },
+    "note": "등고선 단순화 15m + 표고점 90%로 TIN을 생성하고 미사용 표고점 4,500개에서 검증"
+  }
+}
