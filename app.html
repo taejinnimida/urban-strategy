@@ -1942,8 +1942,8 @@ body.service-layout-ready>.shell{display:none!important}
 <div><span>해당 필지</span><b id="spUrbanRegenerationParcels">-</b></div>
 <div><span>조회상태</span><b id="spUrbanRegenerationCoverage">미조회</b></div>
 </div>
-<div class="spatial-tags"><span class="map-legend-chip" style="--zone-fill:#d9d6fe;--zone-border:#6938ef">도시재생혁신지구 해당필지</span><span class="map-legend-chip" style="--zone-fill:#b2ddff;--zone-border:#175cd3">주거재생혁신지구 해당필지</span><span>검은선: 대상지</span></div>
-<div class="spatial-caption">도면정보 · VWorld NED 토지이용계획정보(getLandUseAttr)로 선택필지를 전수조회하여 도시재생혁신지구·주거재생혁신지구 해당 여부를 구분합니다. 현재 공식 전체 경계 도형을 임의 생성하지 않고, 해당이 확인된 선택필지의 지적도형만 색칠합니다. 미응답 필지가 있으면 비해당을 확정하지 않고 REVIEW로 유지합니다.</div>
+<div class="spatial-tags"><span class="map-legend-chip" style="--zone-fill:#f4ebff;--zone-border:#7f56d9">고시·공식계획도 벡터화 경계</span><span class="map-legend-chip" style="--zone-fill:#d9d6fe;--zone-border:#6938ef">도시재생혁신지구 NED 해당필지</span><span class="map-legend-chip" style="--zone-fill:#b2ddff;--zone-border:#175cd3">주거재생혁신지구 NED 해당필지</span><span>검은선: 대상지</span></div>
+<div class="spatial-caption">도면정보 · 서울 현행 도시재생혁신지구(용산·김포공항)는 국토교통부 지정·변경 고시와 공식 계획도를 벡터화한 내부 참조경계로 중첩을 먼저 확인하고, VWorld NED 토지이용계획정보(getLandUseAttr) 선택필지 전수조회로 교차검증합니다. 벡터화 경계의 비중첩만으로 법적 비해당을 확정하지 않으며 NED 미응답 시 REVIEW로 유지합니다.</div>
 <div class="spatial-mini-map" id="ccUrbanRegenerationMiniMap"></div>
 </section>
 <section class="spatial-module site-analysis-card site-analysis-local" id="siteDetail_downtownCharacteristic">
@@ -4237,7 +4237,9 @@ const ccDevelopmentStatusBoundary=L.geoJSON(null,{style:{weight:3,color:'#101828
 
 const ccUrbanRegenerationMini=L.map('ccUrbanRegenerationMiniMap',{zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,doubleClickZoom:false,boxZoom:false,keyboard:false,touchZoom:false}).setView([37.5665,126.9780],15);
 const ccUrbanRegenerationParcelBase=L.geoJSON(null,{style:compactParcelBaseStyle}).addTo(ccUrbanRegenerationMini);
-const ccUrbanRegenerationUrban=L.geoJSON(null,{style:{weight:2.2,color:'#6938ef',fillColor:'#d9d6fe',fillOpacity:.50},onEachFeature:(f,l)=>{const p=f.properties||{};l.bindTooltip(`도시재생혁신지구 해당필지 · ${escHtml(p._conservation_relation||'해당/저촉')}`);}}).addTo(ccUrbanRegenerationMini);
+const ccUrbanRegenerationReference=L.geoJSON(null,{style:{weight:2.4,color:'#7f56d9',fillColor:'#f4ebff',fillOpacity:.15,dashArray:'7 4'},onEachFeature:(f,l)=>{const p=f.properties||{};l.bindTooltip(`${escHtml(p.name||'도시재생혁신지구')} · ${escHtml(p.notice_no||'고시번호 확인')}`);}}).addTo(ccUrbanRegenerationMini);
+const ccUrbanRegenerationReferenceOverlap=L.geoJSON(null,{style:{weight:3,color:'#7f56d9',fillColor:'#d9d6fe',fillOpacity:.58},onEachFeature:(f,l)=>{const p=f.properties||{};l.bindTooltip(`${escHtml(p.name||'도시재생혁신지구')} · 대상지 중첩 ${Number(p._overlap_area_m2||0).toLocaleString('ko-KR',{maximumFractionDigits:0})}㎡`);}}).addTo(ccUrbanRegenerationMini);
+const ccUrbanRegenerationUrban=L.geoJSON(null,{style:{weight:2.2,color:'#6938ef',fillColor:'#d9d6fe',fillOpacity:.50},onEachFeature:(f,l)=>{const p=f.properties||{};l.bindTooltip(`도시재생혁신지구 NED 해당필지 · ${escHtml(p._conservation_relation||'해당/저촉')}`);}}).addTo(ccUrbanRegenerationMini);
 const ccUrbanRegenerationHousing=L.geoJSON(null,{style:{weight:2.2,color:'#175cd3',fillColor:'#b2ddff',fillOpacity:.50},onEachFeature:(f,l)=>{const p=f.properties||{};l.bindTooltip(`주거재생혁신지구 해당필지 · ${escHtml(p._conservation_relation||'해당/저촉')}`);}}).addTo(ccUrbanRegenerationMini);
 const ccUrbanRegenerationBoundary=L.geoJSON(null,{style:{weight:3,color:'#101828',fillColor:'#fff',fillOpacity:.015}}).addTo(ccUrbanRegenerationMini);
 
@@ -6143,7 +6145,15 @@ const developmentAnalysis={loaded:false,loading:false,contextFeatures:[],overlap
 const hillAnalysis={loaded:false,loading:false,status:'unavailable',source_status:'',intersects:null,overlap_area_m2:null,overlap_pct:null,distance_m:null,site_area_m2:null,valid_terrain_area_m2:null,nodata_area_m2:null,nodata_pct:null,pixel_count_in_site:0,elevation:{},slope:{},reference_areas:{},contextFeatures:[],overlaps:[],metadata:{},error:''};
 const safeMedicalAnalysis={loaded:false,loading:false,status:'unavailable',items:[],metadata:{},errors:[],warnings:[],sourceStats:{},nearbyCounts:{},message:''};
 const safeDowntownExclusionAnalysis={loaded:false,loading:false,status:'unavailable',known:false,present:null,overlapAreaM2:null,overlapPct:null,features:[],overlapFeatures:[],metadata:{},error:''};
-const urbanRegenerationRestrictionAnalysis={loaded:false,loading:false,status:'unavailable',known:false,present:false,checkedParcels:0,queriedParcels:0,errorParcels:0,urbanInnovation:{known:false,present:false,affected_pnus:[],rows:[]},housingInnovation:{known:false,present:false,affected_pnus:[],rows:[]},errors:[]};
+const urbanRegenerationRestrictionAnalysis={loaded:false,loading:false,status:'unavailable',known:false,present:false,checkedParcels:0,queriedParcels:0,errorParcels:0,urbanInnovation:{known:false,present:false,affected_pnus:[],rows:[],reference_names:[]},housingInnovation:{known:false,present:false,affected_pnus:[],rows:[]},reference:{loaded:false,known:false,present:false,features:[],overlap_features:[],hits:[],overlap_area_m2:null,overlap_pct:null,metadata:{},error:''},errors:[]};
+let urbanRegenerationInnovationReferenceCache=null;
+let urbanRegenerationInnovationReferencePromise=null;
+async function loadUrbanRegenerationInnovationReference(){
+  if(urbanRegenerationInnovationReferenceCache)return urbanRegenerationInnovationReferenceCache;
+  if(urbanRegenerationInnovationReferencePromise)return urbanRegenerationInnovationReferencePromise;
+  urbanRegenerationInnovationReferencePromise=fetch('/api/reference/urban-regeneration-innovation',{cache:'force-cache'}).then(async r=>{const data=await r.json();if(!r.ok)throw new Error(data?.detail||`도시재생혁신지구 참조경계 HTTP ${r.status}`);if(data?.type!=='FeatureCollection'||!Array.isArray(data.features))throw new Error('도시재생혁신지구 참조경계 형식 오류');urbanRegenerationInnovationReferenceCache=data;return data;}).catch(e=>{urbanRegenerationInnovationReferencePromise=null;throw e;});
+  return urbanRegenerationInnovationReferencePromise;
+}
 const schoolAbsoluteProtectionAnalysis={loaded:false,loading:false,status:'unavailable',known:false,present:null,overlapAreaM2:null,overlapPct:null,zoneCount:0,schoolNames:[],features:[],overlapFeatures:[],source:'',sourceType:'',file:'',error:''};
 const sharedConservationAnalysis={
   loaded:false,loading:false,status:'unavailable',errors:[],
@@ -6218,7 +6228,7 @@ function resetPlanningAnalysis(){
   renewalAnalysis.loaded=false;renewalAnalysis.loading=false;renewalAnalysis.features=[];renewalAnalysis.contextFeatures=[];renewalAnalysis.overlaps=[];renewalAnalysis.projectRegistryOverlaps=[];renewalAnalysis.projectRegistryContextFeatures=[];renewalAnalysis.projectRegistryMetadata={};renewalAnalysis.error='';
   developmentAnalysis.loaded=false;developmentAnalysis.loading=false;developmentAnalysis.contextFeatures=[];developmentAnalysis.overlaps=[];developmentAnalysis.industrialParks=[];developmentAnalysis.industrialParkContextFeatures=[];developmentAnalysis.industrialParkMetadata={};developmentAnalysis.metadata={};developmentAnalysis.error='';
   hillAnalysis.loaded=false;hillAnalysis.loading=false;hillAnalysis.status='unavailable';hillAnalysis.source_status='';hillAnalysis.intersects=null;hillAnalysis.overlap_area_m2=null;hillAnalysis.overlap_pct=null;hillAnalysis.distance_m=null;hillAnalysis.site_area_m2=null;hillAnalysis.valid_terrain_area_m2=null;hillAnalysis.nodata_area_m2=null;hillAnalysis.nodata_pct=null;hillAnalysis.pixel_count_in_site=0;hillAnalysis.elevation={};hillAnalysis.slope={};hillAnalysis.reference_areas={};hillAnalysis.contextFeatures=[];hillAnalysis.overlaps=[];hillAnalysis.metadata={};hillAnalysis.error='';
-  safeMedicalAnalysis.loaded=false;safeMedicalAnalysis.loading=false;safeMedicalAnalysis.status='unavailable';safeMedicalAnalysis.items=[];safeMedicalAnalysis.metadata={};safeMedicalAnalysis.errors=[];safeMedicalAnalysis.warnings=[];safeMedicalAnalysis.sourceStats={};safeMedicalAnalysis.nearbyCounts={};safeMedicalAnalysis.message='';safeDowntownExclusionAnalysis.loaded=false;safeDowntownExclusionAnalysis.loading=false;safeDowntownExclusionAnalysis.status='unavailable';safeDowntownExclusionAnalysis.known=false;safeDowntownExclusionAnalysis.present=null;safeDowntownExclusionAnalysis.overlapAreaM2=null;safeDowntownExclusionAnalysis.overlapPct=null;safeDowntownExclusionAnalysis.features=[];safeDowntownExclusionAnalysis.overlapFeatures=[];safeDowntownExclusionAnalysis.metadata={};safeDowntownExclusionAnalysis.error='';urbanRegenerationRestrictionAnalysis.loaded=false;urbanRegenerationRestrictionAnalysis.loading=false;urbanRegenerationRestrictionAnalysis.status='unavailable';urbanRegenerationRestrictionAnalysis.known=false;urbanRegenerationRestrictionAnalysis.present=false;urbanRegenerationRestrictionAnalysis.checkedParcels=0;urbanRegenerationRestrictionAnalysis.queriedParcels=0;urbanRegenerationRestrictionAnalysis.errorParcels=0;urbanRegenerationRestrictionAnalysis.urbanInnovation={known:false,present:false,affected_pnus:[],rows:[]};urbanRegenerationRestrictionAnalysis.housingInnovation={known:false,present:false,affected_pnus:[],rows:[]};urbanRegenerationRestrictionAnalysis.errors=[];
+  safeMedicalAnalysis.loaded=false;safeMedicalAnalysis.loading=false;safeMedicalAnalysis.status='unavailable';safeMedicalAnalysis.items=[];safeMedicalAnalysis.metadata={};safeMedicalAnalysis.errors=[];safeMedicalAnalysis.warnings=[];safeMedicalAnalysis.sourceStats={};safeMedicalAnalysis.nearbyCounts={};safeMedicalAnalysis.message='';safeDowntownExclusionAnalysis.loaded=false;safeDowntownExclusionAnalysis.loading=false;safeDowntownExclusionAnalysis.status='unavailable';safeDowntownExclusionAnalysis.known=false;safeDowntownExclusionAnalysis.present=null;safeDowntownExclusionAnalysis.overlapAreaM2=null;safeDowntownExclusionAnalysis.overlapPct=null;safeDowntownExclusionAnalysis.features=[];safeDowntownExclusionAnalysis.overlapFeatures=[];safeDowntownExclusionAnalysis.metadata={};safeDowntownExclusionAnalysis.error='';urbanRegenerationRestrictionAnalysis.loaded=false;urbanRegenerationRestrictionAnalysis.loading=false;urbanRegenerationRestrictionAnalysis.status='unavailable';urbanRegenerationRestrictionAnalysis.known=false;urbanRegenerationRestrictionAnalysis.present=false;urbanRegenerationRestrictionAnalysis.checkedParcels=0;urbanRegenerationRestrictionAnalysis.queriedParcels=0;urbanRegenerationRestrictionAnalysis.errorParcels=0;urbanRegenerationRestrictionAnalysis.urbanInnovation={known:false,present:false,affected_pnus:[],rows:[],reference_names:[]};urbanRegenerationRestrictionAnalysis.housingInnovation={known:false,present:false,affected_pnus:[],rows:[]};urbanRegenerationRestrictionAnalysis.reference={loaded:false,known:false,present:false,features:[],overlap_features:[],hits:[],overlap_area_m2:null,overlap_pct:null,metadata:{},error:''};urbanRegenerationRestrictionAnalysis.errors=[];
   schoolAbsoluteProtectionAnalysis.loaded=false;schoolAbsoluteProtectionAnalysis.loading=false;schoolAbsoluteProtectionAnalysis.status='unavailable';schoolAbsoluteProtectionAnalysis.known=false;schoolAbsoluteProtectionAnalysis.present=null;schoolAbsoluteProtectionAnalysis.overlapAreaM2=null;schoolAbsoluteProtectionAnalysis.overlapPct=null;schoolAbsoluteProtectionAnalysis.zoneCount=0;schoolAbsoluteProtectionAnalysis.schoolNames=[];schoolAbsoluteProtectionAnalysis.features=[];schoolAbsoluteProtectionAnalysis.overlapFeatures=[];schoolAbsoluteProtectionAnalysis.source='';schoolAbsoluteProtectionAnalysis.sourceType='';schoolAbsoluteProtectionAnalysis.file='';schoolAbsoluteProtectionAnalysis.error='';
   sharedConservationAnalysis.loaded=false;sharedConservationAnalysis.loading=false;sharedConservationAnalysis.status='unavailable';sharedConservationAnalysis.errors=[];sharedConservationAnalysis.urbanPark={known:false,present:null,area_m2:null,pct:null,features:[]};sharedConservationAnalysis.greenbelt={known:false,present:null,area_m2:null,pct:null,features:[]};sharedConservationAnalysis.biotope={known:false,present:null,area_m2:null,pct:null,features:[],affected_pnus:[],rows:[],geometry_basis:'NONE'};sharedConservationAnalysis.publicForest={known:false,present:null,area_m2:null,pct:null,features:[],affected_pnus:[],rows:[],geometry_basis:'NONE'};sharedConservationAnalysis.source={geometry_basis:'mixed'};
   activationArterialAnalysis.loaded=false;activationArterialAnalysis.loading=false;activationArterialAnalysis.status='unavailable';activationArterialAnalysis.roads=[];activationArterialAnalysis.commercialZones=[];activationArterialAnalysis.siteOverlapFeatures=[];activationArterialAnalysis.blockFeature=null;activationArterialAnalysis.stationBufferFeature=null;activationArterialAnalysis.siteOverlapM2=null;activationArterialAnalysis.siteOverlapPct=null;activationArterialAnalysis.blockOverlapM2=null;activationArterialAnalysis.siteIncludes=null;activationArterialAnalysis.blockIncludes=null;activationArterialAnalysis.routeStatus='REVIEW';activationArterialAnalysis.routeConditional=false;activationArterialAnalysis.path='';activationArterialAnalysis.metadata={};activationArterialAnalysis.errors=[];activationArterialAnalysis.warnings=[];
@@ -6227,7 +6237,7 @@ function resetPlanningAnalysis(){
   ccPlanningBoundary.clearLayers();ccPlanningZoning.clearLayers();ccPlanningDistrict.clearLayers();ccPlanningFacility.clearLayers();ccPlanningDistrictPlan.clearLayers();ccPlanningRenewal.clearLayers();
   ccRenewalStatusContext.clearLayers();ccRenewalStatusOverlap.clearLayers();ccRenewalStatusBoundary.clearLayers();
   ccDevelopmentStatusContext.clearLayers();ccDevelopmentStatusOverlap.clearLayers();ccDevelopmentStatusBoundary.clearLayers();
-  ccUrbanRegenerationUrban.clearLayers();ccUrbanRegenerationHousing.clearLayers();ccUrbanRegenerationBoundary.clearLayers();
+  ccUrbanRegenerationReference.clearLayers();ccUrbanRegenerationReferenceOverlap.clearLayers();ccUrbanRegenerationUrban.clearLayers();ccUrbanRegenerationHousing.clearLayers();ccUrbanRegenerationBoundary.clearLayers();
   ccZoningLayer.clearLayers();ccZoningBoundary.clearLayers();ccDistrictLayer.clearLayers();ccDistrictBoundary.clearLayers();ccHeritageVector.clearLayers();ccHeritageBoundary.clearLayers();if(ccHeritageWmsOverlay){try{ccHeritageMini.removeLayer(ccHeritageWmsOverlay);}catch(e){}ccHeritageWmsOverlay=null;}ccHeritageWmsKey='';ccPlanningFacilityLayer.clearLayers();ccPlanningFacilityBoundary.clearLayers();ccSharedUrbanPark.clearLayers();ccSharedGreenbelt.clearLayers();ccSharedBiotopeParcels.clearLayers();ccSharedForestParcels.clearLayers();ccSharedConservationBoundary.clearLayers();ccHillContext.clearLayers();ccHillOverlap.clearLayers();ccHillBoundary.clearLayers();ccActivationArterialContext.clearLayers();ccActivationArterialStation.clearLayers();ccActivationArterialZone.clearLayers();ccActivationArterialOverlap.clearLayers();ccActivationArterialRoad.clearLayers();ccActivationArterialBlock.clearLayers();ccActivationArterialSite.clearLayers();ccSchemeRoadLayer.clearLayers();ccSchemeRoadInfluence.clearLayers();ccSchemeRoadBoundary.clearLayers();ccSafeMedicalPoints.clearLayers();ccSafeMedicalBuffers.clearLayers();ccSafeMedicalFacilitySites.clearLayers();ccSafeMedicalBoundary.clearLayers();ccSchoolAbsoluteZones.clearLayers();ccSchoolAbsoluteOverlap.clearLayers();ccSchoolAbsoluteBoundary.clearLayers();
   const ids=['planningZoneSummary','planningDistrictSummary','planningFacilitySummary','planningDistrictPlanSummary','planningRenewalSummary','planningPromotionSummary'];
   for(const id of ids){const el=document.getElementById(id);if(el)el.textContent='미조회';}
@@ -6375,11 +6385,22 @@ async function analyzeSafeDowntownExclusion(){
 
 async function analyzeUrbanRegenerationRestrictions(){
   const a=urbanRegenerationRestrictionAnalysis;
-  a.loading=true;a.loaded=false;a.status='unavailable';a.known=false;a.present=false;a.checkedParcels=0;a.queriedParcels=0;a.errorParcels=0;a.urbanInnovation={known:false,present:false,affected_pnus:[],rows:[]};a.housingInnovation={known:false,present:false,affected_pnus:[],rows:[]};a.errors=[];
+  a.loading=true;a.loaded=false;a.status='unavailable';a.known=false;a.present=false;a.checkedParcels=0;a.queriedParcels=0;a.errorParcels=0;a.urbanInnovation={known:false,present:false,affected_pnus:[],rows:[],reference_names:[]};a.housingInnovation={known:false,present:false,affected_pnus:[],rows:[]};a.reference={loaded:false,known:false,present:false,features:[],overlap_features:[],hits:[],overlap_area_m2:null,overlap_pct:null,metadata:{},error:''};a.errors=[];
+  if(!activeGeometry){a.loading=false;return a;}
+  const site=turf.feature(activeGeometry),siteArea=Math.max(1,turf.area(site));
   const pnus=[...selectedParcelPnus].map(x=>String(x||'').trim()).filter(x=>/^\d{19}$/.test(x));
-  if(!pnus.length){a.loading=false;a.status='unavailable';return a;}
   const uniq=[...new Set(pnus)],chunks=[];for(let i=0;i<uniq.length;i+=200)chunks.push(uniq.slice(i,i+200));
   const urbanRows=[],housingRows=[],urbanPnus=new Set(),housingPnus=new Set();let success=0,errors=[];
+  const referenceTask=(async()=>{
+    try{
+      const data=await loadUrbanRegenerationInnovationReference(),meta=data.metadata||{};
+      const available=meta.available!==false,features=(data.features||[]).filter(f=>f?.geometry);
+      const hits=[],overlapFeatures=[];let overlapArea=0;
+      if(available){for(const rf0 of features){try{if(!turf.booleanIntersects(site,rf0))continue;const x=turf.intersect(site,rf0);if(!x)continue;const area=turf.area(x);if(area<0.5)continue;const rf=cloneFeature(rf0),p=rf.properties||{};hits.push({id:rf.id||p.reference_id||'',name:p.name||'도시재생혁신지구',notice_no:p.notice_no||'',notice_date:p.notice_date||'',overlap_area_m2:area,source_type:p.source_type||meta.source_type||'OFFICIAL_NOTICE_DIGITIZED_REFERENCE'});x.properties=Object.assign({},p,{_overlap_area_m2:area});overlapFeatures.push(x);overlapArea+=area;}catch(e){}}
+      }
+      a.reference={loaded:true,known:available,present:hits.length>0,features:features.map(cloneFeature),overlap_features:overlapFeatures,hits,overlap_area_m2:overlapArea,overlap_pct:overlapArea/siteArea*100,metadata:{...meta},error:''};
+    }catch(e){a.reference={loaded:false,known:false,present:false,features:[],overlap_features:[],hits:[],overlap_area_m2:null,overlap_pct:null,metadata:{},error:String(e.message||e)};errors.push({error:String(e.message||e),source:'urban_regeneration_innovation_reference'});}
+  })();
   try{
     for(const part of chunks){
       try{
@@ -6389,9 +6410,11 @@ async function analyzeUrbanRegenerationRestrictions(){
         for(const row of data.housing_regeneration_innovation?.rows||[]){housingRows.push(row);if(row.pnu)housingPnus.add(row.pnu);}
       }catch(e){errors.push({error:String(e.message||e),count:part.length});}
     }
-    const complete=success===uniq.length;
-    a.loaded=true;a.status=complete?'available':success?'partial':'error';a.checkedParcels=success;a.queriedParcels=uniq.length;a.errorParcels=Math.max(0,uniq.length-success);a.errors=errors;
-    a.urbanInnovation={known:urbanPnus.size>0||complete,present:urbanPnus.size>0,affected_pnus:[...urbanPnus],rows:urbanRows};
+    await referenceTask;
+    const complete=uniq.length>0&&success===uniq.length,refKnown=a.reference.known===true,refPresent=a.reference.present===true;
+    a.loaded=refKnown||success>0||uniq.length===0;a.status=(refKnown&&complete)?'available':(refKnown||success>0)?'partial':'error';a.checkedParcels=success;a.queriedParcels=uniq.length;a.errorParcels=Math.max(0,uniq.length-success);a.errors=errors;
+    const refNames=[...new Set((a.reference.hits||[]).map(x=>x.name).filter(Boolean))];
+    a.urbanInnovation={known:refKnown||urbanPnus.size>0||complete,present:refPresent||urbanPnus.size>0,affected_pnus:[...urbanPnus],rows:urbanRows,reference_names:refNames,reference_present:refPresent,reference_overlap_area_m2:a.reference.overlap_area_m2,reference_overlap_pct:a.reference.overlap_pct};
     a.housingInnovation={known:housingPnus.size>0||complete,present:housingPnus.size>0,affected_pnus:[...housingPnus],rows:housingRows};
     a.known=a.urbanInnovation.known&&a.housingInnovation.known;a.present=a.urbanInnovation.present||a.housingInnovation.present;
   }finally{a.loading=false;renderUrbanRegenerationSpatialStatus();}
@@ -6399,22 +6422,23 @@ async function analyzeUrbanRegenerationRestrictions(){
 }
 function renderUrbanRegenerationSpatialStatus(){
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
-  ccUrbanRegenerationUrban.clearLayers();ccUrbanRegenerationHousing.clearLayers();ccUrbanRegenerationBoundary.clearLayers();
+  ccUrbanRegenerationReference.clearLayers();ccUrbanRegenerationReferenceOverlap.clearLayers();ccUrbanRegenerationUrban.clearLayers();ccUrbanRegenerationHousing.clearLayers();ccUrbanRegenerationBoundary.clearLayers();
   if(!activeGeometry){set('spUrbanInnovationStatus','-');set('spHousingInnovationStatus','-');set('spUrbanRegenerationParcels','-');set('spUrbanRegenerationCoverage','미조회');set('spUrbanRegenerationState','구역 설정 전');return;}
   const site=turf.feature(activeGeometry),a=urbanRegenerationRestrictionAnalysis||{};ccUrbanRegenerationBoundary.addData(site);
-  const urban=a.urbanInnovation||{},housing=a.housingInnovation||{};
+  const urban=a.urbanInnovation||{},housing=a.housingInnovation||{},ref=a.reference||{};
+  if(ref.features?.length)ccUrbanRegenerationReference.addData({type:'FeatureCollection',features:ref.features});
+  if(ref.overlap_features?.length)ccUrbanRegenerationReferenceOverlap.addData({type:'FeatureCollection',features:ref.overlap_features});
   const urbanFs=affectedParcelFeatures(urban.affected_pnus||[],urban.rows||[],'urban_regeneration_innovation');
   const housingFs=affectedParcelFeatures(housing.affected_pnus||[],housing.rows||[],'housing_regeneration_innovation');
   if(urbanFs.length)ccUrbanRegenerationUrban.addData({type:'FeatureCollection',features:urbanFs});
   if(housingFs.length)ccUrbanRegenerationHousing.addData({type:'FeatureCollection',features:housingFs});
-  const statusText=x=>x?.present===true?'해당':x?.known===true?'비해당':'미확인';
+  const statusText=x=>x?.present===true?(x.reference_names?.length?x.reference_names.join(' · '):'해당'):x?.known===true?'비해당':'미확인';
   set('spUrbanInnovationStatus',statusText(urban));set('spHousingInnovationStatus',statusText(housing));
-  const affected=new Set([...(urban.affected_pnus||[]),...(housing.affected_pnus||[])]);
-  const total=Math.max(selectedParcelPnus.size,Number(a.queriedParcels||0));
+  const affected=new Set([...(urban.affected_pnus||[]),...(housing.affected_pnus||[])]),total=Math.max(selectedParcelPnus.size,Number(a.queriedParcels||0));
   set('spUrbanRegenerationParcels',a.loaded?`${affected.size}/${total}필지`:'-');
-  set('spUrbanRegenerationCoverage',a.loaded?`${Number(a.checkedParcels||0)}/${Number(a.queriedParcels||0)}필지 조회`:'미조회');
-  set('spUrbanRegenerationState',a.loading?'조회 중':a.status==='error'?'공식자료 조회 실패':a.status==='partial'?'일부 필지 미응답 · REVIEW':a.loaded?(a.present?'도시재생 관련 지역·지구 해당':'해당 없음'):'공식 토지이용계획 미조회');
-  try{fitCompactMiniMap(ccUrbanRegenerationMini,ccUrbanRegenerationBoundary,ccUrbanRegenerationUrban.getLayers().length?ccUrbanRegenerationUrban:ccUrbanRegenerationHousing);}catch(e){}
+  const refText=ref.known?`고시경계 ${(ref.hits||[]).length?'중첩 '+(ref.hits||[]).length+'건':'비중첩'}`:'고시경계 미확인',nedText=a.queriedParcels?`NED ${Number(a.checkedParcels||0)}/${Number(a.queriedParcels||0)}필지`:'NED 대상필지 없음';set('spUrbanRegenerationCoverage',`${refText} · ${nedText}`);
+  set('spUrbanRegenerationState',a.loading?'조회 중':a.present?'도시재생 혁신지구 해당':a.known?'해당 없음':a.loaded?'일부 자료 미확인 · REVIEW':'공식자료 조회 실패');
+  try{let fg=L.featureGroup();for(const lyr of [ccUrbanRegenerationReferenceOverlap,ccUrbanRegenerationUrban,ccUrbanRegenerationHousing,ccUrbanRegenerationBoundary])lyr.eachLayer(l=>fg.addLayer(l));const b=fg.getBounds();if(b.isValid())ccUrbanRegenerationMini.fitBounds(b.pad(.12),{animate:false,maxZoom:18});setTimeout(()=>ccUrbanRegenerationMini.invalidateSize(false),0);}catch(e){}
 }
 
 async function analyzeSchoolAbsoluteProtection(){
@@ -6437,7 +6461,7 @@ function renderIndependentSpatialStatusMaps(){
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
   ccRenewalStatusContext.clearLayers();ccRenewalStatusOverlap.clearLayers();ccRenewalStatusBoundary.clearLayers();
   ccDevelopmentStatusContext.clearLayers();ccDevelopmentStatusOverlap.clearLayers();ccDevelopmentStatusBoundary.clearLayers();
-  ccUrbanRegenerationUrban.clearLayers();ccUrbanRegenerationHousing.clearLayers();ccUrbanRegenerationBoundary.clearLayers();
+  ccUrbanRegenerationReference.clearLayers();ccUrbanRegenerationReferenceOverlap.clearLayers();ccUrbanRegenerationUrban.clearLayers();ccUrbanRegenerationHousing.clearLayers();ccUrbanRegenerationBoundary.clearLayers();
   if(!activeGeometry){
     for(const id of ['spRenewalLegalCount','spRenewalProjectCount','spRenewalPromotionCount','spRenewalMaxOverlap','spDevelopmentDistrictPlan','spDevelopmentUrban','spDevelopmentHousing','spDevelopmentOther'])set(id,'-');
     set('spRenewalMapState','구역 설정 전');set('spDevelopmentMapState','구역 설정 전');const lg=document.getElementById('spExistingProjectLegend');if(lg)lg.innerHTML='<span>구역 설정 후 기존 추진사업을 조회합니다.</span>';return;
@@ -8087,7 +8111,7 @@ function clearBoundaryAnalysisForNewGeometry(options={}){
     safeMedicalAnalysis.loaded=false;safeMedicalAnalysis.loading=false;safeMedicalAnalysis.status='unavailable';safeMedicalAnalysis.items=[];safeMedicalAnalysis.metadata={};safeMedicalAnalysis.errors=[];safeMedicalAnalysis.warnings=[];safeMedicalAnalysis.sourceStats={};safeMedicalAnalysis.nearbyCounts={};safeMedicalAnalysis.message='';safeDowntownExclusionAnalysis.loaded=false;safeDowntownExclusionAnalysis.loading=false;safeDowntownExclusionAnalysis.status='unavailable';safeDowntownExclusionAnalysis.known=false;safeDowntownExclusionAnalysis.present=null;safeDowntownExclusionAnalysis.overlapAreaM2=null;safeDowntownExclusionAnalysis.overlapPct=null;safeDowntownExclusionAnalysis.features=[];safeDowntownExclusionAnalysis.overlapFeatures=[];safeDowntownExclusionAnalysis.metadata={};safeDowntownExclusionAnalysis.error='';
   }
   if(typeof urbanRegenerationRestrictionAnalysis!=='undefined'){
-    urbanRegenerationRestrictionAnalysis.loaded=false;urbanRegenerationRestrictionAnalysis.loading=false;urbanRegenerationRestrictionAnalysis.status='unavailable';urbanRegenerationRestrictionAnalysis.known=false;urbanRegenerationRestrictionAnalysis.present=false;urbanRegenerationRestrictionAnalysis.checkedParcels=0;urbanRegenerationRestrictionAnalysis.queriedParcels=0;urbanRegenerationRestrictionAnalysis.errorParcels=0;urbanRegenerationRestrictionAnalysis.urbanInnovation={known:false,present:false,affected_pnus:[],rows:[]};urbanRegenerationRestrictionAnalysis.housingInnovation={known:false,present:false,affected_pnus:[],rows:[]};urbanRegenerationRestrictionAnalysis.errors=[];
+    urbanRegenerationRestrictionAnalysis.loaded=false;urbanRegenerationRestrictionAnalysis.loading=false;urbanRegenerationRestrictionAnalysis.status='unavailable';urbanRegenerationRestrictionAnalysis.known=false;urbanRegenerationRestrictionAnalysis.present=false;urbanRegenerationRestrictionAnalysis.checkedParcels=0;urbanRegenerationRestrictionAnalysis.queriedParcels=0;urbanRegenerationRestrictionAnalysis.errorParcels=0;urbanRegenerationRestrictionAnalysis.urbanInnovation={known:false,present:false,affected_pnus:[],rows:[],reference_names:[]};urbanRegenerationRestrictionAnalysis.housingInnovation={known:false,present:false,affected_pnus:[],rows:[]};urbanRegenerationRestrictionAnalysis.reference={loaded:false,known:false,present:false,features:[],overlap_features:[],hits:[],overlap_area_m2:null,overlap_pct:null,metadata:{},error:''};urbanRegenerationRestrictionAnalysis.errors=[];
   }
   latestSiteFactStore=null;latestSchemeModuleResults={};schemeResults={};
   try{resetAiComprehensiveAnalysis();}catch(e){}
@@ -8141,7 +8165,7 @@ async function runAllAutoAnalyses(options={}){
   results.push(await safeAnalysisStep('구릉지 지형 FACT',analyzeHillZones,180000,{classify:v=>{const ready=v?.loaded&&v?.metadata?.available===true;if(!ready)return {status:'rejected',detail:v?.error||'지형참조 미연결'};const st=v?.status==='partial'?'partial':'fulfilled';return {status:st,detail:`대표표고 ${v?.elevation?.representative_m==null?'-':Number(v.elevation.representative_m).toFixed(1)+'m'} · 평균경사 ${v?.slope?.mean_degree==null?'-':Number(v.slope.mean_degree).toFixed(1)+'°'} · 40m+10° ${Math.round(Number(v?.overlap_area_m2||0)).toLocaleString('ko-KR')}㎡ (${Number(v?.overlap_pct||0).toFixed(1)}%)`};}}));
   results.push(await safeAnalysisStep('정비사업 GIS',async()=>{await analyzeRenewalZones();return {error:renewalAnalysis.error,overlaps:renewalAnalysis.overlaps?.length||0};},180000,{classify:v=>({status:v?.error?'rejected':'fulfilled',detail:v?.error?String(v.error).slice(0,120):`중첩 ${v?.overlaps||0}건`})}));
   results.push(await safeAnalysisStep('개발사업 GIS',async()=>{await analyzeDevelopmentZones();return {error:developmentAnalysis.error,overlaps:developmentAnalysis.overlaps?.length||0};},180000,{classify:v=>({status:v?.error?'rejected':'fulfilled',detail:v?.error?String(v.error).slice(0,120):`중첩 ${v?.overlaps||0}건`})}));
-  results.push(await safeAnalysisStep('도시재생 혁신지구',async()=>{await analyzeUrbanRegenerationRestrictions();return {...urbanRegenerationRestrictionAnalysis};},180000,{classify:v=>({status:v?.known?'fulfilled':v?.checkedParcels>0?'partial':'rejected',detail:v?.known?(v?.present?'혁신지구 중첩 확인':'선택필지 전수조회 · 혁신지구 비해당'):`선택필지 ${v?.checkedParcels||0}/${v?.queriedParcels||0} 조회`})}));
+  results.push(await safeAnalysisStep('도시재생 혁신지구',async()=>{await analyzeUrbanRegenerationRestrictions();return {...urbanRegenerationRestrictionAnalysis};},180000,{classify:v=>({status:v?.known?'fulfilled':v?.loaded?'partial':'rejected',detail:v?.present?`고시경계/NED 중첩 · ${(v?.reference?.hits||[]).map(x=>x.name).filter(Boolean).join(' · ')||'혁신지구 해당'}`:v?.known?'고시경계 비중첩 + NED 전수조회 음성 확인':`고시경계 ${v?.reference?.known?'조회':'미확인'} · NED ${v?.checkedParcels||0}/${v?.queriedParcels||0}필지`})}));
   results.push(await safeAnalysisStep('의료시설',async()=>{await analyzeSafeMedicalReference();return {status:safeMedicalAnalysis.status,error_count:safeMedicalAnalysis.errors?.length||0,item_count:safeMedicalAnalysis.items?.length||0};},240000,{classify:v=>({status:v?.status==='error'?'rejected':(v?.error_count?'partial':'fulfilled'),detail:`후보 ${v?.item_count||0}건${v?.error_count?` · 오류 ${v.error_count}`:''}`})}));
   results.push(await safeAnalysisStep('안심주택 도심배제',async()=>{await analyzeSafeDowntownExclusion();return {known:safeDowntownExclusionAnalysis.known,present:safeDowntownExclusionAnalysis.present,error:safeDowntownExclusionAnalysis.error||''};},30000,{classify:v=>({status:v?.error?'partial':v?.known?'fulfilled':'partial',detail:v?.error||(!v?.known?'참조도형 미연결':v?.present?'배제범위 중첩':'배제범위 비중첩')})}));
   results.push(await safeAnalysisStep('학교 절대보호구역',analyzeSchoolAbsoluteProtection,240000,{classify:v=>({status:v?.loaded&&v?.known?'fulfilled':'rejected',detail:v?.loaded&&v?.known?`UOA110 중첩 ${Number(v.zoneCount||0)}건 · ${Math.round(Number(v.overlapAreaM2||0)).toLocaleString('ko-KR')}㎡`:(v?.error||'공식 SHP 미확보')})}));
@@ -10374,8 +10398,8 @@ function safeDowntownExclusionSpatialEvidenceFacts(){
   return {loaded:!!a.loaded,known:a.known===true,status:a.status||'unavailable',present:a.present===true,overlap_area_m2:Number.isFinite(Number(a.overlapAreaM2))?Number(a.overlapAreaM2):null,overlap_pct:Number.isFinite(Number(a.overlapPct))?Number(a.overlapPct):null,features:[...(a.features||[])],overlap_features:[...(a.overlapFeatures||[])],metadata:{...(a.metadata||{})},source_type:a.metadata?.source_type||'USER_CURATED_MODEL_REFERENCE',legal_source:false,error:a.error||'',criterion:'서울도심 기본계획 범역 중 율곡로·사직로 북측 및 퇴계로 남측 배제'};
 }
 function urbanRegenerationRestrictionSpatialEvidenceFacts(){
-  const a=urbanRegenerationRestrictionAnalysis||{};
-  return {loaded:!!a.loaded,known:a.known===true,status:a.status||'unavailable',present:a.present===true,checked_parcels:Number(a.checkedParcels||0),queried_parcels:Number(a.queriedParcels||0),error_parcels:Number(a.errorParcels||0),urban_innovation:{...(a.urbanInnovation||{}),affected_pnus:[...(a.urbanInnovation?.affected_pnus||[])],rows:[...(a.urbanInnovation?.rows||[])]},housing_innovation:{...(a.housingInnovation||{}),affected_pnus:[...(a.housingInnovation?.affected_pnus||[])],rows:[...(a.housingInnovation?.rows||[])]},errors:[...(a.errors||[])],source:'VWorld NED 토지이용계획정보(getLandUseAttr)',criterion:'도시재생혁신지구·주거재생혁신지구 selected-PNU 전수조회'};
+  const a=urbanRegenerationRestrictionAnalysis||{},ref=a.reference||{};
+  return {loaded:!!a.loaded,known:a.known===true,status:a.status||'unavailable',present:a.present===true,checked_parcels:Number(a.checkedParcels||0),queried_parcels:Number(a.queriedParcels||0),error_parcels:Number(a.errorParcels||0),urban_innovation:{...(a.urbanInnovation||{}),affected_pnus:[...(a.urbanInnovation?.affected_pnus||[])],rows:[...(a.urbanInnovation?.rows||[])],reference_names:[...(a.urbanInnovation?.reference_names||[])]},housing_innovation:{...(a.housingInnovation||{}),affected_pnus:[...(a.housingInnovation?.affected_pnus||[])],rows:[...(a.housingInnovation?.rows||[])]},reference:{loaded:!!ref.loaded,known:ref.known===true,present:ref.present===true,hits:[...(ref.hits||[])],overlap_area_m2:Number.isFinite(Number(ref.overlap_area_m2))?Number(ref.overlap_area_m2):null,overlap_pct:Number.isFinite(Number(ref.overlap_pct))?Number(ref.overlap_pct):null,metadata:{...(ref.metadata||{})},error:ref.error||''},errors:[...(a.errors||[])],source:'국토교통부 도시재생혁신지구 지정·변경 고시 벡터화 참조 + VWorld NED getLandUseAttr',criterion:'서울 현행 도시재생혁신지구(용산·김포공항) 고시경계 중첩 + 도시재생혁신지구·주거재생혁신지구 selected-PNU 교차검증'};
 }
 function schoolAbsoluteProtectionSpatialEvidenceFacts(){
   const a=schoolAbsoluteProtectionAnalysis;
@@ -11047,10 +11071,10 @@ function publicComplexUrbanRegenerationFact(store){
   const names=[];
   const all=[...(store.site.renewal?.existing_projects||[]),...(store.site.development?.overlaps||[])];
   for(const x of all){const t=`${x.name||''} ${x.type_label||''}`.trim();if(/도시재생혁신지구|주거재생혁신지구/.test(t))names.push(t);}
-  const nedRows=[...(exact.urban_innovation?.rows||[]),...(exact.housing_innovation?.rows||[])];
-  const values=[...new Set([...names,...nedRows.map(x=>x.name).filter(Boolean)])];
-  if(values.length||exact.present===true)return {known:true,status:'FAIL',value:values.join(' / ')||'혁신지구 중첩',note:'도시재생혁신지구·주거재생혁신지구 중첩 · 도심공공주택복합 자동배제'};
-  if(exact.known===true)return {known:true,status:'PASS',value:'도시재생혁신지구·주거재생혁신지구 해당 없음',note:'VWorld NED 토지이용계획정보 selected-PNU 전수조회 · 도시재생활성화지역 단순 중첩은 배제하지 않음'};
+  const nedRows=[...(exact.urban_innovation?.rows||[]),...(exact.housing_innovation?.rows||[])],referenceNames=(exact.reference?.hits||[]).map(x=>x.name).filter(Boolean);
+  const values=[...new Set([...names,...referenceNames,...nedRows.map(x=>x.name).filter(Boolean)])];
+  if(values.length||exact.present===true)return {known:true,status:'FAIL',value:values.join(' / ')||'혁신지구 중첩',note:referenceNames.length?'국토교통부 지정·변경 고시 벡터화 경계 중첩 확인 · NED 교차검증 · 도심공공주택복합 자동배제':'도시재생혁신지구·주거재생혁신지구 NED 중첩 · 도심공공주택복합 자동배제'};
+  if(exact.known===true)return {known:true,status:'PASS',value:'도시재생혁신지구·주거재생혁신지구 해당 없음',note:'고시 벡터 참조 비중첩 + VWorld NED selected-PNU 전수조회 음성 확인 · 도시재생활성화지역 단순 중첩은 배제하지 않음'};
   return {known:false,status:'REVIEW',value:'도시재생 혁신지구 일부 미확인',note:`VWorld NED selected-PNU ${Number(exact.checked_parcels||0)}/${Number(exact.queried_parcels||0)} 조회 · 실패 필지 때문에 음성판정 보류`};
 }
 

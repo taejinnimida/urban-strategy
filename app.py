@@ -1719,6 +1719,44 @@ def _route_commercial_reference_data():
     data["metadata"] = meta
     return data
 
+URBAN_REGEN_INNOVATION_REFERENCE_PATH = _data_path("urban_regeneration_innovation_reference.geojson")
+@lru_cache(maxsize=1)
+def _urban_regen_innovation_reference_data():
+    """서울 현행 도시재생혁신지구 고시·공식계획도 벡터화 참조도형.
+
+    원 SHP 자체가 아니므로 음성(비중첩)만으로 법적 비해당을 확정하지 않는다.
+    VWorld NED selected-PNU 토지이용계획 조회와 결합하여 사용한다.
+    """
+    try:
+        with open(URBAN_REGEN_INNOVATION_REFERENCE_PATH, encoding="utf-8") as fp:
+            data = json.load(fp)
+    except FileNotFoundError:
+        return {
+            "type": "FeatureCollection",
+            "name": "seoul_urban_regeneration_innovation_reference",
+            "metadata": {
+                "available": False,
+                "source_type": "OFFICIAL_NOTICE_DIGITIZED_REFERENCE",
+                "legal_source": True,
+                "reference_name": "서울 현행 도시재생혁신지구 고시도 벡터화 참조",
+                "negative_authority": False,
+                "reason": "urban_regeneration_innovation_reference.geojson 미설치",
+            },
+            "features": [],
+        }
+    if not isinstance(data, dict) or data.get("type") != "FeatureCollection":
+        raise RuntimeError("urban_regeneration_innovation_reference.geojson 형식 오류")
+    meta = dict(data.get("metadata") or {})
+    meta.update({
+        "available": True,
+        "source_type": "OFFICIAL_NOTICE_DIGITIZED_REFERENCE",
+        "legal_source": True,
+        "reference_name": meta.get("reference_name") or "서울 현행 도시재생혁신지구 고시도 벡터화 참조",
+        "negative_authority": False,
+    })
+    data["metadata"] = meta
+    return data
+
 SAFE_DOWNTOWN_EXCLUSION_REFERENCE_PATH = _data_path("safe_downtown_exclusion_reference.geojson")
 @lru_cache(maxsize=1)
 def _safe_downtown_exclusion_reference_data():
@@ -6451,6 +6489,12 @@ def reference_route_commercial():
     return _route_commercial_reference_data()
 
 
+@app.get("/api/reference/urban-regeneration-innovation")
+def reference_urban_regeneration_innovation():
+    """서울 현행 도시재생혁신지구 고시·공식계획도 벡터화 참조도형."""
+    return _urban_regen_innovation_reference_data()
+
+
 @app.get("/api/reference/safe-downtown-exclusion")
 def reference_safe_downtown_exclusion():
     return _safe_downtown_exclusion_reference_data()
@@ -6468,6 +6512,7 @@ def _reference_data_readiness() -> Dict[str, bool]:
         "public_forest": os.path.isfile(_data_path("forest_classification_seoul_202608.zip")),
         "school_protection": os.path.isfile(_data_path("school_protection_seoul_202608.zip")),
         "route_commercial_model": os.path.isfile(_data_path("route_commercial_reference.geojson")),
+        "urban_regeneration_innovation_reference": os.path.isfile(_data_path("urban_regeneration_innovation_reference.geojson")),
         "safe_downtown_exclusion_model": os.path.isfile(_data_path("safe_downtown_exclusion_reference.geojson")),
         "hill_terrain_model": all(os.path.isfile(_data_path(x)) for x in (HILL_GRID_META_FILE,HILL_GRID_ELEV_FILE,HILL_GRID_SLOPE_FILE)),
         "basic_unit": bool(_basic_unit_zip_path()),
