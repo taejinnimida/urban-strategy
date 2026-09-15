@@ -598,6 +598,7 @@ BUILDING_HUB_BASE_URL = "https://apis.data.go.kr/1613000/BldRgstHubService"
 BUILDING_HUB_TITLE_URL = BUILDING_HUB_BASE_URL + "/getBrTitleInfo"
 BUILDING_HUB_RECAP_TITLE_URL = BUILDING_HUB_BASE_URL + "/getBrRecapTitleInfo"
 BUILDING_HUB_ATCH_JIBUN_URL = BUILDING_HUB_BASE_URL + "/getBrAtchJibunInfo"
+BUILDING_HUB_FLOOR_URL = BUILDING_HUB_BASE_URL + "/getBrFlrOulnInfo"
 ENGINE_AS_OF_DATE = datetime.now(ZoneInfo("Asia/Seoul")).date()
 
 
@@ -702,6 +703,11 @@ def _query_building_hub_title(pnu: str) -> List[Dict[str, Any]]:
     return _query_building_hub_rows(BUILDING_HUB_TITLE_URL, pnu)
 
 
+def _query_building_hub_floor(pnu: str) -> List[Dict[str, Any]]:
+    """건축HUB 층별개요. 지하층 주거사용 여부 판정에만 사용한다."""
+    return _query_building_hub_rows(BUILDING_HUB_FLOOR_URL, pnu)
+
+
 def _query_building_hub_recap_title(pnu: str) -> List[Dict[str, Any]]:
     """대지 전체를 대표하는 총괄표제부를 우선 조회한다."""
     return _query_building_hub_rows(BUILDING_HUB_RECAP_TITLE_URL, pnu)
@@ -787,6 +793,18 @@ def _normalize_building_title(item: Dict[str, Any], pnu: str) -> Dict[str, Any]:
     result = {k: item.get(k) for k in keep}
     result["pnu"] = pnu
     result.update(_age_annotation(item))
+    return result
+
+
+def _normalize_building_floor(item: Dict[str, Any], pnu: str) -> Dict[str, Any]:
+    keep = [
+        "mgmBldrgstPk", "flrGbCd", "flrGbCdNm", "flrNo", "flrNoNm",
+        "mainPurpsCd", "mainPurpsCdNm", "etcPurps", "area",
+        "strctCd", "strctCdNm", "crtnDay", "sigunguCd", "bjdongCd",
+        "platGbCd", "bun", "ji", "dongNm", "bldNm",
+    ]
+    result = {k: item.get(k) for k in keep}
+    result["pnu"] = pnu
     return result
 
 
@@ -1156,9 +1174,15 @@ def _medical_boundary_metrics(site_wgs, boundary_geometry: Dict[str, Any]) -> Di
     boundary_metric = geometry_transform(to_metric.transform, boundary_wgs)
     distance = float(site_metric.distance(boundary_metric))
     buffer_metric = boundary_metric.buffer(350.0)
+    site_area = float(site_metric.area)
+    inter = site_metric.intersection(buffer_metric)
+    inter_area = float(inter.area) if not inter.is_empty else 0.0
+    coverage = (inter_area / site_area * 100.0) if site_area > 0 else None
     return {
         "distance_boundary_m": round(distance, 1),
         "within_350": distance <= 350.0 + 1e-6,
+        "coverage_350_pct": round(coverage, 3) if coverage is not None else None,
+        "overlap_350_area_m2": round(inter_area, 3),
         "buffer_350_geometry": mapping(geometry_transform(to_wgs.transform, buffer_metric)),
     }
 
@@ -1628,6 +1652,13 @@ def _land_use_rows_for_pnu(pnu: str) -> List[Dict[str, Any]]:
 
 def _land_use_category(name: str) -> Optional[str]:
     n = re.sub(r"\s+", "", str(name or ""))
+    # 토지이음/VWorld NED 토지이용계획정보의 규제지역 명칭을 그대로 분류한다.
+    # 도심공공주택복합 배제 자동판정은 사용자 확정에 따라 인정사업을 제외하고
+    # 도시재생혁신지구·주거재생혁신지구 2종만 사용한다.
+    if "주거재생혁신지구" in n:
+        return "housing_regeneration_innovation"
+    if "도시재생혁신지구" in n:
+        return "urban_regeneration_innovation"
     if "비오톱" in n and "1등급" in n:
         return "biotope_grade1"
     if "공익용산지" in n:
@@ -1687,6 +1718,81 @@ def _route_commercial_reference_data():
     })
     data["metadata"] = meta
     return data
+
+SAFE_DOWNTOWN_EXCLUSION_REFERENCE_PATH = _data_path("safe_downtown_exclusion_reference.geojson")
+@lru_cache(maxsize=1)
+def _safe_downtown_exclusion_reference_data():
+    """사용자 제공 DXF를 변환한 안심주택 서울도심 배제구간 내부 판정 참조도형."""
+    try:
+        with open(SAFE_DOWNTOWN_EXCLUSION_REFERENCE_PATH, encoding="utf-8") as fp:
+            data = json.load(fp)
+    except FileNotFoundError:
+        return {
+            "type": "FeatureCollection",
+            "name": "safe_downtown_exclusion_reference",
+            "metadata": {
+                "available": False,
+                "source_type": "USER_CURATED_MODEL_REFERENCE",
+                "legal_source": False,
+                "reference_name": "안심주택 서울도심 배제범위 내부 참조도형",
+                "reason": "safe_downtown_exclusion_reference.geojson 미설치",
+            },
+            "features": [],
+        }
+    if not isinstance(data, dict) or data.get("type") != "FeatureCollection":
+        raise RuntimeError("safe_downtown_exclusion_reference.geojson 형식 오류")
+    meta = dict(data.get("metadata") or {})
+    meta.update({
+        "available": True,
+        "source_type": "USER_CURATED_MODEL_REFERENCE",
+        "legal_source": False,
+        "reference_name": meta.get("reference_name") or "안심주택 서울도심 배제범위 내부 참조도형",
+        "model_use": "안심주택 서울도심 기본계획 범역 내 배제구간 판정 전용",
+    })
+    data["metadata"] = meta
+    return data
+
+
+def _safe_downtown_exclusion_analysis(geometry: Dict[str, Any]) -> Dict[str, Any]:
+    site = shape(geometry)
+    if site.geom_type not in {"Polygon", "MultiPolygon"} or site.is_empty:
+        raise ValueError("Polygon 또는 MultiPolygon만 지원합니다.")
+    if not site.is_valid:
+        site = site.buffer(0)
+    fc = _safe_downtown_exclusion_reference_data()
+    meta = dict(fc.get("metadata") or {})
+    if not meta.get("available"):
+        return {"status":"unavailable","known":False,"present":None,"overlap_area_m2":None,"overlap_pct":None,"features":[],"metadata":meta}
+    site_area = abs(float(GEOD.geometry_area_perimeter(site)[0]))
+    overlaps=[]; overlap_geoms=[]
+    for ft in fc.get("features") or []:
+        try:
+            g=shape(ft.get("geometry"))
+            x=site.intersection(g)
+            if x.is_empty: continue
+            a=abs(float(GEOD.geometry_area_perimeter(x)[0]))
+            if a<=0.01: continue
+            overlap_geoms.append(x)
+            overlaps.append({"type":"Feature","geometry":mapping(x),"properties":dict(ft.get("properties") or {},_overlap_area_m2=a)})
+        except Exception:
+            continue
+    if overlap_geoms:
+        union=unary_union(overlap_geoms)
+        overlap_area=abs(float(GEOD.geometry_area_perimeter(union)[0]))
+    else:
+        overlap_area=0.0
+    return {
+        "status":"available",
+        "known":True,
+        "present":overlap_area>0.01,
+        "site_area_m2":site_area,
+        "overlap_area_m2":overlap_area,
+        "overlap_pct":(overlap_area/site_area*100.0 if site_area>0 else None),
+        "features":fc.get("features") or [],
+        "overlap_features":overlaps,
+        "metadata":meta,
+    }
+
 
 # 역명 -> 해당 역과 공간적으로 확실히 연결된 출입구 좌표 목록.
 # 원본(TL_SPSB_ENTRC)에는 소속 역을 가리키는 속성 키가 없어, 배포 전 오프라인
@@ -5515,6 +5621,7 @@ def _safe_medical_reference(geometry: Dict[str, Any]) -> Dict[str, Any]:
         is_offline_snapshot = parcel.get("basis") == "offline_cadastral_snapshot_202012"
         return {**base,
             "distance_boundary_m":metrics.get("distance_boundary_m"), "within_350":metrics.get("within_350"),
+            "coverage_350_pct":metrics.get("coverage_350_pct"), "overlap_350_area_m2":metrics.get("overlap_350_area_m2"),
             "buffer_350_geometry":metrics.get("buffer_350_geometry"), "facility_boundary_geometry":feature["geometry"],
             "primary_pnu":parcel.get("pnu"), "parcel_count":1,
             "boundary_status":"CONFIRMED",
@@ -5548,7 +5655,8 @@ def _safe_medical_reference(geometry: Dict[str, Any]) -> Dict[str, Any]:
                     })
 
     confirmed = [x for x in items if x.get("boundary_status") == "CONFIRMED" and x.get("facility_boundary_geometry")]
-    confirmed_350 = [x for x in confirmed if x.get("within_350") is True]
+    # 안심주택 운영기준은 사업대상지 면적의 50% 이상이 중심지역에 포함되는 것을 일반경로로 본다.
+    confirmed_350 = [x for x in confirmed if x.get("coverage_350_pct") is not None and float(x.get("coverage_350_pct")) >= 50.0]
     review = [x for x in items if x.get("boundary_status") != "CONFIRMED"]
     items.sort(key=lambda x: float(x.get("distance_boundary_m") if x.get("distance_boundary_m") is not None else x.get("distance_point_m") if x.get("distance_point_m") is not None else 1e12))
 
@@ -5561,11 +5669,19 @@ def _safe_medical_reference(geometry: Dict[str, Any]) -> Dict[str, Any]:
         "health_center_unmatched":max(0,len(health_refs)-len(health_seen)),
     }
     stats["boundary_resolution"] = {"method":"point_prefilter_then_representative_parcel","confirmed":len(confirmed),"within_350":len(confirmed_350),"review":len(review)}
+    negative_complete = (
+        not errors
+        and stats["medical_reference"].get("municipal_unmatched", 0) == 0
+        and stats["medical_reference"].get("health_center_unmatched", 0) == 0
+        and len(review) == 0
+        and bool(rows)
+    )
     nearby_counts = {
         "general_hospital":sum(1 for x in items if x.get("category")=="general_hospital"),
         "municipal_hospital":sum(1 for x in items if x.get("category")=="municipal_hospital"),
         "public_health_center":sum(1 for x in items if x.get("category")=="public_health_center"),
         "boundary_confirmed":len(confirmed), "boundary_confirmed_350":len(confirmed_350), "boundary_review":len(review),
+        "negative_complete": negative_complete,
     }
     if confirmed_350:
         status="resolved"; message=f"대표필지 경계 기준 350m 이내 인정 의료시설 {len(confirmed_350)}건 확인"
@@ -5575,7 +5691,7 @@ def _safe_medical_reference(geometry: Dict[str, Any]) -> Dict[str, Any]:
         status="reference" if items else ("error" if errors else "none")
         message="의료시설 후보는 확인했으나 대표필지를 확정하지 못해 REVIEW입니다." if items else "인근 인정 의료시설 후보를 확인하지 못했습니다."
     return {
-        "status":status, "auto_pass_eligible":bool(confirmed_350), "items":items[:40],
+        "status":status, "auto_pass_eligible":bool(confirmed_350), "negative_complete":negative_complete, "items":items[:40],
         "candidates_350":confirmed_350[:40], "metadata":metadata, "errors":errors, "warnings":warnings,
         "source_stats":stats, "nearby_counts":nearby_counts, "message":message,
     }
@@ -6335,6 +6451,11 @@ def reference_route_commercial():
     return _route_commercial_reference_data()
 
 
+@app.get("/api/reference/safe-downtown-exclusion")
+def reference_safe_downtown_exclusion():
+    return _safe_downtown_exclusion_reference_data()
+
+
 def _reference_data_readiness() -> Dict[str, bool]:
     return {
         "stations": os.path.isfile(_data_path("stations.json")),
@@ -6347,6 +6468,7 @@ def _reference_data_readiness() -> Dict[str, bool]:
         "public_forest": os.path.isfile(_data_path("forest_classification_seoul_202608.zip")),
         "school_protection": os.path.isfile(_data_path("school_protection_seoul_202608.zip")),
         "route_commercial_model": os.path.isfile(_data_path("route_commercial_reference.geojson")),
+        "safe_downtown_exclusion_model": os.path.isfile(_data_path("safe_downtown_exclusion_reference.geojson")),
         "hill_terrain_model": all(os.path.isfile(_data_path(x)) for x in (HILL_GRID_META_FILE,HILL_GRID_ELEV_FILE,HILL_GRID_SLOPE_FILE)),
         "basic_unit": bool(_basic_unit_zip_path()),
     }
@@ -6533,6 +6655,17 @@ def heritage_wms_map(
     except Exception as exc:
         logging.warning("heritage WMS proxy failed: %s", exc)
         raise HTTPException(status_code=502, detail="heritage WMS unavailable") from exc
+
+
+@app.post("/api/spatial/safe-downtown-exclusion")
+def safe_downtown_exclusion_intersections(inp: GeometryInput):
+    try:
+        return _safe_downtown_exclusion_analysis(inp.geometry)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logging.exception("safe downtown exclusion intersection failed")
+        raise HTTPException(status_code=500, detail=f"안심주택 서울도심 배제범위 분석 오류: {exc}") from exc
 
 
 @app.get("/api/reference/hill-status")
@@ -6897,6 +7030,8 @@ def land_use_restrictions(inp: PnuListInput):
     categories: Dict[str, Dict[str, Any]] = {
         "biotope_grade1": {"affected_pnus": [], "rows": []},
         "public_interest_forest": {"affected_pnus": [], "rows": []},
+        "urban_regeneration_innovation": {"affected_pnus": [], "rows": []},
+        "housing_regeneration_innovation": {"affected_pnus": [], "rows": []},
     }
     success_pnus: List[str] = []
     errors: List[Dict[str, str]] = []
@@ -6949,6 +7084,8 @@ def land_use_restrictions(inp: PnuListInput):
         "error_parcels": len(errors),
         "biotope_grade1": categories["biotope_grade1"],
         "public_interest_forest": categories["public_interest_forest"],
+        "urban_regeneration_innovation": categories["urban_regeneration_innovation"],
+        "housing_regeneration_innovation": categories["housing_regeneration_innovation"],
         "errors": errors,
         "source": {
             "provider": "VWorld NED",
@@ -7003,6 +7140,31 @@ def building_hub_title_batch(inp: BuildingHubBatchInput):
             "data_portal_modified": "2026-07-10",
             "engine_as_of_date": ENGINE_AS_OF_DATE.isoformat(),
         },
+    }
+
+
+@app.post("/api/building-hub/floor-batch")
+def building_hub_floor_batch(inp: BuildingHubBatchInput):
+    if not building_hub_ready():
+        raise HTTPException(status_code=503, detail="BUILDING_HUB_API_KEY가 Render Environment에 설정되지 않았습니다.")
+    pnus=[];seen=set()
+    for p in inp.pnus:
+        p=str(p).strip()
+        if p and p not in seen:
+            seen.add(p);pnus.append(p)
+    records: List[Dict[str, Any]]=[]; errors: List[Dict[str, Any]]=[]
+    with ThreadPoolExecutor(max_workers=min(5, len(pnus) or 1)) as ex:
+        futures={ex.submit(_query_building_hub_floor,pnu):pnu for pnu in pnus}
+        for fut in as_completed(futures):
+            pnu=futures[fut]
+            try:
+                items=fut.result();records.extend(_normalize_building_floor(item,pnu) for item in items)
+            except Exception as exc:
+                logger.warning("BuildingHUB floor failed pnu=%s error=%s",pnu,exc)
+                errors.append({"pnu":pnu,"error":str(exc)})
+    return {
+        "requested_pnu_count":len(pnus),"record_count":len(records),"records":records,"errors":errors,
+        "source":{"provider":"국토교통부","dataset":"건축HUB 건축물대장정보 서비스","operation":"getBrFlrOulnInfo","engine_as_of_date":ENGINE_AS_OF_DATE.isoformat()},
     }
 
 
