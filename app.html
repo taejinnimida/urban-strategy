@@ -3183,14 +3183,18 @@ let parcelClickLookupBusy=false;
 let ccContextParcelFeatures=[];
 let ccContextBuildingFeatures=[];
 
+function mainParcelStyle(f){
+  const p=f.properties||{};
+  const included=p._included!==false;
+  if(!included)return {weight:1,color:'#98a2b3',fillColor:'#eaecf0',fillOpacity:.12,dashArray:'4,4'};
+  // 필지선택 방식에서는 선택 여부가 가장 먼저 보이도록 선택필지를 하나의 강조 스타일로 표시한다.
+  // 항공사진·지적선은 계속 읽을 수 있도록 채움은 옅게 유지한다.
+  if(boundaryInputMode==='address')return {weight:2.6,color:'#ffffff',opacity:.98,fillColor:'#f97066',fillOpacity:.16};
+  if(p.is_small===true)return {weight:1.7,color:'#b42318',fillColor:'#fecdca',fillOpacity:.28};
+  return {weight:1.7,color:'#175cd3',fillColor:'#d1e9ff',fillOpacity:.22};
+}
 const parcelLayer=L.geoJSON(null,{
-  style:f=>{
-    const p=f.properties||{};
-    const included=p._included!==false;
-    if(!included)return {weight:1,color:'#98a2b3',fillColor:'#eaecf0',fillOpacity:.12,dashArray:'4,4'};
-    if(p.is_small===true)return {weight:1.7,color:'#b42318',fillColor:'#fecdca',fillOpacity:.28};
-    return {weight:1.7,color:'#175cd3',fillColor:'#d1e9ff',fillOpacity:.22};
-  },
+  style:f=>mainParcelStyle(f),
   onEachFeature:(f,l)=>{
     const p=f.properties||{};
     const a=p.official_area_m2!=null?'공식 '+Number(p.official_area_m2).toLocaleString('ko-KR',{maximumFractionDigits:2})+'㎡':(p.geometry_area_m2!=null?'도형 '+Number(p.geometry_area_m2).toLocaleString('ko-KR',{maximumFractionDigits:2})+'㎡':'공식면적 미확인');
@@ -8119,7 +8123,13 @@ async function runSiteReview(){
     }});
     const steps=[streetBlockStep,parcelStep];
     let stationStep=null;
-    if(stationAnalysis.loaded)stationStep=await safeAnalysisStep('역세권 경계',analyzeStationBoundary,120000);
+    // 역세권 기준자료는 페이지 진입 시 비동기로 선로딩되므로,
+    // 사용자가 선로딩 완료 전에 검토를 누르거나 직전 로딩이 일시 실패한 경우
+    // 검토 실행 시 1회 강제 재로딩해 미로딩 오판정을 방지한다.
+    if(!stationAnalysis.loaded || !stationFeatures.length){
+      await loadBuiltInStationDataset(true);
+    }
+    if(stationAnalysis.loaded && stationFeatures.length)stationStep=await safeAnalysisStep('역세권 경계',analyzeStationBoundary,120000);
     else{markAnalysisProgress('역세권 경계','rejected','역·승강장 데이터셋 미로딩');stationStep={label:'역세권 경계',status:'rejected',reason:'역·승강장 데이터셋 미로딩'};}
     if(stationStep)steps.push(stationStep);
     steps.push(...await runAllAutoAnalyses({skipParcels:true,skipStreetBlocks:true}));
@@ -13006,6 +13016,8 @@ function setParcelFindMode(mode){
 function syncParcelFindInteractionState(){
   const active=boundaryInputMode==='address'&&parcelFindMode==='click';
   try{document.body.classList.toggle('parcel-click-mode',active);}catch(e){}
+  // 입력방식 전환 즉시 선택필지 스타일도 갱신한다.
+  try{if(parcelLayer)parcelLayer.setStyle(f=>mainParcelStyle(f));}catch(e){}
   if(active){
     const cadastral=document.getElementById('mainLayerCadastralToggle');
     if(cadastral&&!cadastral.checked){cadastral.checked=true;try{syncMainMapLayerVisibility();}catch(e){}}
