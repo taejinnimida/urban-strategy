@@ -16539,6 +16539,133 @@ function renderSmallscaleSchemeDetailPopup(){
   </div>`;
 }
 
+
+// ============================================================
+// R40 POPUP-3 PATCH — 정비사업별 용적률·공공기여 표시
+// - 최상위 변수: 사업방식(redevelopment / reconstruction / residential_environment)
+// - 재개발·재건축: 용도지역 변경 없음 / 변경 있음 분리
+// - 주거환경개선: 시행방법별 체계 우선(소규모정비형 vs 수용·환지·관리처분)
+// - 후보판정/overall에는 영향 없음. 기초검토서 3번 표시 전용.
+// ============================================================
+function popupRenewalFarText(p){
+  if(!p)return '기본계획 직접 기준 없음 · 별도 검토';
+  const legal=p.legal==null?'-':`${p.legal}%`;
+  return `기준 ${p.base}% · 허용 ${p.allow}% · 상한 ${p.cap}% · 법적상한 ${legal}`;
+}
+function popupRenewalNoChangeProfile(projectType,z){
+  const common={
+    '제1종일반주거':{base:150,allow:150,cap:200,legal:200},
+    '제2종일반주거(7층)':{base:170,allow:190,cap:250,legal:250},
+    '제2종일반주거':{base:190,allow:210,cap:250,legal:250},
+    '제3종일반주거':{base:210,allow:230,cap:250,legal:300},
+    '준주거':{base:300,allow:320,cap:400,legal:500},
+    '준공업':{base:210,allow:230,cap:250,legal:400}
+  };
+  if(projectType==='reconstruction'&&z==='상업지역')return {base:400,allow:420,cap:800,legal:null};
+  return common[z]||null;
+}
+function popupRenewalChangedProfile(current,target){
+  const map={
+    '제1종일반주거->제2종일반주거(7층)':{base:150,allow:170,cap:200,legal:250,pc:10},
+    '제1종일반주거->제2종일반주거':{base:150,allow:170,cap:200,legal:250,pc:10},
+    '제1종일반주거->제3종일반주거':{base:150,allow:170,cap:250,legal:300,pc:20},
+    '제1종일반주거->준주거':{base:null,allow:null,cap:null,legal:null,pc:30,separate:true},
+    '제2종일반주거(7층)->제2종일반주거':{base:190,allow:210,cap:250,legal:250,pc:0},
+    '제2종일반주거(7층)->제3종일반주거':{base:190,allow:210,cap:250,legal:300,pc:10},
+    '제2종일반주거(7층)->준주거':{base:null,allow:null,cap:null,legal:null,pc:20,separate:true},
+    '제2종일반주거->제3종일반주거':{base:190,allow:210,cap:250,legal:300,pc:10},
+    '제2종일반주거->준주거':{base:null,allow:null,cap:null,legal:null,pc:20,separate:true},
+    '제3종일반주거->준주거':{base:210,allow:230,cap:400,legal:500,pc:10}
+  };
+  return map[`${current}->${target}`]||null;
+}
+function popupRenewalChangeOptions(current){
+  const options={
+    '제1종일반주거':'→2종(7층)/2종 10% 이상 · →3종 20% 이상 · →준주거 30% 이상',
+    '제2종일반주거(7층)':'→2종 공공기여 없음 · →3종 10% 이상 · →준주거 20% 이상',
+    '제2종일반주거':'→3종 10% 이상 · →준주거 20% 이상',
+    '제3종일반주거':'→준주거 10% 이상'
+  };
+  return options[current]||'용도지역 상향 경로별 공공기여 기준 별도 확인';
+}
+function popupResEnvSmallscaleProfile(z){
+  const map={
+    '제1종일반주거':{base:150,allow:150,cap:200},
+    '제2종일반주거(7층)':{base:200,allow:200,cap:250},
+    '제2종일반주거':{base:200,allow:200,cap:250},
+    '제3종일반주거':{base:250,allow:250,cap:300}
+  };
+  return map[z]||null;
+}
+function popupResEnvFarText(p){return p?`기준 ${p.base}% · 허용 ${p.allow}% · 상한 ${p.cap}%`:'해당 용도지역 직접 기준 없음 · 정비계획/관련법 검토';}
+function popupPlanRow(label,value,condition,source){
+  return `<tr><td><b>${escHtml(label)}</b></td><td>${escHtml(value)}</td><td>${escHtml(condition)}</td><td>${source}</td></tr>`;
+}
+function renewalDensityPlanRowsForPopup(name,res,store,f){
+  const c=store?.common||{},current=c.zoning||'',explicitTarget=(c.targetZoning&&c.targetZoning!==current)?c.targetZoning:null;
+  const sourceRenewal=schemeSheetSourceFor(name,'용적률·계획기준','RENEWAL_PLAN',name==='reconstruction'?'재건축사업 부문 · 건축물의 밀도계획':'주택정비형 재개발사업 부문 · 건축물의 밀도계획');
+  const sourceResEnv=schemeSheetSourceFor(name,'계획기준·사업구조','RENEWAL_PLAN','주거환경개선사업 부문 · 3. 건축물의 밀도계획');
+  let out='';
+
+  // 기존 3번 항목 중 밀도 외 계획조건은 그대로 보존한다.
+  if(name==='redevelopment')out+=schemeSpecificPlanRow(res,'구릉지 계획조건');
+  if(name==='reconstruction')out+=schemeSpecificPlanRow(res,'공식 진입경로·정비구역');
+  if(name==='residential_environment')out+=schemeSpecificPlanRow(res,'정비구역 현황');
+
+  if(name==='redevelopment'||name==='reconstruction'){
+    const keep=popupRenewalNoChangeProfile(name,current);
+    out+=popupPlanRow(
+      '용도지역 변경 없음 · 용적률',
+      current?`${current} · ${popupRenewalFarText(keep)}`:'현 용도지역 확인 필요',
+      name==='redevelopment'&&current==='준공업'?'공장비율 10% 미만 지역에 한해 주택정비형 재개발 추진 가능':'현 용도지역을 유지하는 기본 용적률 체계',
+      sourceRenewal
+    );
+    out+=popupPlanRow(
+      '용도지역 변경 없음 · 공공기여',
+      '종상향 의무공공기여 없음',
+      '상한용적률 확대가 필요한 경우 공공시설등 기부채납 인센티브 적용 · 토지 1.3, 건축물 0.7(공공임대·전략육성용도 1.0), 현금 0.7 계수',
+      sourceRenewal
+    );
+
+    if(explicitTarget){
+      const up=popupRenewalChangedProfile(current,explicitTarget);
+      const farValue=up?(up.separate?'용적률 체계 별도 결정':popupRenewalFarText(up)):'기본계획 직접 경로 없음 · 별도 결정';
+      const pcValue=up?(up.pc===0?'공공기여 없음':`공공기여 ${up.pc}% 이상`):'공공기여 기준 별도 결정';
+      out+=popupPlanRow('용도지역 변경 있음 · 용적률',`${current||'-'} → ${explicitTarget} · ${farValue}`,'용도지역 변경은 위원회 심의를 거쳐 필요성이 인정되는 경우 적용',sourceRenewal);
+      out+=popupPlanRow('용도지역 변경 있음 · 공공기여',pcValue,up?.separate?'기본계획에 해당 종상향의 용적률 수치표가 직접 제시되지 않아 기본계획·지구단위계획 수립기준·유사사례 등을 참고하여 별도 결정':'1단계 종상향은 원칙적으로 10% 이상 · 2단계 20% · 3단계 30%',sourceRenewal);
+    }else{
+      out+=popupPlanRow('용도지역 변경 있음 · 용적률','목표 용도지역 미선택','종상향을 자동 전제로 하지 않음 · 목표 용도지역이 계획변수로 선택되면 해당 변경경로의 기준/허용/상한/법적상한을 표시',sourceRenewal);
+      out+=popupPlanRow('용도지역 변경 있음 · 공공기여',popupRenewalChangeOptions(current),'1단계 10% 이상 / 2단계 20% 이상 / 3단계 30% 이상이 기본 구조이며, 2종(7층)→2종은 공공기여 제외',sourceRenewal);
+    }
+    return out;
+  }
+
+  // 주거환경개선은 재개발·재건축의 종상향 표를 공용하지 않는다.
+  if(name==='residential_environment'){
+    const method=f?.method?.raw||'auto',small=popupResEnvSmallscaleProfile(current);
+    out+=popupPlanRow(
+      '소규모정비형 · 용적률',
+      current?`${current} · ${popupResEnvFarText(small)}`:'현 용도지역 확인 필요',
+      '중·소규모 개별건축은 기준/허용을 구분하지 않고 서울시 도시계획조례상 용적률 적용 가능 · 정비계획에서 별도 설정 가능',
+      sourceResEnv
+    );
+    out+=popupPlanRow(
+      '수용·환지·관리처분 · 용적률',
+      ['acquisition','landreadjustment','disposition'].includes(method)?`${f?.method?.label||'선택 시행방법'} · 해당 사업방식 용적률계획 적용`:'각 사업방식의 용적률계획 적용',
+      '2030 기본계획은 전면개발형 주거환경개선에 별도 공통 숫자표를 두지 않고 각 시행방법의 용적률계획을 따르도록 규정',
+      sourceResEnv
+    );
+    out+=popupPlanRow(
+      '용도지역 변경·공공기여',
+      '주거환경개선 독립 종상향 공공기여표 없음',
+      '재개발·재건축의 10/20/30% 종상향 공공기여표를 자동 공용하지 않음 · 타법 연계사업/특례 적용 시 해당 법령 및 정비계획 기준 적용',
+      sourceResEnv
+    );
+    return out;
+  }
+  return schemeSheetPlanRows(res,[]);
+}
+
 function renderRemainingSchemeDetailPopup(name){
   const title=document.getElementById('schemeDetailPopupTitle'),body=document.getElementById('schemeDetailPopupBody');if(!body)return;
   const res=schemeResults[name]||latestSchemeModuleResults[name],store=latestSiteFactStore,f=res?.facts||store?.scheme_specific?.[name];
@@ -16591,7 +16718,9 @@ function renderRemainingSchemeDetailPopup(name){
   };
   const cfg=configs[name];if(!cfg)return;
   const resultRows=schemeSpecificResultRows(res,cfg.groups,cfg.planItems);
-  const planRows=schemeSheetPlanRows(res,cfg.planItems);
+  const planRows=['redevelopment','reconstruction','residential_environment'].includes(name)
+    ? renewalDensityPlanRowsForPopup(name,res,store,f)
+    : schemeSheetPlanRows(res,cfg.planItems);
   let statusRows='';
   for(let i=0;i<(cfg.status||[]).length;i+=2){
     const a=cfg.status[i],b=cfg.status[i+1];
