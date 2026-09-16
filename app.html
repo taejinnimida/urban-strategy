@@ -952,6 +952,26 @@ body.service-layout-ready .engine-data-panel{display:none!important}
  .boundary-action-row button:disabled{opacity:.38;cursor:not-allowed}
 .boundary-map-ui{display:grid;grid-template-columns:minmax(140px,.7fr) 1.3fr;gap:7px;padding:7px 8px;border-top:1px solid #eaecf0;background:#f8fafc;font-size:9px}
 .boundary-map-ui label{display:flex;gap:6px;align-items:center;color:#344054;font-weight:800}.boundary-map-ui select{width:100%;min-height:32px;border:1px solid #d0d5dd;background:#fff;padding:4px 7px;font-size:9px}.boundary-map-overlays{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.boundary-map-overlays input{margin:0}.boundary-map-note{grid-column:1/-1;color:#667085;line-height:1.4}.boundary-review-bar{display:grid;grid-template-columns:minmax(150px,.45fr) 1fr;gap:8px;padding:8px;border-top:1px solid #e4e7ec;background:#fff}.boundary-review-bar button{border:0;background:#175cd3;color:#fff;font-weight:900;min-height:38px;cursor:pointer}.boundary-review-bar button:disabled{opacity:.5;cursor:wait}.boundary-review-status{border:1px solid #d0d5dd;background:#f9fafb;padding:7px 9px;font-size:9px;color:#475467;line-height:1.4}.site-analysis-progress{grid-column:1/-1;border:1px solid #d0d5dd;border-radius:8px;background:#fcfcfd;padding:8px 9px;display:none}.site-analysis-progress.active,.site-analysis-progress.done,.site-analysis-progress.review{display:block}.site-analysis-progress-head{display:flex;justify-content:space-between;gap:8px;align-items:center;font-size:9px}.site-analysis-progress-head b{color:#101828}.site-analysis-progress-head span{font-variant-numeric:tabular-nums;font-weight:900;color:#175cd3}.site-analysis-progress-track{height:6px;margin-top:7px;background:#eaecf0;border-radius:999px;overflow:hidden}.site-analysis-progress-track i{display:block;height:100%;width:0;background:#175cd3;border-radius:999px;transition:width .18s ease}.site-analysis-progress-steps{display:flex;gap:4px;flex-wrap:wrap;margin-top:7px}.site-analysis-progress-steps span{padding:3px 5px;border:1px solid #e4e7ec;background:#fff;border-radius:5px;font-size:7px;color:#667085}.site-analysis-progress-steps span.running{border-color:#84adff;background:#eff8ff;color:#175cd3;font-weight:900}.site-analysis-progress-steps span.fulfilled{border-color:#abefc6;background:#ecfdf3;color:#067647}.site-analysis-progress-steps span.partial{border-color:#fedf89;background:#fffaeb;color:#b54708}.site-analysis-progress-steps span.rejected{border-color:#fecdca;background:#fef3f2;color:#b42318}.site-analysis-progress-steps span small{display:block;margin-top:2px;max-width:190px;white-space:normal;line-height:1.25;font-size:6.5px;font-weight:700;color:inherit}.site-analysis-progress-note{margin-top:6px;font-size:8px;color:#667085;line-height:1.45}.scheme-popup-fallback{border:1px solid #fedf89;background:#fffaeb;border-radius:9px;padding:12px;color:#7a2e0e;font-size:10px;line-height:1.55}.boundary-shp-input{width:100%;border:1px dashed #98a2b3;background:#f9fafb;padding:8px;font-size:9px}.boundary-address-status.boundary-shp-status{margin-top:6px}
+
+.boundary-common-tools{border-top:1px solid #e4e7ec;background:#f9fafb;padding:8px}
+.boundary-common-tools-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
+.boundary-common-tools-head b{font-size:10px;color:#101828}.boundary-common-tools-head span{font-size:8px;color:#667085;text-align:right}
+.boundary-common-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.boundary-common-actions button{min-height:34px;padding:6px 10px;border:1px solid #d0d5dd;background:#fff;color:#344054;font-size:9px;font-weight:900;cursor:pointer}
+.boundary-common-actions button.boundary-primary{background:#101828;color:#fff;border-color:#101828}
+.boundary-common-actions button.boundary-danger{color:#b42318;border-color:#fecdca;background:#fff}
+.boundary-common-actions button:disabled{opacity:.38;cursor:not-allowed}
+.boundary-common-summary{margin-left:auto;display:flex;gap:7px;align-items:center;flex-wrap:wrap;font-size:8px;color:#475467}
+.boundary-common-summary b{color:#175cd3}
+.boundary-common-note{margin-top:6px;font-size:8px;line-height:1.4;color:#667085}
+.boundary-shp-workflow{margin:7px 0;padding:8px;border:1px solid #d0d5dd;background:#fcfcfd;font-size:8px;line-height:1.5;color:#475467}
+.boundary-shp-workflow b{color:#101828}
+.boundary-shp-workflow .boundary-action-row{margin-top:6px}
+.boundary-dxf-status{margin-top:5px;font-size:8px;color:#667085}
+@media(max-width:720px){
+  .boundary-common-actions button{min-height:42px;font-size:10px;flex:1 1 44%}
+  .boundary-common-summary{width:100%;margin-left:0}
+}
 .boundary-address-input{width:100%;min-height:94px;resize:vertical;border:1px solid #d0d5dd;padding:8px;font-size:11px;line-height:1.55;margin-bottom:7px;box-sizing:border-box}
 .boundary-address-status{margin-top:7px;padding:6px 8px;background:#f9fafb;border:1px solid #eaecf0;font-size:9px;line-height:1.45;color:#475467}
 .boundary-parcel-subtabs{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:8px}
@@ -1203,7 +1223,7 @@ body.service-layout-ready .engine-data-panel{display:none!important}
 .review-launch-card>span{min-width:0}
 .review-launch-card>span b{display:block;font-size:10px;color:#101828;line-height:1.25}
 .review-launch-card>span em{display:block;margin-top:2px;font-size:8px;color:#667085;font-style:normal;line-height:1.3}
-.review-launch-card>strong{font-size:8px;color:#344054;padding:3px 6px;border:1px solid #d0d5dd;border-radius:999px;background:#f9fafb}
+.review-launch-card>strong{font-size:8px;color:#101828;padding:5px 9px;border:1px solid #f79009;border-radius:8px;background:#fff;white-space:nowrap}
 
 .review-modal-backdrop{position:fixed;inset:0;z-index:5000;display:none;align-items:center;justify-content:center;padding:18px;background:rgba(16,24,40,.62);backdrop-filter:blur(2px)}
 .review-modal-backdrop.open{display:flex}
@@ -1673,18 +1693,18 @@ body.service-layout-ready>.shell{display:none!important}
   <div class="review-action-launcher">
     <button class="review-launch-card" type="button" onclick="openPriorityReviewModal()">
       <i>①</i>
-      <span><b>우선순위 사업 검토</b><em>1·2·3순위 · 선정근거 확인</em></span>
-      <strong>열기</strong>
+      <span><b>사업방식검토</b><em>사업별 판정 · 선정근거 · 우선순위 확인</em></span>
+      <strong>결과보고서</strong>
     </button>
     <button class="review-launch-card" type="button" onclick="openPlanningSimulationModal()">
       <i>②</i>
-      <span><b>시뮬레이션</b><em>기반시설 · 용적률 · 연면적 · 세대수</em></span>
-      <strong>열기</strong>
+      <span><b>건축시뮬레이션</b><em>기반시설 · 용적률 · 연면적 · 세대수</em></span>
+      <strong>결과보고서</strong>
     </button>
     <button class="review-launch-card" type="button" onclick="openReportModal()">
       <i>③</i>
-      <span><b>보고서 인쇄</b><em>검토결과 미리보기 · PDF 출력</em></span>
-      <strong>열기</strong>
+      <span><b>보고서 출력</b><em>검토결과 통합 미리보기 · 출력</em></span>
+      <strong>인쇄</strong>
     </button>
     <button class="review-launch-card" type="button" onclick="openDesignRequestModal()">
       <i>④</i>
@@ -1795,8 +1815,6 @@ body.service-layout-ready>.shell{display:none!important}
     <div class="main-map-layer-note">순서: 항공사진 → 용도지역 → 지적 → 도시계획시설. 경계 작성 전에는 서울시 지도서비스(용도지역·지적·주요시설)를 표시용으로 사용하고, 검토 후 도시계획시설 151~159 전체는 기존 VWorld 벡터 Fact로 겹쳐 검증합니다.</div>
   </div>
 </details>
-<button onclick="fitToActiveArea()" type="button">대상지 보기</button>
-<button onclick="clearActiveArea()" type="button">초기화</button>
 </div>
 </div>
 <div class="boundary-input-panel" id="boundaryAddressPanel" style="display:none">
@@ -1827,21 +1845,34 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="boundary-parcel-click-status" id="boundaryParcelClickStatus">클릭하기를 선택한 뒤 지도에서 사업에 포함할 필지를 하나씩 선택하세요.</div>
 </div>
 <div class="boundary-parcel-selection">
-<div class="boundary-parcel-selection-summary" id="boundaryParcelSelectionSummary"><span>선택 <b>0필지</b></span><span>합계면적 <b>-</b></span></div>
-<div class="boundary-action-row">
-<button class="boundary-primary" disabled id="applyParcelFindBoundaryBtn" onclick="applySelectedParcelsAsBoundary()" type="button">선택필지로 구역계 확정</button>
-<button onclick="fitToSelectedParcels()" type="button">선택필지 보기</button>
-<button onclick="clearParcelFindSelection()" type="button">선택 해제</button>
-</div>
+<div class="boundary-common-note">선택한 필지는 아래 공통 편집도구에서 확인·해제·구역계 확정할 수 있습니다.</div>
 </div>
 </div>
 <div class="boundary-input-panel" id="boundaryShpPanel" style="display:none">
-<div class="boundary-help"><b>SHP 구역계 입력</b><span><code>.shp + .shx + .dbf + .prj</code>를 하나의 ZIP으로 묶어 올리세요. Polygon/MultiPolygon만 구역계로 사용합니다.</span></div>
+<div class="boundary-help"><b>SHP 구역계 입력</b><span>대략 검토 후 정확한 구역계를 작성하려는 경우 아래 순서로 진행합니다. 이미 SHP가 있으면 바로 업로드해도 됩니다.</span></div>
+<div class="boundary-shp-workflow">
+  <b>① 검토범위 설정 → ② 지적 DXF 다운로드 → ③ CAD에서 정확한 구역계 작성 → ④ SHP 업로드</b>
+  <div>DXF에는 현재 검토범위의 지적경계·지번·건축물 외곽·건축물정보를 레이어로 구분해 담습니다. 건축검토자가 베이스도면으로 사용할 수 있는 자료입니다.</div>
+  <div class="boundary-action-row"><button class="boundary-primary" id="downloadBaseDxfBtn" type="button" onclick="downloadReviewBaseDxf()" disabled>현재 검토범위 지적 DXF 다운로드</button></div>
+  <div class="boundary-dxf-status" id="boundaryDxfStatus">검토범위를 먼저 설정하세요. DXF 좌표계는 서울지역 CAD 활용을 위한 EPSG:5186(m)로 작성합니다.</div>
+</div>
 <input class="boundary-shp-input" id="boundaryShpInput" type="file" accept=".zip,application/zip" onchange="loadBoundaryShp()"/>
-<div class="boundary-action-row"><button onclick="clearBoundaryShp()" type="button">SHP 입력 초기화</button><button onclick="fitToActiveArea()" type="button">대상지 보기</button></div>
-<div class="boundary-address-status boundary-shp-status" id="boundaryShpStatus">좌표계 정보(.prj)를 포함한 ZIP을 권장합니다. 서울 범위를 벗어난 좌표는 자동 적용하지 않습니다.</div>
+<div class="boundary-action-row"><button onclick="clearBoundaryShp()" type="button">SHP 입력 취소</button></div>
+<div class="boundary-address-status boundary-shp-status" id="boundaryShpStatus">.shp + .shx + .dbf + .prj를 ZIP으로 묶어 올리세요. Polygon/MultiPolygon만 구역계로 사용합니다.</div>
 </div>
 
+<div class="boundary-common-tools">
+  <div class="boundary-common-tools-head"><b>구역계 검증·수정</b><span>입력방식과 무관하게 필지를 추가·해제한 뒤 최종 구역계를 다시 확정할 수 있습니다.</span></div>
+  <div class="boundary-common-actions">
+    <button class="boundary-primary" id="applyParcelFindBoundaryBtn" type="button" onclick="confirmCurrentBoundary()" disabled>구역계 확정</button>
+    <button type="button" onclick="fitToSelectedParcels()">선택필지 보기</button>
+    <button type="button" onclick="clearParcelFindSelection()">선택해제</button>
+    <button id="undoBoundaryEditBtn" type="button" onclick="undoBoundaryEdit()" disabled>직전 선택 취소</button>
+    <button class="boundary-danger" type="button" onclick="restartSiteReviewCompletely()">완전 재검토</button>
+    <div class="boundary-common-summary" id="boundaryParcelSelectionSummary"><span>선택 <b>0필지</b></span><span>합계면적 <b>-</b></span><span>구역계 <b>-</b></span></div>
+  </div>
+  <div class="boundary-common-note">지도·지번·SHP 어느 방식으로 시작해도 현재 선택상태를 유지합니다. ‘완전 재검토’만 대상지와 분석결과를 모두 비웁니다.</div>
+</div>
 </div><div id="map"></div>
 <div class="cc-map-instruction" id="ccMapInstruction">지도에 그리기·지번 찾기·SHP 중 하나로 사업구역을 설정하세요.</div>
 <div class="boundary-review-bar"><button id="siteReviewBtn" type="button" onclick="runSiteReview()" disabled>검토하기</button><div class="boundary-review-status" id="siteReviewStatus">구역계를 설정한 뒤 ‘검토하기’를 누르면 공식 공간자료 수집과 사업판정을 실행합니다.</div><div class="site-analysis-progress" id="siteAnalysisProgress" aria-live="polite"><div class="site-analysis-progress-head"><b id="siteAnalysisProgressTitle">분석 대기</b><span id="siteAnalysisElapsed">00:00</span></div><div class="site-analysis-progress-track"><i id="siteAnalysisProgressBar"></i></div><div class="site-analysis-progress-steps" id="siteAnalysisProgressSteps"></div><div class="site-analysis-progress-note" id="siteAnalysisProgressNote">외부 공식자료 응답시간에 따라 수 분이 걸릴 수 있습니다. 미응답 자료는 임의 추정하지 않고 REVIEW로 남깁니다.</div></div></div>
@@ -7072,8 +7103,8 @@ const drawControl=new L.Control.Draw({position:'topright',draw:{polygon:{allowIn
 // 기본 Leaflet 아이콘 도구는 사용하지 않고, 화면의 '지도에 그리기' 버튼에서 Polygon 도구를 직접 호출합니다.
 enforceLocationMapBoundaryOnly();
 
-map.on(L.Draw.Event.CREATED, async e=>{addressPreviewFeatures=[];addressPreviewLayer.clearLayers();drawnItems.clearLayers(); if(e.layer.setStyle)e.layer.setStyle({weight:4,color:'#d92d20',fillColor:'#fecdca',fillOpacity:.04}); drawnItems.addLayer(e.layer); activeGeometry=e.layer.toGeoJSON().geometry; updateCompactMapRole(); enforceLocationMapBoundaryOnly(); await measureAndSync(); updateCompactInfoRail(); refreshCompactMiniMaps(); updateCandidateSchemes();});
-map.on(L.Draw.Event.EDITED, async e=>{e.layers.eachLayer(layer=>{activeGeometry=layer.toGeoJSON().geometry;if(layer.setStyle)layer.setStyle({weight:4,color:'#d92d20',fillColor:'#fecdca',fillOpacity:.04});}); updateCompactMapRole(); enforceLocationMapBoundaryOnly(); await measureAndSync(); updateCompactInfoRail(); refreshCompactMiniMaps(); updateCandidateSchemes();});
+map.on(L.Draw.Event.CREATED, async e=>{pushBoundaryEditHistory('지도 구역계 그리기');addressPreviewFeatures=[];addressPreviewLayer.clearLayers();drawnItems.clearLayers(); if(e.layer.setStyle)e.layer.setStyle({weight:4,color:'#d92d20',fillColor:'#fecdca',fillOpacity:.04}); drawnItems.addLayer(e.layer); activeGeometry=e.layer.toGeoJSON().geometry; updateCompactMapRole(); enforceLocationMapBoundaryOnly(); await measureAndSync(); renderBoundaryParcelSelectionSummary();updateCompactInfoRail(); refreshCompactMiniMaps(); updateCandidateSchemes();});
+map.on(L.Draw.Event.EDITED, async e=>{pushBoundaryEditHistory('지도 구역계 편집');e.layers.eachLayer(layer=>{activeGeometry=layer.toGeoJSON().geometry;if(layer.setStyle)layer.setStyle({weight:4,color:'#d92d20',fillColor:'#fecdca',fillOpacity:.04});}); updateCompactMapRole(); enforceLocationMapBoundaryOnly(); await measureAndSync();renderBoundaryParcelSelectionSummary(); updateCompactInfoRail(); refreshCompactMiniMaps(); updateCandidateSchemes();});
 map.on(L.Draw.Event.DELETED, ()=>{activeGeometry=null; resetSchemeStreetBlockAnalysis(); parcelLayer.clearLayers(); buildingLayer.clearLayers(); roadLayer.clearLayers(); projectBoundaryCandidateLayer.clearLayers(); projectBoundaryCandidate={geometry:null,area_m2:null,internal_road_parcels:0,external_road_parcels:0,planning_road_features:0,edge_facility_count:0,internal_facility_count:0,small_edge_facility_count:0,auto_closure:false,status:'unavailable'}; projectStreetBlockValidation={analysisFrame:null,projectArea:null,blocks:[],separators:[],reviewRoads:[],status:'unavailable',note:''}; const cbm=document.getElementById('mCandidateBoundary');if(cbm)cbm.textContent='-'; smallParcelLayer.clearLayers(); oldParcelLayer.clearLayers(); frontagePassLayer.clearLayers(); frontageFailLayer.clearLayers(); stationBoundaryLayer.clearLayers();stationBuffer250Layer.clearLayers();stationBuffer350Layer.clearLayers();stationBuffer500Layer.clearLayers(); parcelFeatureMap.clear(); selectedParcelPnus.clear(); renderParcelSelectionList(); resetMeasure(); document.getElementById('result').innerHTML='<div class="empty">왼쪽 지도에서 대상구역을 먼저 그리세요.</div>'; resetPlanningAnalysis(); updateCompactMapRole(); updateCompactInfoRail(); refreshCompactMiniMaps(); updateSiteStatusCard(); updateCandidateSchemes();});
 map.on('click',handleParcelFindMapClick);
 
@@ -7252,6 +7283,7 @@ function renderParcelSelectionList(){
 }
 async function setParcelIncluded(key,checked){
   key=String(key||'').trim();if(!key)return;
+  pushBoundaryEditHistory(checked?'필지 추가':'필지 제외');
   if(checked)selectedParcelPnus.add(key);else selectedParcelPnus.delete(key);clearPlanningFacilityConstraintCache();
   const f=parcelFeatureMap.get(key);
   if(checked&&/^\d{19}$/.test(key)&&f){
@@ -7270,16 +7302,19 @@ async function setParcelIncluded(key,checked){
 function toggleParcelSelection(key){
   key=String(key||'').trim();
   if(!key)return;
+  pushBoundaryEditHistory(selectedParcelPnus.has(key)?'필지 제외':'필지 추가');
   if(selectedParcelPnus.has(key))selectedParcelPnus.delete(key); else selectedParcelPnus.add(key);clearPlanningFacilityConstraintCache();
   syncParcelLayerFromState();
   if(boundaryInputMode==='address'&&parcelFindMode==='click')updateParcelClickStatus('필지 선택상태 변경');
 }
 function selectAllCurrentParcels(){
+  if(parcelFeatureMap.size)pushBoundaryEditHistory('전체 필지 선택');
   for(const k of parcelFeatureMap.keys())selectedParcelPnus.add(k);
   clearPlanningFacilityConstraintCache();
   syncParcelLayerFromState();
 }
 function clearParcelSelection(){
+  if(selectedParcelPnus.size)pushBoundaryEditHistory('필지 선택 전체 해제');
   selectedParcelPnus.clear();
   clearPlanningFacilityConstraintCache();
   syncParcelLayerFromState();
@@ -7402,6 +7437,7 @@ async function applySelectedParcelsAsBoundary(){
     const proceed=window.confirm(`선택필지가 ${componentCount}개의 분리된 구역으로 구성됩니다. 하나의 연속된 사업구역인지 확인하세요. 그래도 구역계로 확정할까요?`);
     if(!proceed)return;
   }
+  pushBoundaryEditHistory('선택필지 구역계 확정');
   activeGeometry=merged.geometry;analysisGeometry=merged.geometry;boundaryReferenceGeometry=JSON.parse(JSON.stringify(merged.geometry));
   addressPreviewFeatures=[];addressPreviewLayer.clearLayers();
   drawnItems.clearLayers();
@@ -8268,6 +8304,7 @@ async function measureAndSync(){
   safeSchemeUiStep('compact-ready',()=>updateCompactInfoRail(),null);
   safeSchemeUiStep('mini-ready',()=>refreshCompactMiniMaps(),null);
   safeSchemeUiStep('overview-ready',()=>syncServiceOverview(),null);
+  renderBoundaryParcelSelectionSummary();
 }
 async function runSiteReview(){
   if(!activeGeometry){setSiteReviewStatus('먼저 구역계를 설정하세요.','review');return;}
@@ -13717,6 +13754,176 @@ function runAllSchemeChecks(){
 
 
 // ---------- Boundary input: draw / Seoul parcel address ----------
+let boundaryEditHistory=[];
+const BOUNDARY_EDIT_HISTORY_MAX=12;
+function boundaryDeepClone(v){
+  if(v==null)return v;
+  try{return JSON.parse(JSON.stringify(v));}catch(e){return v;}
+}
+function updateBoundaryUndoButton(){
+  const b=document.getElementById('undoBoundaryEditBtn');
+  if(b){b.disabled=!boundaryEditHistory.length;b.title=boundaryEditHistory.length?`직전 작업 취소 · ${boundaryEditHistory[boundaryEditHistory.length-1]?.reason||''}`:'취소할 선택 작업이 없습니다.';}
+}
+function pushBoundaryEditHistory(reason='선택 변경'){
+  try{
+    const state={
+      reason,
+      activeGeometry:boundaryDeepClone(activeGeometry),
+      selected:[...selectedParcelPnus],
+      parcels:[...parcelFeatureMap.entries()].map(([k,f])=>[String(k),boundaryDeepClone(f)]),
+      addressPreview:boundaryDeepClone(addressPreviewFeatures||[]),
+      boundaryInputMode,
+      parcelFindMode
+    };
+    boundaryEditHistory.push(state);
+    if(boundaryEditHistory.length>BOUNDARY_EDIT_HISTORY_MAX)boundaryEditHistory.shift();
+    updateBoundaryUndoButton();
+  }catch(e){console.warn('[boundary-history] snapshot',e);}
+}
+async function undoBoundaryEdit(){
+  const state=boundaryEditHistory.pop();
+  if(!state){updateBoundaryUndoButton();return;}
+  try{
+    activeGeometry=boundaryDeepClone(state.activeGeometry)||null;
+    parcelFeatureMap.clear();
+    for(const [k,f] of state.parcels||[])parcelFeatureMap.set(String(k),boundaryDeepClone(f));
+    selectedParcelPnus.clear();
+    for(const k of state.selected||[])selectedParcelPnus.add(String(k));
+    addressPreviewFeatures=boundaryDeepClone(state.addressPreview||[]);
+    boundaryInputMode=state.boundaryInputMode||'draw';parcelFindMode=state.parcelFindMode||'input';
+    clearBoundaryAnalysisForNewGeometry({keepParcelSelection:true});
+    drawnItems.clearLayers();
+    if(activeGeometry){
+      L.geoJSON({type:'Feature',geometry:activeGeometry,properties:{}},{style:{weight:4,color:'#d92d20',fillColor:'#fecdca',fillOpacity:.04}}).eachLayer(l=>drawnItems.addLayer(l));
+      boundaryReferenceGeometry=boundaryDeepClone(activeGeometry);
+      setBoundaryReferenceMetrics();
+      setSiteReviewStatus(`직전 작업 취소 완료 · ${state.reason} 이전 상태로 복원했습니다. 다시 검토하세요.`,'ready');
+    }else{
+      boundaryReferenceGeometry=null;boundaryReferenceMetrics={area_m2:null,area_ha:null,perimeter_m:null};
+      setSiteReviewStatus('직전 작업 취소 완료 · 구역계를 다시 설정하세요.','review');
+    }
+    addressPreviewLayer.clearLayers();
+    if(addressPreviewFeatures.length)addressPreviewLayer.addData({type:'FeatureCollection',features:addressPreviewFeatures});
+    syncParcelLayerFromState();
+    setBoundaryInputMode(boundaryInputMode);setParcelFindMode(parcelFindMode);
+    renderBoundaryParcelSelectionSummary();
+    updateCompactMapRole();updateCompactInfoRail();updateSiteStatusCard();updateCandidateSchemes();
+  }catch(e){console.error('[boundary-history] undo',e);}
+  updateBoundaryUndoButton();
+}
+async function confirmCurrentBoundary(){
+  if(selectedParcelPnus.size){await applySelectedParcelsAsBoundary();return;}
+  if(activeGeometry){
+    boundaryReferenceGeometry=boundaryDeepClone(activeGeometry);
+    setBoundaryReferenceMetrics();
+    setSiteReviewStatus('현재 구역계 확정 · 필요하면 필지를 추가·해제한 뒤 다시 확정할 수 있습니다.','ready');
+    renderBoundaryParcelSelectionSummary();
+    return;
+  }
+  alert('먼저 지도·지번·SHP 중 하나로 검토범위를 설정하세요.');
+}
+function restartSiteReviewCompletely(){
+  if((activeGeometry||selectedParcelPnus.size) && !window.confirm('현재 대상지와 분석결과를 모두 비우고 처음부터 다시 검토할까요?'))return;
+  boundaryEditHistory=[];
+  clearActiveArea();
+  const addr=document.getElementById('boundaryAddressInput');if(addr)addr.value='';
+  const shpInput=document.getElementById('boundaryShpInput');if(shpInput)shpInput.value='';
+  const addrStatus=document.getElementById('boundaryAddressStatus');if(addrStatus)addrStatus.textContent='서울특별시 지번주소를 기준으로 검색합니다.';
+  const shpStatus=document.getElementById('boundaryShpStatus');if(shpStatus)shpStatus.textContent='.shp + .shx + .dbf + .prj를 ZIP으로 묶어 올리세요. Polygon/MultiPolygon만 구역계로 사용합니다.';
+  const dxfStatus=document.getElementById('boundaryDxfStatus');if(dxfStatus)dxfStatus.textContent='검토범위를 먼저 설정하세요. DXF 좌표계는 서울지역 CAD 활용을 위한 EPSG:5186(m)로 작성합니다.';
+  setBoundaryInputMode('draw');setParcelFindMode('input');
+  setSiteReviewStatus('완전 재검토 · 대상지를 새로 설정하세요.','review');
+  renderBoundaryParcelSelectionSummary();updateBoundaryUndoButton();
+}
+function dxfProject5186(lon,lat){
+  // Korea 2000 / Central Belt 2010 (EPSG:5186), metre. GRS80 TM: lon0=127, lat0=38, k=1, FE=200000, FN=600000.
+  const a=6378137,invF=298.257222101,f=1/invF,e2=f*(2-f),ep2=e2/(1-e2),k0=1;
+  const lon0=127*Math.PI/180,lat0=38*Math.PI/180,phi=Number(lat)*Math.PI/180,lam=Number(lon)*Math.PI/180;
+  const sin=Math.sin(phi),cos=Math.cos(phi),tan=Math.tan(phi),N=a/Math.sqrt(1-e2*sin*sin),T=tan*tan,C=ep2*cos*cos,A=cos*(lam-lon0);
+  const e4=e2*e2,e6=e4*e2;
+  const M=x=>a*((1-e2/4-3*e4/64-5*e6/256)*x-(3*e2/8+3*e4/32+45*e6/1024)*Math.sin(2*x)+(15*e4/256+45*e6/1024)*Math.sin(4*x)-(35*e6/3072)*Math.sin(6*x));
+  const x=200000+k0*N*(A+(1-T+C)*A**3/6+(5-18*T+T*T+72*C-58*ep2)*A**5/120);
+  const y=600000+k0*((M(phi)-M(lat0))+N*tan*(A*A/2+(5-T+9*C+4*C*C)*A**4/24+(61-58*T+T*T+600*C-330*ep2)*A**6/720));
+  return [x,y];
+}
+function dxfTextValue(v){
+  return String(v??'').replace(/[\\\r\n]/g,' ').replace(/[^\x20-\x7E]/g,ch=>`\\U+${ch.charCodeAt(0).toString(16).toUpperCase().padStart(4,'0')}`);
+}
+function dxfAddPolyline(out,coords,layer,closed=true){
+  const pts=(coords||[]).map(c=>dxfProject5186(c[0],c[1]));
+  if(pts.length<2)return;
+  const same=closed&&pts.length>2&&Math.abs(pts[0][0]-pts[pts.length-1][0])<.001&&Math.abs(pts[0][1]-pts[pts.length-1][1])<.001;
+  const arr=same?pts.slice(0,-1):pts;
+  out.push('0','LWPOLYLINE','100','AcDbEntity','8',layer,'100','AcDbPolyline','90',String(arr.length),'70',closed?'1':'0');
+  for(const [x,y] of arr)out.push('10',x.toFixed(3),'20',y.toFixed(3));
+}
+function dxfAddGeometry(out,geometry,layer){
+  if(!geometry)return;
+  if(geometry.type==='Polygon')for(const ring of geometry.coordinates||[])dxfAddPolyline(out,ring,layer,true);
+  else if(geometry.type==='MultiPolygon')for(const poly of geometry.coordinates||[])for(const ring of poly||[])dxfAddPolyline(out,ring,layer,true);
+  else if(geometry.type==='LineString')dxfAddPolyline(out,geometry.coordinates||[],layer,false);
+  else if(geometry.type==='MultiLineString')for(const line of geometry.coordinates||[])dxfAddPolyline(out,line,layer,false);
+}
+function dxfAddText(out,coord,text,layer,height=1.4){
+  if(!coord||text==null||String(text).trim()==='')return;
+  const [x,y]=dxfProject5186(coord[0],coord[1]);
+  out.push('0','TEXT','100','AcDbEntity','8',layer,'100','AcDbText','10',x.toFixed(3),'20',y.toFixed(3),'30','0','40',String(height),'1',dxfTextValue(text),'7','Standard','11',x.toFixed(3),'21',y.toFixed(3),'31','0','100','AcDbText');
+}
+function dxfLabelPoint(feature){
+  try{return turf.pointOnFeature(turf.feature(feature.geometry,feature.properties||{})).geometry.coordinates;}catch(e){try{return turf.centroid(turf.feature(feature.geometry)).geometry.coordinates;}catch(_e){return null;}}
+}
+function buildingCadLabel(feature){
+  const p=feature?.properties||{},pnu=String(p._parcel_pnu||p.pnu||'');
+  const hub=(hubRecordsByPnu.get(pnu)||[])[0]||{};
+  const name=hub.bldNm||hub.bldNm||p.buld_nm||p.buld_nm_dc||p.pos_bul_nm||'건축물';
+  const use=hub.mainPurpsCdNm||hub.mainPurpsCdNm||p.main_purps_cd_nm||p.main_purps_nm||'';
+  const floors=hub.grndFlrCnt??p.gro_flo_co;
+  return [name,use,(floors!==undefined&&floors!==null&&String(floors)!=='')?`지상${floors}층`:null].filter(Boolean).join(' / ');
+}
+function buildReviewBaseDxf(scopeGeometry,parcels,buildings){
+  const out=['0','SECTION','2','HEADER','9','$ACADVER','1','AC1015','9','$INSUNITS','70','6','0','ENDSEC'];
+  const layers=[['SITE_BOUNDARY',1],['PARCEL_LINE',7],['PARCEL_TEXT',3],['BUILDING_LINE',5],['BUILDING_TEXT',2]];
+  out.push('0','SECTION','2','TABLES','0','TABLE','2','LAYER','70',String(layers.length));
+  for(const [name,color] of layers)out.push('0','LAYER','2',name,'70','0','62',String(color),'6','CONTINUOUS');
+  out.push('0','ENDTAB','0','ENDSEC','0','SECTION','2','ENTITIES');
+  dxfAddGeometry(out,scopeGeometry,'SITE_BOUNDARY');
+  for(const f of parcels||[]){
+    dxfAddGeometry(out,f.geometry,'PARCEL_LINE');
+    const p=f.properties||{},label=p.jibun||p.jibun_nm||p.jibun_addr||p.pnu||'';
+    dxfAddText(out,dxfLabelPoint(f),label,'PARCEL_TEXT',1.4);
+  }
+  for(const f of buildings||[]){
+    dxfAddGeometry(out,f.geometry,'BUILDING_LINE');
+    dxfAddText(out,dxfLabelPoint(f),buildingCadLabel(f),'BUILDING_TEXT',1.1);
+  }
+  out.push('0','ENDSEC','0','EOF');
+  return out.join('\r\n')+'\r\n';
+}
+async function downloadReviewBaseDxf(){
+  const status=document.getElementById('boundaryDxfStatus'),btn=document.getElementById('downloadBaseDxfBtn');
+  let scopeGeometry=activeGeometry;
+  if(!scopeGeometry&&selectedParcelPnus.size){
+    const fs=[...selectedParcelPnus].map(k=>parcelFeatureMap.get(String(k))).filter(f=>f?.geometry);
+    const merged=mergeFeatureGeometries(fs);scopeGeometry=merged?.geometry||null;
+  }
+  if(!scopeGeometry){if(status)status.textContent='먼저 지도 또는 지번으로 검토범위를 설정하세요.';return;}
+  try{
+    if(btn)btn.disabled=true;
+    if(status)status.textContent='지적·지번·건축물 베이스도면을 조회하는 중입니다...';
+    const [parcels,buildings]=await Promise.all([
+      fetchParcelCandidatesBrowser(scopeGeometry),
+      fetchSpatialFeaturesBrowser('LT_C_SPBD',scopeGeometry,['bd_mgt_sn','bul_man_no','pk'])
+    ]);
+    if(!parcels.length)throw new Error('검토범위에서 지적필지를 찾지 못했습니다.');
+    const dxf=buildReviewBaseDxf(scopeGeometry,parcels,buildings);
+    const blob=new Blob([dxf],{type:'application/dxf;charset=us-ascii'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+    const now=new Date(),ymd=`${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
+    a.href=url;a.download=`review_base_parcel_building_${ymd}.dxf`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    if(status)status.textContent=`DXF 생성 완료 · 지적 ${parcels.length}필지 · 건축물 ${buildings.length}동 · EPSG:5186(m) · PARCEL_LINE/PARCEL_TEXT/BUILDING_LINE/BUILDING_TEXT 레이어`;
+  }catch(e){
+    if(status)status.textContent='DXF 생성 실패: '+String(e?.message||e);
+  }finally{if(btn)btn.disabled=false;}
+}
 function setBoundaryInputMode(mode){
   boundaryInputMode=['address','shp'].includes(mode)?mode:'draw';
   const draw=document.getElementById('boundaryDrawPanel');
@@ -13775,9 +13982,14 @@ function selectedParcelUiMetrics(){
 function renderBoundaryParcelSelectionSummary(){
   const el=document.getElementById('boundaryParcelSelectionSummary');
   const btn=document.getElementById('applyParcelFindBoundaryBtn');
+  const dxfBtn=document.getElementById('downloadBaseDxfBtn');
   const m=selectedParcelUiMetrics();
-  if(el)el.innerHTML=`<span>선택 <b>${m.count.toLocaleString('ko-KR')}필지</b></span><span>합계면적 <b>${m.area_m2==null?'-':Math.round(m.area_m2).toLocaleString('ko-KR')+'㎡'}</b>${m.count&&m.area_known_count<m.count?` <small>(${m.area_known_count}/${m.count} 면적확인)</small>`:''}</span>`;
-  if(btn)btn.disabled=m.count<1;
+  let boundaryArea=null;
+  if(activeGeometry){try{boundaryArea=turf.area(turf.feature(activeGeometry));}catch(e){}}
+  if(el)el.innerHTML=`<span>선택 <b>${m.count.toLocaleString('ko-KR')}필지</b></span><span>합계면적 <b>${m.area_m2==null?'-':Math.round(m.area_m2).toLocaleString('ko-KR')+'㎡'}</b>${m.count&&m.area_known_count<m.count?` <small>(${m.area_known_count}/${m.count} 면적확인)</small>`:''}</span><span>구역계 <b>${boundaryArea==null?'-':Math.round(boundaryArea).toLocaleString('ko-KR')+'㎡'}</b></span>`;
+  if(btn)btn.disabled=m.count<1&&!activeGeometry;
+  if(dxfBtn)dxfBtn.disabled=!activeGeometry&&m.count<1;
+  updateBoundaryUndoButton();
 }
 function updateParcelClickStatus(message){
   const el=document.getElementById('boundaryParcelClickStatus');
@@ -13786,6 +13998,7 @@ function updateParcelClickStatus(message){
   el.textContent=`${message||'지도에서 필지를 선택하세요.'} · 현재 ${m.count}필지${m.area_m2==null?'':` · 약 ${Math.round(m.area_m2).toLocaleString('ko-KR')}㎡`}`;
 }
 function clearParcelFindSelection(){
+  if(selectedParcelPnus.size)pushBoundaryEditHistory('선택해제');
   addressPreviewFeatures=[];addressPreviewLayer.clearLayers();
   selectedParcelPnus.clear();
   clearPlanningFacilityConstraintCache();
@@ -13823,6 +14036,7 @@ async function handleParcelFindMapClick(e){
     const f=await fetchParcelAtMapPoint(e.latlng);
     if(!f){updateParcelClickStatus('클릭 위치에서 필지를 찾지 못했습니다. 조금 안쪽을 다시 클릭하세요.');return;}
     const key=parcelKey(f);if(!key){updateParcelClickStatus('필지 PNU를 확인하지 못했습니다.');return;}
+    pushBoundaryEditHistory(selectedParcelPnus.has(String(key))?'클릭 필지 제외':'클릭 필지 추가');
     const copy=cloneFeature(f),p=copy.properties||{};
     p.geometry_area_m2=p.geometry_area_m2??parcelGeometryArea(copy);
     p._analysis_area_m2=p._analysis_area_m2??p.official_area_m2??p.geometry_area_m2??null;
@@ -13927,6 +14141,7 @@ async function lookupBoundaryAddresses(){
     return;
   }
   if(status)status.textContent=`${rows.length}필지 주소를 찾는 중...`;
+  pushBoundaryEditHistory('지번 입력 필지 추가');
   addressPreviewFeatures=[];addressPreviewLayer.clearLayers();
   let ok=0;const failed=[];
   const results=await mapLimit(rows,4,async row=>{
@@ -13955,7 +14170,7 @@ async function lookupBoundaryAddresses(){
   if(status){
     status.textContent=`입력 ${rows.length}필지 · 확인 ${ok}필지 · 미확인 ${failed.length}필지`+
       (failed.length?` · 미확인: ${failed.slice(0,4).join(' / ')}${failed.length>4?' 외 '+(failed.length-4)+'필지':''}`:'')+
-      (ok?' · 확인된 필지를 선택목록에 추가했습니다. 아래 ‘선택필지로 구역계 확정’을 누르세요.':'');
+      (ok?' · 확인된 필지를 선택목록에 추가했습니다. 아래 공통 편집도구에서 ‘구역계 확정’을 누르세요.':'');
   }
 }
 function clearAddressPreview(){
@@ -14037,6 +14252,7 @@ async function loadBoundaryShp(){
     const merged=mergeFeatureGeometries(polys);
     if(!merged?.geometry)throw new Error('구역계 도형 병합에 실패했습니다.');
     if(!geometryLooksLikeSeoul(merged.geometry))throw new Error('서울 범위의 WGS84 좌표로 변환되지 않았습니다. .prj 포함 여부를 확인하세요.');
+    pushBoundaryEditHistory('SHP 구역계 적용');
     activeGeometry=merged.geometry;
     drawnItems.clearLayers();addressPreviewFeatures=[];addressPreviewLayer.clearLayers();
     L.geoJSON(merged,{style:{weight:4,color:'#d92d20',fillColor:'#fecdca',fillOpacity:.04}}).eachLayer(l=>drawnItems.addLayer(l));
@@ -14049,7 +14265,7 @@ async function loadBoundaryShp(){
 }
 function clearBoundaryShp(){
   const input=document.getElementById('boundaryShpInput');if(input)input.value='';
-  const status=document.getElementById('boundaryShpStatus');if(status)status.textContent='좌표계 정보(.prj)를 포함한 ZIP을 권장합니다. 서울 범위를 벗어난 좌표는 자동 적용하지 않습니다.';
+  const status=document.getElementById('boundaryShpStatus');if(status)status.textContent='.shp + .shx + .dbf + .prj를 ZIP으로 묶어 올리세요. Polygon/MultiPolygon만 구역계로 사용합니다.';
 }
 
 // ---------- Mobile responsive workflow ----------
@@ -14108,6 +14324,7 @@ function clearActiveArea(){
     updateCompactInfoRail();
     updateSiteStatusCard();
     updateCandidateSchemes();
+    renderBoundaryParcelSelectionSummary();
   }catch(e){}
 }
 function renderMobileSelectedScheme(name){

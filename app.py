@@ -1301,6 +1301,7 @@ def _resolve_medical_facility_boundary(item: Dict[str, Any], site_wgs) -> Dict[s
 
 VWORLD_LAND_LEDGER_URL = "https://api.vworld.kr/ned/data/ladfrlList"
 VWORLD_LAND_USE_URL = "https://api.vworld.kr/ned/data/getLandUseAttr"
+VWORLD_INDVD_LAND_PRICE_URL = "https://api.vworld.kr/ned/data/getIndvdLandPriceAttr"
 # data.go.kr 토지임야정보조회서비스. HTTPS/HTTP는 같은 host/path의 동일 서비스다.
 # 정상 경로에서는 HTTPS 한 번만 사용하고, HTTP 별도 순차 재시도는 하지 않는다.
 # 과거 활용가이드에 HTTP 예시가 있었지만 이를 독립 데이터 소스로 취급하지 않는다.
@@ -1494,6 +1495,88 @@ def _server_land_characteristics_vworld(pnu: str, timeout: int = 6) -> Optional[
         logger.info("server VWorld land characteristics failed pnu=%s err=%s", pnu, exc)
         return None
 
+
+
+def _parse_individual_land_price_xml(text: str, requested_year: int) -> Optional[Dict[str, Any]]:
+    """Parse VWorld NED getIndvdLandPriceAttr for one PNU/year.
+
+    The business-feasibility coefficient must compare the Seoul numerator and
+    subject-site denominator for the same reference year, so this parser never
+    substitutes a different year silently.
+    """
+    root = ET.fromstring(text)
+    result_code = (root.findtext(".//resultCode") or "").strip()
+    result_msg = (root.findtext(".//resultMsg") or "").strip()
+    if result_code and result_code not in {"00", "0"}:
+        raise RuntimeError(f"개별공시지가 API 오류 {result_code}: {result_msg or 'unknown'}")
+
+    def val(row: ET.Element, name: str) -> str:
+        node = row.find(name)
+        return (node.text or "").strip() if node is not None else ""
+
+    rows: List[Dict[str, Any]] = []
+    for row in root.findall(".//field"):
+        year_raw = val(row, "stdrYear")
+        try:
+            year = int(year_raw)
+        except Exception:
+            continue
+        if year != int(requested_year):
+            continue
+        price_raw = val(row, "pblntfPclnd")
+        try:
+            price = float(price_raw)
+        except Exception:
+            continue
+        if not math.isfinite(price) or price <= 0:
+            continue
+        rows.append({
+            "pnu": val(row, "pnu"),
+            "year": year,
+            "month": val(row, "stdrMt"),
+            "price_per_m2": price,
+            "announcement_date": val(row, "pblntfDe"),
+            "standard_land": val(row, "stdLandAt"),
+            "last_update": val(row, "lastUpdtDt"),
+            "legal_dong": val(row, "ldCodeNm"),
+            "jibun": val(row, "mnnmSlno"),
+        })
+
+    if not rows:
+        return None
+    rows.sort(key=lambda r: (str(r.get("month") or ""), str(r.get("last_update") or "")), reverse=True)
+    return rows[0]
+
+
+def _server_individual_land_price_vworld(pnu: str, year: int, timeout: int = 8) -> Optional[Dict[str, Any]]:
+    if not _vworld_key():
+        return None
+    params = {
+        "format": "xml",
+        "key": _vworld_key(),
+        "domain": _vworld_domain(),
+        "pnu": pnu,
+        "stdrYear": int(year),
+        "numOfRows": 20,
+    }
+    try:
+        direct_budget = min(float(timeout), 5.0)
+        proxy_budget = max(1.0, float(timeout) - direct_budget)
+        resp, route = _vworld_get(
+            VWORLD_INDVD_LAND_PRICE_URL,
+            params=params,
+            timeout=direct_budget,
+            proxy_timeout=proxy_budget,
+        )
+        if resp.status_code >= 400:
+            return None
+        rec = _parse_individual_land_price_xml(resp.text, int(year))
+        if rec:
+            rec["_route"] = f"server_individual_land_price_{route}"
+        return rec
+    except Exception as exc:
+        logger.info("server VWorld individual land price failed pnu=%s year=%s err=%s", pnu, year, exc)
+        return None
 
 
 def _land_ledger_cache_get(pnu: str) -> Optional[Dict[str, Any]]:
@@ -5790,6 +5873,11 @@ class PnuListInput(BaseModel):
     pnus: List[str] = Field(..., min_length=1, max_length=200)
 
 
+class LandPriceBatchInput(BaseModel):
+    pnus: List[str] = Field(..., min_length=1, max_length=200)
+    year: int = Field(..., ge=2000, le=2100)
+
+
 class AnalyticsEventInput(BaseModel):
     analysis_id: Optional[str] = Field(None, min_length=8, max_length=80)
     visitor_id: str = Field(..., min_length=8, max_length=80)
@@ -7047,6 +7135,64 @@ def land_characteristics_one(inp: LandLedgerOneInput):
             "dataset": "토지특성정보",
             "operation": "getLandCharacteristics",
             "portal_modified": "2025-07-01",
+        },
+    }
+
+
+@app.post("/api/land/official-price-batch")
+def land_official_price_batch(inp: LandPriceBatchInput):
+    """Selected-parcel official land price FACT for renewal-business feasibility.
+
+    The client filters the redevelopment denominator population to land-category
+    '대'. This endpoint only returns the requested year's official unit price and
+    never substitutes another year or an estimated market value.
+    """
+    if not _vworld_key():
+        raise HTTPException(status_code=503, detail="VWORLD_API_KEY가 설정되지 않았습니다.")
+
+    pnus: List[str] = []
+    seen = set()
+    for raw in inp.pnus:
+        pnu = str(raw or "").strip()
+        if len(pnu) != 19 or not pnu.isdigit() or pnu in seen:
+            continue
+        seen.add(pnu)
+        pnus.append(pnu)
+    if not pnus:
+        raise HTTPException(status_code=422, detail="유효한 19자리 PNU가 없습니다.")
+
+    rows: List[Dict[str, Any]] = []
+    errors: List[Dict[str, Any]] = []
+    max_workers = min(6, len(pnus))
+    with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="land-price") as pool:
+        future_map = {
+            pool.submit(_server_individual_land_price_vworld, pnu, int(inp.year), 8): pnu
+            for pnu in pnus
+        }
+        for fut in as_completed(future_map):
+            pnu = future_map[fut]
+            try:
+                rec = fut.result()
+            except Exception as exc:
+                rec = None
+                errors.append({"pnu": pnu, "error": str(exc)[:240]})
+            if rec:
+                rows.append(rec)
+            elif not any(e.get("pnu") == pnu for e in errors):
+                errors.append({"pnu": pnu, "error": "해당 기준연도 개별공시지가 미확보"})
+
+    rows.sort(key=lambda r: str(r.get("pnu") or ""))
+    return {
+        "year": int(inp.year),
+        "requested": len(pnus),
+        "resolved": len(rows),
+        "rows": rows,
+        "errors": errors,
+        "source": {
+            "provider": "국토교통부 / VWorld NED",
+            "dataset": "개별공시지가정보",
+            "operation": "getIndvdLandPriceAttr",
+            "field": "pblntfPclnd",
         },
     }
 
