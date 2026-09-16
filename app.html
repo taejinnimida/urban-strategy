@@ -13022,22 +13022,104 @@ function publicComplexDensity(c,typOverride=null){
 }
 function publicComplexDensityPlanRowsForPopup(typ,store,vf,rr){
   const c=store?.common||{},p=publicComplexFarProfile(c,typ);
-  const source=schemeSheetSourceFor('public_complex','용적률·공공성','PUBLIC_COMPLEX_GUIDE','공공주택 업무처리지침 제20조의7');
+  const sourceGuide=schemeSheetSourceFor('public_complex','용적률·공공성','PUBLIC_COMPLEX_GUIDE','공공주택 업무처리지침 제20조의7');
+  const sourceHousing=schemeSheetSourceFor('public_complex','공공주택 공급구조','PUBLIC_COMPLEX','공공주택 특별법 시행령 제3조제2항·제4항');
   const rows=[];
-  rows.push(popupPlanRow('용도지역 계획',p.targetZone?`${p.currentZone||'-'} → ${p.targetZone}`:p.zoneRule,p.targetZone?'사용자가 선택한 계획 용도지역을 기준으로 세부유형 용적률 특례 산정':'종상향을 임의 확정하지 않고 해당 유형의 용도지역 계획 원칙을 표시',source));
-  rows.push(popupPlanRow('기본 계획가능 용적률',p.baseFarText||'확인 필요',typ==='commercial'?'일반주거는 법적상한×120% · 준주거는 700% · 상업지역은 해당 법적상한':typ==='industrial'?'준공업 유지 원칙 · 법적상한까지':'용도지역 유지 일반주거는 법적상한×120% · 상향된 일반주거와 준주거는 원칙적으로 해당 법적상한',source));
-  rows.push(popupPlanRow('한시 용적률 특례',p.temporaryText,typ==='industrial'?'주거산업융합지구에는 제4항 제4호 특례를 공용하지 않음':'2025-09-07 당시 투기과열지구가 아닌 주거지역(상향된 경우 포함): 1·2종 120%, 3종·준주거 140% · 역사적 지정여부 Fact 없으면 확인필요',source));
-  rows.push(popupPlanRow(typ==='industrial'?'산업시설 계획':'비주거시설 계획',p.nonResidentialRule,'비주거·산업시설 비율은 용적률 특례와 별도 계획조건',source));
-  rows.push(popupPlanRow('공공시설등 계획부담','복합지구면적의 15% 이내 원칙',`${p.publicFacilityRule} · 공공주택사업자가 기반시설·공공필요시설을 설치해 기부채납하면 설치비용 상당 가액을 부지면적으로 환산 가능`,source));
 
-  const area=Number(vf?.area?.m2||store?.common?.area||0),units=Number(vf?.units?.count||0);
-  let parkValue='10만㎡ 미만 확보의무 면제';
-  if(area>=100000){
-    const five=area*0.05,byUnits=units>0?units*2:null;
-    parkValue=byUnits!=null?`세대당 2㎡(${Math.round(byUnits).toLocaleString('ko-KR')}㎡) vs 지구면적 5%(${Math.round(five).toLocaleString('ko-KR')}㎡) 중 큰 값`:`지구면적 5%(${Math.round(five).toLocaleString('ko-KR')}㎡)와 세대당 2㎡ 중 큰 값 · 계획세대수 확인필요`;
+  // POPUP 전용 표시 로직. 사업진입 판정·Fact Store·공통 density 객체는 변경하지 않는다.
+  rows.push(popupPlanRow(
+    '용도지역 계획',
+    p.targetZone?`${p.currentZone||'-'} → ${p.targetZone}`:p.zoneRule,
+    p.targetZone
+      ?'사용자가 선택한 계획 용도지역을 기준으로 세부유형별 밀도특례를 표시'
+      :'종상향을 자동 전제하지 않고 사업유형별 용도지역 계획원칙을 표시',
+    sourceGuide
+  ));
+
+  const coverageMap={
+    '제1종일반주거':60,'제2종일반주거(7층)':60,'제2종일반주거':60,'제3종일반주거':50,
+    '준주거':70,'준공업':70,'근린상업':70,'일반상업':80,'중심상업':90,'유통상업':80
+  };
+  let coverageZone='';
+  if(p.targetZone)coverageZone=p.targetZone;
+  else if(typ==='industrial')coverageZone=p.currentZone||'준공업';
+  else if(typ==='housing')coverageZone=p.currentZone||'';
+  const coverage=coverageMap[coverageZone];
+  const coverageValue=coverage!=null
+    ?`${coverageZone} · 국토계획법 시행령상 건폐율 상한 ${coverage}%까지 적용 가능`
+    :(typ==='commercial'?'준주거·상업지역 목표 용도지역 확정 후 건폐율 상한 산정':'최종 용도지역 확정 후 건폐율 상한 산정');
+  rows.push(popupPlanRow(
+    '건폐율 특례',coverageValue,
+    '서울시 조례 건폐율에도 불구하고 국토계획법 시행령 제84조제1항의 용도지역별 상한까지 적용 가능 · 실제 계획값은 복합사업계획에서 결정',
+    sourceGuide
+  ));
+
+  const farCondition=typ==='commercial'
+    ?'주거상업고밀: 일반주거는 법적상한×120% · 준주거(변경 포함)는 700% · 상업지역은 해당 법적상한'
+    :typ==='industrial'
+      ?'주거산업융합: 준공업지역 유지 원칙 · 국토계획법상 법적상한까지'
+      :'주택공급활성화: 기존 일반주거 유지 시 법적상한×120% · 상향된 일반주거와 준주거는 해당 법적상한';
+  rows.push(popupPlanRow('기본 용적률 계획기준',p.baseFarText||'확인 필요',farCondition,sourceGuide));
+
+  rows.push(popupPlanRow(
+    '한시 사업성개선 용적률',p.temporaryText,
+    typ==='industrial'
+      ?'주거산업융합지구에는 제20조의7 제4항 제4호 한시특례를 적용하지 않음'
+      :'2025-09-07 당시 투기과열지구가 아닌 주거지역(상향된 경우 포함)에 적용 · 1·2종은 법적상한×120%, 3종·준주거는 ×140% · 2026-05-08 시행일부터 3년간 유효하며 경과조치 존재 · 역사적 지정여부 Fact가 없으면 자동확정하지 않음',
+    sourceGuide
+  ));
+
+  rows.push(popupPlanRow(
+    typ==='industrial'?'산업시설 계획':'비주거시설 계획',p.nonResidentialRule,
+    '비주거·산업시설 비율은 용적률과 별개의 용도구성 계획기준 · 2026-05-08 개정기준 반영',
+    sourceGuide
+  ));
+
+  rows.push(popupPlanRow(
+    '공공성·환수 구조','정률 공공기여율 방식 아님',
+    '재개발·역세권활성화처럼 증가용적률의 일정 비율을 공공기여율로 산정하는 구조가 아니라, ① 공공시설등 계획면적 기준과 ② 공공임대·공공분양 공급구조를 각각 적용',
+    sourceGuide
+  ));
+
+  const area=Number(vf?.area?.m2||store?.common?.area||0);
+  const facilityCap=Number.isFinite(area)&&area>0
+    ?`복합지구면적 15% 이내 원칙 · 약 ${Math.round(area*0.15).toLocaleString('ko-KR')}㎡ 이내`
+    :'복합지구면적의 15% 이내 원칙';
+  rows.push(popupPlanRow(
+    '공공시설등 계획면적',facilityCap,
+    `${p.publicFacilityRule} · 공공주택사업자가 기반시설·공공필요시설을 설치해 기부채납하는 경우 설치비용 상당가액을 부지면적으로 환산 가능 · 15%는 종상향 대가의 공공기여율이 아님`,
+    sourceGuide
+  ));
+
+  const rentalPct=typ==='commercial'?15:10;
+  rows.push(popupPlanRow(
+    '공공주택 공급구조',
+    `공공임대 ${rentalPct}% 이상 · 지분적립형/이익공유형 공공분양 10% 이상 · 그 외 공공분양 60% 이상`,
+    '공공임대는 전체 주택호수 기준(주거상업고밀 15%, 그 외 복합지구 10%) · 시행령상 기본 공급비율이며 지정권자는 지역의 주택수요·여건 등을 고려해 공공주택사업자와 협의하여 비율 조정 가능',
+    sourceHousing
+  ));
+
+  let parkValue='';
+  if(!Number.isFinite(area)||area<=0){
+    parkValue='지구면적 확인 후 산정';
+  }else if(area<100000){
+    parkValue=`${fmtSchemeArea(area)} · 10만㎡ 미만으로 공원·녹지 확보의무 면제`;
+  }else{
+    const five=area*0.05;
+    parkValue=`지구면적 5% = 약 ${Math.round(five).toLocaleString('ko-KR')}㎡ vs 계획세대수×2㎡ 중 큰 면적`;
   }
-  rows.push(popupPlanRow('공원·녹지',parkValue,p.parkGreenRule,source));
-  rows.push(popupPlanRow('주차장',p.parkingRule,'세부유형별 완화조건을 충족하는 경우 적용',source));
+  rows.push(popupPlanRow(
+    '공원·녹지',parkValue,
+    '10만㎡ 이상은 세대당 2㎡ 또는 사업지구 면적 5% 중 큰 면적 · 계획세대수는 사업계획 변수이므로 초기 팝업에서 임의 산정하지 않음',
+    sourceGuide
+  ));
+
+  rows.push(popupPlanRow('주차장',p.parkingRule,'세부유형별 법정 완화조건 충족 시 적용',sourceGuide));
+  rows.push(popupPlanRow(
+    '계획기준 탄력적 적용','승인권자 협의조정 가능',
+    '대상지 현황·계획내용·인근 개발상황·주택수급여건 등을 고려해 필요하다고 인정되는 경우 승인권자가 국토교통부장관과 협의하여 제20조의7 계획기준을 탄력적으로 적용 가능',
+    sourceGuide
+  ));
   return rows.join('');
 }
 
@@ -17868,7 +17950,7 @@ function renderPublicComplexDetailPopup(){
       <tr><th>도시재생 혁신지구</th><td>${escHtml(vf.exclusions?.urban_regeneration?.value||f.exclusions?.urban_regeneration?.value||'공식 공간자료 미연결')}</td><th>제도 유효기간</th><td>${escHtml(vf.planning?.sunset||f.planning?.sunset||'-')}</td></tr>
     </tbody></table></section>
     <section class="activation-section"><h4>2. ${escHtml(label)} 검토결과</h4><table class="activation-table"><thead><tr><th>구분</th><th>검토항목</th><th>기준</th><th>대상지 현황</th><th>판정·후속</th><th>근거</th></tr></thead><tbody>${resultRows}</tbody></table>${schemeDetailSummary(viewRes)}</section>
-    <section class="activation-section"><h4>3. 사업구조·계획기준</h4><table class="activation-table"><thead><tr><th>검토항목</th><th>적용가능 범위</th><th>적용조건·해석</th><th>근거</th></tr></thead><tbody>${planRows}</tbody></table></section>
+    <section class="activation-section"><h4>3. 사업구조·밀도·공공성 계획</h4><table class="activation-table"><thead><tr><th>검토항목</th><th>적용가능 범위</th><th>적용조건·해석</th><th>근거</th></tr></thead><tbody>${planRows}</tbody></table></section>
     <section class="activation-section"><h4>4. 추진일정</h4><div class="activation-procedure">${steps}</div></section>
     <div class="scheme-modal-note"><b>세부유형 독립판정</b> 이 검토서는 ${escHtml(label)}의 RESULT만 표시합니다. 다른 두 유형의 PASS/FAIL/REVIEW가 이 검토서에 전이되지 않습니다. 다른 유형은 사업방식 적용판정의 별도 버튼에서 각각 확인합니다.</div></div>`;
 }
