@@ -1807,8 +1807,8 @@ URBAN_REGEN_INNOVATION_REFERENCE_PATH = _data_path("urban_regeneration_innovatio
 def _urban_regen_innovation_reference_data():
     """서울 현행 도시재생혁신지구 고시·공식계획도 벡터화 참조도형.
 
-    원 SHP 자체가 아니므로 음성(비중첩)만으로 법적 비해당을 확정하지 않는다.
-    VWorld NED selected-PNU 토지이용계획 조회와 결합하여 사용한다.
+    원 SHP 자체가 아니므로 직접중첩은 양성 보조근거로 사용하되, 경계부 비중첩은
+    신뢰도 버퍼와 대표지번으로 보수적으로 처리한다. VWorld NED는 양성신호만 보조근거로 사용한다.
     """
     try:
         with open(URBAN_REGEN_INNOVATION_REFERENCE_PATH, encoding="utf-8") as fp:
@@ -1838,6 +1838,34 @@ def _urban_regen_innovation_reference_data():
         "negative_authority": False,
     })
     data["metadata"] = meta
+    return data
+
+REGULATION_CHANGE_MONITOR_PATH = _data_path("regulation_change_monitor.json")
+@lru_cache(maxsize=1)
+def _regulation_change_monitor_data():
+    """사업판정 제도변화 모니터링 피드.
+
+    최신 법령/운영기준 탐지 프로세스와 판정엔진을 분리하여,
+    새 기준이 확인되었지만 코드에 아직 반영되지 않은 경우 UI에서 먼저 경고한다.
+    """
+    try:
+        with open(REGULATION_CHANGE_MONITOR_PATH, encoding="utf-8") as fp:
+            data = json.load(fp)
+    except FileNotFoundError:
+        return {
+            "schema": "regulation_change_monitor_v1",
+            "checked_at": None,
+            "alerts": [],
+            "changes": [],
+            "note": "regulation_change_monitor.json 미설치",
+            "available": False,
+        }
+    if not isinstance(data, dict):
+        raise RuntimeError("regulation_change_monitor.json 형식 오류")
+    data.setdefault("schema", "regulation_change_monitor_v1")
+    data.setdefault("alerts", [])
+    data.setdefault("changes", [])
+    data["available"] = True
     return data
 
 SAFE_DOWNTOWN_EXCLUSION_REFERENCE_PATH = _data_path("safe_downtown_exclusion_reference.geojson")
@@ -6583,6 +6611,11 @@ def reference_urban_regeneration_innovation():
     return _urban_regen_innovation_reference_data()
 
 
+@app.get("/api/reference/regulation-change-monitor")
+def reference_regulation_change_monitor():
+    return _regulation_change_monitor_data()
+
+
 @app.get("/api/reference/safe-downtown-exclusion")
 def reference_safe_downtown_exclusion():
     return _safe_downtown_exclusion_reference_data()
@@ -6601,6 +6634,7 @@ def _reference_data_readiness() -> Dict[str, bool]:
         "school_protection": os.path.isfile(_data_path("school_protection_seoul_202608.zip")),
         "route_commercial_model": os.path.isfile(_data_path("route_commercial_reference.geojson")),
         "urban_regeneration_innovation_reference": os.path.isfile(_data_path("urban_regeneration_innovation_reference.geojson")),
+        "regulation_change_monitor": os.path.isfile(_data_path("regulation_change_monitor.json")),
         "safe_downtown_exclusion_model": os.path.isfile(_data_path("safe_downtown_exclusion_reference.geojson")),
         "hill_terrain_model": all(os.path.isfile(_data_path(x)) for x in (HILL_GRID_META_FILE,HILL_GRID_ELEV_FILE,HILL_GRID_SLOPE_FILE)),
         "basic_unit": bool(_basic_unit_zip_path()),

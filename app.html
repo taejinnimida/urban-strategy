@@ -1376,6 +1376,8 @@ body.review-modal-open{overflow:hidden}
   font-size:10px;font-weight:900;text-decoration:none;cursor:pointer;
 }
 .cc-header-action:hover,.cc-header-admin:hover{border-color:#98a2b3;background:#f9fafb}
+.cc-regulation-change-button{position:relative}.cc-regulation-alert-count{display:inline-flex;align-items:center;justify-content:center;min-width:17px;height:17px;margin-left:6px;padding:0 5px;border-radius:999px;background:#d92d20;color:#fff;font-size:9px;font-weight:900;line-height:1}.cc-regulation-alert-count[hidden]{display:none!important}
+.reg-monitor-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin-bottom:10px}.reg-monitor-summary>div{border:1px solid #eaecf0;border-radius:9px;background:#fcfcfd;padding:9px}.reg-monitor-summary span{display:block;color:#667085;font-size:8px;font-weight:800}.reg-monitor-summary b{display:block;margin-top:3px;color:#101828;font-size:14px}.reg-monitor-summary .danger b{color:#b42318}.reg-monitor-summary .warn b{color:#b54708}.reg-monitor-note{margin:0 0 9px;padding:8px 10px;border:1px solid #d0d5dd;border-radius:8px;background:#f9fafb;color:#475467;font-size:8px;line-height:1.55}.reg-monitor-controls{display:flex;gap:5px;align-items:center;justify-content:flex-end;margin-bottom:7px}.reg-monitor-controls button{border:1px solid #d0d5dd;background:#fff;border-radius:6px;padding:4px 8px;font-size:8px;font-weight:900;color:#344054;cursor:pointer}.reg-monitor-controls button.active{background:#101828;color:#fff;border-color:#101828}.reg-monitor-table td:first-child{white-space:nowrap}.reg-monitor-status{display:inline-flex;align-items:center;border-radius:999px;padding:2px 6px;font-size:7.5px;font-weight:900}.reg-monitor-status.APPLIED{background:#ecfdf3;color:#027a48}.reg-monitor-status.UNREFLECTED{background:#fef3f2;color:#b42318}.reg-monitor-status.REVIEW{background:#fffaeb;color:#b54708}.reg-monitor-status.UNVERIFIED{background:#f2f4f7;color:#475467}.reg-monitor-source-link{font-size:7.5px;font-weight:900;color:#175cd3;text-decoration:underline}.reg-monitor-empty{padding:18px;text-align:center;color:#667085;font-size:9px}.reg-monitor-table .tiny{font-size:7px;color:#667085;line-height:1.4}@media(max-width:900px){.reg-monitor-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.cc-header-actions{flex-wrap:wrap}}
 .cc-header-admin{background:#101828;border-color:#101828;color:#fff}
 .feedback-form{display:grid;gap:12px}
 .feedback-form label{display:grid;gap:5px;font-size:11px;font-weight:900;color:#344054}
@@ -1627,6 +1629,7 @@ body.service-layout-ready>.shell{display:none!important}
 </div>
 <div class="cc-header-actions">
 <button class="cc-header-action" type="button" onclick="openFeedbackModal()">오류·개선의견</button>
+<button class="cc-header-action cc-regulation-change-button" type="button" onclick="openRegulationChangeModal()">사업판정제도 변화정보<span class="cc-regulation-alert-count" id="regulationChangeAlertCount" hidden>0</span></button>
 <a class="cc-header-admin" href="/admin" aria-label="관리자 통계 및 오류 관리">⚙ 관리자</a>
 </div>
 </header>
@@ -1991,7 +1994,7 @@ body.service-layout-ready>.shell{display:none!important}
 <div><span>조회상태</span><b id="spUrbanRegenerationCoverage">미조회</b></div>
 </div>
 <div class="spatial-tags"><span class="map-legend-chip" style="--zone-fill:#f4ebff;--zone-border:#7f56d9">고시·공식계획도 벡터화 경계</span><span class="map-legend-chip" style="--zone-fill:#d9d6fe;--zone-border:#6938ef">도시재생혁신지구 NED 해당필지</span><span class="map-legend-chip" style="--zone-fill:#b2ddff;--zone-border:#175cd3">주거재생혁신지구 NED 해당필지</span><span>검은선: 대상지</span></div>
-<div class="spatial-caption">도면정보 · 서울 현행 도시재생혁신지구(용산·김포공항)는 국토교통부 지정·변경 고시와 공식 계획도를 벡터화한 내부 참조경계로 중첩을 먼저 확인하고, VWorld NED 토지이용계획정보(getLandUseAttr) 선택필지 전수조회로 교차검증합니다. 벡터화 경계의 비중첩만으로 법적 비해당을 확정하지 않으며 NED 미응답 시 REVIEW로 유지합니다.</div>
+<div class="spatial-caption">도면정보 · 서울 현행 도시재생혁신지구(용산·김포공항)는 국토교통부 지정·변경 고시와 공식 계획도를 벡터화한 내부 참조경계입니다. 참조경계 직접 중첩 또는 용산 대표지번(한강로3가 23-1·40-1051) 일치는 자동배제하고, 참조경계 200m 이내 비중첩 대상지는 경계정밀도 한계 때문에 REVIEW로 유지합니다. VWorld NED는 양성 신호만 보조근거로 사용하며 음성응답은 비해당 PASS 근거로 사용하지 않습니다.</div>
 <div class="spatial-mini-map" id="ccUrbanRegenerationMiniMap"></div>
 </section>
 <section class="spatial-module site-analysis-card site-analysis-local" id="siteDetail_downtownCharacteristic">
@@ -6212,7 +6215,9 @@ const developmentAnalysis={loaded:false,loading:false,contextFeatures:[],overlap
 const hillAnalysis={loaded:false,loading:false,status:'unavailable',source_status:'',intersects:null,overlap_area_m2:null,overlap_pct:null,distance_m:null,site_area_m2:null,valid_terrain_area_m2:null,nodata_area_m2:null,nodata_pct:null,pixel_count_in_site:0,elevation:{},slope:{},reference_areas:{},contextFeatures:[],overlaps:[],metadata:{},error:''};
 const safeMedicalAnalysis={loaded:false,loading:false,status:'unavailable',items:[],metadata:{},errors:[],warnings:[],sourceStats:{},nearbyCounts:{},message:''};
 const safeDowntownExclusionAnalysis={loaded:false,loading:false,status:'unavailable',known:false,present:null,overlapAreaM2:null,overlapPct:null,features:[],overlapFeatures:[],metadata:{},error:''};
-const urbanRegenerationRestrictionAnalysis={loaded:false,loading:false,status:'unavailable',known:false,present:false,checkedParcels:0,queriedParcels:0,errorParcels:0,urbanInnovation:{known:false,present:false,affected_pnus:[],rows:[],reference_names:[]},housingInnovation:{known:false,present:false,affected_pnus:[],rows:[]},reference:{loaded:false,known:false,present:false,features:[],overlap_features:[],hits:[],overlap_area_m2:null,overlap_pct:null,metadata:{},error:''},errors:[]};
+const URBAN_REGEN_REFERENCE_REVIEW_BUFFER_M=200;
+const URBAN_REGEN_YONGSAN_ANCHORS=Object.freeze([{pnu:'1117012800100230001',jibun:'23-1',label:'한강로3가 23-1(일부)'},{pnu:'1117012800100401051',jibun:'40-1051',label:'한강로3가 40-1051'}]);
+const urbanRegenerationRestrictionAnalysis={loaded:false,loading:false,status:'unavailable',known:false,present:false,checkedParcels:0,queriedParcels:0,errorParcels:0,urbanInnovation:{known:false,present:false,affected_pnus:[],rows:[],reference_names:[]},housingInnovation:{known:false,present:false,affected_pnus:[],rows:[]},reference:{loaded:false,known:false,present:false,features:[],overlap_features:[],hits:[],review_hits:[],anchor_matches:[],review_buffer_m:URBAN_REGEN_REFERENCE_REVIEW_BUFFER_M,overlap_area_m2:null,overlap_pct:null,metadata:{},error:''},errors:[]};
 let urbanRegenerationInnovationReferenceCache=null;
 let urbanRegenerationInnovationReferencePromise=null;
 async function loadUrbanRegenerationInnovationReference(){
@@ -6450,9 +6455,26 @@ async function analyzeSafeDowntownExclusion(){
 }
 
 
+function urbanRegenerationYongsanAnchorMatches(){
+  const matches=[];
+  for(const anchor of URBAN_REGEN_YONGSAN_ANCHORS){
+    let matched=selectedParcelPnus.has(anchor.pnu);
+    if(!matched){
+      for(const [key,f] of parcelFeatureMap.entries()){
+        if(!selectedParcelPnus.has(String(key)))continue;
+        const p=f?.properties||{},ledger=p.land_ledger||{};
+        const text=[p._input_address,p.jibun,p.jibun_nm,p.jibun_addr,ledger.ldCodeNm,ledger.mnnmSlno].filter(Boolean).join(' ');
+        if((/한강로3가/.test(text)&&new RegExp(`(^|\\s)${anchor.jibun.replace('-','\\-')}(?=\\s|$)`).test(text))||String(key)===anchor.pnu){matched=true;break;}
+      }
+    }
+    if(matched)matches.push({...anchor});
+  }
+  return matches;
+}
+
 async function analyzeUrbanRegenerationRestrictions(){
   const a=urbanRegenerationRestrictionAnalysis;
-  a.loading=true;a.loaded=false;a.status='unavailable';a.known=false;a.present=false;a.checkedParcels=0;a.queriedParcels=0;a.errorParcels=0;a.urbanInnovation={known:false,present:false,affected_pnus:[],rows:[],reference_names:[]};a.housingInnovation={known:false,present:false,affected_pnus:[],rows:[]};a.reference={loaded:false,known:false,present:false,features:[],overlap_features:[],hits:[],overlap_area_m2:null,overlap_pct:null,metadata:{},error:''};a.errors=[];
+  a.loading=true;a.loaded=false;a.status='unavailable';a.known=false;a.present=false;a.checkedParcels=0;a.queriedParcels=0;a.errorParcels=0;a.urbanInnovation={known:false,present:false,affected_pnus:[],rows:[],reference_names:[]};a.housingInnovation={known:false,present:false,affected_pnus:[],rows:[]};a.reference={loaded:false,known:false,present:false,features:[],overlap_features:[],hits:[],review_hits:[],anchor_matches:urbanRegenerationYongsanAnchorMatches(),review_buffer_m:URBAN_REGEN_REFERENCE_REVIEW_BUFFER_M,overlap_area_m2:null,overlap_pct:null,metadata:{},error:''};a.errors=[];
   if(!activeGeometry){a.loading=false;return a;}
   const site=turf.feature(activeGeometry),siteArea=Math.max(1,turf.area(site));
   const pnus=[...selectedParcelPnus].map(x=>String(x||'').trim()).filter(x=>/^\d{19}$/.test(x));
@@ -6462,11 +6484,19 @@ async function analyzeUrbanRegenerationRestrictions(){
     try{
       const data=await loadUrbanRegenerationInnovationReference(),meta=data.metadata||{};
       const available=meta.available!==false,features=(data.features||[]).filter(f=>f?.geometry);
-      const hits=[],overlapFeatures=[];let overlapArea=0;
-      if(available){for(const rf0 of features){try{if(!turf.booleanIntersects(site,rf0))continue;const x=turf.intersect(site,rf0);if(!x)continue;const area=turf.area(x);if(area<0.5)continue;const rf=cloneFeature(rf0),p=rf.properties||{};hits.push({id:rf.id||p.reference_id||'',name:p.name||'도시재생혁신지구',notice_no:p.notice_no||'',notice_date:p.notice_date||'',overlap_area_m2:area,source_type:p.source_type||meta.source_type||'OFFICIAL_NOTICE_DIGITIZED_REFERENCE'});x.properties=Object.assign({},p,{_overlap_area_m2:area});overlapFeatures.push(x);overlapArea+=area;}catch(e){}}
+      const hits=[],reviewHits=[],overlapFeatures=[];let overlapArea=0;
+      if(available){for(const rf0 of features){try{
+        const p=rf0.properties||{},intersects=turf.booleanIntersects(site,rf0);
+        if(intersects){const x=turf.intersect(site,rf0);if(!x)continue;const area=turf.area(x);if(area<0.5)continue;hits.push({id:rf0.id||p.reference_id||'',name:p.name||'도시재생혁신지구',notice_no:p.notice_no||'',notice_date:p.notice_date||'',overlap_area_m2:area,source_type:p.source_type||meta.source_type||'OFFICIAL_NOTICE_DIGITIZED_REFERENCE'});x.properties=Object.assign({},p,{_overlap_area_m2:area});overlapFeatures.push(x);overlapArea+=area;continue;}
+        if(p.geometry_precision==='screening_reference_not_survey_boundary'||p.negative_authority===false||meta.negative_authority===false){
+          const buffered=turf.buffer(rf0,URBAN_REGEN_REFERENCE_REVIEW_BUFFER_M/1000,{units:'kilometers'});
+          if(buffered&&turf.booleanIntersects(site,buffered))reviewHits.push({id:rf0.id||p.reference_id||'',name:p.name||'도시재생혁신지구',notice_no:p.notice_no||'',notice_date:p.notice_date||'',buffer_m:URBAN_REGEN_REFERENCE_REVIEW_BUFFER_M,reason:'참조경계 근접 · 벡터화 경계 정밀도 한계'});
+        }
+      }catch(e){}}
       }
-      a.reference={loaded:true,known:available,present:hits.length>0,features:features.map(cloneFeature),overlap_features:overlapFeatures,hits,overlap_area_m2:overlapArea,overlap_pct:overlapArea/siteArea*100,metadata:{...meta},error:''};
-    }catch(e){a.reference={loaded:false,known:false,present:false,features:[],overlap_features:[],hits:[],overlap_area_m2:null,overlap_pct:null,metadata:{},error:String(e.message||e)};errors.push({error:String(e.message||e),source:'urban_regeneration_innovation_reference'});}
+      const anchors=[...(a.reference?.anchor_matches||[])];
+      a.reference={loaded:true,known:available,present:hits.length>0,features:features.map(cloneFeature),overlap_features:overlapFeatures,hits,review_hits:reviewHits,anchor_matches:anchors,review_buffer_m:URBAN_REGEN_REFERENCE_REVIEW_BUFFER_M,overlap_area_m2:overlapArea,overlap_pct:overlapArea/siteArea*100,metadata:{...meta},error:''};
+    }catch(e){a.reference={loaded:false,known:false,present:false,features:[],overlap_features:[],hits:[],review_hits:[],anchor_matches:[...(a.reference?.anchor_matches||[])],review_buffer_m:URBAN_REGEN_REFERENCE_REVIEW_BUFFER_M,overlap_area_m2:null,overlap_pct:null,metadata:{},error:String(e.message||e)};errors.push({error:String(e.message||e),source:'urban_regeneration_innovation_reference'});}
   })();
   try{
     for(const part of chunks){
@@ -6503,8 +6533,9 @@ function renderUrbanRegenerationSpatialStatus(){
   set('spUrbanInnovationStatus',statusText(urban));set('spHousingInnovationStatus',statusText(housing));
   const affected=new Set([...(urban.affected_pnus||[]),...(housing.affected_pnus||[])]),total=Math.max(selectedParcelPnus.size,Number(a.queriedParcels||0));
   set('spUrbanRegenerationParcels',a.loaded?`${affected.size}/${total}필지`:'-');
-  const refText=ref.known?`고시경계 ${(ref.hits||[]).length?'중첩 '+(ref.hits||[]).length+'건':'비중첩'}`:'고시경계 미확인',nedText=a.queriedParcels?`NED ${Number(a.checkedParcels||0)}/${Number(a.queriedParcels||0)}필지`:'NED 대상필지 없음';set('spUrbanRegenerationCoverage',`${refText} · ${nedText}`);
-  set('spUrbanRegenerationState',a.loading?'조회 중':a.present?'도시재생 혁신지구 해당':a.known?'해당 없음':a.loaded?'일부 자료 미확인 · REVIEW':'공식자료 조회 실패');
+  const refText=ref.known?`고시경계 ${(ref.hits||[]).length?'중첩 '+(ref.hits||[]).length+'건':(ref.review_hits||[]).length?'근접 REVIEW '+(ref.review_hits||[]).length+'건':'충분히 이격'}`:'고시경계 미확인',anchorText=(ref.anchor_matches||[]).length?`대표지번 ${(ref.anchor_matches||[]).map(x=>x.label).join(' · ')}`:'대표지번 불일치',nedText=a.queriedParcels?`NED ${Number(a.checkedParcels||0)}/${Number(a.queriedParcels||0)}필지(양성만 활용)`:'NED 대상필지 없음';set('spUrbanRegenerationCoverage',`${refText} · ${anchorText} · ${nedText}`);
+  const anyPositive=a.present||(ref.anchor_matches||[]).length>0;const anyReview=!anyPositive&&((ref.review_hits||[]).length>0||(a.queriedParcels>0&&a.errorParcels>0));
+  set('spUrbanRegenerationState',a.loading?'조회 중':anyPositive?'도시재생 혁신지구 해당':anyReview?'경계·조회 신뢰도 REVIEW':ref.known?'해당 없음':'공식자료 조회 실패');
   try{let fg=L.featureGroup();for(const lyr of [ccUrbanRegenerationReferenceOverlap,ccUrbanRegenerationUrban,ccUrbanRegenerationHousing,ccUrbanRegenerationBoundary])lyr.eachLayer(l=>fg.addLayer(l));const b=fg.getBounds();if(b.isValid())ccUrbanRegenerationMini.fitBounds(b.pad(.12),{animate:false,maxZoom:18});setTimeout(()=>ccUrbanRegenerationMini.invalidateSize(false),0);}catch(e){}
 }
 
@@ -10703,7 +10734,7 @@ function safeDowntownExclusionSpatialEvidenceFacts(){
 }
 function urbanRegenerationRestrictionSpatialEvidenceFacts(){
   const a=urbanRegenerationRestrictionAnalysis||{},ref=a.reference||{};
-  return {loaded:!!a.loaded,known:a.known===true,status:a.status||'unavailable',present:a.present===true,checked_parcels:Number(a.checkedParcels||0),queried_parcels:Number(a.queriedParcels||0),error_parcels:Number(a.errorParcels||0),urban_innovation:{...(a.urbanInnovation||{}),affected_pnus:[...(a.urbanInnovation?.affected_pnus||[])],rows:[...(a.urbanInnovation?.rows||[])],reference_names:[...(a.urbanInnovation?.reference_names||[])]},housing_innovation:{...(a.housingInnovation||{}),affected_pnus:[...(a.housingInnovation?.affected_pnus||[])],rows:[...(a.housingInnovation?.rows||[])]},reference:{loaded:!!ref.loaded,known:ref.known===true,present:ref.present===true,hits:[...(ref.hits||[])],overlap_area_m2:Number.isFinite(Number(ref.overlap_area_m2))?Number(ref.overlap_area_m2):null,overlap_pct:Number.isFinite(Number(ref.overlap_pct))?Number(ref.overlap_pct):null,metadata:{...(ref.metadata||{})},error:ref.error||''},errors:[...(a.errors||[])],source:'국토교통부 도시재생혁신지구 지정·변경 고시 벡터화 참조 + VWorld NED getLandUseAttr',criterion:'서울 현행 도시재생혁신지구(용산·김포공항) 고시경계 중첩 + 도시재생혁신지구·주거재생혁신지구 selected-PNU 교차검증'};
+  return {loaded:!!a.loaded,known:a.known===true,status:a.status||'unavailable',present:a.present===true,checked_parcels:Number(a.checkedParcels||0),queried_parcels:Number(a.queriedParcels||0),error_parcels:Number(a.errorParcels||0),urban_innovation:{...(a.urbanInnovation||{}),affected_pnus:[...(a.urbanInnovation?.affected_pnus||[])],rows:[...(a.urbanInnovation?.rows||[])],reference_names:[...(a.urbanInnovation?.reference_names||[])]},housing_innovation:{...(a.housingInnovation||{}),affected_pnus:[...(a.housingInnovation?.affected_pnus||[])],rows:[...(a.housingInnovation?.rows||[])]},reference:{loaded:!!ref.loaded,known:ref.known===true,present:ref.present===true,hits:[...(ref.hits||[])],review_hits:[...(ref.review_hits||[])],anchor_matches:[...(ref.anchor_matches||[])],review_buffer_m:Number(ref.review_buffer_m||URBAN_REGEN_REFERENCE_REVIEW_BUFFER_M),overlap_area_m2:Number.isFinite(Number(ref.overlap_area_m2))?Number(ref.overlap_area_m2):null,overlap_pct:Number.isFinite(Number(ref.overlap_pct))?Number(ref.overlap_pct):null,metadata:{...(ref.metadata||{})},error:ref.error||''},errors:[...(a.errors||[])],source:'국토교통부 도시재생혁신지구 지정·변경 고시 벡터화 참조 + 용산 대표지번 + VWorld NED getLandUseAttr 양성신호',criterion:'참조경계 직접중첩·용산 대표지번·NED 양성은 배제, 참조경계 200m 근접은 REVIEW, 원거리 비중첩은 PASS'};
 }
 function schoolAbsoluteProtectionSpatialEvidenceFacts(){
   const a=schoolAbsoluteProtectionAnalysis;
@@ -11385,15 +11416,27 @@ function disasterDistrictAreaFact(store){
   return {known:true,pct,status:pct>=50?'PASS':'FAIL',value:`${pct.toFixed(1)}%`,rows};
 }
 function publicComplexUrbanRegenerationFact(store){
-  const exact=store.site?.spatial_evidence?.urban_regeneration||{};
+  const exact=store.site?.spatial_evidence?.urban_regeneration||{},ref=exact.reference||{};
   const names=[];
   const all=[...(store.site.renewal?.existing_projects||[]),...(store.site.development?.overlaps||[])];
   for(const x of all){const t=`${x.name||''} ${x.type_label||''}`.trim();if(/도시재생혁신지구|주거재생혁신지구/.test(t))names.push(t);}
-  const nedRows=[...(exact.urban_innovation?.rows||[]),...(exact.housing_innovation?.rows||[])],referenceNames=(exact.reference?.hits||[]).map(x=>x.name).filter(Boolean);
-  const values=[...new Set([...names,...referenceNames,...nedRows.map(x=>x.name).filter(Boolean)])];
-  if(values.length||exact.present===true)return {known:true,status:'FAIL',value:values.join(' / ')||'혁신지구 중첩',note:referenceNames.length?'국토교통부 지정·변경 고시 벡터화 경계 중첩 확인 · NED 교차검증 · 도심공공주택복합 자동배제':'도시재생혁신지구·주거재생혁신지구 NED 중첩 · 도심공공주택복합 자동배제'};
-  if(exact.known===true)return {known:true,status:'PASS',value:'도시재생혁신지구·주거재생혁신지구 해당 없음',note:'고시 벡터 참조 비중첩 + VWorld NED selected-PNU 전수조회 음성 확인 · 도시재생활성화지역 단순 중첩은 배제하지 않음'};
-  return {known:false,status:'REVIEW',value:'도시재생 혁신지구 일부 미확인',note:`VWorld NED selected-PNU ${Number(exact.checked_parcels||0)}/${Number(exact.queried_parcels||0)} 조회 · 실패 필지 때문에 음성판정 보류`};
+  const nedRows=[...(exact.urban_innovation?.rows||[]),...(exact.housing_innovation?.rows||[])];
+  const referenceNames=(ref.hits||[]).map(x=>x.name).filter(Boolean),anchors=(ref.anchor_matches||[]),near=(ref.review_hits||[]);
+  const positive=[...new Set([...names,...referenceNames,...nedRows.map(x=>x.name).filter(Boolean),...anchors.map(x=>x.label).filter(Boolean)])];
+  if(positive.length||exact.present===true){
+    const direct=anchors.length?`용산 대표지번 직접일치 ${anchors.map(x=>x.label).join(' · ')}`:referenceNames.length?'국토교통부 지정·변경 고시 벡터화 경계 직접중첩':'VWorld NED 양성신호';
+    return {known:true,status:'FAIL',value:positive.join(' / ')||'혁신지구 중첩',note:`${direct} · 도심공공주택복합 자동배제`};
+  }
+  if(near.length){
+    return {known:false,status:'REVIEW',value:`혁신지구 참조경계 ${Number(ref.review_buffer_m||URBAN_REGEN_REFERENCE_REVIEW_BUFFER_M)}m 이내`,note:`${near.map(x=>x.name).filter(Boolean).join(' / ')||'도시재생혁신지구'} 참조경계와 직접 중첩하지 않지만 벡터화 경계가 법정 실측경계보다 작을 수 있어 비해당을 확정하지 않음`};
+  }
+  if(Number(exact.queried_parcels||0)>0&&Number(exact.error_parcels||0)>0){
+    return {known:false,status:'REVIEW',value:'도시재생 혁신지구 NED 일부 미확인',note:`VWorld NED selected-PNU ${Number(exact.checked_parcels||0)}/${Number(exact.queried_parcels||0)} 조회 · 실패 필지가 있어 REVIEW. NED 음성응답은 PASS 근거로 사용하지 않음`};
+  }
+  if(ref.loaded===true&&ref.known===true){
+    return {known:true,status:'PASS',value:'도시재생혁신지구·주거재생혁신지구 해당 없음',note:`고시 벡터 참조경계에서 ${Number(ref.review_buffer_m||URBAN_REGEN_REFERENCE_REVIEW_BUFFER_M)}m 이상 이격 · 용산 대표지번 불일치 · NED 음성응답은 PASS 근거에서 제외`};
+  }
+  return {known:false,status:'REVIEW',value:'도시재생 혁신지구 참조자료 미확인',note:'고시 참조경계 또는 대표지번 확인이 완료되지 않아 비해당 판정을 보류'};
 }
 
 function publicComplexSpatialFacts(store){
@@ -15784,6 +15827,42 @@ function feedbackContextText(){
   const analysisId=activeGeometry?ensureAnalysisId(currentAnalysisSignature):'';
   return `${analysisId?'분석번호 '+analysisId+' · ':''}${address} · ${area?fmt(area,0)+'㎡':'면적 미확정'} · ${pnus.length}필지${recs.length?' · 추진후보 '+recs.join(' / '):''}`;
 }
+let regulationMonitorCache=null;
+let regulationMonitorFilter='all';
+function regulationMonitorStatusFor(id,src,feed){
+  const alerts=[...(feed?.alerts||[]),...(feed?.changes||[])];
+  const rec=alerts.find(x=>String(x.source_id||'')===String(id));
+  if(rec&&String(rec.status||'').toUpperCase()==='UNREFLECTED')return {status:'UNREFLECTED',label:'미반영',rec};
+  if(rec&&['REVIEW','CHECKING','PENDING'].includes(String(rec.status||'').toUpperCase()))return {status:'REVIEW',label:'확인중',rec};
+  if(src?.verified===false)return {status:'UNVERIFIED',label:'근거확인',rec};
+  return {status:'APPLIED',label:'반영',rec};
+}
+function regulationMonitorRow(id,src,feed){
+  const st=regulationMonitorStatusFor(id,src,feed),r=st.rec||{},url=r.url||src?.url||'';
+  const latest=r.latest_effective||r.detected_effective||r.checked_effective||'-';
+  const change=r.change_summary||r.summary||r.note||src?.locator||'-';
+  return {id,src,st,latest,change,url};
+}
+function setRegulationMonitorFilter(filter){regulationMonitorFilter=filter||'all';renderRegulationChangeMonitor();}
+function renderRegulationChangeMonitor(){
+  const body=document.getElementById('regulationChangeBody');if(!body)return;
+  const feed=regulationMonitorCache||{},rows=Object.entries(RULE_SOURCE_CATALOG||{}).map(([id,src])=>regulationMonitorRow(id,src,feed));
+  const counts={total:rows.length,unreflected:rows.filter(x=>x.st.status==='UNREFLECTED').length,review:rows.filter(x=>x.st.status==='REVIEW'||x.st.status==='UNVERIFIED').length,applied:rows.filter(x=>x.st.status==='APPLIED').length};
+  const badge=document.getElementById('regulationChangeAlertCount');if(badge){const n=counts.unreflected+counts.review;badge.textContent=String(n);badge.hidden=n===0;}
+  const filtered=rows.filter(x=>regulationMonitorFilter==='all'||regulationMonitorFilter==='alert'?(regulationMonitorFilter==='all'||x.st.status!=='APPLIED'):x.st.status===regulationMonitorFilter);
+  const checked=feed.checked_at||feed.last_checked_at||'미확인';
+  const tr=filtered.map(x=>`<tr><td><span class="reg-monitor-status ${escHtml(x.st.status)}">${escHtml(x.st.label)}</span></td><td>${escHtml(x.src?.type||'-')}</td><td><b>${escHtml(x.src?.title||x.id)}</b><div class="tiny">${escHtml(x.id)}</div></td><td>${escHtml(x.src?.effective||'미확인')}</td><td>${escHtml(x.latest)}</td><td>${escHtml(x.change)}</td><td>${x.url?`<a class="reg-monitor-source-link" href="${escHtml(x.url)}" target="_blank" rel="noopener">원문</a>`:'-'}</td></tr>`).join('');
+  body.innerHTML=`<div class="reg-monitor-summary"><div><span>모니터링 대상</span><b>${counts.total}건</b></div><div class="danger"><span>시스템 미반영</span><b>${counts.unreflected}건</b></div><div class="warn"><span>확인 필요</span><b>${counts.review}건</b></div><div><span>현재 반영</span><b>${counts.applied}건</b></div></div><div class="reg-monitor-note"><b>최근 모니터링</b> ${escHtml(String(checked))} · 현재 시스템의 <code>RULE_SOURCE_CATALOG</code> 전체를 기준목록으로 사용합니다. 최신 제도확인 피드는 앱 판정코드와 분리되어 있어, 피드에서 새 시행일·개정사항이 확인되면 미반영 경고가 먼저 표시됩니다.${feed.note?`<br>${escHtml(feed.note)}`:''}</div><div class="reg-monitor-controls"><button class="${regulationMonitorFilter==='all'?'active':''}" onclick="setRegulationMonitorFilter('all')">전체</button><button class="${regulationMonitorFilter==='alert'?'active':''}" onclick="setRegulationMonitorFilter('alert')">미반영·확인필요</button><button class="${regulationMonitorFilter==='UNREFLECTED'?'active':''}" onclick="setRegulationMonitorFilter('UNREFLECTED')">미반영</button><button class="${regulationMonitorFilter==='APPLIED'?'active':''}" onclick="setRegulationMonitorFilter('APPLIED')">반영</button></div><section class="activation-section"><table class="activation-table reg-monitor-table"><thead><tr><th>상태</th><th>구분</th><th>제도·기준</th><th>시스템 적용기준</th><th>최근 확인기준</th><th>변화·검토내용</th><th>원문</th></tr></thead><tbody>${tr||'<tr><td colspan="7"><div class="reg-monitor-empty">해당 상태의 제도가 없습니다.</div></td></tr>'}</tbody></table></section>`;
+}
+async function loadRegulationChangeMonitor(force=false){
+  if(regulationMonitorCache&&!force){renderRegulationChangeMonitor();return regulationMonitorCache;}
+  const body=document.getElementById('regulationChangeBody');if(body)body.innerHTML='<div class="reg-monitor-empty">제도변화 정보를 불러오는 중입니다.</div>';
+  try{const r=await fetch(`/api/reference/regulation-change-monitor${force?'?t='+Date.now():''}`,{cache:force?'no-store':'default'});if(!r.ok)throw new Error(`HTTP ${r.status}`);regulationMonitorCache=await r.json();}
+  catch(e){regulationMonitorCache={checked_at:'조회 실패',alerts:[],changes:[],note:'제도변화 모니터링 피드를 불러오지 못했습니다. 시스템 적용기준 목록은 계속 표시합니다.'};}
+  renderRegulationChangeMonitor();return regulationMonitorCache;
+}
+function openRegulationChangeModal(){regulationMonitorFilter='all';openReviewModal('regulationChangeModal');loadRegulationChangeMonitor(false);}
+
 function openFeedbackModal(){
   const context=document.getElementById('feedbackContextText');
   const status=document.getElementById('feedbackStatus');
@@ -16876,6 +16955,16 @@ function serviceModalMarkup(){
         </div>
       </div>
       <div class="review-modal-foot"><span>회원가입 없이 접수되며 관리자 메뉴에서 처리상태를 관리합니다.</span><button class="btn" onclick="closeReviewModal('feedbackModal')">닫기</button><button class="btn primary" onclick="submitFeedback()">접수하기</button></div>
+    </section>
+  </div>
+  <div class="review-modal-backdrop" id="regulationChangeModal" aria-hidden="true">
+    <section class="review-modal review-modal-wide" role="dialog" aria-modal="true" aria-labelledby="regulationChangeModalTitle">
+      <div class="review-modal-head">
+        <div><h2 id="regulationChangeModalTitle">사업판정제도 변화정보</h2><span>플랫폼 사업판정에 적용된 법률·시행령·시행규칙·조례·운영기준·업무처리기준·시행지침의 변화를 추적합니다.</span></div>
+        <button class="review-modal-close" type="button" onclick="closeReviewModal('regulationChangeModal')" aria-label="닫기">×</button>
+      </div>
+      <div class="review-modal-body"><div id="regulationChangeBody"><div class="reg-monitor-empty">제도변화 정보를 불러오는 중입니다.</div></div></div>
+      <div class="review-modal-foot"><span>미반영 표시는 최신 모니터링 기준이 현재 시스템 적용기준보다 새로 확인된 경우입니다.</span><button class="btn" onclick="closeReviewModal('regulationChangeModal')">닫기</button><button class="btn primary" onclick="loadRegulationChangeMonitor(true)">새로고침</button></div>
     </section>
   </div>`;
 }

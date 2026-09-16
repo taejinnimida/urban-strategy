@@ -1,0 +1,18 @@
+{
+  "schema": "regulation_change_monitor_v1",
+  "checked_at": "2026-09-16T16:00:00+09:00",
+  "scope": [
+    "법률",
+    "시행령",
+    "시행규칙",
+    "서울특별시 조례",
+    "서울특별시 시행규칙",
+    "서울시 운영기준",
+    "업무처리기준",
+    "시행지침",
+    "고시·공고"
+  ],
+  "alerts": [],
+  "changes": [],
+  "note": "초기 기준선. 플랫폼 RULE_SOURCE_CATALOG의 적용기준과 외부 제도변화 모니터링 결과를 비교하기 위한 피드입니다. 새 시행일 또는 개정사항 확인 시 source_id별 UNREFLECTED/REVIEW 항목을 추가합니다."
+}
