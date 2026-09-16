@@ -11873,30 +11873,101 @@ function reconstructionComplexBuildingRecord(r){
   // 재개발 배제용 '공동주택단지형'은 다세대주택 밀집지와 혼동하지 않도록 아파트·연립주택으로 좁게 본다.
   return /아파트|연립주택/.test(use);
 }
-function housingRenewalSiteCharacter(records,c={}){
-  const rows=(records||[]).filter(r=>String(r?.main_use||r?.other_use||r?.register_kind||'').trim());
-  const complexRows=rows.filter(reconstructionComplexBuildingRecord);
-  const otherRows=rows.filter(r=>!reconstructionComplexBuildingRecord(r));
-  let type='UNKNOWN',label='건축물대장 자료 확인 필요';
-  if(c.reconstructionApartment===true){type='APARTMENT_COMPLEX';label='사용자 확인 · 공동주택 재건축 대상';}
-  else if(rows.length&&complexRows.length&&otherRows.length===0){type='APARTMENT_COMPLEX';label=`아파트·연립주택 중심 단지형 ${complexRows.length}/${rows.length}동`;}
-  else if(rows.length&&complexRows.length){type='MIXED';label=`공동주택단지형·기존시가지 혼합 ${complexRows.length}/${rows.length}동`;}
-  else if(rows.length){type='EXISTING_URBAN';label='아파트·연립주택 단지형 증거 없음';}
-  return {type,label,total:rows.length,complex_count:complexRows.length,other_count:otherRows.length};
+function reconstructionComplexName(r){
+  let s=String(r?.building_name||'').trim().replace(/\s+/g,' ');
+  if(!s)return '';
+  // 건축물대장 건물명에 동번호가 붙는 경우 같은 단지명으로 묶는다. 거리 임계값 등 임의의 공간기준은 사용하지 않는다.
+  s=s.replace(/\s*(?:제\s*)?\d+\s*동\s*$/,'').trim();
+  const compact=s.replace(/\s+/g,'');
+  if(!compact||/^(아파트|연립주택|공동주택|주건축물|주건축물제?\d*동|제?\d+동|동)$/.test(compact))return '';
+  return s;
 }
-function reconstructionThirtyYearFact(records){
+function reconstructionComplexGroups(records){
   const targets=(records||[]).filter(reconstructionEligibleBuildingRecord);
-  if(!targets.length)return {status:'REVIEW',value:'재건축 대상 공동주택 사용승인일 확인 필요',total:0,old:0,unknown:0,note:'공동주택·집합건축물 대상 Fact 미확정'};
+  const map=new Map(),unnamed=[];
+  for(const r of targets){
+    const name=reconstructionComplexName(r);
+    if(!name){unnamed.push(r);continue;}
+    const key=name.replace(/\s+/g,'').toLowerCase();
+    if(!map.has(key))map.set(key,{key,name,rows:[]});
+    map.get(key).rows.push(r);
+  }
+  const groups=[...map.values()].map(g=>{
+    const pnus=[...new Set(g.rows.map(r=>String(r.pnu||'')).filter(Boolean))];
+    const pnuAreas=new Map();
+    for(const r of g.rows){
+      const pnu=String(r.pnu||''),a=Number(r.plat_area_m2);
+      if(pnu&&Number.isFinite(a)&&a>0)pnuAreas.set(pnu,Math.max(a,Number(pnuAreas.get(pnu)||0)));
+    }
+    const area_m2=[...pnuAreas.values()].reduce((a,b)=>a+b,0)||null;
+    const households=g.rows.reduce((sum,r)=>sum+(Number(r.household_count)||Number(r.family_count)||0),0)||null;
+    const far=siteCurrentVolumeRatioFact(g.rows,area_m2);
+    return {name:g.name,building_count:g.rows.length,households,area_m2,pnu_count:pnus.length,current_far_pct:far?.known===true?Number(far.pct):null,current_far_basis:far?.basis||'',rows:g.rows};
+  }).sort((a,b)=>a.name.localeCompare(b.name,'ko'));
+  let mode='UNKNOWN',status='REVIEW';
+  if(groups.length>=2){mode='MULTI';status=unnamed.length?'REVIEW':'CONFIRMED';}
+  else if(groups.length===1){mode='SINGLE';status=unnamed.length?'REVIEW':'CONFIRMED';}
+  return {mode,status,count:groups.length,names:groups.map(g=>g.name),groups,unnamed_count:unnamed.length,total_targets:targets.length};
+}
+function reconstructionAgeFactForRows(rows){
+  const targets=(rows||[]).filter(reconstructionEligibleBuildingRecord);
+  if(!targets.length)return {status:'REVIEW',value:'사용승인일 확인 필요',total:0,old:0,unknown:0,younger:0,note:'재건축 대상 공동주택 Fact 미확정'};
   let old=0,unknown=0,younger=0;
   for(const r of targets){
     const dt=rawFactDate(r);if(!dt){unknown++;continue;}
     if(olderThanYearsAt(dt,30,SCHEME_AS_OF))old++;else younger++;
   }
   const status=younger>0?'FAIL':unknown>0?'REVIEW':'PASS';
-  const value=`30년 이상 ${old}/${targets.length}동${unknown?` · 사용승인일 미확인 ${unknown}동`:''}${younger?` · 30년 미만 ${younger}동`:''}`;
-  const note=status==='PASS'?'재건축 대상 공동주택의 사용승인일 기준 30년 이상 확인':status==='FAIL'?'재건축 대상 공동주택 중 30년 미만 건축물 확인':'미확인 사용승인일 확인 후 갱신';
+  const value=`30년 이상 ${old}/${targets.length}동${unknown?` · 미확인 ${unknown}동`:''}${younger?` · 30년 미만 ${younger}동`:''}`;
+  const note=status==='PASS'?'사용승인일 기준 30년 이상 확인':status==='FAIL'?'30년 미만 공동주택 확인':'미확인 사용승인일 확인 필요';
   return {status,value,total:targets.length,old,unknown,younger,note};
 }
+function housingRenewalSiteCharacter(records,c={}){
+  const rows=(records||[]).filter(r=>String(r?.main_use||r?.other_use||r?.register_kind||'').trim());
+  const complexRows=rows.filter(reconstructionComplexBuildingRecord);
+  // 과거 로직은 단지 내 상가·관리동 같은 비주거 부속건물까지 '기존시가지 혼합'으로 보아 재건축을 배제할 수 있었다.
+  // 재개발/재건축 배타판정에서 실제 충돌요소는 단독·다가구·다세대 등 별도의 저층주거 조직으로 한정한다.
+  const competingHousingRows=rows.filter(r=>{
+    if(reconstructionComplexBuildingRecord(r))return false;
+    const use=`${r?.main_use||''} ${r?.other_use||''}`;
+    return /단독주택|다가구|다세대주택|다중주택/.test(use);
+  });
+  const ancillaryRows=rows.filter(r=>!reconstructionComplexBuildingRecord(r)&&!competingHousingRows.includes(r));
+  const grouping=reconstructionComplexGroups(rows);
+  const suffix=ancillaryRows.length?` · 부대·기타 ${ancillaryRows.length}동`:'';
+  const groupedLabel=grouping.mode==='MULTI'
+    ?`복수 공동주택단지형 · ${grouping.names.join(' / ')} · 통합재건축 검토${suffix}`
+    :grouping.mode==='SINGLE'
+      ?`단일 공동주택단지형 · ${grouping.names[0]}${suffix}`
+      :`아파트·연립주택 중심 단지형 ${complexRows.length}/${rows.length}동 · 기존 단지구성 확인 필요${suffix}`;
+  let type='UNKNOWN',label='건축물대장 자료 확인 필요';
+  if(c.reconstructionApartment===true){type='APARTMENT_COMPLEX';label=grouping.mode==='UNKNOWN'?`사용자 확인 · 공동주택 재건축 대상 · 기존 단지구성 확인 필요${suffix}`:groupedLabel;}
+  else if(rows.length&&complexRows.length&&competingHousingRows.length===0){type='APARTMENT_COMPLEX';label=groupedLabel;}
+  else if(rows.length&&complexRows.length){type='MIXED';label=`공동주택단지형·저층주거 혼재 ${complexRows.length}/${rows.length}동 · 저층주택 ${competingHousingRows.length}동`;}
+  else if(rows.length){type='EXISTING_URBAN';label='아파트·연립주택 단지형 증거 없음';}
+  return {
+    type,label,total:rows.length,complex_count:complexRows.length,other_count:rows.length-complexRows.length,
+    competing_housing_count:competingHousingRows.length,ancillary_count:ancillaryRows.length,
+    complex_mode:grouping.mode,identified_complex_count:grouping.count,complex_names:grouping.names,
+    complex_grouping_status:grouping.status,unnamed_complex_buildings:grouping.unnamed_count,
+    complexes:grouping.groups.map(g=>({name:g.name,building_count:g.building_count,households:g.households,area_m2:g.area_m2,pnu_count:g.pnu_count,current_far_pct:g.current_far_pct,current_far_basis:g.current_far_basis}))
+  };
+}
+function reconstructionThirtyYearFact(records,complexGrouping=null){
+  const targets=(records||[]).filter(reconstructionEligibleBuildingRecord);
+  if(!targets.length)return {status:'REVIEW',value:'재건축 대상 공동주택 사용승인일 확인 필요',total:0,old:0,unknown:0,younger:0,note:'공동주택·집합건축물 대상 Fact 미확정',complex_mode:'UNKNOWN',complexes:[]};
+  const grouping=complexGrouping||reconstructionComplexGroups(records);
+  const overall=reconstructionAgeFactForRows(targets);
+  if(grouping.mode!=='MULTI')return {...overall,complex_mode:grouping.mode,complexes:grouping.groups.map(g=>({name:g.name,building_count:g.building_count,households:g.households,area_m2:g.area_m2,current_far_pct:g.current_far_pct,...reconstructionAgeFactForRows(g.rows)}))};
+  const complexes=grouping.groups.map(g=>({name:g.name,building_count:g.building_count,households:g.households,area_m2:g.area_m2,current_far_pct:g.current_far_pct,...reconstructionAgeFactForRows(g.rows)}));
+  let status=complexes.some(g=>g.status==='FAIL')?'FAIL':complexes.some(g=>g.status==='REVIEW')?'REVIEW':'PASS';
+  if(grouping.unnamed_count&&status==='PASS')status='REVIEW';
+  const detail=complexes.map(g=>`${g.name} ${g.old}/${g.total}동 30년 이상${g.unknown?`(미확인 ${g.unknown})`:''}${g.younger?`(30년 미만 ${g.younger})`:''}`).join(' · ');
+  const value=`복수단지 ${complexes.length}개 · ${detail}${grouping.unnamed_count?` · 단지명 미확인 ${grouping.unnamed_count}동`:''}`;
+  const note=status==='PASS'?'복수 공동주택단지 각각의 사용승인일 기준 30년 이상 확인':status==='FAIL'?'복수단지 중 30년 미만 공동주택이 있는 단지 확인':'복수단지별 사용승인일 또는 단지구성 추가 확인 필요';
+  return {...overall,status,value,note,complex_mode:'MULTI',complexes};
+}
+
 function housingRenewalFamilyFacts(store){
   store.family_specific=store.family_specific||{};
   if(store.family_specific.housing_renewal)return store.family_specific.housing_renewal;
@@ -11991,13 +12062,14 @@ function reconstructionSpatialFacts(store){
   const family=housingRenewalFamilyFacts(store),c=store.common,records=family.building_records||[];
   const officialHits=renewalHitsByType(store,['reconstruction']);
   const siteCharacter=family.site_character||housingRenewalSiteCharacter(records,c);
+  const complexGrouping=reconstructionComplexGroups(records);
   const eligible=records.filter(reconstructionEligibleBuildingRecord);
-  // 일반 재건축은 단일 아파트·연립주택 단지형에서만 초기 후보로 진입한다.
-  // 기정 재건축 정비구역 중첩은 참고/공식경로 Fact일 뿐, 단독·다가구·다세대·근생 혼재지를
-  // 일반 재건축 후보로 되살리는 우회조건으로 사용하지 않는다.
+  // 일반 재건축은 아파트·연립주택 단지형에서 초기 후보로 진입한다.
+  // 단일단지뿐 아니라 건축물대장상 독립 단지명이 2개 이상 확인되는 복수 공동주택단지도 통합재건축 검토로 유지한다.
+  // 기정 재건축 정비구역 중첩은 참고/공식경로 Fact일 뿐, 단독·다가구·다세대가 실제 혼재한 저층주거지를 일반 재건축 후보로 되살리는 우회조건으로 사용하지 않는다.
   const targetStatus=siteCharacter.type==='APARTMENT_COMPLEX'?'PASS':siteCharacter.type==='UNKNOWN'?'REVIEW':'FAIL';
   const households=eligible.reduce((sum,r)=>sum+(Number(r.household_count)||Number(r.family_count)||0),0);
-  const age30=reconstructionThirtyYearFact(records);
+  const age30=reconstructionThirtyYearFact(records,complexGrouping);
   const area=family.area_m2;
   let scaleStatus='REVIEW',scaleNote='대상지 면적 확인 필요';
   if(officialHits.length){scaleStatus='PASS';scaleNote='기정 재건축 정비구역 공식 진입경로 확인';}
@@ -12006,6 +12078,7 @@ function reconstructionSpatialFacts(store){
   const fact={
     official:{loaded:store.site.renewal.loaded,hits:officialHits,value:officialHits.length?officialHits.map(x=>x.name).join(' / '):(store.site.renewal.loaded?'재건축 정비구역 중첩 없음':'정비구역 GIS 미확인')},
     site_character:{...siteCharacter,status:targetStatus},
+    complexes:{mode:complexGrouping.mode,status:complexGrouping.status,count:complexGrouping.count,names:complexGrouping.names,unnamed_count:complexGrouping.unnamed_count,groups:age30.complexes||[]},
     apartment:{known:records.length>0||c.reconstructionApartment===true,candidate:targetStatus==='PASS',count:eligible.length,households:households||null,status:targetStatus},
     area:{m2:area,status:scaleStatus,note:scaleNote,reference_10k:area==null?null:area>=10000},
     aging:{age30},
@@ -12014,8 +12087,10 @@ function reconstructionSpatialFacts(store){
   };
   fact.spatial_status_rows=[
     spatialFactRow('재건축 정비구역',fact.official.value,fact.official.loaded?'CONFIRMED':'REVIEW','기정 정비구역은 참고·우선경로이며 신규 재건축 가능성의 필수조건으로 사용하지 않음'),
-    spatialFactRow('공동주택·집합건축물 대상',siteCharacter.label,siteCharacter.type==='UNKNOWN'?'REVIEW':'CONFIRMED',targetStatus==='PASS'?'재건축 대상지 성격 확인':targetStatus==='FAIL'?'현재 자료상 단일 아파트·연립주택 단지형 아님 · 일반 재건축 제외':'혼합형 대상지 · 재건축/재개발 경계 검토 필요',
-      {criterionStatus:targetStatus,criterionRule:'단일 아파트·연립주택 단지형 재건축 대상지',criterionItem:'공동주택·집합건축물 대상'}),
+    spatialFactRow('공동주택·집합건축물 대상',siteCharacter.label,siteCharacter.type==='UNKNOWN'?'REVIEW':'CONFIRMED',targetStatus==='PASS'?(siteCharacter.complex_mode==='MULTI'?'복수 공동주택단지형 · 통합재건축 검토 대상지 성격 확인':'재건축 대상지 성격 확인'):targetStatus==='FAIL'?'현재 자료상 아파트·연립주택 단지형 아님 · 일반 재건축 제외':'혼합형 대상지 · 재건축/재개발 경계 검토 필요',
+      {criterionStatus:targetStatus,criterionRule:'아파트·연립주택 단지형은 단일단지 또는 복수단지 통합재건축으로 검토',criterionItem:'공동주택·집합건축물 대상'}),
+    spatialFactRow('기존 공동주택단지 구성',siteCharacter.complex_mode==='MULTI'?`복수 ${siteCharacter.identified_complex_count}개 · ${(siteCharacter.complex_names||[]).join(' / ')}`:siteCharacter.complex_mode==='SINGLE'?`단일 · ${(siteCharacter.complex_names||[])[0]||'단지명 미확인'}`:'단지구성 확인 필요',siteCharacter.complex_grouping_status==='CONFIRMED'?'CONFIRMED':'REVIEW',siteCharacter.complex_mode==='MULTI'?'각 기존 단지의 노후도·현황용적률은 단지별 보존하고 통합계획은 별도 검토':'건축물대장 건물명/단지명 기준 · 거리 임계값을 임의 적용하지 않음',
+      {criterionStatus:'INFO',criterionRule:'기존 공동주택단지 식별 후 단일/복수단지 통합검토 구분',criterionItem:'기존 공동주택단지 구성'}),
     spatialFactRow('재건축 사업규모',fmtSchemeArea(area),area==null?'REVIEW':'CONFIRMED',scaleNote,
       {criterionStatus:scaleStatus,criterionRule:'대상지 면적 10,000㎡ 이상 1차 판정 · 기정 재건축 정비구역은 공식경로 우선',criterionItem:'사업규모'}),
     spatialFactRow('30년 이상 노후',age30.value,age30.status==='REVIEW'?'REVIEW':'CONFIRMED',age30.note,
@@ -12028,7 +12103,8 @@ function reconstructionSpatialFacts(store){
 function checkReconstructionFromFacts(store,f){
   const rows=[];
   rows.push(schemeRow('공식 진입경로·정비구역','기정 재건축 정비구역 여부는 참고·우선경로이며 신규 사업가능성의 필수조건이 아님',f.official.value,'INFO',f.official.hits.length?'기정 정비구역 공식경로 확인':'미중첩도 사업불가 의미가 아님',false,{sourceId:'RENEWAL_GIS',locator:'서울시 재건축 정비구역 공식 공간자료 / 결정고시'}));
-  rows.push(schemeRow('공동주택·집합건축물 대상','단일 아파트·연립주택 단지형 재건축 대상지 여부',f.site_character?.label||'자료 없음',f.site_character?.status||'REVIEW',f.site_character?.status==='FAIL'?'현재 자료상 단일 아파트·연립주택 단지형 아님 · 일반 재건축 제외':'건축HUB 주용도·집합건축물 Fact',true,{sourceId:'RENEWAL_PLAN',locator:'재건축사업 부문 · 사업대상'}));
+  rows.push(schemeRow('공동주택·집합건축물 대상','아파트·연립주택 단지형 재건축 대상지 여부 · 단일단지와 복수단지 통합재건축을 모두 포함',f.site_character?.label||'자료 없음',f.site_character?.status||'REVIEW',f.site_character?.status==='FAIL'?'현재 자료상 아파트·연립주택 단지형 아님 · 일반 재건축 제외':f.site_character?.complex_mode==='MULTI'?'복수 공동주택단지형 확인 · 통합재건축 검토':'건축HUB 주용도·집합건축물 Fact',true,{sourceId:'RENEWAL_PLAN',locator:'재건축사업 부문 · 사업대상'}));
+  rows.push(schemeRow('기존 공동주택단지 구성','건축물대장 건물명·단지명 기준으로 선택구역 내 기존 공동주택단지를 식별하고 단일/복수단지로 구분',f.complexes?.mode==='MULTI'?`복수 ${f.complexes.count}개 · ${(f.complexes.names||[]).join(' / ')}`:f.complexes?.mode==='SINGLE'?`단일 · ${(f.complexes.names||[])[0]||'단지명 미확인'}`:'단지구성 확인 필요',f.complexes?.status==='CONFIRMED'?'INFO':'REVIEW',f.complexes?.mode==='MULTI'?'단지별 노후도·현황용적률을 보존하고 통합계획을 별도 검토':'거리 임계값을 임의 적용하지 않고 식별 불명확 시 확인필요',false,{sourceId:'RENEWAL_PLAN',locator:'재건축사업 부문 · 사업대상'}));
   rows.push(schemeRow('사업규모','대상지 면적 10,000㎡ 이상 1차 판정 · 기정 재건축 정비구역은 공식경로 우선',fmtSchemeArea(f.area.m2),f.area.status,f.area.note,true,{sourceId:'RENEWAL_ORD',locator:'제6조제4항 · 영 별표1 제3호라목 관련'}));
   rows.push(schemeRow('30년 이상 노후','재건축 대상 공동주택의 사용승인일 30년 이상 1차 사업가능성 판정',f.aging.age30?.value||'자료 없음',f.aging.age30?.status||'REVIEW',f.aging.age30?.note||'사용승인일 확인 필요',true,{sourceId:'RENEWAL_PLAN',locator:'재건축사업 부문 · 노후·불량건축물 기준'}));
   rows.push(schemeRow('재건축진단','법정 재건축진단은 초기 사업가능성 판정 후 후속 절차로 확인',f.diagnosis.confirmed?'추진절차 확인 입력':'후속 법정절차','INFO','후속 정비계획·사업추진 단계에서 확인 · 초기 후보 PASS/FAIL에 사용하지 않음',false,{sourceId:'RENEWAL_ACT',locator:'제12조·제13조'}));
@@ -14389,17 +14465,19 @@ function ccContextFor(name){
   reasons.push(`② 토지·시행 · ${execution.actorText}`);
 
   const structural={status:'PASS',label:'독립모듈',reason:'공간현황 Fact → 독립 사업모듈의 단일 판정결과 사용'};
-  // 재건축은 다른 사업과 달리 '단일 아파트·연립주택 단지형'이 선행 하드게이트다.
+  // 재건축은 '아파트·연립주택 단지형'이 선행 하드게이트다.
+  // 단일단지만 허용하지 않고, 선택구역 안에 독립 공동주택단지가 2개 이상 식별되면 통합재건축 검토로 유지한다.
   // 상세 재건축 모듈의 대상지 유형 FAIL/REVIEW를 추천엔진이 임의로 PASS로 덮어쓰지 않는다.
   if(name==='reconstruction'){
     const reconType=schemeResults.reconstruction?.facts?.site_character;
     structural.status=reconType?.status||'REVIEW';
-    structural.label=structural.status==='FAIL'?'단일단지 아님':structural.status==='REVIEW'?'단일단지 확인필요':'단일 공동주택단지';
+    const multi=reconType?.complex_mode==='MULTI';
+    structural.label=structural.status==='FAIL'?'공동주택단지형 아님':structural.status==='REVIEW'?'단지형 확인필요':multi?'복수단지 통합검토':'단일 공동주택단지';
     structural.reason=structural.status==='PASS'
-      ? `단일 아파트·연립주택 단지형 확인 · ${reconType?.label||''}`
+      ? `${multi?'복수 공동주택단지형 · 통합재건축 검토':'단일 아파트·연립주택 단지형 확인'} · ${reconType?.label||''}`
       : structural.status==='FAIL'
-        ? `일반 재건축 제외 · ${reconType?.label||'단일 아파트·연립주택 단지형 아님'} · 노후 저층주거지는 소규모주택정비 등 독립 사업모듈에서 검토`
-        : `재건축 단일단지 여부 확인 필요 · ${reconType?.label||'건축물대장 Fact 미확정'}`;
+        ? `일반 재건축 제외 · ${reconType?.label||'아파트·연립주택 단지형 아님'} · 노후 저층주거지는 소규모주택정비 등 독립 사업모듈에서 검토`
+        : `재건축 단지형 여부 확인 필요 · ${reconType?.label||'건축물대장 Fact 미확정'}`;
   }
   reasons.push(`③ 법정진입 · ${structural.reason}`);
 
@@ -17846,13 +17924,19 @@ function reconstructionDensityPlanRowsHtml(res,store,f){
   const currentFar=currentFarKnown?num(farFact.pct):null;
   const stdAllow=num(currentProfile?.allow);
   const legalCurrent=num(currentProfile?.legal);
-  const overdense=currentFarKnown&&stdAllow!=null?currentFar>stdAllow:null;
-  const recognizedAllow=overdense?currentFar:stdAllow;
-  const overcrowdText=overdense===true?'과밀단지 후보':overdense===false?'일반단지 범위':'현황용적률 미확인';
-  const overcrowdRows=`<tr><td>현황용적률</td><td><b>${currentFarKnown?currentFar.toFixed(1)+'%':'미확인'}</b></td><td>${escHtml(farFact?.basis||'건축HUB 용적률산정연면적 Fact 확인 필요')}</td></tr>
+  const complexInfo=f?.complexes||{};
+  const isMultiComplex=complexInfo.mode==='MULTI';
+  const overdense=isMultiComplex?null:(currentFarKnown&&stdAllow!=null?currentFar>stdAllow:null);
+  const overcrowdText=isMultiComplex?'복수단지 · 단지별 판정':overdense===true?'과밀단지 후보':overdense===false?'일반단지 범위':'현황용적률 미확인';
+  const complexStatusRows=isMultiComplex?(complexInfo.groups||[]).map(g=>{
+    const gf=num(g.current_far_pct),ga=num(g.area_m2),gh=num(g.households),age=g.status?g:(f?.aging?.age30?.complexes||[]).find(x=>x.name===g.name)||{};
+    const over=gf!=null&&stdAllow!=null?gf>stdAllow:null;
+    return `<tr><td><b>${escHtml(g.name||'단지명 미확인')}</b></td><td>${ga==null?'-':fmtArea(ga)} / ${gh==null?'-':Math.round(gh).toLocaleString('ko-KR')+'세대'} / 현황용적률 ${gf==null?'미확인':gf.toFixed(1)+'%'}</td><td>${escHtml(age.value||'노후도 확인 필요')} · ${over===true?'과밀단지 후보':over===false?'일반단지 범위':'과밀여부 확인 필요'}</td></tr>`;
+  }).join(''):'';
+  const overcrowdRows=`${isMultiComplex?`<tr><td>통합재건축 검토</td><td><b>복수 ${complexInfo.count||0}개 단지</b></td><td>${escHtml((complexInfo.names||[]).join(' / '))} · 기존단지 FACT를 단지별 유지</td></tr>${complexStatusRows}`:''}<tr><td>${isMultiComplex?'통합 검토구역 현황용적률(참고)':'현황용적률'}</td><td><b>${currentFarKnown?currentFar.toFixed(1)+'%':'미확인'}</b></td><td>${escHtml(farFact?.basis||'건축HUB 용적률산정연면적 Fact 확인 필요')}${isMultiComplex?' · 과밀단지 판정에는 직접 사용하지 않음':''}</td></tr>
     <tr><td>기본계획 허용용적률</td><td>${stdAllow==null?'-':stdAllow+'%'}</td><td>현 용도지역의 일반 재건축 허용용적률</td></tr>
-    <tr><td>과밀단지 판정</td><td><b>${overcrowdText}</b></td><td>현황용적률이 기본계획 허용용적률을 초과하면 과밀단지</td></tr>
-    <tr><td>현황용적률 인정</td><td>${overdense===true?`허용용적률을 현황 ${currentFar.toFixed(1)}%까지 인정`:overdense===false?'별도 현황용적률 상향 불필요':'미산정'}</td><td>${overdense===true?'기부채납 없이 현황용적률까지 허용용적률 상향 가능':'현황용적률 Fact 완결 후 적용'}</td></tr>`;
+    <tr><td>과밀단지 판정</td><td><b>${overcrowdText}</b></td><td>${isMultiComplex?'한 단지의 고밀·저밀 현황이 평균으로 상쇄되지 않도록 기존 단지별 현황용적률로 검토':'현황용적률이 기본계획 허용용적률을 초과하면 과밀단지'}</td></tr>
+    <tr><td>현황용적률 인정</td><td>${isMultiComplex?'단지별 적용여부 검토':overdense===true?`허용용적률을 현황 ${currentFar.toFixed(1)}%까지 인정`:overdense===false?'별도 현황용적률 상향 불필요':'미산정'}</td><td>${isMultiComplex?'통합계획 수립 시 단지별 권리·밀도차를 합산값으로 자동 소거하지 않음':overdense===true?'기부채납 없이 현황용적률까지 허용용적률 상향 가능':'현황용적률 Fact 완결 후 적용'}</td></tr>`;
 
   const bf=renewalBusinessFeasibilityForScheme(store,'reconstruction');
   const area=num(f?.area?.m2??c.area),households=num(f?.apartment?.households);
@@ -17926,7 +18010,7 @@ function reconstructionDensityPlanRowsHtml(res,store,f){
 
     ${sectionTitle('3.2 현황용적률·과밀단지')}
     <table class="activation-table"><thead><tr><th>항목</th><th>대상지 값</th><th>적용</th></tr></thead><tbody>${overcrowdRows}</tbody></table>
-    <div style="${noteStyle}"><b>과밀단지</b> 현황용적률이 기본계획 허용용적률을 초과한 단지다. 기존 과밀단지는 기부채납 없이 허용용적률을 현황용적률까지 상향할 수 있고, 현황용적률 인정과 사업성 보정계수를 중복 적용할 수 있다. 최종 허용용적률이 법적상한을 초과하면 용도지역 상향 검토가 가능하지만 구체적 최대치는 서울시 별도 방침을 따른다. ${source('재건축사업 부문 · 기존 과밀단지 현황용적률 인정')}</div>
+    <div style="${noteStyle}"><b>과밀단지</b> 현황용적률이 기본계획 허용용적률을 초과한 단지다. 기존 과밀단지는 기부채납 없이 허용용적률을 현황용적률까지 상향할 수 있고, 현황용적률 인정과 사업성 보정계수를 중복 적용할 수 있다. ${isMultiComplex?'<b>복수단지 통합검토에서는 과밀여부를 기존 단지별로 보존하여 판정하고, 통합 평균값만으로 고밀·저밀 차이를 상쇄하지 않는다.</b> ':''}최종 허용용적률이 법적상한을 초과하면 용도지역 상향 검토가 가능하지만 구체적 최대치는 서울시 별도 방침을 따른다. ${source('재건축사업 부문 · 기존 과밀단지 현황용적률 인정')}</div>
 
     ${sectionTitle('3.3 정비사업 사업성 보정계수 · 재건축 적용')}
     <table class="activation-table"><thead><tr><th>항목</th><th>대상지 FACT</th><th>산정·적용</th></tr></thead><tbody>${businessRows}</tbody></table>
@@ -18108,11 +18192,11 @@ function renderRemainingSchemeDetailPopup(name){
       note:'주택접도율은 6m 기준 자동산정값이 명확하면 40% 이하/초과를 충족·불충족으로 판정하고, 과소필지·주택접도율·호수밀도 중 하나 이상 충족 여부를 추가 입안요건 종합판정에 반영합니다. ROAD_BT 중심선 기반 공간정밀도는 공식 도로대장·결정도서로 재확인합니다.'
     },
     reconstruction:{
-      subtitle:'재건축 초기 사업가능성 · 단일 아파트·연립주택 단지형 + 30년 이상 + 사업규모',feasibility:'초기 사업가능성',
-      status:[['대상지 유형',f.site_character?.label||'-'],['대상지 면적',fmtSchemeArea(f.area?.m2)],['30년 이상 노후',f.aging?.age30?.value||'-'],['정비구역 현황',f.official?.value||'-'],['재건축진단',f.diagnosis?.confirmed?'추진절차 확인':'후속 법정절차']],
-      groups:[{label:'초기 자동판정',items:['공동주택·집합건축물 대상','사업규모','30년 이상 노후']},{label:'후속 법정절차',items:['재건축진단','주민동의·조합설립']}],planItems:['공식 진입경로·정비구역','용적률·계획기준'],
-      steps:[['초기 대상지 적격성 확인','단일 아파트·연립주택 단지형 여부, 30년 이상 노후, 사업규모를 자동검토'],['정비계획 사전검토','기정 정비구역 여부와 계획기준·밀도 검토'],['재건축진단·주민협의','법정 재건축진단과 주민동의는 후보선정 이후 후속절차로 진행'],['정비계획 결정·구역지정','법정 의견청취·심의·고시'],['사업시행 절차','조합설립·사업시행인가·관리처분 등']],
-      note:'본 플랫폼은 초기 사업가능성 검토도구이므로 재건축진단·주민동의·조합설립을 후보 하드게이트로 사용하지 않습니다. 단일 아파트·연립주택 단지형, 30년 이상 노후, 사업규모가 확인되면 재건축 가능 후보로 제시하고 후속 법정절차를 단서로 표시합니다.'
+      subtitle:'재건축 초기 사업가능성 · 아파트·연립주택 단지형(단일/복수 통합) + 30년 이상 + 사업규모',feasibility:'초기 사업가능성',
+      status:[['대상지 유형',f.site_character?.label||'-'],['기존 공동주택단지',f.complexes?.mode==='MULTI'?`복수 ${f.complexes.count}개 · ${(f.complexes.names||[]).join(' / ')}`:f.complexes?.mode==='SINGLE'?`단일 · ${(f.complexes.names||[])[0]||'-'}`:'구성 확인 필요'],['대상지 면적',fmtSchemeArea(f.area?.m2)],['30년 이상 노후',f.aging?.age30?.value||'-'],['정비구역 현황',f.official?.value||'-'],['재건축진단',f.diagnosis?.confirmed?'추진절차 확인':'후속 법정절차']],
+      groups:[{label:'초기 자동판정',items:['공동주택·집합건축물 대상','기존 공동주택단지 구성','사업규모','30년 이상 노후']},{label:'후속 법정절차',items:['재건축진단','주민동의·조합설립']}],planItems:['공식 진입경로·정비구역','용적률·계획기준'],
+      steps:[['초기 대상지 적격성 확인','아파트·연립주택 단지형 여부와 기존 단지구성(단일/복수), 30년 이상 노후, 사업규모를 자동검토'],['정비계획 사전검토','복수단지는 기존 단지별 현황을 보존한 상태에서 통합 정비계획 가능성을 검토'],['재건축진단·주민협의','법정 재건축진단과 주민동의는 후보선정 이후 후속절차로 진행'],['정비계획 결정·구역지정','법정 의견청취·심의·고시'],['사업시행 절차','조합설립·사업시행인가·관리처분 등']],
+      note:'본 플랫폼은 초기 사업가능성 검토도구이므로 재건축진단·주민동의·조합설립을 후보 하드게이트로 사용하지 않습니다. 아파트·연립주택 단지형은 단일단지뿐 아니라 복수 공동주택단지를 함께 선택한 통합재건축 검토도 유지합니다. 복수단지는 노후도·현황용적률 등 기존단지 FACT를 합산으로 소거하지 않고 단지별로 표시합니다.'
     },
     residential_environment:{
       subtitle:'도시정비법 제23조·제24조 + 서울시 정비조례 제6조',feasibility:'사업진입 가능성',
