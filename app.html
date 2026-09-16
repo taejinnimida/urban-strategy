@@ -5186,7 +5186,7 @@ function activationLinearCommercialEvidence(){
     site_overlap_m2:activationArterialAnalysis.siteOverlapM2,site_overlap_pct:activationArterialAnalysis.siteOverlapPct,
     site_includes:activationArterialAnalysis.siteIncludes,block_includes:activationArterialAnalysis.blockIncludes,
     block_overlap_m2:activationArterialAnalysis.blockOverlapM2,route_status:activationArterialAnalysis.routeStatus||'REVIEW',route_conditional:activationArterialAnalysis.routeConditional===true,path:activationArterialAnalysis.path||'',
-    source:'MODEL_REFERENCE · 노선형 상업지역 판정용 참조도형 + 대상지·가로구역 공간관계',metadata:{...(activationArterialAnalysis.metadata||{})},errors:[...(activationArterialAnalysis.errors||[])],warnings:[...(activationArterialAnalysis.warnings||[])]
+    source:'사용자 제공 노선상업 재검토.dxf 변환 MODEL_REFERENCE · 대상지·역세권활성화 가로구역·동일 도로측 공간관계',metadata:{...(activationArterialAnalysis.metadata||{})},errors:[...(activationArterialAnalysis.errors||[])],warnings:[...(activationArterialAnalysis.warnings||[])]
   };
 }
 function activationRoadSegmentKey(f,index=0){
@@ -5696,13 +5696,69 @@ async function loadRouteCommercialReference(){
   }).catch(e=>{routeCommercialReferencePromise=null;throw e;});
   return routeCommercialReferencePromise;
 }
-function activationArterialRouteDecision({referenceFetchFailed=false,referenceAvailable=false,blockKnown=false,blockIncludes=null,siteIncludes=false,candidateCount=0}={}){
-  if(blockIncludes===true)return {status:'PASS',path:'역세권활성화 전용 가로구역 내 판정모형 노선형 상업지역 확인'};
-  if(siteIncludes===true)return {status:'PASS',path:'대상지 자체가 판정모형 노선형 상업지역 참조도형에 포함'};
-  if(referenceFetchFailed||!referenceAvailable)return {status:'REVIEW',path:'노선형 상업지역 판정용 참조도형 미확보 · 자동판정 확인불가'};
-  if(!blockKnown)return {status:'REVIEW',path:candidateCount>0?'인접 판정모형 참조도형 확인 · 역세권활성화 전용 가로구역 연계 대기':'판정모형 참조도형 확인 완료 · 역세권활성화 전용 가로구역 연계 대기'};
-  if(candidateCount>0)return {status:'FAIL',path:'판정모형 참조도형은 인접하나 대상지·가로구역에 포함되지 않음'};
-  return {status:'FAIL',path:'판정모형 노선형 상업지역 참조도형상 대상지·가로구역 포함 확인되지 않음'};
+const ROUTE_COMMERCIAL_TOPOLOGY_TOLERANCE_M=2;
+function activationReferenceFeatureKey(f,index=0){return String(f?.id??f?.properties?.model_ref_id??`route-ref-${index}`);}
+function activationReferenceRelation(containers,referenceFeatures,toleranceM=ROUTE_COMMERCIAL_TOPOLOGY_TOLERANCE_M){
+  const exactRefs=[],topologyRefs=[];let exactAreaM2=0;
+  const sources=(containers||[]).map(x=>x?.type==='Feature'?x:(x?.geometry?turf.feature(x.geometry,x.properties||{}):null)).filter(Boolean);
+  for(const [ri,ref0] of (referenceFeatures||[]).entries()){
+    if(!ref0?.geometry)continue;
+    const ref=ref0.type==='Feature'?ref0:turf.feature(ref0.geometry,ref0.properties||{});
+    let exact=false,near=false,area=0;
+    for(const src of sources){
+      try{
+        if(turf.booleanIntersects(src,ref)){
+          const inter=turf.intersect(src,ref),a=inter?Number(turf.area(inter)||0):0;
+          if(a>=0.5){exact=true;area+=a;continue;}
+        }
+      }catch(e){}
+      if(!exact){
+        try{const buffered=turf.buffer(src,Math.max(.1,Number(toleranceM)||2),{units:'meters'});if(buffered&&turf.booleanIntersects(buffered,ref))near=true;}catch(e){}
+      }
+    }
+    if(exact){exactRefs.push(ref0);exactAreaM2+=area;}
+    else if(near)topologyRefs.push(ref0);
+  }
+  return {exact:exactRefs.length>0&&exactAreaM2>=0.5,topology:topologyRefs.length>0,effective:(exactRefs.length>0&&exactAreaM2>=0.5)||topologyRefs.length>0,exact_area_m2:exactAreaM2,exact_refs:exactRefs,topology_refs:topologyRefs,tolerance_m:Number(toleranceM)||2};
+}
+function activationRoadsideReferenceRelation(site,referenceFeatures,roads,toleranceM=ROUTE_COMMERCIAL_TOPOLOGY_TOLERANCE_M){
+  const matches=[];const siteCenter=turf.centroid(site);
+  for(const [roadIndex,road] of (roads||[]).entries()){
+    const width=Number(road?.properties?._linear_width_m);
+    if(!Number.isFinite(width)||width<=0)continue;
+    let corridor=null,local=null;
+    try{
+      corridor=turf.buffer(road,width/2+Math.max(.1,Number(toleranceM)||2),{units:'meters'});
+      local=turf.buffer(site,Math.max(12,width+2*Math.max(.1,Number(toleranceM)||2)),{units:'meters'});
+      if(!corridor||!local||!turf.booleanIntersects(site,corridor))continue;
+    }catch(e){continue;}
+    const siteSide=roadSideOfPoint(road,siteCenter);
+    if(!siteSide)continue;
+    for(const [refIndex,ref] of (referenceFeatures||[]).entries()){
+      try{
+        if(!ref?.geometry||!turf.booleanIntersects(ref,corridor)||!turf.booleanIntersects(ref,local))continue;
+        const refSide=roadSideOfPoint(road,turf.centroid(ref));
+        if(!refSide||refSide!==siteSide)continue;
+        matches.push({road_key:road.properties?._linear_road_key||activationRoadSegmentKey(road,roadIndex),road_name:road.properties?._linear_road_name||activationLinearRoadName(road)||'도로명 미확인',road_width_m:width,reference_key:activationReferenceFeatureKey(ref,refIndex),side:siteSide});
+      }catch(e){}
+    }
+  }
+  const uniq=[];const seen=new Set();for(const x of matches){const k=`${x.road_key}|${x.reference_key}`;if(seen.has(k))continue;seen.add(k);uniq.push(x);}
+  return {match:uniq.length>0,matches:uniq,tolerance_m:Number(toleranceM)||2};
+}
+function activationArterialRouteDecision({referenceFetchFailed=false,referenceAvailable=false,blockKnown=false,blockIncludes=null,blockExact=false,blockTopology=false,siteIncludes=false,siteExact=false,siteTopology=false,roadsideIncludes=false,roadContextKnown=true,candidateCount=0}={}){
+  if(blockExact===true)return {status:'PASS',path:'역세권활성화 전용 가로구역 내 사용자확정 노선상업 참조도형 확인'};
+  if(siteExact===true)return {status:'PASS',path:'대상지 내 사용자확정 노선상업 참조도형 확인'};
+  if(blockTopology===true)return {status:'PASS',path:`가로구역-사용자확정 노선상업 참조도형 경계오차 ${ROUTE_COMMERCIAL_TOPOLOGY_TOLERANCE_M}m 보정 후 연속관계 확인`};
+  if(siteTopology===true)return {status:'PASS',path:`대상지-사용자확정 노선상업 참조도형 경계오차 ${ROUTE_COMMERCIAL_TOPOLOGY_TOLERANCE_M}m 보정 후 연속관계 확인`};
+  if(roadsideIncludes===true)return {status:'PASS',path:`사용자확정 노선상업 참조도형과 동일 도로측 공간관계 확인 · ROAD_BT 실제폭원 + ${ROUTE_COMMERCIAL_TOPOLOGY_TOLERANCE_M}m topology 보정`};
+  if(blockIncludes===true)return {status:'PASS',path:'역세권활성화 전용 가로구역 내 사용자확정 노선상업 참조도형 확인'};
+  if(siteIncludes===true)return {status:'PASS',path:'대상지 내 사용자확정 노선상업 참조도형 확인'};
+  if(referenceFetchFailed||!referenceAvailable)return {status:'REVIEW',path:'사용자확정 노선상업 참조도형 미확보·0건·조회실패 · 자동판정 확인불가'};
+  if(!blockKnown)return {status:'REVIEW',path:candidateCount>0?'인접 사용자확정 노선상업 참조도형 확인 · 역세권활성화 전용 가로구역 연계 대기':'노선상업 참조자료 정상 · 역세권활성화 전용 가로구역 연계 대기'};
+  if(!roadContextKnown&&candidateCount>0)return {status:'REVIEW',path:'인접 노선상업 참조도형은 있으나 도로 문맥자료 조회실패 · FAIL 확정 보류'};
+  if(candidateCount>0)return {status:'FAIL',path:'사용자확정 노선상업 참조도형은 주변에 있으나 대상지·가로구역·동일 도로측 관계가 확인되지 않음'};
+  return {status:'FAIL',path:'사용자확정 노선상업 참조도형상 대상지·가로구역 포함 확인되지 않음'};
 }
 async function analyzeActivationArterial(){
   if(!activeGeometry)return;
@@ -5715,106 +5771,69 @@ async function analyzeActivationArterial(){
     const [referenceRes,roadRes]=await Promise.allSettled([loadRouteCommercialReference(),roadCandidate]);
     const reference=referenceRes.status==='fulfilled'?(referenceRes.value||{}):{};
     const referenceMeta=reference.metadata||{};
-    const referenceAvailable=referenceRes.status==='fulfilled'&&referenceMeta.available!==false;
+    const referenceFeatures=Array.isArray(reference.features)?reference.features:[];
+    const referenceAvailable=referenceRes.status==='fulfilled'&&referenceMeta.available!==false&&referenceFeatures.length>0;
     if(referenceRes.status!=='fulfilled')activationArterialAnalysis.errors.push({id:'route_commercial_model',error:String(referenceRes.reason||'노선상업 참조도형 조회 실패')});
+    else if(!referenceFeatures.length)activationArterialAnalysis.errors.push({id:'route_commercial_model',error:'노선상업 참조도형 0건 · FAIL 확정 금지'});
     const roads=roadRes.status==='fulfilled'?(roadRes.value?.features||[]):[];
-    if(roadRes.status!=='fulfilled')activationArterialAnalysis.warnings.push(`도로 문맥자료 조회 실패: ${String(roadRes.reason||'TL_SPRD_MANAGE 조회 실패')}`);
+    const roadContextKnown=roadRes.status==='fulfilled';
+    if(!roadContextKnown)activationArterialAnalysis.warnings.push(`도로 문맥자료 조회 실패: ${String(roadRes.reason||'TL_SPRD_MANAGE 조회 실패')}`);
     const targets=[];let namedRoadFeatures=0;
     for(const [index,rf] of roads.entries()){
-      const name=activationLinearRoadName(rf);
-      if(name)namedRoadFeatures+=1;
+      const name=activationLinearRoadName(rf);if(name)namedRoadFeatures+=1;
       const f=cloneFeature(rf),w=cleanNum(pickPropCI(f.properties||{},['ROAD_BT','ROAD_WIDTH','ROAD_W','WIDTH']));
       f.properties=Object.assign({},f.properties||{},{_linear_road_name:name||'도로명 미확인',_linear_road_key:activationRoadSegmentKey(f,index),_linear_width_m:w});targets.push(f);
     }
     const candidates=[];
     if(referenceAvailable){
-      for(const rf0 of reference.features||[]){
+      for(const rf0 of referenceFeatures){
         try{
           if(!rf0?.geometry||!turf.booleanIntersects(rf0,searchFeature))continue;
-          const f=cloneFeature(rf0);
-          f.properties=Object.assign({},f.properties||{},{
-            _linear_zone_name:'노선형 상업지역 판정용 참조도형',
-            _linear_model_reference:true,
-            _linear_source_type:'MODEL_REFERENCE'
-          });
-          candidates.push(f);
+          const f=cloneFeature(rf0);f.properties=Object.assign({},f.properties||{},{_linear_zone_name:'노선형 상업지역 판정용 참조도형',_linear_model_reference:true,_linear_source_type:'MODEL_REFERENCE'});candidates.push(f);
         }catch(e){}
       }
     }
+    const siteRel=activationReferenceRelation([site],candidates,ROUTE_COMMERCIAL_TOPOLOGY_TOLERANCE_M);
     const overlaps=[];let overlapArea=0;
-    for(const zf of candidates){
-      try{const x=turf.intersect(site,zf);if(!x)continue;const a=turf.area(x);if(a<0.5)continue;x.properties=Object.assign({},zf.properties||{},{_linear_overlap_m2:a});overlaps.push(x);overlapArea+=a;}catch(e){}
-    }
-    let blockIncludes=null,blockOverlap=0,blockFeature=null;
-    const activationBlock=schemeStreetBlockAnalysis.activation;
-    const activationBlocks=(activationBlock?.blockFeatures||[]).filter(f=>f?.geometry);
-    if(activationBlocks.length){
-      blockFeature={type:'FeatureCollection',features:activationBlocks.map(cloneFeature)};
-      const blockRefs=(reference.features||[]).filter(f=>{
-        try{return activationBlocks.some(b=>turf.booleanIntersects(f,turf.feature(b.geometry,b.properties||{})));}catch(e){return false;}
-      });
-      for(const rawBlock of activationBlocks){
-        const bf=turf.feature(rawBlock.geometry,rawBlock.properties||{});
-        for(const zf of blockRefs){try{const x=turf.intersect(bf,zf);if(x)blockOverlap+=turf.area(x);}catch(e){}}
-      }
-      blockIncludes=blockOverlap>=0.5;
-      const seen=new Set(candidates.map(f=>String(f.id??f.properties?.model_ref_id??'')));
-      for(const zf0 of blockRefs){
-        const key=String(zf0.id??zf0.properties?.model_ref_id??'');
-        if(key&&seen.has(key))continue;
-        const zf=cloneFeature(zf0);zf.properties=Object.assign({},zf.properties||{},{_linear_zone_name:'노선형 상업지역 판정용 참조도형',_linear_model_reference:true,_linear_source_type:'MODEL_REFERENCE'});
-        candidates.push(zf);if(key)seen.add(key);
+    for(const zf of candidates){try{const x=turf.intersect(site,zf);if(!x)continue;const a=turf.area(x);if(a<0.5)continue;x.properties=Object.assign({},zf.properties||{},{_linear_overlap_m2:a});overlaps.push(x);overlapArea+=a;}catch(e){}}
+    let blockFeature=null;const activationBlock=schemeStreetBlockAnalysis.activation;const activationBlocks=(activationBlock?.blockFeatures||[]).filter(f=>f?.geometry);
+    const blockSources=activationBlocks.map(raw=>turf.feature(raw.geometry,raw.properties||{}));
+    const blockRel=referenceAvailable?activationReferenceRelation(blockSources,referenceFeatures,ROUTE_COMMERCIAL_TOPOLOGY_TOLERANCE_M):{exact:false,topology:false,effective:false,exact_area_m2:0,exact_refs:[],topology_refs:[]};
+    if(activationBlocks.length)blockFeature={type:'FeatureCollection',features:activationBlocks.map(cloneFeature)};
+    const blockRefs=[...(blockRel.exact_refs||[]),...(blockRel.topology_refs||[])];
+    if(blockRefs.length){
+      const seen=new Set(candidates.map((f,i)=>activationReferenceFeatureKey(f,i)));
+      for(const [i,zf0] of blockRefs.entries()){
+        const key=activationReferenceFeatureKey(zf0,i);if(seen.has(key))continue;
+        const zf=cloneFeature(zf0);zf.properties=Object.assign({},zf.properties||{},{_linear_zone_name:'노선형 상업지역 판정용 참조도형',_linear_model_reference:true,_linear_source_type:'MODEL_REFERENCE'});candidates.push(zf);seen.add(key);
       }
     }
-    const siteIncludes=overlapArea>=0.5,blockKnown=activationBlocks.length>0;
-    const referenceFetchFailed=referenceRes.status!=='fulfilled'||!referenceAvailable;
-    const routeDecision=activationArterialRouteDecision({referenceFetchFailed,referenceAvailable,blockKnown,blockIncludes,siteIncludes,candidateCount:candidates.length});
-    activationArterialAnalysis.roads=targets;activationArterialAnalysis.commercialZones=candidates;activationArterialAnalysis.siteOverlapFeatures=overlaps;activationArterialAnalysis.siteOverlapM2=overlapArea;activationArterialAnalysis.siteOverlapPct=overlapArea/siteArea*100;activationArterialAnalysis.siteIncludes=siteIncludes;activationArterialAnalysis.blockIncludes=blockIncludes;activationArterialAnalysis.blockOverlapM2=blockKnown?blockOverlap:null;activationArterialAnalysis.blockFeature=blockFeature;activationArterialAnalysis.stationBufferFeature=streetBlockApplicableStationBuffer(Number(stationAnalysis.activationRange));activationArterialAnalysis.routeStatus=routeDecision.status;activationArterialAnalysis.routeConditional=false;activationArterialAnalysis.path=routeDecision.path;activationArterialAnalysis.status=referenceFetchFailed?'partial':'resolved';activationArterialAnalysis.metadata={search_radius_m:220,source_road_features:roads.length,named_road_features:namedRoadFeatures,commercial_candidate_features:candidates.length,shape_filtered_out_count:0,both_sides_candidate_count:0,site_overlap_features:overlaps.length,block_authoritative:blockKnown,road_context_fetch_status:roadRes.status,reference_fetch_status:referenceRes.status,source_fetch_failed:referenceFetchFailed,method:'model_reference_polygon_intersection',source_type:'MODEL_REFERENCE',reference_name:referenceMeta.reference_name||'노선형 상업지역 판정용 참조도형',reference_source_file:referenceMeta.source_file||'',reference_source_crs:referenceMeta.source_crs||'',reference_total_features:Number((reference.features||[]).length||0),legal_source:false,model_use:referenceMeta.model_use||'역세권활성화 간선가로형 검토 전용'};activationArterialAnalysis.loaded=true;
-  }catch(e){activationArterialAnalysis.status='error';activationArterialAnalysis.errors.push({id:'activation_arterial',error:String(e.message||e)});activationArterialAnalysis.routeStatus='REVIEW';activationArterialAnalysis.path='노선형 상업지역 판정모형 분석 오류 · 자동판정 확인불가';activationArterialAnalysis.metadata=Object.assign({},activationArterialAnalysis.metadata||{},{source_fetch_failed:true,exception:true,source_type:'MODEL_REFERENCE'});activationArterialAnalysis.loaded=true;}
+    const roadsideRel=referenceAvailable?activationRoadsideReferenceRelation(site,candidates,targets,ROUTE_COMMERCIAL_TOPOLOGY_TOLERANCE_M):{match:false,matches:[]};
+    const siteIncludes=siteRel.effective===true,blockIncludes=blockRel.effective===true,blockKnown=activationBlocks.length>0;
+    const referenceUnavailable=referenceRes.status!=='fulfilled'||!referenceAvailable;
+    const routeDecision=activationArterialRouteDecision({referenceFetchFailed:referenceUnavailable,referenceAvailable,blockKnown,blockIncludes,blockExact:blockRel.exact,blockTopology:blockRel.topology,siteIncludes,siteExact:siteRel.exact,siteTopology:siteRel.topology,roadsideIncludes:roadsideRel.match,roadContextKnown,candidateCount:candidates.length});
+    activationArterialAnalysis.roads=targets;activationArterialAnalysis.commercialZones=candidates;activationArterialAnalysis.siteOverlapFeatures=overlaps;activationArterialAnalysis.siteOverlapM2=overlapArea;activationArterialAnalysis.siteOverlapPct=overlapArea/siteArea*100;activationArterialAnalysis.siteIncludes=siteIncludes;activationArterialAnalysis.blockIncludes=blockIncludes;activationArterialAnalysis.blockOverlapM2=blockKnown?blockRel.exact_area_m2:null;activationArterialAnalysis.blockFeature=blockFeature;activationArterialAnalysis.stationBufferFeature=streetBlockApplicableStationBuffer(Number(stationAnalysis.activationRange));activationArterialAnalysis.routeStatus=routeDecision.status;activationArterialAnalysis.routeConditional=false;activationArterialAnalysis.path=routeDecision.path;activationArterialAnalysis.status=referenceUnavailable?'partial':'resolved';
+    activationArterialAnalysis.metadata={search_radius_m:220,source_road_features:roads.length,named_road_features:namedRoadFeatures,commercial_candidate_features:candidates.length,site_overlap_features:overlaps.length,site_exact_includes:siteRel.exact===true,site_topology_includes:siteRel.topology===true,block_exact_includes:blockRel.exact===true,block_topology_includes:blockRel.topology===true,roadside_reference_match:roadsideRel.match===true,roadside_reference_matches:roadsideRel.matches||[],topology_tolerance_m:ROUTE_COMMERCIAL_TOPOLOGY_TOLERANCE_M,block_authoritative:blockKnown,road_context_known:roadContextKnown,road_context_fetch_status:roadRes.status,reference_fetch_status:referenceRes.status,source_fetch_failed:referenceUnavailable,method:'user_confirmed_model_reference_exact_topology_roadside',source_type:'MODEL_REFERENCE',reference_name:referenceMeta.reference_name||'노선형 상업지역 판정용 참조도형',reference_source_file:referenceMeta.source_file||'',reference_source_crs:referenceMeta.source_crs||'',reference_total_features:referenceFeatures.length,legal_source:false,model_use:referenceMeta.model_use||'역세권활성화 간선가로형 검토 전용'};activationArterialAnalysis.loaded=true;
+  }catch(e){activationArterialAnalysis.status='error';activationArterialAnalysis.errors.push({id:'activation_arterial',error:String(e.message||e)});activationArterialAnalysis.routeStatus='REVIEW';activationArterialAnalysis.path='사용자확정 노선상업 참조도형 분석 오류 · 자동판정 확인불가';activationArterialAnalysis.metadata=Object.assign({},activationArterialAnalysis.metadata||{},{source_fetch_failed:true,exception:true,source_type:'MODEL_REFERENCE'});activationArterialAnalysis.loaded=true;}
   finally{activationArterialAnalysis.loading=false;renderActivationArterialSpatialStatus();try{runAllSchemeChecks();}catch(e){console.error('[activation-arterial] 사업판정 갱신',e);}}
 }
 function updateActivationArterialBlockLink(){
   if(!activationArterialAnalysis.loaded)return;
-  let blockIncludes=null,blockOverlap=0,blockFeature=null;
-  const activationBlock=schemeStreetBlockAnalysis.activation;
-  const activationBlocks=(activationBlock?.blockFeatures||[]).filter(f=>f?.geometry);
-  const referenceFeatures=routeCommercialReferenceCache?.features||[];
-  let blockRefs=[];
-  if(activationBlocks.length&&referenceFeatures.length){
-    try{
-      blockFeature={type:'FeatureCollection',features:activationBlocks.map(cloneFeature)};
-      blockRefs=referenceFeatures.filter(f=>{
-        try{return activationBlocks.some(b=>turf.booleanIntersects(f,turf.feature(b.geometry,b.properties||{})));}catch(e){return false;}
-      });
-      for(const rawBlock of activationBlocks){
-        const bf=turf.feature(rawBlock.geometry,rawBlock.properties||{});
-        for(const zf of blockRefs){try{const x=turf.intersect(bf,zf);if(x)blockOverlap+=turf.area(x);}catch(e){}}
-      }
-      blockIncludes=blockOverlap>=0.5;
-    }catch(e){activationArterialAnalysis.warnings.push('역세권활성화 전용 가로구역-판정모형 노선상업 참조도형 연계 재계산 실패');}
-  }
-  if(blockRefs.length){
-    const seen=new Set((activationArterialAnalysis.commercialZones||[]).map(f=>String(f.id??f.properties?.model_ref_id??'')));
-    for(const zf0 of blockRefs){
-      const key=String(zf0.id??zf0.properties?.model_ref_id??'');
-      if(key&&seen.has(key))continue;
-      const zf=cloneFeature(zf0);zf.properties=Object.assign({},zf.properties||{},{_linear_zone_name:'노선형 상업지역 판정용 참조도형',_linear_model_reference:true,_linear_source_type:'MODEL_REFERENCE'});
-      activationArterialAnalysis.commercialZones.push(zf);if(key)seen.add(key);
-    }
-  }
-  activationArterialAnalysis.blockFeature=blockFeature;activationArterialAnalysis.blockIncludes=blockIncludes;activationArterialAnalysis.blockOverlapM2=activationBlocks.length?blockOverlap:null;
-  const blockAuthoritative=activationBlocks.length>0;
-  activationArterialAnalysis.metadata=Object.assign({},activationArterialAnalysis.metadata||{},{block_authoritative:blockAuthoritative,street_block_source:'scheme_street_block:activation'});
-  activationArterialAnalysis.routeConditional=false;
-  if(activationArterialAnalysis.metadata?.source_fetch_failed===true||activationArterialAnalysis.status==='error'){
-    activationArterialAnalysis.routeStatus='REVIEW';
-    activationArterialAnalysis.path=activationArterialAnalysis.path||'노선형 상업지역 판정용 참조도형 미확보 · 자동판정 확인불가';
-    renderActivationArterialSpatialStatus();return;
-  }
-  const decision=activationArterialRouteDecision({referenceFetchFailed:false,referenceAvailable:true,blockKnown:blockAuthoritative,blockIncludes,siteIncludes:activationArterialAnalysis.siteIncludes===true,candidateCount:(activationArterialAnalysis.commercialZones||[]).length});
-  activationArterialAnalysis.routeStatus=decision.status;activationArterialAnalysis.path=decision.path;
-  renderActivationArterialSpatialStatus();
+  const activationBlock=schemeStreetBlockAnalysis.activation,activationBlocks=(activationBlock?.blockFeatures||[]).filter(f=>f?.geometry),referenceFeatures=routeCommercialReferenceCache?.features||[];
+  const blockSources=activationBlocks.map(raw=>turf.feature(raw.geometry,raw.properties||{}));let blockFeature=null;
+  if(activationBlocks.length)blockFeature={type:'FeatureCollection',features:activationBlocks.map(cloneFeature)};
+  let blockRel={exact:false,topology:false,effective:false,exact_area_m2:0,exact_refs:[],topology_refs:[]};
+  if(activationBlocks.length&&referenceFeatures.length){try{blockRel=activationReferenceRelation(blockSources,referenceFeatures,ROUTE_COMMERCIAL_TOPOLOGY_TOLERANCE_M);}catch(e){activationArterialAnalysis.warnings.push('역세권활성화 전용 가로구역-사용자확정 노선상업 참조도형 연계 재계산 실패');}}
+  const blockRefs=[...(blockRel.exact_refs||[]),...(blockRel.topology_refs||[])];
+  if(blockRefs.length){const seen=new Set((activationArterialAnalysis.commercialZones||[]).map((f,i)=>activationReferenceFeatureKey(f,i)));for(const [i,zf0] of blockRefs.entries()){const key=activationReferenceFeatureKey(zf0,i);if(seen.has(key))continue;const zf=cloneFeature(zf0);zf.properties=Object.assign({},zf.properties||{},{_linear_zone_name:'노선형 상업지역 판정용 참조도형',_linear_model_reference:true,_linear_source_type:'MODEL_REFERENCE'});activationArterialAnalysis.commercialZones.push(zf);seen.add(key);}}
+  activationArterialAnalysis.blockFeature=blockFeature;activationArterialAnalysis.blockIncludes=blockRel.effective===true;activationArterialAnalysis.blockOverlapM2=activationBlocks.length?blockRel.exact_area_m2:null;
+  const blockAuthoritative=activationBlocks.length>0,meta=activationArterialAnalysis.metadata||{};
+  activationArterialAnalysis.metadata=Object.assign({},meta,{block_authoritative:blockAuthoritative,block_exact_includes:blockRel.exact===true,block_topology_includes:blockRel.topology===true,topology_tolerance_m:ROUTE_COMMERCIAL_TOPOLOGY_TOLERANCE_M,street_block_source:'scheme_street_block:activation'});activationArterialAnalysis.routeConditional=false;
+  if(meta.source_fetch_failed===true||activationArterialAnalysis.status==='error'||!referenceFeatures.length){activationArterialAnalysis.routeStatus='REVIEW';activationArterialAnalysis.path=activationArterialAnalysis.path||'사용자확정 노선상업 참조도형 미확보 · 자동판정 확인불가';renderActivationArterialSpatialStatus();return;}
+  const decision=activationArterialRouteDecision({referenceFetchFailed:false,referenceAvailable:true,blockKnown:blockAuthoritative,blockIncludes:blockRel.effective===true,blockExact:blockRel.exact===true,blockTopology:blockRel.topology===true,siteIncludes:activationArterialAnalysis.siteIncludes===true,siteExact:meta.site_exact_includes===true,siteTopology:meta.site_topology_includes===true,roadsideIncludes:meta.roadside_reference_match===true,roadContextKnown:meta.road_context_known!==false,candidateCount:(activationArterialAnalysis.commercialZones||[]).length});
+  activationArterialAnalysis.routeStatus=decision.status;activationArterialAnalysis.path=decision.path;renderActivationArterialSpatialStatus();
 }
+
 function renderActivationArterialSpatialStatus(){
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
   ccActivationArterialContext.clearLayers();ccActivationArterialStation.clearLayers();ccActivationArterialZone.clearLayers();ccActivationArterialOverlap.clearLayers();ccActivationArterialRoad.clearLayers();ccActivationArterialBlock.clearLayers();ccActivationArterialSite.clearLayers();
@@ -5833,10 +5852,10 @@ function renderActivationArterialSpatialStatus(){
   set('spActivationArterialBothSides',activationArterialAnalysis.loaded?'MODEL_REFERENCE · 내부 판정모형':'-');
   set('spActivationArterialArea',activationArterialAnalysis.siteOverlapM2==null?'-':`${Number(activationArterialAnalysis.siteOverlapM2).toLocaleString('ko-KR',{maximumFractionDigits:0})}㎡`);
   set('spActivationArterialPct',activationArterialAnalysis.siteOverlapPct==null?'-':`${Number(activationArterialAnalysis.siteOverlapPct).toFixed(1)}%`);
-  set('spActivationArterialBlock',activationArterialAnalysis.blockIncludes==null?'가로구역 연계 대기':activationArterialAnalysis.blockIncludes?`포함${activationArterialAnalysis.blockOverlapM2==null?'':` · ${Number(activationArterialAnalysis.blockOverlapM2).toLocaleString('ko-KR',{maximumFractionDigits:0})}㎡`}`:'미포함');
+  set('spActivationArterialBlock',activationArterialAnalysis.blockIncludes==null?'가로구역 연계 대기':activationArterialAnalysis.blockIncludes?`${activationArterialAnalysis.metadata?.block_topology_includes?'포함(경계보정)':'포함'}${activationArterialAnalysis.blockOverlapM2==null?'':` · ${Number(activationArterialAnalysis.blockOverlapM2).toLocaleString('ko-KR',{maximumFractionDigits:0})}㎡`}`:'미포함');
   set('spActivationArterialPath',activationArterialAnalysis.path||'-');
   const state=document.getElementById('spActivationArterialState');if(state)state.textContent=activationArterialAnalysis.loading?'분석 중':activationArterialAnalysis.routeStatus==='PASS'?'충족':activationArterialAnalysis.routeStatus==='REVIEW'?'확인필요':activationArterialAnalysis.loaded?'미충족':'자동분석 전';
-  const legend=document.getElementById('spActivationArterialLegend');if(legend){const bits=[`<span>판정모형 참조도형 ${(activationArterialAnalysis.commercialZones||[]).length}건</span>`,`<span>전체 참조도형 ${Number(activationArterialAnalysis.metadata?.reference_total_features||0)}건</span>`,`<span>${escHtml(activationArterialAnalysis.metadata?.reference_source_crs||'좌표계 확인필요')}</span>`,`<span>공식 법정도형 아님 · 역세권활성화 간선가로형 전용</span>`];if(activationArterialAnalysis.warnings?.length)bits.push(`<span>참고오류 ${activationArterialAnalysis.warnings.length}건</span>`);if(activationArterialAnalysis.errors?.length)bits.push(`<span>자료오류 ${activationArterialAnalysis.errors.length}건 · 결과서 단서 참조</span>`);legend.innerHTML=bits.join('');}
+  const legend=document.getElementById('spActivationArterialLegend');if(legend){const bits=[`<span>판정모형 참조도형 ${(activationArterialAnalysis.commercialZones||[]).length}건</span>`,`<span>전체 참조도형 ${Number(activationArterialAnalysis.metadata?.reference_total_features||0)}건</span>`,`<span>${escHtml(activationArterialAnalysis.metadata?.reference_source_crs||'좌표계 확인필요')}</span>`,`<span>사용자 DXF 확정자료 · 내부 판정모형 · 간선가로형 전용</span>`,`<span>topology 보정 ${Number(activationArterialAnalysis.metadata?.topology_tolerance_m||0)}m${activationArterialAnalysis.metadata?.roadside_reference_match?' · 동일 도로측 일치':''}</span>`];if(activationArterialAnalysis.warnings?.length)bits.push(`<span>참고오류 ${activationArterialAnalysis.warnings.length}건</span>`);if(activationArterialAnalysis.errors?.length)bits.push(`<span>자료오류 ${activationArterialAnalysis.errors.length}건 · 결과서 단서 참조</span>`);legend.innerHTML=bits.join('');}
   renderWidthRoadSchemeSummary();
   try{let b=null;for(const l of [ccActivationArterialZone,ccActivationArterialRoad,ccActivationArterialSite]){if(!l.getLayers().length)continue;const lb=l.getBounds();if(lb.isValid())b=b?b.extend(lb):lb;}if(b?.isValid())ccActivationArterialMini.fitBounds(b.pad(.12),{animate:false,maxZoom:18});setTimeout(()=>ccActivationArterialMini.invalidateSize(false),0);}catch(e){}
 }
@@ -9239,6 +9258,7 @@ const RULE_SOURCE_CATALOG={
   INNOVATION:{type:'법률',title:'도심 복합개발 지원에 관한 법률',effective:'2026-07-01',locator:'제8조·제14조·제37조·제38조',url:'https://www.law.go.kr/LSW/lsInfoP.do?lsId=014616',verified:true},
   INNOVATION_ORD:{type:'조례',title:'서울특별시 도심 복합개발 지원에 관한 조례',effective:'2026-01-05',locator:'제2조·제4조·제5조',url:'https://www.law.go.kr/LSW/ordinInfoP.do?ordinSeq=2099889',verified:true},
   INNOVATION_RULE:{type:'시행규칙',title:'서울특별시 도심 복합개발 지원에 관한 조례 시행규칙',effective:'2026-06-01',locator:'제2조·제3조·제4조',url:'https://www.law.go.kr/LSW/ordinInfoP.do?ordinSeq=2130735',verified:true},
+  INNOVATION_GROWTH_OP:{type:'서울시 운영기준',title:'서울특별시 성장거점형 복합개발사업 운영기준',effective:'2026-06-01',locator:'제3장 제1절~제3절 용적률·공공기여',url:'',verified:true},
   GROWTH:{type:'운영기준',title:'서울특별시 성장잠재권 활성화사업 운영기준',effective:'2026-05-28',locator:'제2장 사업유형·대상지 / 제3장 계획수립 / 제4장 공공기여',url:'https://www.seoul.go.kr/news/news_report.do?nttNo=458724',verified:true},
   SHARED:{type:'운영기준',title:'민간토지 활용 공공주택 건립 운영기준(상생주택)',effective:'2025-03-18 · 공식 페이지 2026-04-02 확인',locator:'제2장 제1절·제3장 제1절',url:'https://news.seoul.go.kr/citybuild/archives/517910',verified:true},
   HOUSING_ACT:{type:'법률·시행령',title:'주택법 제15조 및 주택법 시행령 제27조',effective:'주택법 시행령 2026-08-04',locator:'사업계획승인 대상',url:'https://www.law.go.kr/%EB%B2%95%EB%A0%B9/%EC%A3%BC%ED%83%9D%EB%B2%95',verified:true},
@@ -10490,7 +10510,7 @@ function activationSpatialFacts(store){
         candidate_count:stationCandidates.length,candidates:stationCandidates.map(x=>({name:x.name,distance_m:x.distance_m,line_count:x.line_count,transfer:x.transfer,threshold_m:x.activation_threshold_m,coverage_pct:stationCoverageValue(x,x.activation_threshold_m),block_share_pct:x.activation_block?.max_share_pct??null,block_known:x.activation_block?.known===true,block_authoritative:x.activation_block?.authoritative===true,status:x.activation_status,note:x.activation_note}))},
       arterial:{linear_commercial:c.activationLinearCommercial,evidence:store.site.spatial_evidence?.roads?.activation||null,spatial:store.site.spatial_evidence?.activation_arterial||null,
         block_includes:store.site.spatial_evidence?.activation_arterial?.block_includes??c.activationLinearCommercialBlockIncludes,block_authoritative:streetBlockRelationFromStore(store,'activation').known,site_includes:store.site.spatial_evidence?.activation_arterial?.site_includes??c.activationLinearCommercialSiteIncludes,site_overlap_m2:store.site.spatial_evidence?.activation_arterial?.site_overlap_m2??c.activationLinearCommercialOverlapM2,site_overlap_pct:store.site.spatial_evidence?.activation_arterial?.site_overlap_pct??c.activationLinearCommercialOverlapPct,auto:store.site.spatial_evidence?.activation_arterial?.loaded===true,path:store.site.spatial_evidence?.activation_arterial?.path||c.activationLinearCommercialPath||'',
-        note:c.activationLinearCommercial===true?`${c.activationLinearCommercialAuto?'AUTO · ':''}노선형 상업지역 포함${c.activationLinearCommercialOverlapPct!=null?' · 대상지 '+Number(c.activationLinearCommercialOverlapPct).toFixed(1)+'%':''}${c.activationLinearCommercialPath?' · '+c.activationLinearCommercialPath:''}`:c.activationLinearCommercial===false?`${c.activationLinearCommercialAuto?'AUTO · ':''}노선형 상업지역 미포함`:'노선형 상업지역 자동도면은 생성되었으나 가로구역 연계가 미확정'}
+        note:c.activationLinearCommercial===true?`${c.activationLinearCommercialAuto?'AUTO · ':''}노선형 상업지역 포함${c.activationLinearCommercialOverlapPct!=null?' · 대상지 '+Number(c.activationLinearCommercialOverlapPct).toFixed(1)+'%':''}${c.activationLinearCommercialPath?' · '+c.activationLinearCommercialPath:''}`:c.activationLinearCommercial===false?`${c.activationLinearCommercialAuto?'AUTO · ':''}노선형 상업지역 미포함${c.activationLinearCommercialPath?' · '+c.activationLinearCommercialPath:''}`:`노선형 상업지역 참조도형 판정 미확정${c.activationLinearCommercialPath?' · '+c.activationLinearCommercialPath:''}`}
     },
     zoning:{current:c.zoning||'',allowed:['제2종일반주거(7층)','제2종일반주거','제3종일반주거','준주거','근린상업','일반상업'].includes(c.zoning||'')},
     road:store.site.road,
@@ -10517,8 +10537,8 @@ function activationSpatialFacts(store){
       {criterionStatus:stationDecision.block.status,criterionRule:'승강장 250/350m 역세권 범위가 해당 가로구역의 1/2 이상 걸치면 일반경로 / 1/2 미만은 간선가로 접면 또는 정형화 필요성 인정 시 위원회 심의',criterionNote:stationDecision.block.note,conditional:stationDecision.block.conditional,caveat:stationDecision.block.conditional?stationDecision.block.note:'',criterionItem:'가로구역 포함'}),
     spatialFactRow('역세권 범위 판정',stationDecision.overall.path,stationDecision.overall.status==='REVIEW'?'REVIEW':'CONFIRMED','승강장 경계 직접거리로 역세권 범위를 판정하고 가로구역 포함률은 별도 항목으로 검토',
       {criterionStatus:stationDecision.overall.status,criterionRule:'승강장 경계 250/350m 직접거리 기준',criterionNote:stationDecision.overall.note,conditional:stationDecision.overall.conditional,caveat:stationDecision.overall.conditional?stationDecision.overall.note:'',criterionItem:'역세권',decisionPath:stationDecision.overall.path}),
-    spatialFactRow('노선형 상업지역 포함',c.activationLinearCommercial===true?`포함${c.activationLinearCommercialOverlapPct!=null?' · 대상지 '+Number(c.activationLinearCommercialOverlapPct).toFixed(1)+'%':''}`:c.activationLinearCommercial===false?'미포함':'확인필요',store.site.spatial_evidence?.activation_arterial?.route_status==='REVIEW'?'REVIEW':store.site.spatial_evidence?.activation_arterial?.loaded?'CONFIRMED':'REVIEW','MODEL_REFERENCE · 노선형 상업지역 판정용 참조도형 + 대상지·가로구역 공간관계',
-      {criterionStatus:c.activationLinearCommercial===true?'PASS':c.activationLinearCommercial===false?'FAIL':'REVIEW',criterionRule:'역세권 외 노선형 상업지역을 포함한 가로구역',criterionNote:c.activationLinearCommercialPath||'판정모형 참조도형 자동검토에서 충족 사실 미확인',criterionItem:'간선도로변'}),
+    spatialFactRow('노선형 상업지역 포함',c.activationLinearCommercial===true?`포함${c.activationLinearCommercialOverlapPct!=null?' · 대상지 '+Number(c.activationLinearCommercialOverlapPct).toFixed(1)+'%':''}`:c.activationLinearCommercial===false?'미포함':'확인필요',store.site.spatial_evidence?.activation_arterial?.route_status==='REVIEW'?'REVIEW':store.site.spatial_evidence?.activation_arterial?.loaded?'CONFIRMED':'REVIEW','사용자 제공 노선상업 재검토.dxf 변환 MODEL_REFERENCE · 대상지·역세권활성화 가로구역·동일 도로측 공간관계',
+      {criterionStatus:c.activationLinearCommercial===true?'PASS':c.activationLinearCommercial===false?'FAIL':'REVIEW',criterionRule:'역세권 외 노선형 상업지역을 포함한 가로구역',criterionNote:c.activationLinearCommercialPath||'사용자 확정 노선상업 참조도형 자동검토 결과 확인 필요',criterionItem:'간선도로변'}),
     spatialFactRow('사전협상 대상요건',c.priorNegotiation==null?'-':c.priorNegotiation?'해당':'비해당',c.priorNegotiation==null?'REVIEW':'CONFIRMED','5,000㎡ 이상 대상지는 협상대상지요건 별도 확인',
       {criterionStatus:priorStatus,criterionRule:'사전협상 협상대상지요건 해당 시 역세권활성화 제외',criterionItem:'사전협상 대상여부'}),
     spatialFactRow('정비구역 현황',renewalType==='auto'?(renewal.loaded?(renewal.overlaps.length?`${renewal.overlaps.length}건 중첩`:'중첩 없음'):'자료 미확인'):renewalType,renewal.loaded||renewalType!=='auto'?'CONFIRMED':'REVIEW','정비구역·정비예정구역·재정비촉진 배제/예외 검토에 사용',
@@ -12330,43 +12350,69 @@ function stationRenewalUpzone(c,name,stationStore=null){
   return {target,profile,eligible,distanceStatus,distanceText,station:{name:stationName,distance_m:dist,candidate_count:rows.length},zone:`${c.zoning||'-'} → ${target||'-'}`,far,contribution:'기존 정률 공공기여 완화 + 임대주택·노인시설·공원 등 시 정책 연계 전략시설 도입 전제(구체량 위원회 결정)'};
 }
 
-function activationContribution(current,target){
-  const map={
-    '제2종일반주거(7층)->제3종일반주거':10,
-    '제2종일반주거->제3종일반주거':10,
-    '제2종일반주거(7층)->준주거':25,
-    '제2종일반주거->준주거':25,
-    '제3종일반주거->준주거':19,
-    '제2종일반주거(7층)->근린상업':33,
-    '제2종일반주거->근린상업':33,
-    '제3종일반주거->근린상업':29,
-    '준주거->근린상업':17,
-    '제2종일반주거(7층)->일반상업':38,
-    '제2종일반주거->일반상업':38,
-    '제3종일반주거->일반상업':34,
-    '준주거->일반상업':25,
-    '근린상업->일반상업':13,
-    '제3종일반주거->중심상업':38,
-    '준주거->중심상업':30,
-    '근린상업->중심상업':20,
-    '일반상업->중심상업':10
-  };
-  return map[`${current}->${target}`]??null;
-}
+// ============================================================
+// 2026-09-15 역세권활성화·성장잠재권 용적률/공공기여 정규화
+// 원칙: 사업방식이 최상위 변수. 두 제도의 룰 객체를 공유하지 않는다.
+// 근거: 역세권 활성화사업 운영기준 2026.04.30. 제3장·제4장
+//       성장잠재권 활성화사업 운영기준 2026.05.28. 제3장·제4장
+// ============================================================
+const ACTIVATION_DENSITY_RULES_20260430=Object.freeze({
+  '제2종일반주거(7층)->제3종일반주거':{base:200,cap:250,pc:10},
+  '제2종일반주거->제3종일반주거':{base:200,cap:250,pc:10},
+  '제2종일반주거(7층)->준주거':{base:200,cap:400,pc:25},
+  '제2종일반주거->준주거':{base:200,cap:400,pc:25},
+  '제3종일반주거->준주거':{base:250,cap:400,pc:19},
+  '제2종일반주거(7층)->근린상업':{base:200,cap:600,capSeoulDowntown:500,pc:33},
+  '제2종일반주거->근린상업':{base:200,cap:600,capSeoulDowntown:500,pc:33},
+  '제3종일반주거->근린상업':{base:250,cap:600,capSeoulDowntown:500,pc:29},
+  '준주거->근린상업':{base:400,cap:600,capSeoulDowntown:500,pc:17},
+  '제2종일반주거(7층)->일반상업':{base:200,cap:800,capSeoulDowntown:600,pc:38},
+  '제2종일반주거->일반상업':{base:200,cap:800,capSeoulDowntown:600,pc:38},
+  '제3종일반주거->일반상업':{base:250,cap:800,capSeoulDowntown:600,pc:34},
+  '준주거->일반상업':{base:400,cap:800,capSeoulDowntown:600,pc:25},
+  '근린상업->일반상업':{base:600,cap:800,capSeoulDowntown:600,pc:13},
+  '제3종일반주거->중심상업':{base:250,cap:1000,capSeoulDowntown:800,pc:38},
+  '준주거->중심상업':{base:400,cap:1000,capSeoulDowntown:800,pc:30},
+  '근린상업->중심상업':{base:600,cap:1000,capSeoulDowntown:800,pc:20},
+  '일반상업->중심상업':{base:800,cap:1000,capSeoulDowntown:800,pc:10}
+});
+const ACTIVATION_FAR_BONUS_20260430=Object.freeze({
+  design_innovation:'특별건축구역 용적률 완화는 미적용 원칙. 도시공간본부 및 디자인혁신 주관부서가 모두 필요성을 인정하는 경우 예외',
+  tourist_accommodation:'관광숙박시설: 상한용적률(별도 계획용적률이 있으면 계획용적률)의 1.3배 이하 · 조례 부칙에 따른 한시 적용',
+  green_building:'ZEB·녹색건축 인증 기준 초과 시 관련 법·서울시 녹색건축물 설계기준에 따른 완화 · ZEB 우선 검토',
+  public_open_space:'운영기준 3-3-12 공개공지 설치 시 지구단위계획 상한용적률 인센티브 준용(법정 의무면적 제외)'
+});
+const ACTIVATION_PC_RELIEF_20260430=Object.freeze({
+  max_relief:'대상지 여건상 곤란하거나 운영기준상 완화요건 해당 시 표준 공공기여율에서 최대 20% 범위까지 완화 가능',
+  tourist_senior:'관광숙박시설 또는 노인복지주택을 용적률 30% 이상 도입 시 차등 완화: 도입 30%는 증가용적률의 40%, 50% 이상은 증가용적률의 30%',
+  low_land_value:'3개년 연속 자치구 표준지 공시지가 평균이 서울시 평균의 60% 이하인 자치구는 지역별 완화 검토',
+  combined:'관광숙박·노인복지주택 완화와 지역별 완화가 중복되면 지역별 완화는 1/2 적용'
+});
+function activationDensityRule(current,target){return ACTIVATION_DENSITY_RULES_20260430[`${current||''}->${target||''}`]||null;}
+function activationContribution(current,target){const r=activationDensityRule(current,target);return r?r.pc:null;}
 function ordinanceFarForZone(z){
   const map={'제1종일반주거':150,'제2종일반주거(7층)':200,'제2종일반주거':200,'제3종일반주거':250,'준주거':400,'근린상업':600,'일반상업':800,'중심상업':1000,'준공업':400,'자연녹지':50};
   return map[z]??null;
 }
+function activationRuleFarText(rule){
+  if(!rule)return '운영기준 3-2-1 용적률표의 직접 적용조합 아님 · 목표 용도지역/변경단계 재확인';
+  const downtown=rule.capSeoulDowntown!=null?` (서울도심 ${rule.capSeoulDowntown}% 이하)`:'';
+  return `기준(허용) ${rule.base}% 이하 · 상한 ${rule.cap}% 이하${downtown} · 계획용적률은 상한 이하에서 위원회 결정`;
+}
 function activationDensity(c){
-  const target=targetOrSuggested(c,'activation');
-  const pc=activationContribution(c.zoning,target);
-  const far=ordinanceFarForZone(target);
+  const target=targetOrSuggested(c,'activation'),rule=activationDensityRule(c.zoning,target);
   return {
-    zone:`${c.zoning||'-'} → ${target||'-'}`,
-    far:far?`상한용적률 ${far}% 이내(변경 후 용도지역 조례용적률, 계획용적률은 위원회 결정)`:'목표 용도지역 선택 필요',
-    contribution:pc!=null?`부지면적 기준 ${pc}% 이상 · 증가용적률의 50% 환산 원칙`:'종상향 경로 선택 시 공공기여율 자동표시'
+    scheme:'activation',source_version:'2026-04-30',zone:`${c.zoning||'-'} → ${target||'-'}`,
+    target_zoning:target||null,rule_valid:!!rule,base_far:rule?.base??null,cap_far:rule?.cap??null,
+    seoul_downtown_cap_far:rule?.capSeoulDowntown??null,public_contribution_pct:rule?.pc??null,
+    far:activationRuleFarText(rule),
+    contribution:rule?`부지면적 기준 ${rule.pc}% 이상 · 증가용적률의 50%에 해당하는 용적률을 부지면적으로 환산`:'변경조합 확정 후 운영기준 4-1-1 표에서 산정',
+    contribution_basis:'증가용적률은 기준(허용)용적률과 상한용적률의 차이가 원칙 · 위원회 인정 시 계획용적률과 기준(허용)용적률의 차이 적용 가능',
+    contribution_relief:ACTIVATION_PC_RELIEF_20260430,
+    bonus_far:ACTIVATION_FAR_BONUS_20260430
   };
 }
+
 function safeDensity(c){
   const target=targetOrSuggested(c,'safe');
   const key=`${c.zoning}->${target}`;
@@ -12430,21 +12476,235 @@ function longtermDensity(c,stationStore=null){
   }
   return {zone:`${c.zoning||'-'} → ${target||'-'}`,far,special700_location_candidate:special700Location,special700_location_rule:'승강장 경계 250m 이내 또는 지역중심 이상 2개 노선 이상 환승역세권 350m 이내',special700_station:special700Station?`${special700Station.name} ${Number(special700Station.distance_m).toFixed(1)}m`:null,special700_condition:'활성화 필요성 및 관련 위원회 인정 필요',contribution:'용도지역 변경 등 완화용적률의 1/2 이상을 부지면적으로 환산 · 장기전세주택 우선 제공'};
 }
-function publicComplexDensity(c,typOverride=null){
+function publicComplexLegalMaxFarForZone(z){
+  const map={
+    '제1종일반주거':200,
+    '제2종일반주거(7층)':250,
+    '제2종일반주거':250,
+    '제3종일반주거':300,
+    '준주거':500,
+    '준공업':400,
+    '근린상업':900,
+    '일반상업':1300,
+    '중심상업':1500,
+    '유통상업':1100
+  };
+  return map[z]??null;
+}
+function publicComplexZoneGroup(z){
+  if(['제1종일반주거','제2종일반주거(7층)','제2종일반주거','제3종일반주거'].includes(z))return 'general_residential';
+  if(z==='준주거')return 'semi_residential';
+  if(z==='준공업')return 'semi_industrial';
+  if(['근린상업','일반상업','중심상업','유통상업'].includes(z))return 'commercial';
+  return 'other';
+}
+function publicComplexHistoricalSpeculationState(c){
+  // 2025-09-07 당시 투기과열지구 여부는 현재 공통 Fact에 연결되어 있지 않으므로
+  // 임의 추정하지 않는다. 향후 공식 이력 Fact가 연결되면 아래 필드 중 하나로 주입한다.
+  const raw=c?.public_complex_non_speculation_20250907 ?? c?.non_speculation_20250907 ?? c?.nonSpeculation20250907 ?? null;
+  if(raw===true||raw==='Y'||raw==='YES'||raw==='NON_SPECULATION')return 'ELIGIBLE';
+  if(raw===false||raw==='N'||raw==='NO'||raw==='SPECULATION')return 'INELIGIBLE';
+  return 'REVIEW';
+}
+function publicComplexTemporaryFarForZone(z){
+  const legal=publicComplexLegalMaxFarForZone(z),group=publicComplexZoneGroup(z);
+  if(legal==null)return null;
+  if(z==='제1종일반주거'||z==='제2종일반주거(7층)'||z==='제2종일반주거')return Math.round(legal*1.2);
+  if(z==='제3종일반주거'||group==='semi_residential')return Math.round(legal*1.4);
+  return null;
+}
+function publicComplexFarProfile(c,typOverride=null){
   const typ=typOverride||effectivePublicComplexType();
-  const rental=typ==='commercial'?'공공임대 15% 이상':'공공임대 10% 이상';
+  const current=c?.zoning||'';
+  const explicitTarget=(c?.targetZoning&&c.targetZoning!==current)?c.targetZoning:null;
+  const finalZone=explicitTarget||current;
+  const currentGroup=publicComplexZoneGroup(current),finalGroup=publicComplexZoneGroup(finalZone);
+  const legal=publicComplexLegalMaxFarForZone(finalZone);
+  const historicalState=publicComplexHistoricalSpeculationState(c);
+  const temporaryFar=(typ==='commercial'||typ==='housing')?publicComplexTemporaryFarForZone(finalZone):null;
+  let zoneRule='',baseFar=null,baseFarText='',nonResidentialRule='',parkingRule='';
+
+  if(typ==='commercial'){
+    zoneRule='준주거지역 또는 상업지역으로 상향하는 것을 원칙';
+    if(finalGroup==='semi_residential'){
+      baseFar=700;
+      baseFarText='준주거지역 700%까지(법적상한 500%의 140%)';
+    }else if(finalGroup==='commercial'&&legal!=null){
+      baseFar=legal;
+      baseFarText=`${finalZone} 법적상한 ${legal}%까지`;
+    }else if(finalGroup==='general_residential'&&legal!=null){
+      baseFar=Math.round(legal*1.2);
+      baseFarText=`일반주거지역 법적상한 ${legal}%의 120% = ${baseFar}%까지`;
+    }else{
+      baseFarText='준주거 또는 상업지역 상향 후 해당 계획기준 적용';
+    }
+    nonResidentialRule='준주거지역은 비주거시설 비율을 확보하지 않을 수 있음 · 상업지역은 비주거시설 용적률 비율 5% 이상';
+    parkingRule='관련 법령상 주차장 설치기준의 1/2 범위에서 완화 가능';
+  }else if(typ==='industrial'){
+    zoneRule='준공업지역 유지 원칙';
+    baseFar=400;
+    baseFarText='준공업지역 법적상한용적률 400%까지';
+    nonResidentialRule='기존 산업시설 비율 10% 미만인 주거지화 지역은 산업시설 비율을 확보하지 않을 수 있음';
+    parkingRule='대중교통 연계대책 수립 + 교통영향평가심의위원회 심의 시 주차장 설치기준 완화 가능';
+  }else{
+    zoneRule='용도지역 상향 가능 · 현 용도지역 유지와 상향 시나리오를 각각 검토';
+    if(explicitTarget){
+      if(finalGroup==='general_residential'&&legal!=null){
+        baseFar=legal;
+        baseFarText=`용도지역 상향 후 ${finalZone} 법적상한 ${legal}%까지`;
+      }else if(finalGroup==='semi_residential'){
+        baseFar=500;
+        baseFarText='용도지역 상향 후 준주거지역 법적상한 500%까지';
+      }else{
+        baseFarText='변경 후 용도지역 계획기준 별도 확인';
+      }
+    }else if(currentGroup==='general_residential'){
+      const curLegal=publicComplexLegalMaxFarForZone(current);
+      baseFar=curLegal==null?null:Math.round(curLegal*1.2);
+      baseFarText=curLegal==null?'현 용도지역 법적상한 확인':`기존 용도지역 유지 · 법적상한 ${curLegal}%의 120% = ${baseFar}%까지`;
+    }else if(currentGroup==='semi_residential'){
+      baseFar=500;
+      baseFarText='준주거지역 법적상한 500%까지';
+    }else{
+      baseFarText='현 용도지역 또는 상향 후 용도지역 기준 확인';
+    }
+    nonResidentialRule='준주거지역에서는 비주거시설 비율을 확보하지 않을 수 있음';
+    parkingRule='대중교통 연계대책 수립 + 교통영향평가심의위원회 심의 시 주차장 설치기준 완화 가능';
+  }
+
+  let temporaryText='';
+  if(typ==='industrial'){
+    temporaryText='제20조의7 제4항 제4호 120%·140% 한시특례 적용대상 아님';
+  }else if(temporaryFar!=null){
+    if(historicalState==='ELIGIBLE')temporaryText=`2025-09-07 당시 비투기과열 확인 · 한시특례 최대 ${temporaryFar}% 적용 가능`;
+    else if(historicalState==='INELIGIBLE')temporaryText='2025-09-07 당시 투기과열지구 · 제4항 제4호 한시특례 미적용';
+    else temporaryText=`2025-09-07 당시 투기과열지구 여부 확인필요 · 비투기과열이면 최대 ${temporaryFar}% 시나리오 가능`;
+  }else{
+    temporaryText='최종 용도지역이 제1·2·3종일반주거 또는 준주거인 경우에만 제4항 제4호 한시특례 검토';
+  }
+
   return {
-    zone:'복합지구계획에서 용도지역·밀도 특례 검토',
-    far:'공공주택특별법상 지구계획을 통한 용적률 완화 가능 · 구체 용적률은 지구계획/업무처리지침 산정',
-    contribution:`공공성 구조: ${rental} + 공공분양 등 공공주택 의무공급 구성`
+    type:typ,currentZone:current,targetZone:explicitTarget,finalZone,
+    zoneRule,baseFar,baseFarText,temporaryFar,temporaryText,historicalState,
+    nonResidentialRule,parkingRule,
+    publicFacilityRule:'무상귀속 공공시설 + 주택법상 기부채납 기반시설 + 공공임대주택·기숙사 등 공공필요시설의 면적을 합산하여 복합지구면적의 15% 이내로 계획하는 것을 원칙',
+    parkGreenRule:'10만㎡ 미만은 공원·녹지 확보의무 면제 · 10만㎡ 이상은 세대당 2㎡ 또는 지구면적 5% 중 큰 면적',
+    note:'15%는 종상향 공공기여율이 아니라 공공시설등 계획면적의 합계 상한 성격의 기준'
   };
 }
-function innovationDensity(c,typ='growth'){
+function publicComplexDensity(c,typOverride=null){
+  const p=publicComplexFarProfile(c,typOverride);
+  const zone=p.targetZone?`${p.currentZone||'-'} → ${p.targetZone}`:`${p.currentZone||'-'} · ${p.zoneRule}`;
+  const far=[p.baseFarText,p.temporaryText].filter(Boolean).join(' / ');
   return {
-    zone:typ==='growth'?'도시혁신구역 지정 및 복합밀도 특례 검토':'현 용도지역 기반 복합개발 특례 검토',
-    far:'국토계획법 시행령 최대한도까지 · 주거지역은 해당 최대한도의 120%, 준주거는 140%까지 완화 가능',
-    contribution:'규제특례 적용 시 기반시설·생활인프라·공공시설·국민주택규모 주택 등 공공기여 · 서울은 필수 기반시설 우선, 일부 현금납부 가능'
+    zone,
+    far,
+    contribution:`공공시설등 계획부담: 복합지구면적 15% 이내 원칙 · ${p.note}`,
+    profile:p
   };
+}
+function publicComplexDensityPlanRowsForPopup(typ,store,vf,rr){
+  const c=store?.common||{},p=publicComplexFarProfile(c,typ);
+  const source=schemeSheetSourceFor('public_complex','용적률·공공성','PUBLIC_COMPLEX_GUIDE','공공주택 업무처리지침 제20조의7');
+  const rows=[];
+  rows.push(popupPlanRow('용도지역 계획',p.targetZone?`${p.currentZone||'-'} → ${p.targetZone}`:p.zoneRule,p.targetZone?'사용자가 선택한 계획 용도지역을 기준으로 세부유형 용적률 특례 산정':'종상향을 임의 확정하지 않고 해당 유형의 용도지역 계획 원칙을 표시',source));
+  rows.push(popupPlanRow('기본 계획가능 용적률',p.baseFarText||'확인 필요',typ==='commercial'?'일반주거는 법적상한×120% · 준주거는 700% · 상업지역은 해당 법적상한':typ==='industrial'?'준공업 유지 원칙 · 법적상한까지':'용도지역 유지 일반주거는 법적상한×120% · 상향된 일반주거와 준주거는 원칙적으로 해당 법적상한',source));
+  rows.push(popupPlanRow('한시 용적률 특례',p.temporaryText,typ==='industrial'?'주거산업융합지구에는 제4항 제4호 특례를 공용하지 않음':'2025-09-07 당시 투기과열지구가 아닌 주거지역(상향된 경우 포함): 1·2종 120%, 3종·준주거 140% · 역사적 지정여부 Fact 없으면 확인필요',source));
+  rows.push(popupPlanRow(typ==='industrial'?'산업시설 계획':'비주거시설 계획',p.nonResidentialRule,'비주거·산업시설 비율은 용적률 특례와 별도 계획조건',source));
+  rows.push(popupPlanRow('공공시설등 계획부담','복합지구면적의 15% 이내 원칙',`${p.publicFacilityRule} · 공공주택사업자가 기반시설·공공필요시설을 설치해 기부채납하면 설치비용 상당 가액을 부지면적으로 환산 가능`,source));
+
+  const area=Number(vf?.area?.m2||store?.common?.area||0),units=Number(vf?.units?.count||0);
+  let parkValue='10만㎡ 미만 확보의무 면제';
+  if(area>=100000){
+    const five=area*0.05,byUnits=units>0?units*2:null;
+    parkValue=byUnits!=null?`세대당 2㎡(${Math.round(byUnits).toLocaleString('ko-KR')}㎡) vs 지구면적 5%(${Math.round(five).toLocaleString('ko-KR')}㎡) 중 큰 값`:`지구면적 5%(${Math.round(five).toLocaleString('ko-KR')}㎡)와 세대당 2㎡ 중 큰 값 · 계획세대수 확인필요`;
+  }
+  rows.push(popupPlanRow('공원·녹지',parkValue,p.parkGreenRule,source));
+  rows.push(popupPlanRow('주차장',p.parkingRule,'세부유형별 완화조건을 충족하는 경우 적용',source));
+  return rows.join('');
+}
+
+// ============================================================
+// 2026-09-15 도심복합개발 2유형 용적률·공공기여 정규화
+// - 성장거점형: 서울특별시 성장거점형 복합개발사업 운영기준(2026.06.01.)
+// - 주거중심형: 서울특별시 도시계획조례 제48조 + 도심복합개발 지원 조례 제20조·제21조
+// - 주거중심형의 법적상한/+α 자동적용은 이번 패치에서 보류(HOLD)
+// ============================================================
+const INNOVATION_GROWTH_CHANGE_RULES_20260601=Object.freeze({
+  '제2종일반주거->준주거':{base:200,upper:400,legal:700,pcFar:100},
+  '제3종일반주거->준주거':{base:250,upper:400,legal:700,pcFar:75},
+  '제2종일반주거->근린상업':{base:200,upper:600,upperSeoulDowntown:500,legal:900,pcFar:200,pcFarSeoulDowntown:150},
+  '제3종일반주거->근린상업':{base:250,upper:600,upperSeoulDowntown:500,legal:900,pcFar:175,pcFarSeoulDowntown:125},
+  '준주거->근린상업':{base:400,upper:600,upperSeoulDowntown:500,legal:900,pcFar:100,pcFarSeoulDowntown:50},
+  '제2종일반주거->일반상업':{base:200,upper:800,upperSeoulDowntown:600,legal:1300,pcFar:300,pcFarSeoulDowntown:200},
+  '제3종일반주거->일반상업':{base:250,upper:800,upperSeoulDowntown:600,legal:1300,pcFar:275,pcFarSeoulDowntown:175},
+  '준주거->일반상업':{base:400,upper:800,upperSeoulDowntown:600,legal:1300,pcFar:200,pcFarSeoulDowntown:100},
+  '근린상업->일반상업':{base:600,baseSeoulDowntown:500,upper:800,upperSeoulDowntown:600,legal:1300,pcFar:100,pcFarSeoulDowntown:50},
+  '제2종일반주거->중심상업':{base:200,upper:1000,upperSeoulDowntown:800,legal:1500,pcFar:400,pcFarSeoulDowntown:300},
+  '제3종일반주거->중심상업':{base:250,upper:1000,upperSeoulDowntown:800,legal:1500,pcFar:375,pcFarSeoulDowntown:275},
+  '준주거->중심상업':{base:400,upper:1000,upperSeoulDowntown:800,legal:1500,pcFar:300,pcFarSeoulDowntown:200},
+  '근린상업->중심상업':{base:600,baseSeoulDowntown:500,upper:1000,upperSeoulDowntown:800,legal:1500,pcFar:200,pcFarSeoulDowntown:150},
+  '일반상업->중심상업':{base:800,baseSeoulDowntown:600,upper:1000,upperSeoulDowntown:800,legal:1500,pcFar:100,pcFarSeoulDowntown:100}
+});
+const INNOVATION_GROWTH_KEEP_RULES_20260601=Object.freeze({
+  '준주거':{base:400,legal:700},
+  '근린상업':{base:600,baseSeoulDowntown:500,legal:900},
+  '일반상업':{base:800,baseSeoulDowntown:600,legal:1300},
+  '중심상업':{base:1000,baseSeoulDowntown:800,legal:1500}
+});
+function innovationGrowthRule(current,target){return INNOVATION_GROWTH_CHANGE_RULES_20260601[`${current||''}->${target||''}`]||null;}
+function innovationGrowthKeepRule(current){return INNOVATION_GROWTH_KEEP_RULES_20260601[current||'']||null;}
+function innovationGrowthScenarioText(current){
+  const rows=Object.entries(INNOVATION_GROWTH_CHANGE_RULES_20260601).filter(([k])=>k.startsWith(`${current||''}->`));
+  if(!rows.length)return '운영기준 직접 적용 가능한 용도지역 변경조합 확인 필요';
+  return rows.map(([k,r])=>`${k.split('->')[1]}: 기준 ${r.base}% · 상한 ${r.upper}%${r.upperSeoulDowntown!=null?`(서울도심 ${r.upperSeoulDowntown}%)`:''} · 법적상한 ${r.legal}%`).join(' / ');
+}
+function innovationGrowthDensity(c){
+  const current=c?.zoning||'';
+  const explicitTarget=(c?.targetZoning&&c.targetZoning!==current)?c.targetZoning:null;
+  if(explicitTarget){
+    const r=innovationGrowthRule(current,explicitTarget);
+    if(!r)return {scheme:'innovation_growth',source_version:'2026-06-01',zone:`${current||'-'} → ${explicitTarget}`,
+      far:'성장거점형 운영기준의 직접 용적률 조합 아님 · 목표 용도지역/변경단계 재확인',
+      contribution:'용도지역 변경조합 확정 후 공공시설등 설치제공기준 산정',rule_valid:false,target_zoning:explicitTarget};
+    const upperDowntown=r.upperSeoulDowntown!=null?` · 서울도심 상한 ${r.upperSeoulDowntown}%`:'';
+    const pcDowntown=r.pcFarSeoulDowntown!=null?` · 서울도심 ${r.pcFarSeoulDowntown}%p`:'';
+    return {scheme:'innovation_growth',source_version:'2026-06-01',zone:`${current} → ${explicitTarget}`,target_zoning:explicitTarget,rule_valid:true,
+      base_far:r.base,upper_far:r.upper,upper_far_seoul_downtown:r.upperSeoulDowntown??null,legal_far:r.legal,
+      zoning_change_pc_far:r.pcFar,zoning_change_pc_far_seoul_downtown:r.pcFarSeoulDowntown??null,
+      far:`기준 ${r.base}% · 상한 ${r.upper}%${upperDowntown} · 법적상한 ${r.legal}%`,
+      contribution:`용도지역 변경 공공기여: 증가용적률의 50% → 공공기여 기준용적률 ${r.pcFar}%p${pcDowntown}를 부지면적으로 환산`,
+      legal_extra_rule:'상한 초과~법적상한 규제특례분: 국민주택규모 주택 공급은 증가용적률의 50%, 기반시설·생활인프라 건설·설치는 30%',
+      legal_special_enabled:true};
+  }
+  const keep=innovationGrowthKeepRule(current);
+  if(keep){
+    const baseDowntown=keep.baseSeoulDowntown!=null?` · 서울도심 조례기준 ${keep.baseSeoulDowntown}%`:'';
+    return {scheme:'innovation_growth',source_version:'2026-06-01',zone:`${current} 유지`,target_zoning:null,rule_valid:true,
+      base_far:keep.base,base_far_seoul_downtown:keep.baseSeoulDowntown??null,legal_far:keep.legal,
+      far:`조례기준 ${keep.base}%${baseDowntown} · 법적상한 ${keep.legal}%`,
+      contribution:'용도지역 변경 공공기여는 없음 · 법적상한 규제특례 사용분은 국민주택규모 주택 50% 또는 기반시설·생활인프라 30% 기준',
+      legal_extra_rule:'용도지역 변경이 없는 경우 법적상한 규제특례 증가분은 법적상한용적률-기준용적률을 기준으로 산정',
+      legal_special_enabled:true,scenario_text:innovationGrowthScenarioText(current)};
+  }
+  return {scheme:'innovation_growth',source_version:'2026-06-01',zone:`${current||'-'} · 목표 용도지역 미선택`,target_zoning:null,rule_valid:false,
+    far:`목표 용도지역 선택 전 확정하지 않음 · 적용가능 시나리오: ${innovationGrowthScenarioText(current)}`,
+    contribution:'목표 용도지역 선택 후 용도지역 변경 공공기여와 법적상한 규제특례 공공기여를 각각 산정',
+    legal_special_enabled:true,scenario_text:innovationGrowthScenarioText(current)};
+}
+function innovationHousingDensity(c){
+  const current=c?.zoning||'';
+  const base=ordinanceFarForZone(current);
+  return {scheme:'innovation_housing',source_version:'SEOUL_ORDINANCE_2026',zone:`${current||'-'} 유지 기준`,target_zoning:null,rule_valid:base!=null,
+    base_far:base,far:base!=null?`서울시 도시계획조례 제48조 조례용적률 ${base}% 이하 기준`:'서울시 도시계획조례 제48조 현 용도지역 용적률 확인',
+    contribution:base!=null?`복합개발계획 용적률이 조례용적률 ${base}%를 초과하는 경우 초과용적률의 50%를 국민주택규모 주택으로 건설·공급`:'복합개발계획 용적률-조례용적률 초과분의 50% 국민주택규모 주택 공급',
+    public_contribution_rule:'규제특례 적용 시 토지가치 상승분 범위에서 기반시설·공공시설·생활인프라·국민주택규모 주택 등 공공기여',
+    national_housing_ratio:50,
+    legal_far:null,plus_alpha_far:null,legal_special_enabled:false,legal_special_status:'HOLD',
+    legal_special_note:'법적상한 및 +α 자동적용 여부는 별도 검토 후 결정 — 이번 패치에서는 계산·추천하지 않음'};
+}
+function innovationDensity(c,typ='growth'){
+  return typ==='housing'?innovationHousingDensity(c):innovationGrowthDensity(c);
 }
 
 function generalHousingDensity(c){
@@ -12463,21 +12723,44 @@ function growthPotentialTarget(c){
   if(z==='준주거')return '일반상업';
   return z;
 }
+const GROWTH_POTENTIAL_DENSITY_RULES_20260528=Object.freeze({
+  '제2종일반주거(7층)->제3종일반주거':{base:200,cap:250,pc:10},
+  '제2종일반주거->제3종일반주거':{base:200,cap:250,pc:10},
+  '제2종일반주거(7층)->준주거':{base:200,cap:400,pc:25},
+  '제2종일반주거->준주거':{base:200,cap:400,pc:25},
+  '제3종일반주거->준주거':{base:250,cap:400,pc:19},
+  '제2종일반주거(7층)->근린상업':{base:200,cap:600,capSeoulDowntown:500,pc:33},
+  '제2종일반주거->근린상업':{base:200,cap:600,capSeoulDowntown:500,pc:33},
+  '제3종일반주거->근린상업':{base:250,cap:600,capSeoulDowntown:500,pc:29},
+  '준주거->근린상업':{base:400,cap:600,capSeoulDowntown:500,pc:17},
+  '제3종일반주거->일반상업':{base:250,cap:800,capSeoulDowntown:600,pc:34},
+  '준주거->일반상업':{base:400,cap:800,capSeoulDowntown:600,pc:25}
+});
+const GROWTH_POTENTIAL_FAR_BONUS_20260528=Object.freeze({
+  tourist_accommodation:'관광숙박시설: 상한용적률(별도 계획용적률이 있으면 계획용적률)의 1.3배 이하 · 조례 부칙에 따른 한시 적용',
+  green_building:'ZEB·녹색건축 인증 기준 초과 시 관련 법·서울시 녹색건축물 설계기준에 따른 완화 · ZEB 우선 검토',
+  public_open_space:'운영기준 3-3-12 공개공지 설치 시 지구단위계획 상한용적률 인센티브 준용(법정 의무면적 제외)'
+});
+const GROWTH_POTENTIAL_PC_RELIEF_20260528=Object.freeze({
+  max_relief:'대상지 여건상 표준 공공기여율 적용이 곤란하거나 운영기준상 완화요건 해당 시 최대 20% 범위까지 완화 가능',
+  low_land_value:'3개년 연속 자치구 표준지 공시지가 평균이 서울시 전체 평균의 60% 이하인 자치구는 완화 검토'
+});
+function growthPotentialDensityRule(current,target){return GROWTH_POTENTIAL_DENSITY_RULES_20260528[`${current||''}->${target||''}`]||null;}
 function growthPotentialDensity(c){
-  const target=growthPotentialTarget(c),key=`${c.zoning}->${target}`;
-  const pc={
-    '제2종일반주거(7층)->제3종일반주거':10,'제2종일반주거->제3종일반주거':10,
-    '제2종일반주거(7층)->준주거':25,'제2종일반주거->준주거':25,'제3종일반주거->준주거':19,
-    '제2종일반주거(7층)->근린상업':33,'제2종일반주거->근린상업':33,'제3종일반주거->근린상업':29,'준주거->근린상업':17,
-    '제3종일반주거->일반상업':34,'준주거->일반상업':25
-  }[key];
-  const far=ordinanceFarForZone(target);
+  const target=growthPotentialTarget(c),rule=growthPotentialDensityRule(c.zoning,target);
+  const downtown=rule?.capSeoulDowntown!=null?` (서울도심 ${rule.capSeoulDowntown}% 이하)`:'';
   return {
-    zone:`${c.zoning||'-'} → ${target||'-'}`,
-    far:far!=null?`기준(변경 전) ${ordinanceFarForZone(c.zoning)??'-'}% · 상한용적률 ${far}% 이하`:'용도지역 변경경로 확인',
-    contribution:pc!=null?`부지면적 ${pc}% 이상 · 증가용적률 50% 환산 원칙`:'증가용적률 50%를 부지면적으로 환산 · 변경경로별 비율 확인'
+    scheme:'growth_potential',source_version:'2026-05-28',zone:`${c.zoning||'-'} → ${target||'-'}`,
+    target_zoning:target||null,rule_valid:!!rule,base_far:rule?.base??null,cap_far:rule?.cap??null,
+    seoul_downtown_cap_far:rule?.capSeoulDowntown??null,public_contribution_pct:rule?.pc??null,
+    far:rule?`기준(허용) ${rule.base}% 이하 · 상한 ${rule.cap}% 이하${downtown} · 계획용적률은 상한 이하에서 위원회 결정`:'운영기준 3-2-1 용적률표의 직접 적용조합 아님 · 목표 용도지역/변경단계 재확인',
+    contribution:rule?`부지면적 기준 ${rule.pc}% 이상 · 증가용적률의 50%에 해당하는 용적률을 부지면적으로 환산`:'변경조합 확정 후 운영기준 4-1-1 표에서 산정',
+    contribution_basis:'증가용적률은 기준(허용)용적률과 상한용적률의 차이가 원칙 · 위원회 인정 시 계획용적률과 기준(허용)용적률의 차이 적용 가능',
+    contribution_relief:GROWTH_POTENTIAL_PC_RELIEF_20260528,
+    bonus_far:GROWTH_POTENTIAL_FAR_BONUS_20260528
   };
 }
+
 function sharedHousingTarget(c){
   if(c.targetZoning)return c.targetZoning;
   const z=c.zoning||'';
@@ -12628,7 +12911,7 @@ function checkActivationFromFacts(store,f){
   const arterialStatus=arterial.linear_commercial===true?'PASS':arterial.linear_commercial===false?'FAIL':'REVIEW';
   const arterialConditional=false;
   rows.push(schemeRow('간선도로변','역세권 외 노선형 상업지역을 포함한 가로구역 전체 또는 일부',arterial.note,arterialStatus,
-    arterialStatus==='PASS'?'판정모형 노선형 상업지역 참조도형 + 대상지·가로구역 공간관계 충족':'판정모형 참조도형 자동검토에서 노선형 상업지역 포함요건 미충족',false,{sourceId:'ACTIVATION',locator:'1-3-1 나목 / 2-1-2 나목'}));
+    arterialStatus==='PASS'?'사용자확정 DXF 노선상업 참조도형 + 대상지·가로구역·동일 도로측 공간관계 충족':arterialStatus==='REVIEW'?(arterial.path||'노선상업 참조도형 자료·가로구역 공간관계 확인 필요'):(arterial.path||'사용자확정 DXF 노선상업 참조도형과 대상지·가로구역 포함 관계 미확인'),false,{sourceId:'ACTIVATION',locator:'1-3-1 나목 / 2-1-2 나목'}));
 
   const locationStatus=(stationStatus==='PASS'||arterialStatus==='PASS')?'PASS':
     (stationStatus==='FAIL'&&arterialStatus==='FAIL')?'FAIL':'REVIEW';
@@ -16207,12 +16490,10 @@ function activationPlanningRange(f){
 }
 function activationFarText(current,target){
   if(!current||!target||target==='확인 필요')return '용도지역 변경범위 확정 후 산정';
-  const base=ordinanceFarForZone(current),cap=ordinanceFarForZone(target);
-  const pc=activationContribution(current,target);
-  const baseText=base==null?'기준(허용) 확인':`기준(허용) ${base}% 이하`;
-  const capText=cap==null?'상한 확인':`상한 ${cap}% 이하`;
-  const pcText=pc==null?'공공기여율 조합 확인':`공공기여 ${pc}% 이상`;
-  return `${baseText} · ${capText} · 계획용적률은 상한 이하 위원회 결정 · ${pcText}`;
+  const rule=activationDensityRule(current,target);
+  if(!rule)return '운영기준 3-2-1 직접 적용조합 아님 · 변경단계/목표용도지역 확인';
+  const downtown=rule.capSeoulDowntown!=null?` (서울도심 ${rule.capSeoulDowntown}% 이하)`:'';
+  return `기준(허용) ${rule.base}% 이하 · 상한 ${rule.cap}% 이하${downtown} · 계획용적률은 상한 이하 위원회 결정 · 공공기여 ${rule.pc}% 이상`;
 }
 function activationFeasibilityLabel(status){
   if(status==='PASS')return '입안 가능성 높음';
@@ -16226,6 +16507,48 @@ function activationStatusCell(r){
   const label=r?.policyRole?d.label:(r.status==='PASS'?(r.conditional?'충족·단서':'충족'):r.status==='FAIL'?'불충족':r.status==='REVIEW'?(r.conditional?'조건부':'확인필요'):'계획');
   return `<span class="scheme-tag ${escHtml(d.cls||'REVIEW')}">${escHtml(label)}</span>`;
 }
+
+function densityRuleScenarioText(table,current){
+  return Object.entries(table).filter(([k])=>k.startsWith(`${current||''}->`)).map(([k,r])=>{
+    const target=k.split('->')[1],downtown=r.capSeoulDowntown!=null?`(서울도심 ${r.capSeoulDowntown}%)`:'';
+    return `${target}: 기준 ${r.base}% / 상한 ${r.cap}%${downtown} / 공공기여 ${r.pc}%+`;
+  }).join(' · ')||'현 용도지역에서 운영기준 표상 직접 변경조합 없음';
+}
+function activationDensityPlanRowsHtml(res,store,f,range){
+  const c=store?.common||{},current=f?.zoning?.current||c.zoning||'',explicit=(c.targetZoning&&c.targetZoning!==current)?c.targetZoning:null;
+  const target=explicit,rule=target?activationDensityRule(current,target):null;
+  const density=activationDensity({...c,zoning:current,targetZoning:target||null});
+  const source=(loc)=>schemeSheetSourceFor('activation','용적률 계획기준','ACTIVATION',loc);
+  const targetText=explicit?`${current} → ${explicit}`:`기본 최대 ${range.base_max} / 조건부 최대 ${range.conditional_max}`;
+  const farText=rule?activationRuleFarText(rule):`적용가능 조합 · ${densityRuleScenarioText(ACTIVATION_DENSITY_RULES_20260430,current)}`;
+  const pcText=rule?`부지면적 ${rule.pc}% 이상 · 증가용적률 50% 환산 원칙`:`조합별 기준 · ${densityRuleScenarioText(ACTIVATION_DENSITY_RULES_20260430,current)}`;
+  return [
+    `<tr><td><b>용도지역 변경 범위</b></td><td>${escHtml(targetText)}</td><td>${escHtml(range.condition)} · 일반 최대 2단계, 필요성 인정 시 3단계, 역 인접/20m 간선가로 연접 + 복합용도 시 최대 4단계</td><td>${source('제3장 3-1-1~3-1-3')}</td></tr>`,
+    `<tr><td><b>기준(허용)·상한용적률</b></td><td>${escHtml(farText)}</td><td>기준(허용)=변경 전 조례용적률, 상한=변경 후 조례용적률. 서울도심 상업지역은 표의 별도 상한 적용. 계획용적률은 상한 이하에서 위원회 결정</td><td>${source('제1장 1-3-5~1-3-7 / 제3장 3-2-1')}</td></tr>`,
+    `<tr><td><b>가산용적률</b></td><td>${escHtml('관광숙박 1.3배 이하 · ZEB/녹색건축 · 공개공지 · 디자인혁신 예외경로')}</td><td>${escHtml(Object.values(ACTIVATION_FAR_BONUS_20260430).join(' / '))}</td><td>${source('제3장 3-2-2')}</td></tr>`,
+    `<tr><td><b>공공기여 기준</b></td><td>${escHtml(pcText)}</td><td>${escHtml(density.contribution_basis)}</td><td>${source('제4장 4-1-1')}</td></tr>`,
+    `<tr><td><b>공공기여 완화</b></td><td>${escHtml('최대 20% 범위 완화 가능')}</td><td>${escHtml(Object.values(ACTIVATION_PC_RELIEF_20260430).join(' / '))}</td><td>${source('제4장 4-1-1 나목')}</td></tr>`,
+    `<tr><td><b>공공시설등 구성</b></td><td>${escHtml('전체 공공기여량 중 공공임대주택 30% 이상 권장 · 단일 시설 50% 초과 지양')}</td><td>필수 기반시설 우선, 정책필요시설·생활SOC·현금 순 검토. 공공주택은 토지 기부채납·건축물 표준건축비 매입</td><td>${source('제4장 4-1-1 라목 / 4-1-2~4-1-5')}</td></tr>`
+  ].join('');
+}
+function growthPotentialDensityPlanRowsHtml(res,store,f){
+  const c=store?.common||{},current=f?.zoning?.current||c.zoning||'',explicit=(c.targetZoning&&c.targetZoning!==current)?c.targetZoning:null;
+  const target=explicit,rule=target?growthPotentialDensityRule(current,target):null;
+  const density=growthPotentialDensity({...c,zoning:current,targetZoning:target||null});
+  const source=(loc)=>schemeSheetSourceFor('growth_potential','용적률 계획기준','GROWTH',loc);
+  const zoneText=target?`${current} → ${target}`:'목표 용도지역 미선택 · 운영기준상 적용가능 조합 표시';
+  const farText=rule?density.far:`적용가능 조합 · ${densityRuleScenarioText(GROWTH_POTENTIAL_DENSITY_RULES_20260528,current)}`;
+  const pcText=rule?density.contribution:`조합별 기준 · ${densityRuleScenarioText(GROWTH_POTENTIAL_DENSITY_RULES_20260528,current)}`;
+  return [
+    `<tr><td><b>용도지역 변경 범위</b></td><td>${escHtml(zoneText)}</td><td>위원회 심의 최대 2단계 원칙 · 기능 확보 및 공공기여시설 필요성 등 당위성 인정 시 최대 3단계. 2종→3종~근린상업, 3종→준주거~일반상업, 준주거→근린상업~일반상업 범위</td><td>${source('제3장 3-1-1')}</td></tr>`,
+    `<tr><td><b>기준(허용)·상한용적률</b></td><td>${escHtml(farText)}</td><td>기준(허용)=변경 전 조례용적률, 상한=변경 후 조례용적률. 서울도심 근린·일반상업은 별도 상한 적용. 계획용적률은 상한 이하에서 위원회 결정</td><td>${source('제3장 3-2-1')}</td></tr>`,
+    `<tr><td><b>가산용적률</b></td><td>${escHtml('관광숙박 1.3배 이하 · ZEB/녹색건축 · 공개공지')}</td><td>${escHtml(Object.values(GROWTH_POTENTIAL_FAR_BONUS_20260528).join(' / '))}</td><td>${source('제3장 3-2-2')}</td></tr>`,
+    `<tr><td><b>공공기여 기준</b></td><td>${escHtml(pcText)}</td><td>${escHtml(density.contribution_basis)}</td><td>${source('제4장 4-1-1')}</td></tr>`,
+    `<tr><td><b>공공기여 완화</b></td><td>${escHtml('최대 20% 범위 완화 가능')}</td><td>${escHtml(Object.values(GROWTH_POTENTIAL_PC_RELIEF_20260528).join(' / '))}</td><td>${source('제4장 4-1-1 나목')}</td></tr>`,
+    `<tr><td><b>공공시설등 구성</b></td><td>${escHtml('전체 공공기여량 중 공공임대주택 30% 이상 권장 · 단일 시설 50% 초과 지양')}</td><td>필수 기반시설 우선, 정책필요시설·생활SOC·현금 순 검토. 공공주택은 토지 기부채납·건축물 표준건축비 매입</td><td>${source('제4장 4-1-1 라목 / 4-1-2~4-1-5')}</td></tr>`
+  ].join('');
+}
+
 function renderActivationDetailPopup(){
   const title=document.getElementById('schemeDetailPopupTitle');
   const body=document.getElementById('schemeDetailPopupBody');if(!body)return;
@@ -16245,10 +16568,6 @@ function renderActivationDetailPopup(){
   const stationText=f.location.station.distance_m==null?'판정역 확인 필요':`판정역 ${f.location.station.name||'-'} · ${Number(f.location.station.distance_m).toFixed(1)}m · 적용 ${f.location.station.threshold_m||'250/350'}m · 역세권 범위→가로구역 ${f.location.station.block_share_pct==null?'-':Number(f.location.station.block_share_pct).toFixed(1)+'%'}`;
   const arterialText=f.location.arterial.linear_commercial===true?'노선형 상업지역 포함 확인':f.location.arterial.linear_commercial===false?'노선형 상업지역 미포함':'노선형 상업지역 포함 여부 확인 필요';
   const current=f.zoning.current||'-';
-  const farBase=activationFarText(current,range.base_max);
-  const farMax=range.conditional_max!==range.base_max?activationFarText(current,range.conditional_max):farBase;
-  const pcBase=activationContribution(current,range.base_max);
-  const pcMax=activationContribution(current,range.conditional_max);
   const status=res?.overall||'REVIEW';
   const statusRows=['승강장 거리','가로구역 포함','역세권','간선도로변','입지유형','용도지역','정비구역 배타관계','재정비촉진지구','도시계획시설','서울도심 특성관리지구','소규모주택정비 인가','배제지역 종합','도로','대상지 면적','사전협상 대상여부','노후건축물'];
   const resultRows=statusRows.map(item=>{
@@ -16256,11 +16575,7 @@ function renderActivationDetailPopup(){
     const group=['승강장 거리','가로구역 포함','역세권','간선도로변','입지유형'].includes(item)?'역세권등':['노후건축물'].includes(item)?'노후건축물':['정비구역 배타관계','재정비촉진지구','도시계획시설','서울도심 특성관리지구','소규모주택정비 인가','배제지역 종합'].includes(item)?'배제조건':'대상지 현황';
     return `<tr><td class="group">${escHtml(group)}</td><td><b>${escHtml(item)}</b></td><td>${escHtml(r.rule||'-')}</td><td>${escHtml(r.value||'-')}</td><td>${activationStatusCell(r)}<div class="activation-next">${escHtml(r.action||r.note||'-')}</div></td></tr>`;
   }).join('');
-  const planRows=[
-    ['용도지역 변경 범위',`기본 최대 ${range.base_max} / 조건부 최대 ${range.conditional_max}`,range.condition,'3-1-1~3-1-3'],
-    ['용적률 계획기준',`기본 시나리오: ${farBase}`,range.conditional_max!==range.base_max?`조건부 최대 시나리오: ${farMax}`:'상한 이하에서 계획용적률 결정','1-3-5~1-3-7 / 3-2-1'],
-    ['공공기여 기준',pcBase==null?'변경조합 확정 후 산정':`기본 변경조합 ${pcBase}% 이상`,pcMax!=null&&pcMax!==pcBase?`조건부 최대 변경조합 ${pcMax}% 이상 · 증가용적률의 50% 환산`:'증가용적률의 50% 환산','4-1-1']
-  ].map(x=>`<tr><td><b>${escHtml(x[0])}</b></td><td>${escHtml(x[1])}</td><td>${escHtml(x[2])}</td><td>[운영기준] ${escHtml(x[3])}</td></tr>`).join('');
+  const planRows=activationDensityPlanRowsHtml(res,store,f,range);
   const steps=f.route?.route==='redevelopment'?
     [['사업계획(안) 제출','사업시행자·자치구 → 서울시'],['대상지 선정','지원 자문단'],['정비계획(안) 자문','지원 자문단'],['정비계획 주민제안·입안','주민·구의회 의견청취'],['서울시 도시계획위원회','용도지역 변경·정비계획 심의'],['결정고시·인허가','통합심의·사업시행계획인가']]:
     [['사업계획(안) 제출','사업시행자·자치구 → 서울시'],['대상지 선정','지원 자문단'],['지구단위계획(안) 자문','지원 자문단'],['지구단위계획 주민제안','주민의견청취·구 자문'],['서울시 도시건축공동위원회','지구단위계획 심의'],['결정고시·인허가','건축심의·허가 또는 사업계획승인']];
@@ -16402,11 +16717,7 @@ function renderGrowthPotentialDetailPopup(){
     {label:'추진조건',items:['대상지 선정 동의']}
   ],['용도지역 변경 범위','용적률 계획기준','공공기여 기준']);
   const density=f.planning?.density||{};
-  const planRows=[
-    schemeSpecificPlanRow(res,'용도지역 변경 범위','용도지역 변경 범위',f.planning?.target_zoning?`${f.zoning.current||'-'} → ${f.planning.target_zoning}`:null,'지원자문단·위원회에서 대상지 여건과 중심지체계를 함께 검토'),
-    schemeSpecificPlanRow(res,'용적률 계획기준','용적률 계획기준',density.far||null,'상한용적률은 계획용적률 확정값이 아니며 공공기여·위원회 심의를 거쳐 계획용적률 결정'),
-    schemeSpecificPlanRow(res,'공공기여 기준','공공기여 기준',density.contribution||null,'용도지역 변경 및 완화량에 따라 적용')
-  ].join('');
+  const planRows=growthPotentialDensityPlanRowsHtml(res,store,f);
   const steps=schemeSheetSteps([['사업계획(안) 제출','사업시행자·자치구 → 서울시'],['대상지 선정','지원자문단에서 비역세권·간선축·배제조건 검토'],[route==='도시정비형 재개발 방식'?'정비계획(안) 수립':'지구단위계획(안) 수립',`${route}의 노후도·계획기준 적용`],['주민제안·입안','해당 방식의 동의요건 및 계획도서 구비'],['서울시 위원회 심의','용도지역 변경·계획용적률·공공기여 결정'],['결정고시·인허가','계획결정 후 건축·사업 인허가 진행']]);
   body.innerHTML=`<div class="activation-sheet"><div class="activation-sheet-title"><div><h3>성장잠재권 활성화사업</h3><p>서울특별시 성장잠재권 활성화사업 운영기준 · 2026.05.28 기준</p></div><div class="activation-feasibility"><span>입안 가능성</span><b class="${escHtml(res?.overall||'REVIEW')}">${escHtml(schemeSheetFeasibility(res?.overall||'REVIEW'))}</b></div></div>
   <section class="activation-section"><h4>1. 현황</h4><table class="activation-table"><tbody>
@@ -16591,7 +16902,7 @@ function renderPublicComplexDetailPopup(){
   const planRows=[
     schemeSpecificPlanRow(viewRes,'사업시행 구조','사업시행 구조',null,'공공주택사업자·지정권자 중심의 공공주도 사업으로 민간사업 추천과 분리'),
     schemeSpecificPlanRow(viewRes,'제도 유효기간','제도 유효기간',vf.planning?.sunset||f.planning?.sunset||null,'경과조치 포함 적용시점 확인'),
-    `<tr><td><b>용적률·공공성</b></td><td>${escHtml(`${density.far||'-'} / ${density.contribution||'-'}`)}</td><td>해당 세부유형의 복합지구계획에서 용도·밀도 특례와 공공주택 공급구조 결정</td><td>${schemeSheetSourceFor('public_complex','용적률·공공성','PUBLIC_COMPLEX','복합지구계획·특례 규정')}</td></tr>`
+    publicComplexDensityPlanRowsForPopup(typ,store,vf,rr)
   ].join('');
   const steps=schemeSheetSteps([['후보지 검토',`${label} 요건을 독립 판정`],['지구지정 사전검토','공통 배제·노후도·해당 유형 입지요건 확인'],['주민의견청취·지구지정','주민동의율 등 사업추진 가능성은 지정권자가 이 단계에서 고려'],['복합지구계획 수립','용도·밀도·공공주택·기반시설·보상구조 계획'],['복합지구계획 승인','관련 심의·협의 후 사업계획 확정'],['보상·착공·공급','현물보상·공공주택 공급 등 사업시행']]);
   body.innerHTML=`<div class="activation-sheet public-complex-route-sheet" data-public-complex-route="${escHtml(typ)}"><div class="activation-sheet-title"><div><h3>도심 공공주택 복합사업(${escHtml(label)})</h3><p>공공주택 특별법 시행령 별표4의2 · 공공주택 업무처리지침 별표1의10 · 세부유형 독립판정</p></div><div class="activation-feasibility"><span>세부유형 지구지정 가능성</span><b class="${escHtml(rr.overall||'REVIEW')}">${escHtml(schemeSheetFeasibility(rr.overall||'REVIEW'))}</b></div></div>
@@ -16606,6 +16917,30 @@ function renderPublicComplexDetailPopup(){
     <section class="activation-section"><h4>3. 사업구조·계획기준</h4><table class="activation-table"><thead><tr><th>검토항목</th><th>적용가능 범위</th><th>적용조건·해석</th><th>근거</th></tr></thead><tbody>${planRows}</tbody></table></section>
     <section class="activation-section"><h4>4. 추진일정</h4><div class="activation-procedure">${steps}</div></section>
     <div class="scheme-modal-note"><b>세부유형 독립판정</b> 이 검토서는 ${escHtml(label)}의 RESULT만 표시합니다. 다른 두 유형의 PASS/FAIL/REVIEW가 이 검토서에 전이되지 않습니다. 다른 유형은 사업방식 적용판정의 별도 버튼에서 각각 확인합니다.</div></div>`;
+}
+
+
+function innovationDensityPlanRowsForPopup(name,res,store,f){
+  const c=store?.common||{},d=f?.planning?.density||(name==='innovation_housing'?innovationHousingDensity(c):innovationGrowthDensity(c));
+  if(name==='innovation_growth'){
+    const target=d.target_zoning;
+    const zoningText=target?`${c.zoning||'-'} → ${target}`:(d.zone||`${c.zoning||'-'} · 목표 용도지역 미선택`);
+    const scenario=d.scenario_text||innovationGrowthScenarioText(c.zoning);
+    const zoningPc=d.zoning_change_pc_far!=null?`증가용적률의 50% = ${d.zoning_change_pc_far}%p${d.zoning_change_pc_far_seoul_downtown!=null?` (서울도심 ${d.zoning_change_pc_far_seoul_downtown}%p)`:''}를 부지면적으로 환산`:(target?'변경조합 재확인':'목표 용도지역 선택 후 산정');
+    return [
+      `<tr><td><b>용도지역·용적률</b></td><td>${escHtml(`${zoningText} · ${d.far||'-'}`)}</td><td>${escHtml(target?'성장거점형 운영기준 직접 조합 적용':'자동 종상향 확정 금지 · 사용자가 목표 용도지역을 선택하기 전에는 시나리오만 표시')}</td><td>${schemeSheetSourceFor('innovation_growth','용적률·공공기여','INNOVATION_GROWTH_OP','3-1-1 성장거점형 용적률 기준')}</td></tr>`,
+      `<tr><td><b>변경가능 시나리오</b></td><td>${escHtml(scenario)}</td><td>용도지역 변경은 상업지역 우선 검토 · 일반 2단계, 당위성 인정 시 3단계, 정책목표 인정 시 4단계까지 위원회 검토</td><td>${schemeSheetSourceFor('innovation_growth','용도지역 변경','INNOVATION_GROWTH_OP','3-2-1 용도지역 변경')}</td></tr>`,
+      `<tr><td><b>용도지역 변경 공공기여</b></td><td>${escHtml(zoningPc)}</td><td>상한용적률-기준용적률 증가분의 50%가 원칙 · 복합개발계획 용적률이 상한 이하이면 계획용적률-기준용적률 적용</td><td>${schemeSheetSourceFor('innovation_growth','공공기여','INNOVATION_GROWTH_OP','3-2-2 공공시설등 설치제공기준')}</td></tr>`,
+      `<tr><td><b>법적상한 규제특례</b></td><td>${escHtml(d.legal_far!=null?`법적상한 ${d.legal_far}%까지 검토`:'목표 용도지역 확정 후 법적상한 산정')}</td><td>운영기준상 법적상한까지 규제특례 경로를 별도 관리</td><td>${schemeSheetSourceFor('innovation_growth','법적상한','INNOVATION_GROWTH_OP','3-3-2 규제특례')}</td></tr>`,
+      `<tr><td><b>규제특례 공공기여</b></td><td>국민주택규모 주택 50% / 기반시설·생활인프라 30%</td><td>상한 초과~법적상한 증가용적률에 적용 · 두 방식 복합 시 각각 기준 적용</td><td>${schemeSheetSourceFor('innovation_growth','규제특례 공공기여','INNOVATION_GROWTH_OP','3-3-3~3-3-4')}</td></tr>`
+    ].join('');
+  }
+  return [
+    `<tr><td><b>기준 용적률</b></td><td>${escHtml(d.far||'-')}</td><td>주거중심형은 이번 단계에서 현 용도지역의 서울시 도시계획조례 제48조 용적률을 기준값으로 사용</td><td>${schemeSheetSourceFor('innovation_housing','기준 용적률','SEOUL_URBAN_PLAN_ORD','제48조 용도지역 안에서의 용적률')}</td></tr>`,
+    `<tr><td><b>국민주택규모 주택 공급</b></td><td>${escHtml(d.contribution||'-')}</td><td>복합개발계획 용적률에서 조례용적률을 뺀 초과용적률의 50%</td><td>${schemeSheetSourceFor('innovation_housing','국민주택규모 주택 공급','INNOVATION_ORD','제21조제1항제2호')}</td></tr>`,
+    `<tr><td><b>공공기여 기본구조</b></td><td>${escHtml(d.public_contribution_rule||'-')}</td><td>토지가치 상승분 범위 · 필수 기반시설 우선 · 필요한 경우 설치비용 납부 경로 검토</td><td>${schemeSheetSourceFor('innovation_housing','공공기여 기본구조','INNOVATION_ORD','제20조')}</td></tr>`,
+    `<tr><td><b>법적상한·추가특례</b></td><td>이번 패치 자동산정 보류</td><td>${escHtml(d.legal_special_note||'법적상한 및 +α 가능여부는 후속 검토')}</td><td>${schemeSheetSourceFor('innovation_housing','법적상한·추가특례','INNOVATION','법 제37조·제38조 — 표시방식 추후 결정')}</td></tr>`
+  ].join('');
 }
 
 function renderInnovationDetailPopup(name){
@@ -16626,7 +16961,8 @@ function renderInnovationDetailPopup(name){
     <tr><th>공동주택단지</th><td colspan="3">${escHtml(apt.has_apartment===false?'건축물대장상 공동주택 용도 없음':`최대단지 ${fmtSchemeArea(apt.max_area_m2)} / 사업구역 대비 ${fmtSchemePct(apt.max_ratio_pct)} · ${apt.note||''}`)}</td></tr>
   </tbody></table></section>
   <section class="activation-section"><h4>2. 사업추진조건 판정</h4><table class="activation-table"><thead><tr><th>구분</th><th>검토항목</th><th>기준</th><th>대상지 현황</th><th>판정·후속</th><th>근거</th></tr></thead><tbody>${resultRows}</tbody></table>${schemeDetailSummary(res)}</section>
-  <div class="scheme-modal-note"><b>판정범위</b> ${f.type==='growth'?'성장거점형은 입지·5,000㎡ 이상·공동주택단지 제한을 핵심 추진조건으로 판정합니다. 중심지 경로의 20m 간선도로는 행안부 도로 기능자료 연계 전까지 확인필요로 둡니다.':'주거중심형은 역세권 입지·20년 이상 노후도 60%·2만~6만㎡·공동주택단지 제한을 핵심 추진조건으로 판정합니다. 준공업지역 공장비율은 서울시 도시계획조례 별표17의 2008.1.31 기준 공식값만 PASS/FAIL에 사용하며 현재 공장용도 건축물 비율은 별도 현황참고로 분리합니다.'}<br/>시행규칙상 용도지역·추가 접도·제외지역, 지정신청 동의·시행자 조건은 핵심 결과와 분리한 후속검토입니다.</div></div>`;
+  <section class="activation-section"><h4>3. 계획기준·용적률·공공기여</h4><table class="activation-table"><thead><tr><th>검토항목</th><th>적용값</th><th>적용조건·해석</th><th>근거</th></tr></thead><tbody>${innovationDensityPlanRowsForPopup(name,res,store,f)}</tbody></table></section>
+  <div class="scheme-modal-note"><b>판정범위</b> ${f.type==='growth'?'성장거점형은 입지·5,000㎡ 이상·공동주택단지 제한을 핵심 추진조건으로 판정하고, POPUP 3에서 성장거점형 운영기준의 용도지역·용적률·2단 공공기여 체계를 별도 표시합니다.':'주거중심형은 역세권 입지·20년 이상 노후도 60%·2만~6만㎡·공동주택단지 제한을 핵심 추진조건으로 판정합니다. 용적률은 현재 서울시 조례용적률을 기준으로 표시하며 법적상한·추가특례 자동적용은 후속 검토로 보류합니다.'}<br/>두 유형의 용적률·공공기여 Rule은 공유하지 않습니다.</div></div>`;
 }
 
 function renderUrbanRedevelopmentDetailPopup(){
