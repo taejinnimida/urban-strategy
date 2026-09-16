@@ -18040,7 +18040,7 @@ function renderUrbanRedevelopmentDetailPopup(){
 
 function selectSmallscalePopupRoute(route){
   activeSmallscaleRoute=route;
-  try{renderSmallscaleSchemeDetailPopup();}catch(e){console.error('[smallscale-popup-route]',e);renderSchemePopupFallback('smallscale',e);}
+  try{renderSmallscaleSchemeDetailPopup();}catch(e){console.error('[smallscale-popup-route]',e);renderSmallscalePopupEmergency(e);}
 }
 function popupSmallscaleFarProfile(key,current,target){
   // 2025.05.19 운영기준 제4장 4-1의 직접 수치표는 소규모재건축·소규모재개발만 적용.
@@ -18178,14 +18178,56 @@ function smallscaleDensityPlanRowsForPopup(key,res,store,f){
   return out;
 }
 
+function smallscalePopupSafeStore(){
+  if(latestSiteFactStore)return latestSiteFactStore;
+  if(analysisState?.fact_store)return analysisState.fact_store;
+  let common={};
+  try{common=commonSchemeData()||{};}catch(e){common={};}
+  return {common,site:{address:''},scheme_specific:{}};
+}
+function smallscalePopupSafeFacts(store,res){
+  const existing=res?.facts||store?.scheme_specific?.smallscale;
+  if(existing)return existing;
+  const routeStub=label=>({label,status:'REVIEW',criteria:[],value:'현황분석 필요'});
+  return {
+    routes:{
+      autonomous:routeStub('자율주택정비사업'),
+      block:routeStub('가로주택정비사업'),
+      reconstruction:routeStub('소규모재건축사업'),
+      redevelopment:routeStub('소규모재개발사업'),
+      moa:{...routeStub('모아타운·모아주택 추진경로'),value:'지정·관리계획 현황 확인 필요'}
+    },
+    stock:{detached_count:null,multi_row_units:null,reconstruction_units:null},
+    aging:{assessment:null},street_block:{analysis_scope_m2:null},
+    zoning:{current:store?.common?.zoning||''}
+  };
+}
+function renderSmallscalePopupEmergency(error=null){
+  const title=document.getElementById('schemeDetailPopupTitle'),body=document.getElementById('schemeDetailPopupBody');if(!body)return;
+  const store=smallscalePopupSafeStore(),res=schemeResults.smallscale||latestSchemeModuleResults.smallscale||null,f=smallscalePopupSafeFacts(store,res);
+  let key=activeSmallscaleRoute||'block';if(!SMALLSCALE_ROUTE_UI[key])key='block';
+  const meta=SMALLSCALE_ROUTE_UI[key]||{label:'소규모주택정비사업',short:'소규모주택정비'};
+  if(title)title.textContent=`${meta.label} 기초검토서`;
+  let planRows='';
+  try{planRows=smallscaleDensityPlanRowsForPopup(key,res,store,f);}catch(planError){
+    console.error('[smallscale-popup-plan-emergency]',planError);
+    const z=f?.zoning?.current||store?.common?.zoning||'현 용도지역 미확인';
+    planRows=popupPlanRow('현행 용도지역·용적률',z,'상세 Rule 표시 중 오류 · 법적 판정값은 변경하지 않음',schemeSheetSourceFor('smallscale','용적률·계획기준','SMALL_HOUSING','소규모주택정비법·서울시 조례'));
+  }
+  body.innerHTML=`<div class="activation-sheet">
+    <div class="activation-sheet-title"><div><h3>${escHtml(meta.label)}</h3><p>소규모주택정비법 사업별 계획기준 표시</p></div><div class="activation-feasibility"><span>현황연결</span><b class="REVIEW">확인필요</b></div></div>
+    <section class="activation-section"><h4>3. 계획기준·용적률·특례·공공부담</h4><table class="activation-table"><thead><tr><th>검토항목</th><th>적용값</th><th>적용조건·해석</th><th>근거</th></tr></thead><tbody>${planRows}</tbody></table></section>
+    <div class="scheme-modal-note"><b>표시 복구모드</b> ${error?escHtml(String(error?.message||error)):'현황 Fact가 아직 완성되지 않았습니다.'} · 3번 계획기준은 표시 전용이며 후보 PASS/FAIL·overall·추천순위를 변경하지 않습니다.</div>
+  </div>`;
+}
 function renderSmallscaleSchemeDetailPopup(){
   const title=document.getElementById('schemeDetailPopupTitle'),body=document.getElementById('schemeDetailPopupBody');if(!body)return;
-  const res=schemeResults.smallscale||latestSchemeModuleResults.smallscale,store=latestSiteFactStore,f=res?.facts||store?.scheme_specific?.smallscale;
-  if(!f||!store){if(title)title.textContent='소규모주택정비사업 기초검토서';body.innerHTML='<div class="scheme-modal-note"><b>현황분석 필요</b> 먼저 검토하기를 실행해 건축물대장·가로구역·도로·도시계획 Fact를 생성해 주세요.</div>';return;}
+  const res=schemeResults.smallscale||latestSchemeModuleResults.smallscale||null,store=smallscalePopupSafeStore(),f=smallscalePopupSafeFacts(store,res);
+  const hasLiveFacts=!!(res?.facts||latestSiteFactStore?.scheme_specific?.smallscale||analysisState?.fact_store?.scheme_specific?.smallscale);
   const legalKeys=['autonomous','block','reconstruction','redevelopment'];
   let key=activeSmallscaleRoute||'block';
-  if(!f.routes?.[key])key='block';
-  const route=f.routes[key]||{},meta=SMALLSCALE_ROUTE_UI[key]||{label:'소규모주택정비사업',short:'소규모주택정비'};
+  if(!f.routes?.[key]&&!SMALLSCALE_ROUTE_UI[key])key='block';
+  const route=f.routes?.[key]||{status:'REVIEW',criteria:[],value:'현황분석 필요'},meta=SMALLSCALE_ROUTE_UI[key]||{label:'소규모주택정비사업',short:'소규모주택정비'};
   if(title)title.textContent=`${meta.label} 기초검토서`;
   const tabs=legalKeys.map(k=>{
     const rr=f.routes?.[k]||{},mm=SMALLSCALE_ROUTE_UI[k]||{short:k};
@@ -18197,10 +18239,10 @@ function renderSmallscaleSchemeDetailPopup(){
     return `<div><span>${escHtml(mm.short)}</span><b>${escHtml(rr.status==='PASS'?'충족':rr.status==='FAIL'?'불충족':rr.conditional?'조건부':'확인필요')}</b></div>`;
   }).join('');
   const criteria=(route.criteria||[]);
-  const criterionRows=criteria.map(c=>{
+  const criterionRows=criteria.length?criteria.map(c=>{
     const fake={status:c.status||'REVIEW',conditional:c.conditional===true};
     return `<tr><td><b>${escHtml(c.item||'-')}</b></td><td>${escHtml(c.rule||'-')}</td><td>${escHtml(c.value??'-')}<div class="activation-next">${escHtml(c.note||'')}</div></td><td>${activationStatusCell(fake)}</td><td>${schemeSheetSourceFor('smallscale',c.item,c.source_id||route.source_id||'SMALL_HOUSING',c.locator||'')}</td></tr>`;
-  }).join('');
+  }).join(''):`<tr><td colspan="5"><div class="activation-next"><b>현황분석 필요</b> · 사업요건 판정값은 검토 실행 후 연결됩니다. 계획기준 표는 아래에서 먼저 확인할 수 있습니다.</div></td></tr>`;
   const stock=f.stock||{};
   const commonStatus=`단독 ${stock.detached_count??'-'}호 · 다세대/연립 ${stock.multi_row_units==null?'-':stock.multi_row_units+'세대'} · 재건축대상 아파트/연립 ${stock.reconstruction_units==null?'-':stock.reconstruction_units+'세대'}`;
   const routeOverall=route.status||'REVIEW';
@@ -18210,15 +18252,16 @@ function renderSmallscaleSchemeDetailPopup(){
   body.innerHTML=`<div class="activation-sheet">
     <div class="smallscale-route-tabs">${tabs}</div>${policy}
     <div class="activation-sheet-title"><div><h3>${escHtml(meta.label)}</h3><p>${escHtml(sourceNote)}</p></div><div class="activation-feasibility"><span>${key==='moa'?'정책경로':'사업요건 종합'}</span><b class="${escHtml(routeOverall)}">${escHtml(key==='moa'?(routeOverall==='PASS'?'관리지역 적용':'정책경로 확인'):schemeSheetFeasibility(routeOverall,route.conditional===true))}</b></div></div>
+    ${hasLiveFacts?'':`<div class="scheme-modal-note"><b>현황 Fact 연결 대기</b> 사업요건 수치는 검토 실행 후 연결되지만, 아래 계획기준·용적률·특례·공공부담 Rule은 항상 표시합니다.</div>`}
     <div class="smallscale-route-summary">${summaries}</div>
     <section class="activation-section"><h4>1. 공통 현황</h4><table class="activation-table"><tbody>
-      <tr><th>위치</th><td>${escHtml(store.site.address||'-')}</td><th>사업대상지 면적</th><td>${escHtml(fmtSchemeArea(store.common.area))}</td></tr>
+      <tr><th>위치</th><td>${escHtml(store?.site?.address||'-')}</td><th>사업대상지 면적</th><td>${escHtml(fmtSchemeArea(store?.common?.area))}</td></tr>
       <tr><th>건축물대장 주택수</th><td>${escHtml(commonStatus)}</td><th>노후도</th><td>${escHtml(ageFactValue(f.aging?.assessment))}</td></tr>
       <tr><th>관리지역</th><td>${escHtml(f.routes?.moa?.value||'-')}</td><th>가로구역</th><td>${escHtml(f.street_block?.analysis_scope_m2==null?'-':fmtSchemeArea(f.street_block.analysis_scope_m2))}</td></tr>
     </tbody></table></section>
     <section class="activation-section"><h4>2. ${escHtml(meta.short)} 사업요건 검토</h4><table class="activation-table smallscale-criterion-table"><thead><tr><th>검토항목</th><th>기준</th><th>대상지 현황</th><th>판정</th><th>근거</th></tr></thead><tbody>${criterionRows}</tbody></table></section>
     <section class="activation-section"><h4>3. 계획기준·용적률·특례·공공부담</h4><table class="activation-table"><thead><tr><th>검토항목</th><th>적용값</th><th>적용조건·해석</th><th>근거</th></tr></thead><tbody>${planRows}</tbody></table></section>
-    <div class="scheme-modal-note"><b>판정원칙</b> ${escHtml(routeNote)} 하나의 필수요건이라도 명확히 불충족이면 해당 법정사업은 불충족으로 판정합니다. 건축물대장에 세대수·가구수 자료가 있으면 주택수는 확인필요로 남기지 않습니다.</div>
+    <div class="scheme-modal-note"><b>판정원칙</b> ${escHtml(routeNote)} 하나의 필수요건이라도 명확히 불충족이면 해당 법정사업은 불충족으로 판정합니다. 건축물대장에 세대수·가구수 자료가 있으면 주택수는 확인필요로 남기지 않습니다. 3번 계획기준은 표시 전용이며 후보 PASS/FAIL·overall·추천순위를 변경하지 않습니다.</div>
   </div>`;
 }
 
@@ -18807,7 +18850,7 @@ function appendBaseReviewDisclaimer(name){
   body.insertAdjacentHTML('beforeend',baseReviewDisclaimerHtml(name));
 }
 function renderSchemeDetailPopup(name){
-  if(name==='smallscale'){renderSmallscaleSchemeDetailPopup();appendBaseReviewDisclaimer(name);return;}
+  if(name==='smallscale'){try{renderSmallscaleSchemeDetailPopup();}catch(e){console.error('[smallscale-popup-detail]',e);renderSmallscalePopupEmergency(e);}appendBaseReviewDisclaimer(name);return;}
   if(['redevelopment','reconstruction','residential_environment','general_housing','prior_negotiation'].includes(name)){renderRemainingSchemeDetailPopup(name);appendBaseReviewDisclaimer(name);return;}
   if(name==='activation'){renderActivationDetailPopup();appendBaseReviewDisclaimer(name);return;}
   if(name==='growth_potential'){renderGrowthPotentialDetailPopup();appendBaseReviewDisclaimer(name);return;}
