@@ -16516,20 +16516,140 @@ function densityRuleScenarioText(table,current){
 }
 function activationDensityPlanRowsHtml(res,store,f,range){
   const c=store?.common||{},current=f?.zoning?.current||c.zoning||'',explicit=(c.targetZoning&&c.targetZoning!==current)?c.targetZoning:null;
-  const target=explicit,rule=target?activationDensityRule(current,target):null;
-  const density=activationDensity({...c,zoning:current,targetZoning:target||null});
   const source=(loc)=>schemeSheetSourceFor('activation','용적률 계획기준','ACTIVATION',loc);
-  const targetText=explicit?`${current} → ${explicit}`:`기본 최대 ${range.base_max} / 조건부 최대 ${range.conditional_max}`;
-  const farText=rule?activationRuleFarText(rule):`적용가능 조합 · ${densityRuleScenarioText(ACTIVATION_DENSITY_RULES_20260430,current)}`;
-  const pcText=rule?`부지면적 ${rule.pc}% 이상 · 증가용적률 50% 환산 원칙`:`조합별 기준 · ${densityRuleScenarioText(ACTIVATION_DENSITY_RULES_20260430,current)}`;
-  return [
-    `<tr><td><b>용도지역 변경 범위</b></td><td>${escHtml(targetText)}</td><td>${escHtml(range.condition)} · 일반 최대 2단계, 필요성 인정 시 3단계, 역 인접/20m 간선가로 연접 + 복합용도 시 최대 4단계</td><td>${source('제3장 3-1-1~3-1-3')}</td></tr>`,
-    `<tr><td><b>기준(허용)·상한용적률</b></td><td>${escHtml(farText)}</td><td>기준(허용)=변경 전 조례용적률, 상한=변경 후 조례용적률. 서울도심 상업지역은 표의 별도 상한 적용. 계획용적률은 상한 이하에서 위원회 결정</td><td>${source('제1장 1-3-5~1-3-7 / 제3장 3-2-1')}</td></tr>`,
-    `<tr><td><b>가산용적률</b></td><td>${escHtml('관광숙박 1.3배 이하 · ZEB/녹색건축 · 공개공지 · 디자인혁신 예외경로')}</td><td>${escHtml(Object.values(ACTIVATION_FAR_BONUS_20260430).join(' / '))}</td><td>${source('제3장 3-2-2')}</td></tr>`,
-    `<tr><td><b>공공기여 기준</b></td><td>${escHtml(pcText)}</td><td>${escHtml(density.contribution_basis)}</td><td>${source('제4장 4-1-1')}</td></tr>`,
-    `<tr><td><b>공공기여 완화</b></td><td>${escHtml('최대 20% 범위 완화 가능')}</td><td>${escHtml(Object.values(ACTIVATION_PC_RELIEF_20260430).join(' / '))}</td><td>${source('제4장 4-1-1 나목')}</td></tr>`,
-    `<tr><td><b>공공시설등 구성</b></td><td>${escHtml('전체 공공기여량 중 공공임대주택 30% 이상 권장 · 단일 시설 50% 초과 지양')}</td><td>필수 기반시설 우선, 정책필요시설·생활SOC·현금 순 검토. 공공주택은 토지 기부채납·건축물 표준건축비 매입</td><td>${source('제4장 4-1-1 라목 / 4-1-2~4-1-5')}</td></tr>`
-  ].join('');
+  const hierarchy=['제2종일반주거','제3종일반주거','준주거','근린상업','일반상업','중심상업'];
+  const normalizeZone=z=>z==='제2종일반주거(7층)'?'제2종일반주거':z;
+  const zoneIndex=z=>hierarchy.indexOf(normalizeZone(z));
+  const currentIdx=zoneIndex(current),baseMaxIdx=zoneIndex(range?.base_max);
+  let normalTarget='';
+  if(currentIdx>=0){
+    const twoStepIdx=Math.min(hierarchy.length-1,currentIdx+2);
+    const cappedIdx=baseMaxIdx>=0?Math.min(twoStepIdx,baseMaxIdx):twoStepIdx;
+    if(cappedIdx>currentIdx)normalTarget=hierarchy[cappedIdx];
+  }
+  if(!normalTarget&&range?.base_max&&range.base_max!=='확인 필요'&&range.base_max!==current)normalTarget=range.base_max;
+  const appliedTarget=explicit||normalTarget||null;
+  const appliedRule=appliedTarget?activationDensityRule(current,appliedTarget):null;
+  const siteArea=Number(store?.site?.area_m2);
+  const areaKnown=Number.isFinite(siteArea)&&siteArea>0;
+  const pcArea=appliedRule&&areaKnown?siteArea*appliedRule.pc/100:null;
+  const touristMax=appliedRule?Math.round(appliedRule.cap*1.3*10)/10:null;
+  const touristDowntownMax=appliedRule?.capSeoulDowntown!=null?Math.round(appliedRule.capSeoulDowntown*1.3*10)/10:null;
+  const tourist30Pc=appliedRule?Math.round(appliedRule.pc*0.8*10)/10:null;
+  const tourist50Pc=appliedRule?Math.round(appliedRule.pc*0.6*10)/10:null;
+  const appliedKey=appliedTarget?`${current}->${appliedTarget}`:'';
+  const targetRouteText=appliedTarget?`${current||'-'} → ${appliedTarget}`:'현 용도지역에서 통상 2단계 상향경로 자동확정 불가';
+  const routeKind=explicit?'사용자 계획경로':'통상 검토경로';
+  const normalRoute=normalTarget?`${current||'-'} → ${normalTarget}`:'현황·중심지·입지조건 확인 필요';
+  const conditionalText=range?.conditional_max&&range.conditional_max!=='확인 필요'?`${range.conditional_max}까지 심의 가능성 검토`:'심의 확대범위 확인 필요';
+  const farApplied=appliedRule?`기준(허용) ${appliedRule.base}% 이하 → 상한 ${appliedRule.cap}% 이하${appliedRule.capSeoulDowntown!=null?` (서울도심 ${appliedRule.capSeoulDowntown}% 이하)`:''}`:'운영기준 3-2-1 직접 조합 확인 필요';
+  const pcApplied=appliedRule?`공공기여율 ${appliedRule.pc}% 이상${areaKnown?` · 부지면적 환산 약 ${fmt(pcArea,0)}㎡ 상당`:''}`:'변경 전·후 용도지역 조합 확정 후 산정';
+
+  const grouped=[];
+  Object.entries(ACTIVATION_DENSITY_RULES_20260430).forEach(([key,r])=>{
+    const [from,to]=key.split('->');
+    const gkey=[to,r.base,r.cap,r.capSeoulDowntown??'',r.pc].join('|');
+    let g=grouped.find(x=>x.gkey===gkey);
+    if(!g){g={gkey,froms:[],to,...r};grouped.push(g);}
+    g.froms.push(from);
+  });
+  const compactFrom=arr=>{
+    const set=new Set(arr);
+    if(set.has('제2종일반주거(7층)')&&set.has('제2종일반주거')){set.delete('제2종일반주거(7층)');set.delete('제2종일반주거');set.add('제2종일반주거(7층 포함)');}
+    return [...set].join(' · ');
+  };
+  const farTableRows=grouped.map(g=>{
+    const match=g.froms.includes(current)&&g.to===appliedTarget;
+    const downtown=g.capSeoulDowntown!=null?`${g.capSeoulDowntown}% 이하`:'-';
+    return `<tr${match?' style="background:#fff6df;font-weight:700"':''}><td>${escHtml(compactFrom(g.froms))}</td><td>${escHtml(g.to)}</td><td>${g.base}% 이하</td><td>${g.cap}% 이하</td><td>${downtown}</td>${match?'<td><b>대상지 적용</b></td>':'<td>-</td>'}</tr>`;
+  }).join('');
+  const pcTableRows=grouped.map(g=>{
+    const match=g.froms.includes(current)&&g.to===appliedTarget;
+    return `<tr${match?' style="background:#fff6df;font-weight:700"':''}><td>${escHtml(compactFrom(g.froms))}</td><td>${escHtml(g.to)}</td><td>${g.pc}% 이상</td>${match?'<td><b>대상지 적용</b></td>':'<td>-</td>'}</tr>`;
+  }).join('');
+
+  const centerRows=[
+    ['도심','일반상업지역 이내','역 인접부·간선가로 연접부 시 심의를 통해 중심상업지역까지'],
+    ['광역중심','일반상업지역 이내','역 인접부·간선가로 연접부 시 심의를 통해 중심상업지역까지'],
+    ['지역중심','일반상업지역 이내','-'],
+    ['지구중심','근린상업지역 이내','역 인접부·간선가로 연접부 시 심의를 통해 일반상업지역까지'],
+    ['비중심지 · 준주거','근린상업지역 이내','역 인접부·간선가로 연접부 시 심의를 통해 일반상업지역까지'],
+    ['비중심지 · 제2·3종일반주거','준주거지역 이내','역 인접부·간선가로 연접부 시 심의를 통해 일반상업지역까지']
+  ].map(x=>`<tr><td>${escHtml(x[0])}</td><td>${escHtml(x[1])}</td><td>${escHtml(x[2])}</td></tr>`).join('');
+  const arterialRows=[
+    ['도심','일반상업지역 이내','-'],['광역중심','일반상업지역 이내','-'],['지역중심','일반상업지역 이내','-'],
+    ['지구중심','준주거지역 이내','복합용도 해당 시 심의를 통해 근린상업지역까지'],['비중심지','준주거지역 이내','복합용도 해당 시 심의를 통해 근린상업지역까지']
+  ].map(x=>`<tr><td>${escHtml(x[0])}</td><td>${escHtml(x[1])}</td><td>${escHtml(x[2])}</td></tr>`).join('');
+
+  const directBonusRows=[
+    ['창의·혁신 디자인','특별건축구역 용적률 완화는 미적용 원칙','도시공간본부와 디자인혁신 주관부서가 모두 필요성을 인정하는 경우 예외','별도 심의·기준'],
+    ['관광숙박시설','상한용적률(계획용적률 별도 결정 시 계획용적률)의 1.3배 이하','도시계획조례 제51조 및 한시규정 적용',touristMax!=null?`대상지 기준 최대 ${touristMax}%${touristDowntownMax!=null?` · 서울도심 ${touristDowntownMax}%`:''}`:'적용경로 확정 후 자동산정'],
+    ['노인복지주택','용적률 직접 가산항목은 아님 · 공공기여 완화 인센티브','용적률의 30% 이상 도입 시 공공기여 완화, 50% 이상 도입 시 추가 완화','3.4 공공기여 완화표에서 정량 산정'],
+    ['ZEB 인증','상한용적률 인센티브 적용','서울시 녹색건축물 설계기준에서 정한 인증기준 초과 · ZEB 우선 검토','세부 완화율은 준용기준 적용'],
+    ['녹색건축 인증','상한용적률 인센티브 적용','서울시 녹색건축물 설계기준에서 정한 인증기준 초과','세부 완화율은 준용기준 적용'],
+    ['공개공지','상한용적률 인센티브 적용','운영기준 3-3-12 공개공지 설치 · 법정 의무면적은 완화대상에서 제외','지구단위계획 3-8-3 준용']
+  ].map(x=>`<tr><td><b>${escHtml(x[0])}</b></td><td>${escHtml(x[1])}</td><td>${escHtml(x[2])}</td><td>${escHtml(x[3])}</td></tr>`).join('');
+  const relatedBonusRows=[
+    ['장수명주택 인증','주택법에 따른 상한용적률 인센티브 검토','개별 지구단위계획에서 관계법령 완화비율 적용'],
+    ['에너지효율·재활용건축자재','녹색건축물 관련 상한용적률 인센티브 검토','개별 지구단위계획 및 해당 고시 적용'],
+    ['특별건축구역','건축위원회 인정 시 관계법령 완화 검토','역세권활성화 운영기준의 디자인혁신 원칙과 함께 적용관계 확인'],
+    ['지능형건축물 인증','관련 인증기준에 따른 완화 검토','개별 지구단위계획 반영 여부 확인'],
+    ['지하철 출입구·연결통로','공공시설등 제공·연계시설 인센티브 검토','구체 산식은 해당 지구단위계획 및 공공시설등 제공 인센티브 기준 적용']
+  ].map(x=>`<tr><td>${escHtml(x[0])}</td><td>${escHtml(x[1])}</td><td>${escHtml(x[2])}</td></tr>`).join('');
+
+  const planningRows=[
+    ['공공주택','전용면적 85㎡ 이하','공공임대주택 권장기준에 따른 면적별 배분'],
+    ['도시형생활주택','설치 불가','역세권활성화사업으로 건설하는 주택에 적용'],
+    ['가로활성화','지상 1층 비주거시설 설치','가로에서 직접 출입 가능한 경우 지하 1층 허용'],
+    ['비주거 용도비율','도시계획조례 별표16·지구단위계획 수립기준 적용','준주택·생활형 숙박시설은 비주거 용도에서 제외'],
+    ['정책필요시설','관광숙박시설·노인복지주택 등','위원회 인정 시 민간 정책필요시설로 적용'],
+    ['높이계획','지구단위계획 최고높이의 ±20% 범위 심의 가능','서울시 도시기본계획 등 높이관리기준 범위 준수'],
+    ['지속가능형 공동주택','리모델링이 쉬운 구조 또는 장수명주택','건축위원회에서 적합 여부 결정'],
+    ['친환경 건축물','환경·에너지·관리·신재생 중 2개 이상 상향단계 적용','최상위 적용대상은 ZEB 5등급 추가 적용'],
+    ['역사문화 보전','문화재·역사생활문화유산 포함 시 보전계획 반영','관련 위원회 또는 건축위원회 인정'],
+    ['사회혼합','공공주택·민간분양주택 차별 없는 동·층 배치','공공주택 선정 시 전체 주택 대상으로 추첨 권고'],
+    ['공개공지 의무','연면적·건축물 유형에 따라 대지면적 5%·7%·10% 이상','건축조례 제26조 준용 · 의무면적 초과분은 인센티브 검토']
+  ].map(x=>`<tr><td><b>${escHtml(x[0])}</b></td><td>${escHtml(x[1])}</td><td>${escHtml(x[2])}</td></tr>`).join('');
+
+  const sectionTitle=txt=>`<h5 style="margin:12px 0 6px;font-size:11px;color:#1d2939">${txt}</h5>`;
+  const noteStyle='padding:8px 10px;margin:6px 0;background:#f8fafc;border:1px solid #e4e7ec;border-radius:8px;font-size:9px;line-height:1.6;color:#344054';
+  const applyStyle='padding:9px 10px;margin:6px 0 8px;background:#fff8e8;border:1px solid #f2cc7c;border-radius:8px;font-size:9px;line-height:1.7;color:#344054';
+  return `
+    ${sectionTitle('3.1 용도지역 변경기준')}
+    <div style="${applyStyle}"><b>본 대상지</b> · 통상 2단계 상향 원칙 기준 <b>${escHtml(normalRoute)}</b>${explicit?` · 사용자 계획경로 <b>${escHtml(targetRouteText)}</b>`:''}<br><b>심의 확대</b> · ${escHtml(conditionalText)} · ${escHtml(range?.condition||'위원회 심의')}</div>
+    <table class="activation-table"><thead><tr><th>중심지 체계</th><th>역세권 최대 변경범위</th><th>역 인접·간선가로 연접부</th></tr></thead><tbody>${centerRows}</tbody></table>
+    <div style="${noteStyle}"><b>기본원칙</b> 위원회 심의를 통해 최대 2단계까지 변경. 3단계 상향 필요성을 사업시행자가 제시하고 위원회에서 인정하면 최대 3단계, 역 인접부 또는 간선가로 연접부이면서 복합용도 기준을 준수하면 최대 4단계까지 변경 가능. ${source('제3장 3-1-1~3-1-2')}</div>
+    <table class="activation-table" style="margin-top:6px"><thead><tr><th>중심지 체계</th><th>간선도로변 최대 변경범위</th><th>복합용도 해당 시</th></tr></thead><tbody>${arterialRows}</tbody></table>
+    <div style="${noteStyle}">${source('제3장 3-1-3')}</div>
+
+    ${sectionTitle('3.2 용적률 기준')}
+    <div style="${applyStyle}"><b>${escHtml(routeKind)}</b> · ${escHtml(targetRouteText)}<br><b>대상지 적용값</b> · ${escHtml(farApplied)}${appliedRule?` · 계획용적률은 이 상한 이하에서 위원회 결정`:''}</div>
+    <table class="activation-table"><thead><tr><th>변경 전</th><th>변경 후</th><th>기준(허용)용적률</th><th>상한용적률</th><th>서울도심 상한</th><th>대상지</th></tr></thead><tbody>${farTableRows}</tbody></table>
+    <div style="${noteStyle}"><b>해석</b> 기준(허용)용적률은 변경 전 용도지역의 기준, 상한용적률은 공공기여 제공 시 변경 후 용도지역의 상한이며, 계획용적률은 상한 이하에서 위원회가 결정한다. ${source('제1장 1-3-5~1-3-7 / 제3장 3-2-1')}</div>
+
+    ${sectionTitle('3.3 추가용적률·상한용적률 인센티브')}
+    <table class="activation-table"><thead><tr><th>항목</th><th>완화범위</th><th>적용조건</th><th>대상지 최대치·산정</th></tr></thead><tbody>${directBonusRows}</tbody></table>
+    <div style="${noteStyle}"><b>중첩</b> 두 개 이상의 항목을 중첩하여 완화받으려는 경우 지원 자문단 자문을 통해 적정성을 인정받아야 한다. 현재 단계에서는 사업자가 선택할 수 있는 최대 잠재경로를 모두 표시하고, 실제 적용값은 후속 심의에서 결정한다. ${source('제3장 3-2-2')}</div>
+    <div style="${noteStyle}"><b>관련 법률·지구단위계획 추가 체크리스트</b> 운영기준 직접 가산항목 외에도 실제 역세권활성화 지구단위계획에서는 다음 관계법령 인센티브를 함께 검토할 수 있다.</div>
+    <table class="activation-table"><thead><tr><th>추가 검토항목</th><th>검토내용</th><th>적용방식</th></tr></thead><tbody>${relatedBonusRows}</tbody></table>
+
+    ${sectionTitle('3.4 공공기여 기준')}
+    <div style="${applyStyle}"><b>본 대상지 적용</b> · ${escHtml(pcApplied)}${appliedRule?`<br><b>공공기여 완화 시나리오</b> · 관광숙박시설·노인복지주택 용적률 30% 도입 시 환산 공공기여율 약 ${tourist30Pc}% · 50% 이상 도입 시 약 ${tourist50Pc}%`:''}</div>
+    <table class="activation-table"><thead><tr><th>변경 전</th><th>변경 후</th><th>공공기여율</th><th>대상지</th></tr></thead><tbody>${pcTableRows}</tbody></table>
+    <div style="${noteStyle}"><b>산정원칙</b> 공공기여율은 부지면적 기준이며 증가용적률의 50%에 해당하는 용적률을 부지면적으로 환산한다. 증가용적률은 기준(허용)용적률과 상한용적률의 차이가 원칙이고, 위원회 인정 시 계획용적률과 기준(허용)용적률의 차이를 적용할 수 있다. ${source('제4장 4-1-1')}</div>
+    <table class="activation-table"><thead><tr><th>완화·구성 항목</th><th>기준</th><th>대상지 적용방법</th></tr></thead><tbody>
+      <tr><td><b>관광숙박·노인복지주택 30%</b></td><td>증가용적률의 40% 수준으로 공공기여 완화</td><td>${appliedRule?`표준 ${appliedRule.pc}% → 약 ${tourist30Pc}% 환산`:'변경조합 확정 후 산정'}</td></tr>
+      <tr><td><b>관광숙박·노인복지주택 50% 이상</b></td><td>증가용적률의 30% 수준으로 공공기여 완화</td><td>${appliedRule?`표준 ${appliedRule.pc}% → 약 ${tourist50Pc}% 환산`:'변경조합 확정 후 산정'}</td></tr>
+      <tr><td><b>저지가 자치구</b></td><td>3개년 연속 표준지 공시지가 평균이 서울시 평균의 60% 이하인 자치구</td><td>운영기준상 지역별 완화 적용 · 해당 자치구 Fact 연결 시 자동산정 가능</td></tr>
+      <tr><td><b>완화 중복</b></td><td>관광숙박·노인복지주택 완화와 지역별 완화 중복 시</td><td>지역별 완화는 1/2 적용</td></tr>
+      <tr><td><b>공공기여 구성</b></td><td>공공임대주택 30% 이상 권장 · 한 가지 유형 50% 초과 지양</td><td>기반시설 → 정책필요시설 → 생활SOC → 현금 순으로 수요·정책여건 반영</td></tr>
+    </tbody></table>
+    <div style="${noteStyle}">${source('제4장 4-1-1~4-1-2')}</div>
+
+    ${sectionTitle('3.5 건축·용도계획 기준')}
+    <table class="activation-table"><thead><tr><th>계획항목</th><th>제도상 기준</th><th>적용·해석</th></tr></thead><tbody>${planningRows}</tbody></table>
+    <div style="${noteStyle}">${source('제3장 3-3-1~3-3-13')}</div>
+  `;
 }
 function growthPotentialDensityPlanRowsHtml(res,store,f){
   const c=store?.common||{},current=f?.zoning?.current||c.zoning||'',explicit=(c.targetZoning&&c.targetZoning!==current)?c.targetZoning:null;
@@ -16594,7 +16714,7 @@ function renderActivationDetailPopup(){
     </tbody></table></section>
     <section class="activation-section"><h4>2. 검토결과</h4><table class="activation-table"><thead><tr><th>구분</th><th>검토항목</th><th>기준</th><th>대상지 현황</th><th>판정·후속</th></tr></thead><tbody>${resultRows}</tbody></table>
       <div style="padding:8px 10px;font-size:8px;line-height:1.6;color:#475467"><b>강점</b> ${escHtml(strengths)}<br><b>약점</b> ${escHtml(risks)}<br><b>추가확인</b> ${escHtml(follow)}</div></section>
-    <section class="activation-section"><h4>3. 계획기준</h4><table class="activation-table"><thead><tr><th>검토항목</th><th>적용가능 범위</th><th>적용조건·해석</th><th>근거</th></tr></thead><tbody>${planRows}</tbody></table></section>
+    <section class="activation-section"><h4>3. 역세권활성화사업 운영기준</h4>${planRows}</section>
     <section class="activation-section"><h4>4. 추진일정</h4><div class="activation-procedure">${stepHtml}</div><div style="padding:0 9px 9px;font-size:8px;color:#667085">사업대상지 선정 후 12개월 이내 주민제안서 제출이 원칙이며, 자문·협의·위원회 일정과 사업방식에 따라 실제 기간은 달라질 수 있습니다.</div></section>
     <div class="scheme-modal-note"><b>판정구조</b> 현황 Fact Store → 역세권활성화 전용 공간체크 → 전용 Rule Module → 본 검토서 → 사업우선순위 순으로 같은 데이터를 사용합니다. 위원회 심의·지원자문단 인정은 후속 결정으로 분리하고, 동의율은 사업자가 확보해야 할 사업추진 전제조건으로만 표시하여 사업가능성 판정에는 사용하지 않습니다.</div>
   </div>`;
