@@ -18006,22 +18006,86 @@ function renewalDensityPlanRowsForPopup(name,res,store,f){
   // 주거환경개선은 재개발·재건축의 종상향 표를 공용하지 않는다.
   if(name==='residential_environment'){
     const method=f?.method?.raw||'auto',small=popupResEnvSmallscaleProfile(current);
+    const ss=store?.scheme_specific?.smallscale||null;
+    const methodValue=method==='auto'?'추후 검토':(['management','smallscale'].includes(method)?'소규모정비형(기반시설 정비+주택개량)':(f?.method?.label||method));
+    const methodNote=method==='auto'
+      ?'2030 기본계획상 소규모정비형·수용후 주택건설·환지·관리처분 중 정비계획/사업추진 단계에서 결정'
+      :'선택된 시행방법을 계획기준 표시에만 반영하며 사업진입 판정에는 영향 없음';
+    const routeText=(key,label)=>{
+      const r=ss?.routes?.[key];
+      if(!r)return `${label}: 연계 FACT 미확보`;
+      const st=r.status==='PASS'?'충족':r.status==='FAIL'?'불충족':'확인필요';
+      return `${label}: ${st}`;
+    };
+    const smallscaleLinks=[routeText('autonomous','자율주택'),routeText('block','가로주택')].join(' / ');
+    const moa=ss?.routes?.moa;
+    const moaText=moa?`${moa.value||'-'} · ${moa.status==='PASS'?'적용경로 확인':moa.status==='FAIL'?'현재 미지정':'확인필요'}`:'관리지역 FACT 미확보';
+    const coverageMap={'제1종일반주거':'60% 이하','제2종일반주거(7층)':'60% 이하','제2종일반주거':'60% 이하','제3종일반주거':'50% 이하','준주거':'60% 이하'};
+
     out+=popupPlanRow(
-      '소규모정비형 · 용적률',
-      current?`${current} · ${popupResEnvFarText(small)}`:'현 용도지역 확인 필요',
-      '중·소규모 개별건축은 기준/허용을 구분하지 않고 서울시 도시계획조례상 용적률 적용 가능 · 정비계획에서 별도 설정 가능',
+      '시행방법',
+      methodValue,
+      methodNote,
       sourceResEnv
     );
     out+=popupPlanRow(
-      '수용·환지·관리처분 · 용적률',
-      ['acquisition','landreadjustment','disposition'].includes(method)?`${f?.method?.label||'선택 시행방법'} · 해당 사업방식 용적률계획 적용`:'각 사업방식의 용적률계획 적용',
-      '2030 기본계획은 전면개발형 주거환경개선에 별도 공통 숫자표를 두지 않고 각 시행방법의 용적률계획을 따르도록 규정',
+      '소규모정비형 · 기본 용적률',
+      current?`${current} · ${popupResEnvFarText(small)}`:'현 용도지역 확인 필요',
+      '중·소규모 개별건축은 기준/허용을 구분하지 않고 서울시 도시계획조례상 용적률을 적용할 수 있으며, 구역 특성상 계획목표 유도가 필요한 경우 정비계획에서 별도로 정할 수 있음',
+      sourceResEnv
+    );
+    out+=popupPlanRow(
+      '소규모정비형 · 소규모주택정비 연계',
+      smallscaleLinks,
+      '2030 기본계획은 소규모정비형 주거환경개선사업에서 자율주택정비·가로주택정비 등 소규모주택정비사업을 연계수단으로 활용하도록 제시 · 현재 플랫폼의 소정법 FACT를 그대로 참조',
+      sourceResEnv
+    );
+    out+=popupPlanRow(
+      '소규모주택정비 관리지역·모아타운 연계',
+      moaText,
+      '소규모정비형 주거환경개선사업은 소규모주택정비관리계획 수립 가능 지역과 연계할 수 있으나, 관리지역 지정 자체를 주거환경개선사업 충족으로 간주하지 않음',
+      sourceResEnv
+    );
+    out+=popupPlanRow(
+      '수용 후 주택건설방법',
+      method==='acquisition'?'선택 시행방법 · 해당 사업방식 용적률계획 적용':'추후 검토',
+      '물리적 현황이 극히 불량하고 공공의 적극적 개입이 필요한 지역에 제한적으로 적용 · 전면개발 시 별도 공통 숫자표가 아니라 해당 사업방식의 용적률계획을 적용',
+      sourceResEnv
+    );
+    out+=popupPlanRow(
+      '환지방법',
+      method==='landreadjustment'?'선택 시행방법 · 해당 사업방식 용적률계획 적용':'추후 검토',
+      '환지로 공급하는 시행방법 · 전면개발 시 해당 사업방식의 용적률계획을 적용하며 소규모정비형 용적률 표를 자동 적용하지 않음',
+      sourceResEnv
+    );
+    out+=popupPlanRow(
+      '관리처분방법',
+      method==='disposition'?'선택 시행방법 · 해당 사업방식 용적률계획 적용':'추후 검토',
+      '관리처분계획에 따라 주택 및 부대시설을 공급하는 시행방법 · 전면개발 시 해당 사업방식의 용적률계획을 적용',
+      sourceResEnv
+    );
+    out+=popupPlanRow(
+      '건폐율',
+      coverageMap[current]?`${current} · ${coverageMap[current]}`:'현 용도지역 기준 확인',
+      '서울시 도시계획조례상 용도지역별 건폐율을 적용 · 정비계획에서 주거환경의 질적 향상을 위해 위원회 심의로 강화 가능',
+      sourceResEnv
+    );
+    out+=popupPlanRow(
+      '높이계획',
+      '상위·관련계획 및 용도지구 높이규제 적용',
+      '2040 서울도시기본계획·서울도심 기본계획·지구단위계획 수립기준과 정합성을 유지하며, 타법 연계사업은 해당 법령의 높이 특례 적용 가능',
+      sourceResEnv
+    );
+    out+=popupPlanRow(
+      '타법 밀도특례',
+      '적용 가능 · 연계수단별 별도 검토',
+      '지구단위계획, 도시재생활성화지역, 특별건축구역, 건축협정, 리모델링활성화구역, 소규모주택정비관리지역 및 소규모주택정비사업 등은 각 관계법령의 건폐율·용적률·높이 특례를 적용할 수 있음',
       sourceResEnv
     );
     out+=popupPlanRow(
       '용도지역 변경·공공기여',
       '주거환경개선 독립 종상향 공공기여표 없음',
-      '재개발·재건축의 10/20/30% 종상향 공공기여표를 자동 공용하지 않음 · 타법 연계사업/특례 적용 시 해당 법령 및 정비계획 기준 적용',
+      '재개발·재건축의 10/20/30% 종상향 공공기여표를 자동 공용하지 않음 · 타법 연계사업 또는 별도 정비계획에서 정한 기준만 적용',
       sourceResEnv
     );
     return out;
@@ -18088,7 +18152,7 @@ function renderRemainingSchemeDetailPopup(name){
     : name==='general_housing'?generalHousingDensityPlanRowsForPopup(res,store,f)
     : name==='prior_negotiation'?priorNegotiationDensityPlanRowsForPopup(res,store,f)
     : name==='redevelopment'?'':schemeSheetPlanRows(res,cfg.planItems);
-  const planSectionTitle=name==='redevelopment'?'3. 주택정비형 재개발사업 계획기준':name==='reconstruction'?'3. 재건축사업 계획기준·용적률·사업성':(['general_housing','prior_negotiation'].includes(name)?'3. 계획기준·용적률·공공기여':'3. 계획기준·사업구조·추진조건');
+  const planSectionTitle=name==='redevelopment'?'3. 주택정비형 재개발사업 계획기준':name==='reconstruction'?'3. 재건축사업 계획기준·용적률·사업성':name==='residential_environment'?'3. 주거환경개선사업 시행방법·밀도계획':(['general_housing','prior_negotiation'].includes(name)?'3. 계획기준·용적률·공공기여':'3. 계획기준·사업구조·추진조건');
   let statusRows='';
   for(let i=0;i<(cfg.status||[]).length;i+=2){
     const a=cfg.status[i],b=cfg.status[i+1];
