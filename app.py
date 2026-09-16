@@ -59,15 +59,17 @@ shapefile.VERBOSE = False
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STRUCTURED_DATA_DIR = os.path.join(BASE_DIR, "data")
+ROOT_STATIC_HTML = os.path.join(BASE_DIR, "app.html")
 STRUCTURED_STATIC_HTML = os.path.join(BASE_DIR, "static", "app.html")
 
-# GitHub 웹 업로드는 선택한 폴더 안의 파일을 저장소 루트로 평탄화할 수
-# 있다. 정식 폴더 구조를 우선하되, 기존 단일폴더 배포방식도 자동 지원한다.
+# 배포 기준본은 저장소 루트의 app.html이다.
+# 과거 structured 배포의 static/app.html이 남아 있더라도 최신 루트 app.html을
+# 가리지 않도록 루트 파일을 우선하고, 루트 파일이 없을 때만 fallback한다.
 DATA_DIR = STRUCTURED_DATA_DIR if os.path.isdir(STRUCTURED_DATA_DIR) else BASE_DIR
 STATIC_HTML_PATH = (
-    STRUCTURED_STATIC_HTML
-    if os.path.isfile(STRUCTURED_STATIC_HTML)
-    else os.path.join(BASE_DIR, "app.html")
+    ROOT_STATIC_HTML
+    if os.path.isfile(ROOT_STATIC_HTML)
+    else STRUCTURED_STATIC_HTML
 )
 STATIC_DIR = os.path.dirname(STATIC_HTML_PATH)
 
@@ -105,10 +107,20 @@ def _json_property(value: Any) -> Any:
         return str(value)
 
 
-@lru_cache(maxsize=1)
+_INDEX_HTML_CACHE = {"mtime_ns": None, "text": None}
+
 def _index_html() -> str:
-    with open(STATIC_HTML_PATH, encoding="utf-8") as fp:
-        return fp.read()
+    """app.html을 파일 변경시 자동 재로딩한다.
+
+    Render 재배포뿐 아니라 실행 중 파일 교체 시에도 이전 HTML이 메모리에
+    고정되지 않도록 mtime을 확인한다.
+    """
+    stat = os.stat(STATIC_HTML_PATH)
+    if _INDEX_HTML_CACHE["text"] is None or _INDEX_HTML_CACHE["mtime_ns"] != stat.st_mtime_ns:
+        with open(STATIC_HTML_PATH, encoding="utf-8") as fp:
+            _INDEX_HTML_CACHE["text"] = fp.read()
+        _INDEX_HTML_CACHE["mtime_ns"] = stat.st_mtime_ns
+    return _INDEX_HTML_CACHE["text"]
 
 # Legacy backend redevelopment evaluator removed in r6.
 # Authoritative scheme decisions are produced in app.html from the shared Fact Store.
@@ -6263,7 +6275,15 @@ def admin_dashboard(request: Request, _: bool = Depends(_admin_auth)):
 def home():
     # VWorld 공식 웹 샘플처럼 브라우저에서 Data API를 직접 호출한다.
     # 키는 GitHub 소스에는 없고 Render 환경변수에서 런타임에 주입된다.
-    return _index_html().replace("__VWORLD_CLIENT_KEY__", _vworld_key())
+    html = _index_html().replace("__VWORLD_CLIENT_KEY__", _vworld_key())
+    return HTMLResponse(
+        content=html,
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
 
 
 @app.get("/api/reference/stations")
