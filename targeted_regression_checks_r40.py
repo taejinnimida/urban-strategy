@@ -29,7 +29,7 @@ ck('R40 public complex only two innovation types', '도시재생혁신지구|주
 ck('R40 public complex recognition project removed from gate', '인정사업' not in fn)
 ck('R40 public complex activation area not hard fail', '도시재생활성화지역' in fn and '단순 중첩은 배제하지 않음' in fn)
 ck('R40 public complex five separate criteria', all(x in HTML for x in ['과소토지 90㎡ 이하 30% 이상','호수밀도 50호/ha 이상','주택접도율 50% 이하','방재지구 면적 1/2 이상','지하층 주거사용 건축물 1/2 이상']))
-ck('R40 public complex urban regen label cleaned', '도시재생 인정사업·혁신지구' not in HTML and "schemeRow('도시재생 혁신지구 배제'" in HTML)
+ck('R40 public complex urban regen label cleaned', '도시재생 인정사업·혁신지구' not in HTML and ("schemeRow('도시재생 혁신지구 배제'" in HTML or "schemeRow('도시재생 관련 지역·지구 배제'" in HTML))
 # Housing / shared / safe / longterm
 ck('R40 general housing district-plan aging', "schemeRow('지구단위계획 노후도'" in HTML and "resolvedSchemeAgeFact(store,'general_housing')" in HTML)
 ck('R40 general housing semiindustrial zoning passes route', "'준공업'" in HTML[HTML.index('function generalHousingSpatialFacts'):HTML.index('function checkGeneralHousingFromFacts')])
