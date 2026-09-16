@@ -17517,6 +17517,129 @@ function popupResEnvFarText(p){return p?`기준 ${p.base}% · 허용 ${p.allow}%
 function popupPlanRow(label,value,condition,source){
   return `<tr><td><b>${escHtml(label)}</b></td><td>${escHtml(value)}</td><td>${escHtml(condition)}</td><td>${source}</td></tr>`;
 }
+function redevelopmentDensityPlanRowsHtml(res,store,f){
+  const c=store?.common||{},current=c.zoning||'',explicitTarget=(c.targetZoning&&c.targetZoning!==current)?c.targetZoning:null;
+  const currentProfile=popupRenewalNoChangeProfile('redevelopment',current);
+  const targetProfile=explicitTarget?popupRenewalChangedProfile(current,explicitTarget):null;
+  const area=Number(c.area);
+  const areaKnown=Number.isFinite(area)&&area>0;
+  const source=(loc)=>schemeSheetSourceFor('redevelopment','용적률·계획기준','RENEWAL_PLAN',loc);
+  const sectionTitle=txt=>`<h5 style="margin:12px 0 6px;font-size:11px;color:#1d2939">${txt}</h5>`;
+  const noteStyle='padding:8px 10px;margin:6px 0;background:#f8fafc;border:1px solid #e4e7ec;border-radius:8px;font-size:9px;line-height:1.6;color:#344054';
+  const applyStyle='padding:9px 10px;margin:6px 0 8px;background:#fff8e8;border:1px solid #f2cc7c;border-radius:8px;font-size:9px;line-height:1.7;color:#344054';
+
+  const baseRows=[
+    ['제1종일반주거',150,150,200,200,''],
+    ['제2종일반주거(7층)',170,190,250,250,''],
+    ['제2종일반주거',190,210,250,250,''],
+    ['제3종일반주거',210,230,250,300,''],
+    ['준주거',300,320,400,500,''],
+    ['준공업',210,230,250,400,'공장비율 10% 미만 지역에 한함']
+  ].map(r=>`<tr${r[0]===current?' style="background:#fff6df;font-weight:700"':''}><td>${escHtml(r[0])}</td><td>${r[1]}%</td><td>${r[2]}%</td><td>${r[3]}%</td><td>${r[4]}%</td><td>${r[0]===current?'<b>대상지 현행</b>':escHtml(r[5]||'-')}</td></tr>`).join('');
+
+  const changeRows=[
+    ['제1종일반주거','제2종일반주거',150,170,200,250,10],
+    ['제1종일반주거','제3종일반주거',150,170,250,300,20],
+    ['제1종일반주거','준주거',null,null,null,null,30],
+    ['제2종일반주거(7층)','제2종일반주거',190,210,250,250,0],
+    ['제2종일반주거(7층)','제3종일반주거',190,210,250,300,10],
+    ['제2종일반주거(7층)','준주거',null,null,null,null,20],
+    ['제2종일반주거','제3종일반주거',190,210,250,300,10],
+    ['제2종일반주거','준주거',null,null,null,null,20],
+    ['제3종일반주거','준주거',210,230,400,500,10]
+  ];
+  const changeTableRows=changeRows.map(r=>{
+    const match=r[0]===current&&r[1]===explicitTarget;
+    const far=r[2]==null?'기본계획 직접 수치 없음':`${r[2]} / ${r[3]} / ${r[4]} / ${r[5]}%`;
+    const pc=r[6]===0?'없음':`${r[6]}% 이상`;
+    return `<tr${match?' style="background:#fff6df;font-weight:700"':''}><td>${escHtml(r[0])}</td><td>${escHtml(r[1])}</td><td>${escHtml(far)}</td><td>${pc}</td><td>${match?'<b>대상지 계획경로</b>':'-'}</td></tr>`;
+  }).join('');
+
+  const siteBase=currentProfile?`${current} · 기준 ${currentProfile.base}% · 허용 ${currentProfile.allow}% · 상한 ${currentProfile.cap}% · 법적상한 ${currentProfile.legal}%`:`${current||'현 용도지역 미확인'} · 기본계획 직접 수치 확인 필요`;
+  let siteTarget='목표 용도지역 미선택 · 종상향을 자동 전제로 하지 않음';
+  if(explicitTarget){
+    if(targetProfile){
+      const fp=targetProfile.separate?'용적률 수치는 기본계획·지구단위계획·유사사례 등을 참고하여 별도 결정':`기준 ${targetProfile.base}% · 허용 ${targetProfile.allow}% · 상한 ${targetProfile.cap}% · 법적상한 ${targetProfile.legal}%`;
+      const pc=targetProfile.pc===0?'공공기여 없음':`공공기여 ${targetProfile.pc}% 이상${areaKnown?` · 부지면적 환산 약 ${Math.round(area*targetProfile.pc/100).toLocaleString()}㎡ 상당`:''}`;
+      siteTarget=`${current} → ${explicitTarget} · ${fp} · ${pc}`;
+    }else siteTarget=`${current} → ${explicitTarget} · 기본계획 직접 경로 없음 · 별도 결정`;
+  }
+
+  const improvementRows=[
+    ['현황용적률 인정','제1·2종일반주거지역','조례상 용적률 초과 건축물의 대지면적 비율에 따라 직선보간','1종 150→최대 200% · 2종 190→최대 250%','산정 현황용적률을 기준용적률로 사용'],
+    ['소형주택 기준용적률 완화','전용 40㎡ 이하','완화량 해당 연면적을 해당 규모 분양주택으로 공급','최대 10%p','전체 기준용적률 완화는 최대 20% 범위'],
+    ['소형주택 기준용적률 완화','전용 40~50㎡ 이하','완화량 해당 연면적을 해당 규모 분양주택으로 공급','최대 15%p','위원회 심의로 규모별 최대완화량 조정 가능'],
+    ['소형주택 기준용적률 완화','전용 50~60㎡ 이하','완화량 해당 연면적을 해당 규모 분양주택으로 공급','최대 10%p',''],
+    ['사업성 보정계수','사업성이 낮은 구역','서울시 평균 공시지가 ÷ 대상구역 평균 공시지가','1.0~2.0','허용용적률 인센티브 총량 보정에 사용'],
+    ['상한 확대','현황용적률·사업성보정 적용 시','순부담 상한 인센티브 구간이 부족한 경우 포함','해당 용도지역 법적상한까지','용도지역 상향 시 상향된 용도지역 법적상한 적용']
+  ].map(r=>`<tr><td><b>${escHtml(r[0])}</b></td><td>${escHtml(r[1])}</td><td>${escHtml(r[2])}</td><td>${escHtml(r[3])}</td><td>${escHtml(r[4]||'-')}</td></tr>`).join('');
+
+  const allowRows=[
+    ['공공보행통로','기준용적률×(조성면적/대지면적)×a, a≤1','10%p 이내','수변친화공간과 중복 불가'],
+    ['열린단지','개방공간·담장 미설치·연도형상가 등','5%p','위원회 인정'],
+    ['BF 인증','최우수 5 / 우수 4 / 일반 3%p','5%p 이내',''],
+    ['돌봄시설','의무면적 제외 조성면적 기준 산식','5%p 이내','무상임대·의무시설 제외'],
+    ['고령서비스시설','의무면적 제외 조성면적 기준 산식','5%p 이내','노인복지시설 등'],
+    ['층간소음','중량충격음 1등급 5 / 2등급 3%p','5%p 이내',''],
+    ['친환경 건축물','ZEB·에너지효율·녹색건축 인증','7.5%p 이내(보정계수 적용 시 최대 15%p)','상한에 우선 적용 · 동일 세부항목 허용/상한 중복 불가'],
+    ['우수디자인+장수명주택','건축위원회 인정 + 장수명 인증','최우수 15 / 우수 10%p','최대 15%p'],
+    ['수변친화 공간','수변 접근 보행로·조망축·통경축','5%p','공공보행통로와 중복 불가'],
+    ['방재안전','화재·소방·피난·침수 등 의무기준 초과','5%p 이내','위원회 심의·자문'],
+    ['역사문화보전','문화재 보전·옛길/물길 복원 등','3%p','위원회 인정'],
+    ['지역특화','UAM 등 공간대개조·미래전략시설','5%p 이내','위원회 인정']
+  ].map(r=>`<tr><td><b>${escHtml(r[0])}</b></td><td>${escHtml(r[1])}</td><td>${escHtml(r[2])}</td><td>${escHtml(r[3]||'-')}</td></tr>`).join('');
+
+  const greenRows=[
+    ['ZEB1','7.5%p','15%p'],['ZEB2','7%p','14%p'],['ZEB3','6.5%p','13%p'],['ZEB4','6%p','12%p'],['ZEB5','5.5%p','11%p'],['에너지효율 1++','3%p','6%p'],['에너지효율 1+','1.5%p','3%p'],['녹색건축 최우수','3%p','6%p'],['녹색건축 우수','1.5%p','3%p']
+  ].map(r=>`<tr><td>${escHtml(r[0])}</td><td>${r[1]}</td><td>${r[2]}</td></tr>`).join('');
+
+  const legalRows=[
+    ['제1종일반주거','200%'],['제2종일반주거','250%'],['제3종일반주거','300%'],['준주거','500%'],['준공업(공장비율 10% 미만)','400%']
+  ].map(r=>`<tr${r[0].startsWith(current)?' style="background:#fff6df;font-weight:700"':''}><td>${escHtml(r[0])}</td><td>${r[1]}</td></tr>`).join('');
+
+  const hill=f?.planning?.hill||{};
+  const hillText=hill.known?(hill.intersects?`구릉지 중첩 ${Number(hill.overlap_pct||0).toFixed(1)}% · 용도지역 상향은 현 용도지역 유지 원칙 우선 검토`:'구릉지 직접중첩 없음'):'구릉지 FACT 미확보';
+
+  return `
+    ${sectionTitle('3.1 용도지역별 기본 용적률')}
+    <div style="${applyStyle}"><b>본 대상지 현행</b> · ${escHtml(siteBase)}<br><b>용도지역 변경 계획</b> · ${escHtml(siteTarget)}</div>
+    <table class="activation-table"><thead><tr><th>용도지역</th><th>기준용적률</th><th>허용용적률</th><th>상한용적률</th><th>법적상한용적률</th><th>대상지·비고</th></tr></thead><tbody>${baseRows}</tbody></table>
+    <div style="${noteStyle}"><b>기본원칙</b> 용도지역 변경이 없는 경우 기본계획의 기준/허용/상한/법적상한 체계를 적용한다. 준공업지역은 공장비율 10% 미만 지역에 한하여 주택정비형 재개발 추진이 가능하다. ${source('주택정비형 재개발사업 부문 · 3.2 용적률 계획 · 표51')}</div>
+
+    ${sectionTitle('3.2 사업성 개선 용적률')}
+    <table class="activation-table"><thead><tr><th>제도</th><th>적용대상</th><th>산정·적용방식</th><th>최대 가능범위</th><th>비고</th></tr></thead><tbody>${improvementRows}</tbody></table>
+    <div style="${noteStyle}"><b>현황용적률</b> 조례용적률 초과 건축물 비율에 따라 산정하며, 산정값이 소형주택 기준용적률 완화범위보다 낮으면 해당 완화범위까지 추가 적용할 수 있다. <b>사업성 보정계수</b>는 허용용적률 인센티브 총량을 보정하는 제도로 세부 산식·운영은 시장 별도 방침을 따른다. ${source('표52 · 표56 · 사업성 보정계수')}</div>
+
+    ${sectionTitle('3.3 용도지역 변경·공공기여')}
+    <div style="${applyStyle}"><b>본 대상지 계획경로</b> · ${escHtml(siteTarget)}<br><b>원칙</b> · 1단계 상향 원칙, 상향기준 충족 시 위원회 심의를 거쳐 2단계 이상 가능</div>
+    <table class="activation-table"><thead><tr><th>변경 전</th><th>변경 후</th><th>기준/허용/상한/법적상한</th><th>공공기여율</th><th>대상지</th></tr></thead><tbody>${changeTableRows}</tbody></table>
+    <div style="${noteStyle}"><b>공공기여</b> 1단계 용도지역 상향은 원칙적으로 10% 이상으로 통일하되, 상향단계에 따라 20%·30%가 적용된다. 기본계획에 직접 수치가 없는 상향조합은 기본계획·지구단위계획 수립기준·유사사례 등을 참고하여 별도로 정한다. ${source('표54 · 표55')}</div>
+
+    ${sectionTitle('3.4 허용용적률 인센티브')}
+    <div style="${applyStyle}"><b>허용용적률 인센티브 총량</b> · 원칙적으로 최대 <b>20%p</b> · 사업성 보정계수 적용 시 세부 총량은 별도 방침에 따라 보정</div>
+    <table class="activation-table"><thead><tr><th>인센티브 항목</th><th>적용기준</th><th>완화량</th><th>조건·중복</th></tr></thead><tbody>${allowRows}</tbody></table>
+    <div style="${noteStyle}">${source('표57 · 표58 허용용적률 인센티브')}</div>
+
+    ${sectionTitle('3.5 상한용적률·공공시설등 기부채납')}
+    <div style="${applyStyle}"><b>상한용적률 산식</b> · (기준)허용용적률 × {1 + 1.3×가중치×α토지 + (0.7 또는 1.0)×α건축물 + 0.7×α현금}<br><b>건축물 계수</b> · 공공임대주택·전략육성용도 1.0 / 기타시설 0.7</div>
+    <table class="activation-table"><thead><tr><th>제공방식</th><th>계수</th><th>산정기준</th></tr></thead><tbody>
+      <tr><td><b>토지</b></td><td>1.3</td><td>순부담 공공시설등 부지비율 × 가중치</td></tr>
+      <tr><td><b>건축물</b></td><td>1.0 / 0.7</td><td>공공임대·전략육성용도 1.0, 기타시설 0.7 · 설치비용을 환산부지면적으로 환산</td></tr>
+      <tr><td><b>현금</b></td><td>0.7</td><td>현금 기부채납비용을 환산부지면적으로 환산</td></tr>
+    </tbody></table>
+    <div style="${noteStyle}"><b>우선순위</b> 기반시설등 및 임대주택 계획을 우선 확보한 뒤 친환경 상한 인센티브를 적용한다. ${source('상한용적률 · 공공시설등 기부채납 용적률 인센티브 기준')}</div>
+
+    ${sectionTitle('3.6 친환경 인센티브·법적상한용적률')}
+    <table class="activation-table"><thead><tr><th>친환경 인증</th><th>기본 완화</th><th>보정계수 적용 시 최대</th></tr></thead><tbody>${greenRows}</tbody></table>
+    <div style="${noteStyle}"><b>친환경 총량</b> 에너지/ZEB와 녹색건축 인증은 중복 적용 가능하되 최대 7.5%p, 사업성 보정계수 적용 시 최대 15%p 범위. 동일 세부항목은 허용용적률과 상한용적률에 동시에 적용하지 않는다. ${source('친환경 상한용적률 인센티브')}</div>
+    <table class="activation-table" style="margin-top:6px"><thead><tr><th>용도지역</th><th>법적상한용적률</th></tr></thead><tbody>${legalRows}</tbody></table>
+    <div style="${noteStyle}"><b>법적상한</b> 국민주택규모 주택 건설에 따른 법정 요건을 충족하고 위원회 심의를 거쳐 적용한다. 역세권·간선도로변, 공공재개발 등 관계법령 특례는 관계 법령·조례가 정한 상한까지 별도 적용 가능하다. ${source('법적상한용적률 · 도시정비법 개정 등에 따른 용적률 체계')}</div>
+
+    ${sectionTitle('3.7 경관·보전 및 적용단서')}
+    <div style="${noteStyle}"><b>대상지 구릉지</b> · ${escHtml(hillText)}<br><b>혼재 용도지역</b> · 기준용적률은 각 용도지역 기준과 국토계획법 제84조·시행령 제94조에 따라 적용하며, 노선형 상업지역과 일반주거지역 혼재 시 상한용적률 300% 초과 제한 등 별도기준을 확인한다. ${source('경관관리 및 보전이 필요한 지역 · 용도지역 혼재지역의 용적률')}</div>
+  `;
+}
+
 function renewalDensityPlanRowsForPopup(name,res,store,f){
   const c=store?.common||{},current=c.zoning||'',explicitTarget=(c.targetZoning&&c.targetZoning!==current)?c.targetZoning:null;
   const sourceRenewal=schemeSheetSourceFor(name,'용적률·계획기준','RENEWAL_PLAN',name==='reconstruction'?'재건축사업 부문 · 건축물의 밀도계획':'주택정비형 재개발사업 부문 · 건축물의 밀도계획');
@@ -17634,12 +17757,13 @@ function renderRemainingSchemeDetailPopup(name){
   };
   const cfg=configs[name];if(!cfg)return;
   const resultRows=schemeSpecificResultRows(res,cfg.groups,cfg.planItems);
-  const planRows=['redevelopment','reconstruction','residential_environment'].includes(name)
+  const redevelopmentPlanHtml=name==='redevelopment'?redevelopmentDensityPlanRowsHtml(res,store,f):'';
+  const planRows=['reconstruction','residential_environment'].includes(name)
     ? renewalDensityPlanRowsForPopup(name,res,store,f)
     : name==='general_housing'?generalHousingDensityPlanRowsForPopup(res,store,f)
     : name==='prior_negotiation'?priorNegotiationDensityPlanRowsForPopup(res,store,f)
-    : schemeSheetPlanRows(res,cfg.planItems);
-  const planSectionTitle=['general_housing','prior_negotiation'].includes(name)?'3. 계획기준·용적률·공공기여':'3. 계획기준·사업구조·추진조건';
+    : name==='redevelopment'?'':schemeSheetPlanRows(res,cfg.planItems);
+  const planSectionTitle=name==='redevelopment'?'3. 주택정비형 재개발사업 계획기준':(['general_housing','prior_negotiation'].includes(name)?'3. 계획기준·용적률·공공기여':'3. 계획기준·사업구조·추진조건');
   let statusRows='';
   for(let i=0;i<(cfg.status||[]).length;i+=2){
     const a=cfg.status[i],b=cfg.status[i+1];
@@ -17649,7 +17773,7 @@ function renderRemainingSchemeDetailPopup(name){
   body.innerHTML=`<div class="activation-sheet"><div class="activation-sheet-title"><div><h3>${escHtml(schemeNames[name])}</h3><p>${escHtml(schemeFamilyLabel(name))} · ${escHtml(cfg.subtitle)}</p></div><div class="activation-feasibility"><span>${escHtml(cfg.feasibility)}</span><b class="${escHtml(res?.overall||'REVIEW')}">${escHtml(schemeSheetFeasibility(res?.overall||'REVIEW'))}</b></div></div>
   <section class="activation-section"><h4>1. 현황</h4><table class="activation-table"><tbody><tr><th>위치</th><td>${escHtml(store.site.address||'-')}</td><th>대상지 면적</th><td>${escHtml(fmtSchemeArea(store.common.area))}</td></tr>${statusRows}</tbody></table></section>
   <section class="activation-section"><h4>2. 검토결과</h4><table class="activation-table"><thead><tr><th>구분</th><th>검토항목</th><th>기준</th><th>대상지 현황</th><th>판정·후속</th><th>근거</th></tr></thead><tbody>${resultRows}</tbody></table>${schemeDetailSummary(res)}</section>
-  <section class="activation-section"><h4>${escHtml(planSectionTitle)}</h4><table class="activation-table"><thead><tr><th>검토항목</th><th>적용값</th><th>적용조건·해석</th><th>근거</th></tr></thead><tbody>${planRows}</tbody></table></section>
+  <section class="activation-section"><h4>${escHtml(planSectionTitle)}</h4>${redevelopmentPlanHtml||`<table class="activation-table"><thead><tr><th>검토항목</th><th>적용값</th><th>적용조건·해석</th><th>근거</th></tr></thead><tbody>${planRows}</tbody></table>`}</section>
   <section class="activation-section"><h4>4. 추진일정</h4><div class="activation-procedure">${steps}</div></section>
   <div class="scheme-modal-note"><b>초기검토 원칙</b> ${escHtml(cfg.note)} 검토표의 모든 항목은 근거유형·기준일·조문/장절을 함께 표시합니다.</div></div>`;
 }
