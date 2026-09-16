@@ -7508,7 +7508,17 @@ function roadPolygonsFromCenterlines(manageFeatures){
   return {derived:out,diagnostic};
 }
 function boundaryLines(poly){
-  try{const x=turf.polygonToLine(poly);return x.type==='FeatureCollection'?x.features:[x];}catch(e){return [];}
+  try{
+    const x=turf.polygonToLine(poly),src=x?.type==='FeatureCollection'?(x.features||[]):[x],out=[];
+    for(const f of src){
+      const g=f?.geometry;if(!g)continue;
+      if(g.type==='LineString'&&Array.isArray(g.coordinates)&&g.coordinates.length>=2){out.push(f);continue;}
+      if(g.type==='MultiLineString'&&Array.isArray(g.coordinates)){
+        for(const coords of g.coordinates){if(Array.isArray(coords)&&coords.length>=2)out.push(turf.lineString(coords,{...(f.properties||{})}));}
+      }
+    }
+    return out;
+  }catch(e){return [];}
 }
 function frontageStats(parcel,qualifiedRoads){
   const buffers=qualifiedRoads.map(f=>{try{return turf.buffer(f,0.45,{units:'meters'});}catch(e){return f;}});
@@ -8239,7 +8249,7 @@ async function measureAndSync(){
 async function runSiteReview(){
   if(!activeGeometry){setSiteReviewStatus('먼저 구역계를 설정하세요.','review');return;}
   if(siteReviewRunning)return;
-  siteReviewRunning=true;beginAnalysisProgress();setSiteReviewStatus('검토 시작 · 정확성 우선 모드 · 도형과 공식 공간자료를 확인합니다.','running');
+  siteReviewRunning=true;openMappedSpatialModulesForAnalysis();beginAnalysisProgress();setSiteReviewStatus('검토 시작 · 정확성 우선 모드 · 도형과 공식 공간자료를 확인합니다.','running');
   let finalState='done',finalText='검토 완료 · 공식 공간 Fact와 사업별 판정을 갱신했습니다.';
   try{
     // 도형면적은 이미 브라우저의 동일 GeoJSON으로 정확히 계산 가능하므로 불필요한 서버 왕복을 하지 않는다.
@@ -10156,7 +10166,7 @@ async function applySelectedParcelsAsBoundaryFromModal(){closeReviewModal('parce
 function commonSchemeData(){
   const landBase=selectedParcelLandBase();
   const roadNet=analysisState.road_network||{};
-  const roadNetNum=v=>{const n=Number(v);return Number.isFinite(n)?n:null;};
+  const roadNetNum=v=>{if(v==null||String(v).trim()==='')return null;const n=Number(v);return Number.isFinite(n)?n:null;};
   // 사업방식의 '대상면적'은 사용자가 확정한 구역계 면적을 사용한다. 선택필지 면적은 토지·소유·건축물 Fact용 별도 값이다.
   const businessBoundaryArea=landBase.boundaryArea>0?landBase.boundaryArea:(activeGeometry?Number(turf.area(turf.feature(activeGeometry))):null);
   return {
@@ -10322,18 +10332,19 @@ function growthInnovationRoadFactFromRecords(records,siteSummary={}){
 }
 function roadRawFacts(cArg=null){
   const c=cArg||commonSchemeData(),net=c.roadNetwork||analysisState.road_network||{};
+  const num=v=>{if(v==null||String(v).trim()==='')return null;const n=Number(v);return Number.isFinite(n)?n:null;};
   const records=(net.roads||[]).map(x=>({
     road_id:x.key||'',road_name:x.name||'도로명 미확인',
-    width_m:Number.isFinite(Number(x.width))?Number(x.width):null,
+    width_m:num(x.width),
     road_grade:null,road_function:null,
     hierarchy_raw:null,hierarchy_code:null,hierarchy_label:null,hierarchy_known:false,hierarchy20_known:false,
     arterial_function_confirmed:false,
     wide_road_raw:null,wide_road_code:null,wide_road_label:null,road_authority:null,
     city_level_road_candidate:false,special_city_road_explicit:false,special_city_road_confirmed:null,special_city_road_raw:null,
     statutory_classification:null,
-    frontage_contact_m:Number.isFinite(Number(x.contact))?Number(x.contact):null,
-    frontage_ratio_pct:Number.isFinite(Number(x.boundary_share_pct))?Number(x.boundary_share_pct):null,max_contiguous_m:Number.isFinite(Number(x.max_contiguous_m))?Number(x.max_contiguous_m):null,
-    contact_4m:Number.isFinite(Number(x.contact_4m))?Number(x.contact_4m):null,contact_6m:Number.isFinite(Number(x.contact_6m))?Number(x.contact_6m):null,contact_8m:Number.isFinite(Number(x.contact_8m))?Number(x.contact_8m):null,contact_20m:Number.isFinite(Number(x.contact_20m))?Number(x.contact_20m):null,contact_35m:Number.isFinite(Number(x.contact_35m))?Number(x.contact_35m):null,
+    frontage_contact_m:num(x.contact),
+    frontage_ratio_pct:num(x.boundary_share_pct),max_contiguous_m:num(x.max_contiguous_m),
+    contact_4m:num(x.contact_4m),contact_6m:num(x.contact_6m),contact_8m:num(x.contact_8m),contact_20m:num(x.contact_20m),contact_35m:num(x.contact_35m),
     intersection:null,site_distance_m:0,linear_commercial:null
   }));
   const functionKnown=false;
@@ -10342,7 +10353,7 @@ function roadRawFacts(cArg=null){
   return {
     quality:c.roadQuality||'NO_DATA',source:net.source||'',
     field_availability:{width:c.maxRoad!=null,road_grade:false,road_function:false,road_hierarchy:false,wide_road_code:false,special_city_road:false,statutory_classification:false,intersection:false,linear_commercial:false},
-    site_summary:{face_count:c.roadFaces,road4_faces:c.road4Faces,road6_faces:Number.isFinite(Number(net.road6Faces))?Number(net.road6Faces):null,road8_faces:Number.isFinite(Number(net.road8Faces))?Number(net.road8Faces):null,road20_faces:Number.isFinite(Number(net.road20Faces))?Number(net.road20Faces):null,road35_faces:Number.isFinite(Number(net.road35Faces))?Number(net.road35Faces):null,max_width_m:c.maxRoad,has_8m_width:c.has8,has_20m_width_candidate:c.has20Width,perimeter_m:Number.isFinite(Number(net.perimeterM))?Number(net.perimeterM):null,road4_contact_m:Number.isFinite(Number(net.contact4M))?Number(net.contact4M):null,road6_contact_m:Number.isFinite(Number(net.contact6M))?Number(net.contact6M):null,road8_contact_m:Number.isFinite(Number(net.contact8M))?Number(net.contact8M):null,road20_contact_m:Number.isFinite(Number(net.contact20M))?Number(net.contact20M):null,road35_contact_m:Number.isFinite(Number(net.contact35M))?Number(net.contact35M):null,road4_frontage_pct:Number.isFinite(Number(net.road4Perimeter))?Number(net.road4Perimeter):null,road6_frontage_pct:Number.isFinite(Number(net.road6Perimeter))?Number(net.road6Perimeter):null,road8_frontage_pct:Number.isFinite(Number(net.road8Perimeter))?Number(net.road8Perimeter):null,road20_frontage_pct:Number.isFinite(Number(net.road20Perimeter))?Number(net.road20Perimeter):null,road35_frontage_pct:Number.isFinite(Number(net.road35Perimeter))?Number(net.road35Perimeter):null,max20_contact_m:Number.isFinite(Number(net.max20ContactM))?Number(net.max20ContactM):null,max35_contact_m:Number.isFinite(Number(net.max35ContactM))?Number(net.max35ContactM):null,frontage_basis_buildings:Number.isFinite(Number(net.frontage_basis_buildings))?Number(net.frontage_basis_buildings):null,frontage_access_buildings_6m:Number.isFinite(Number(net.frontage_access_buildings_6m))?Number(net.frontage_access_buildings_6m):null,frontage_ratio_6m:Number.isFinite(Number(net.frontage_ratio_6m))?Number(net.frontage_ratio_6m):null,frontage_building_source:net.frontage_building_source||''},
+    site_summary:{face_count:c.roadFaces,road4_faces:c.road4Faces,road6_faces:num(net.road6Faces),road8_faces:num(net.road8Faces),road20_faces:num(net.road20Faces),road35_faces:num(net.road35Faces),max_width_m:c.maxRoad,has_8m_width:c.has8,has_20m_width_candidate:c.has20Width,perimeter_m:num(net.perimeterM),road4_contact_m:num(net.contact4M),road6_contact_m:num(net.contact6M),road8_contact_m:num(net.contact8M),road20_contact_m:num(net.contact20M),road35_contact_m:num(net.contact35M),road4_frontage_pct:num(net.road4Perimeter),road6_frontage_pct:num(net.road6Perimeter),road8_frontage_pct:num(net.road8Perimeter),road20_frontage_pct:num(net.road20Perimeter),road35_frontage_pct:num(net.road35Perimeter),max20_contact_m:num(net.max20ContactM),max35_contact_m:num(net.max35ContactM),frontage_basis_buildings:num(net.frontage_basis_buildings),frontage_access_buildings_6m:num(net.frontage_access_buildings_6m),frontage_ratio_6m:num(net.frontage_ratio_6m),frontage_building_source:net.frontage_building_source||''},
     records,growth_innovation:growthRoad,
     future_function_interface:{field:'road_hierarchy',status:'WAITING_USER_DATA',expected_source:'사용자 제공 도로위계 기준자료'},
     note:'도로위계 자동판정 비활성 · ROAD_BT 폭원과 접도 공간 Fact만 산정하며 간선도로 여부는 사용자 제공자료 연결 전 REVIEW'
@@ -10350,7 +10361,7 @@ function roadRawFacts(cArg=null){
 }
 function compactRoadFacts(c){
   const raw=roadRawFacts(c),net=analysisState.road_network||{};
-  const n=v=>{const x=Number(v);return Number.isFinite(x)?x:null;};
+  const n=v=>{if(v==null||String(v).trim()==='')return null;const x=Number(v);return Number.isFinite(x)?x:null;};
   const road4=n(net.road4Faces)??c.road4Faces,road8=n(net.road8Faces),has8=net.has8!=null?net.has8===true:(road8!=null?road8>=1:c.has8);
   return {
     quality:raw.quality,source:raw.source,
@@ -10946,7 +10957,19 @@ function moduleStrengthRisk(rows,extraFollowups=[]){
 function activationStrengthRiskSummary(facts,rows){
   const strengths=[],risks=[],followups=[];
   const row=(item)=>rows.find(r=>r.item===item);
-  for(const item of ['역세권','간선도로변','용도지역','도로','대상지 면적','배제지역 종합']){
+  const station=row('역세권'),arterial=row('간선도로변');
+  const locationSatisfied=station?.status==='PASS'||arterial?.status==='PASS';
+  for(const item of ['역세권','간선도로변']){
+    const r=row(item);if(!r)continue;
+    if(r.status==='PASS'){
+      strengths.push(`${item} ${r.conditional?'조건부 충족':'요건 충족'}`);
+      if(r.conditional)followups.push(`${item} 단서: ${r.caveat||r.note||'심의·협의 필요'}`);
+    }else if(!locationSatisfied){
+      if(r.status==='FAIL')risks.push(`${item} 요건 미충족`);
+      else if(r.status==='REVIEW')followups.push(`${item} 확인 필요`);
+    }
+  }
+  for(const item of ['용도지역','도로','대상지 면적','배제지역 종합']){
     const r=row(item); if(r?.status==='PASS'){
       strengths.push(`${item} ${r.conditional?'조건부 충족':'요건 충족'}`);
       if(r.conditional)followups.push(`${item} 단서: ${r.caveat||r.note||'심의·협의 필요'}`);
@@ -16331,6 +16354,11 @@ function setSpatialModuleCollapsed(el,collapsed){
   if(!collapsed)setTimeout(()=>{try{invalidateAllSpatialMaps(false);}catch(e){}},40);
 }
 function setAllSpatialModulesCollapsed(collapsed){document.querySelectorAll('#serviceVisualMaps .spatial-module').forEach(el=>setSpatialModuleCollapsed(el,collapsed));}
+function openMappedSpatialModulesForAnalysis(){
+  const mapped=[...document.querySelectorAll('#serviceVisualMaps .spatial-module')].filter(el=>el.querySelector('.spatial-mini-map,.scheme-streetblock-mini,.planning-mini-map'));
+  mapped.forEach(el=>setSpatialModuleCollapsed(el,false));
+  setTimeout(()=>{try{invalidateAllSpatialMaps(true);}catch(e){}},80);
+}
 function enableSpatialModuleCollapsing(){
   const defaultOpen=new Set(['siteDetail_land','siteDetail_zoning','siteDetail_district','siteDetail_planningFacility','siteDetail_downtownCharacteristic','siteDetail_building','siteDetail_age']);
   document.querySelectorAll('#serviceVisualMaps .spatial-module').forEach((el,i)=>{
