@@ -9339,8 +9339,6 @@ const RULE_SOURCE_CATALOG={
   PLANNING_GIS:{type:'공간정보·고시',title:'서울도시계획포털·VWorld 도시계획 공식 공간자료',effective:'공간DB 조회시점',locator:'용도지역·도시계획시설·지구단위계획·개발구역 공간중첩 후 개별 결정고시 재확인',url:'https://urban.seoul.go.kr/',verified:true},
   URBAN_RENEWAL_PLAN:{type:'기본계획',title:'2030 서울특별시 도시·주거환경정비기본계획(도시정비형 재개발사업 부문)',effective:'2025.11/2026.01 변경본 · 서울시 페이지 2026-04-10 확인',locator:'정비가능구역·부문별 계획',url:'https://news.seoul.go.kr/citybuild/archives/43005',verified:true},
   SMALL_HOUSING:{type:'법령·조례',title:'소규모주택정비법 시행령 및 서울특별시 빈집·소규모주택 정비 조례',effective:'2026-07-01 / 2026-07-13',locator:'시행령 제3조·제4조 및 조례 사업별 기준',url:'https://www.law.go.kr/LSW/LsiJoLinkP.do?docType=JO&joNo=000200000&languageType=KO&lsNm=%EB%B9%88%EC%A7%91+%EB%B0%8F+%EC%86%8C%EA%B7%9C%EB%AA%A8%EC%A3%BC%ED%83%9D+%EC%A0%95%EB%B9%84%EC%97%90+%EA%B4%80%ED%95%9C+%ED%8A%B9%EB%A1%80%EB%B2%95+%EC%8B%9C%ED%96%89%EB%A0%B9&paras=1',verified:true},
-  SMALL_ACT_CURRENT:{type:'법률',title:'빈집 및 소규모주택 정비에 관한 특례법',effective:'2026-07-01 현행본 기준',locator:'제48조·제49조·제49조의2·제49조의3',url:'https://www.law.go.kr/LSW/lsInfoP.do?lsId=012805',verified:true},
-  SMALL_ORD_CURRENT:{type:'조례',title:'서울특별시 빈집 및 소규모주택 정비에 관한 조례',effective:'2026-07-13',locator:'제49조의2·제50조·제50조의2·제50조의4',url:'https://law.go.kr/LSW/ordinInfoP.do?ordinSeq=2147713',verified:true},
   SMALL_AUTONOMOUS:{type:'서울시 공식안내',title:'서울특별시 자율주택정비사업 안내',effective:'2026-08-20 확인',locator:'사업대상지·기존주택수·노후도 기준',url:'https://news.seoul.go.kr/citybuild/archives/516338',verified:true},
   SMALL_BLOCK:{type:'서울시 공식안내',title:'서울특별시 가로주택정비사업 안내',effective:'2026-08-20 확인',locator:'가로구역·사업면적·노후도·기존주택수 기준',url:'https://news.seoul.go.kr/citybuild/archives/34438',verified:true},
   SMALL_RECONSTRUCTION:{type:'서울시 공식안내',title:'서울특별시 소규모재건축 안내',effective:'2026-08-20 확인',locator:'주택단지·1만㎡ 미만·200세대 미만·노후도 60%',url:'https://news.seoul.go.kr/citybuild/archives/518805',verified:true},
@@ -13025,14 +13023,21 @@ function publicComplexDensityPlanRowsForPopup(typ,store,vf,rr){
   const sourceGuide=schemeSheetSourceFor('public_complex','용적률·공공성','PUBLIC_COMPLEX_GUIDE','공공주택 업무처리지침 제20조의7');
   const sourceHousing=schemeSheetSourceFor('public_complex','공공주택 공급구조','PUBLIC_COMPLEX','공공주택 특별법 시행령 제3조제2항·제4항');
   const rows=[];
+  const typeLabel=publicComplexTypeLabel(typ);
 
-  // POPUP 전용 표시 로직. 사업진입 판정·Fact Store·공통 density 객체는 변경하지 않는다.
+  // POPUP3 표시 전용. 입지판정·Fact Store·overall·후보순위에는 관여하지 않는다.
+  rows.push(popupPlanRow(
+    '사업경로 성격','공공주도 대안경로',
+    `${typeLabel}은 공공주택사업자·지정권자가 중심이 되는 도심공공주택복합사업의 세부유형이다. 민간 시행형 사업과 구분하여 대상지의 공공주도 고밀개발 가능성을 비교하는 대안경로로 표시`,
+    sourceGuide
+  ));
+
   rows.push(popupPlanRow(
     '용도지역 계획',
     p.targetZone?`${p.currentZone||'-'} → ${p.targetZone}`:p.zoneRule,
     p.targetZone
       ?'사용자가 선택한 계획 용도지역을 기준으로 세부유형별 밀도특례를 표시'
-      :'종상향을 자동 전제하지 않고 사업유형별 용도지역 계획원칙을 표시',
+      :'종상향을 자동 전제하지 않고 세부유형별 용도지역 계획원칙만 표시',
     sourceGuide
   ));
 
@@ -13055,47 +13060,56 @@ function publicComplexDensityPlanRowsForPopup(typ,store,vf,rr){
   ));
 
   const farCondition=typ==='commercial'
-    ?'주거상업고밀: 일반주거는 법적상한×120% · 준주거(변경 포함)는 700% · 상업지역은 해당 법적상한'
+    ?'주거상업고밀지구: 일반주거는 법적상한×120% · 준주거는 700% · 상업지역은 해당 용도지역 법적상한'
     :typ==='industrial'
-      ?'주거산업융합: 준공업지역 유지 원칙 · 국토계획법상 법적상한까지'
-      :'주택공급활성화: 기존 일반주거 유지 시 법적상한×120% · 상향된 일반주거와 준주거는 해당 법적상한';
-  rows.push(popupPlanRow('기본 용적률 계획기준',p.baseFarText||'확인 필요',farCondition,sourceGuide));
-
+      ?'주거산업융합지구: 준공업 유지 원칙 · 준공업 법적상한 400%까지'
+      :'주택공급활성화지구: 기존 일반주거 유지 시 법적상한×120% · 용도지역 상향 시 변경 후 일반주거 법적상한 · 준주거 500%';
   rows.push(popupPlanRow(
-    '한시 사업성개선 용적률',p.temporaryText,
-    typ==='industrial'
-      ?'주거산업융합지구에는 제20조의7 제4항 제4호 한시특례를 적용하지 않음'
-      :'2025-09-07 당시 투기과열지구가 아닌 주거지역(상향된 경우 포함)에 적용 · 1·2종은 법적상한×120%, 3종·준주거는 ×140% · 2026-05-08 시행일부터 3년간 유효하며 경과조치 존재 · 역사적 지정여부 Fact가 없으면 자동확정하지 않음',
-    sourceGuide
+    '계획가능 용적률',p.baseFarText||'확인 필요',farCondition,sourceGuide
   ));
+
+  if(typ==='commercial'||typ==='housing'){
+    rows.push(popupPlanRow(
+      '한시 사업성개선 특례',p.temporaryText,
+      '2025-09-07 당시 비투기과열지구 여부가 확인되는 경우에만 적용여부를 확정한다. 역사 Fact가 미연결이면 특례를 자동적용하지 않고 시나리오로만 표시',
+      sourceGuide
+    ));
+  }else{
+    rows.push(popupPlanRow(
+      '한시 사업성개선 특례','주거산업융합지구 적용대상 아님',
+      '제20조의7 제4항 제4호의 1·2종 120% / 3종·준주거 140% 특례를 주거산업융합지구에 전용하지 않음',
+      sourceGuide
+    ));
+  }
 
   rows.push(popupPlanRow(
     typ==='industrial'?'산업시설 계획':'비주거시설 계획',p.nonResidentialRule,
-    '비주거·산업시설 비율은 용적률과 별개의 용도구성 계획기준 · 2026-05-08 개정기준 반영',
-    sourceGuide
-  ));
-
-  rows.push(popupPlanRow(
-    '공공성·환수 구조','정률 공공기여율 방식 아님',
-    '재개발·역세권활성화처럼 증가용적률의 일정 비율을 공공기여율로 산정하는 구조가 아니라, ① 공공시설등 계획면적 기준과 ② 공공임대·공공분양 공급구조를 각각 적용',
-    sourceGuide
+    '용적률과 별도의 용도구성 계획기준으로 관리',sourceGuide
   ));
 
   const area=Number(vf?.area?.m2||store?.common?.area||0);
   const facilityCap=Number.isFinite(area)&&area>0
-    ?`복합지구면적 15% 이내 원칙 · 약 ${Math.round(area*0.15).toLocaleString('ko-KR')}㎡ 이내`
-    :'복합지구면적의 15% 이내 원칙';
+    ?`복합지구면적 15% 이내 원칙 · 대상지 기준 약 ${Math.round(area*0.15).toLocaleString('ko-KR')}㎡ 이내`
+    :'복합지구면적 15% 이내 원칙';
   rows.push(popupPlanRow(
-    '공공시설등 계획면적',facilityCap,
-    `${p.publicFacilityRule} · 공공주택사업자가 기반시설·공공필요시설을 설치해 기부채납하는 경우 설치비용 상당가액을 부지면적으로 환산 가능 · 15%는 종상향 대가의 공공기여율이 아님`,
+    '공공시설 등 계획부담',facilityCap,
+    `${p.publicFacilityRule}. 이 15%는 용도지역 상향에 따른 정률 공공기여율이 아니라 공공시설·기반시설·공공필요시설의 계획면적 합계 기준`,
     sourceGuide
   ));
 
   const rentalPct=typ==='commercial'?15:10;
   rows.push(popupPlanRow(
+    '공공임대주택 공급비율',`전체 주택호수의 ${rentalPct}% 이상`,
+    typ==='commercial'
+      ?'주거상업고밀지구의 공공임대주택 공급비율. 공공시설 등 계획면적 15% 기준과 별개의 공급의무이므로 혼용하지 않음'
+      :'주거산업융합지구·주택공급활성화지구의 공공임대주택 공급비율. 공공시설 등 계획면적 15% 기준과 별개의 공급의무이므로 혼용하지 않음',
+    sourceHousing
+  ));
+
+  rows.push(popupPlanRow(
     '공공주택 공급구조',
     `공공임대 ${rentalPct}% 이상 · 지분적립형/이익공유형 공공분양 10% 이상 · 그 외 공공분양 60% 이상`,
-    '공공임대는 전체 주택호수 기준(주거상업고밀 15%, 그 외 복합지구 10%) · 시행령상 기본 공급비율이며 지정권자는 지역의 주택수요·여건 등을 고려해 공공주택사업자와 협의하여 비율 조정 가능',
+    '공공임대 공급비율과 공공시설 등 계획면적 15% 기준은 서로 다른 규정이다. 세부 공급비율은 관계규정 및 복합사업계획에서 최종 확정',
     sourceHousing
   ));
 
@@ -13110,7 +13124,7 @@ function publicComplexDensityPlanRowsForPopup(typ,store,vf,rr){
   }
   rows.push(popupPlanRow(
     '공원·녹지',parkValue,
-    '10만㎡ 이상은 세대당 2㎡ 또는 사업지구 면적 5% 중 큰 면적 · 계획세대수는 사업계획 변수이므로 초기 팝업에서 임의 산정하지 않음',
+    '10만㎡ 이상은 세대당 2㎡ 또는 사업지구 면적 5% 중 큰 면적. 계획세대수는 사업계획 변수이므로 초기검토에서 임의 산정하지 않음',
     sourceGuide
   ));
 
@@ -13123,7 +13137,6 @@ function publicComplexDensityPlanRowsForPopup(typ,store,vf,rr){
   return rows.join('');
 }
 
-// ============================================================
 // 2026-09-15 도심복합개발 2유형 용적률·공공기여 정규화
 // - 성장거점형: 서울특별시 성장거점형 복합개발사업 운영기준(2026.06.01.)
 // - 주거중심형: 서울특별시 도시계획조례 제48조 + 도심복합개발 지원 조례 제20조·제21조
@@ -17950,9 +17963,9 @@ function renderPublicComplexDetailPopup(){
       <tr><th>도시재생 혁신지구</th><td>${escHtml(vf.exclusions?.urban_regeneration?.value||f.exclusions?.urban_regeneration?.value||'공식 공간자료 미연결')}</td><th>제도 유효기간</th><td>${escHtml(vf.planning?.sunset||f.planning?.sunset||'-')}</td></tr>
     </tbody></table></section>
     <section class="activation-section"><h4>2. ${escHtml(label)} 검토결과</h4><table class="activation-table"><thead><tr><th>구분</th><th>검토항목</th><th>기준</th><th>대상지 현황</th><th>판정·후속</th><th>근거</th></tr></thead><tbody>${resultRows}</tbody></table>${schemeDetailSummary(viewRes)}</section>
-    <section class="activation-section"><h4>3. 사업구조·밀도·공공성 계획</h4><table class="activation-table"><thead><tr><th>검토항목</th><th>적용가능 범위</th><th>적용조건·해석</th><th>근거</th></tr></thead><tbody>${planRows}</tbody></table></section>
+    <section class="activation-section"><h4>3. 계획기준·용적률·공공부담</h4><table class="activation-table"><thead><tr><th>검토항목</th><th>적용가능 범위</th><th>적용조건·해석</th><th>근거</th></tr></thead><tbody>${planRows}</tbody></table></section>
     <section class="activation-section"><h4>4. 추진일정</h4><div class="activation-procedure">${steps}</div></section>
-    <div class="scheme-modal-note"><b>세부유형 독립판정</b> 이 검토서는 ${escHtml(label)}의 RESULT만 표시합니다. 다른 두 유형의 PASS/FAIL/REVIEW가 이 검토서에 전이되지 않습니다. 다른 유형은 사업방식 적용판정의 별도 버튼에서 각각 확인합니다.</div></div>`;
+    <div class="scheme-modal-note"><b>세부유형 독립판정</b> 이 검토서는 ${escHtml(label)}의 RESULT만 표시합니다. 다른 두 유형의 PASS/FAIL/REVIEW가 이 검토서에 전이되지 않습니다. 다른 유형은 사업방식 적용판정의 별도 버튼에서 각각 확인합니다.<br><b>공공주도 대안경로</b> 민간 시행형 사업과 구분하여 계획가가 대상지의 공공주도 개발 가능성을 비교할 수 있도록 별도 경로로 유지합니다.<br><b>15% 해석</b> 공공시설 등 계획부담의 15%는 종상향 정률 공공기여율이 아니라 복합지구면적 대비 공공시설·기반시설·공공필요시설의 계획면적 합계 기준입니다.</div></div>`;
 }
 
 
@@ -17962,25 +17975,28 @@ function innovationDensityPlanRowsForPopup(name,res,store,f){
     const target=d.target_zoning;
     const zoningText=target?`${c.zoning||'-'} → ${target}`:(d.zone||`${c.zoning||'-'} · 목표 용도지역 미선택`);
     const scenario=d.scenario_text||innovationGrowthScenarioText(c.zoning);
-    const zoningPc=d.zoning_change_pc_far!=null?`증가용적률의 50% = ${d.zoning_change_pc_far}%p${d.zoning_change_pc_far_seoul_downtown!=null?` (서울도심 ${d.zoning_change_pc_far_seoul_downtown}%p)`:''}를 부지면적으로 환산`:(target?'변경조합 재확인':'목표 용도지역 선택 후 산정');
+    const densityText=d.rule_valid===true
+      ?`${d.base_far!=null?`기준 ${d.base_far}%`:''}${d.upper_far!=null?` · 상한 ${d.upper_far}%`:''}${d.upper_far_seoul_downtown!=null?` (서울도심 ${d.upper_far_seoul_downtown}%)`:''}${d.legal_far!=null?` · 법적상한 ${d.legal_far}%`:''}`
+      :(d.far||'목표 용도지역 선택 후 산정');
+    const zoningPc=d.zoning_change_pc_far!=null
+      ?`증가용적률의 50% = ${d.zoning_change_pc_far}%p${d.zoning_change_pc_far_seoul_downtown!=null?` (서울도심 ${d.zoning_change_pc_far_seoul_downtown}%p)`:''}를 부지면적으로 환산`
+      :(target?'변경조합 재확인':'목표 용도지역 선택 후 산정');
     return [
-      `<tr><td><b>용도지역·용적률</b></td><td>${escHtml(`${zoningText} · ${d.far||'-'}`)}</td><td>${escHtml(target?'성장거점형 운영기준 직접 조합 적용':'자동 종상향 확정 금지 · 사용자가 목표 용도지역을 선택하기 전에는 시나리오만 표시')}</td><td>${schemeSheetSourceFor('innovation_growth','용적률·공공기여','INNOVATION_GROWTH_OP','3-1-1 성장거점형 용적률 기준')}</td></tr>`,
-      `<tr><td><b>변경가능 시나리오</b></td><td>${escHtml(scenario)}</td><td>용도지역 변경은 상업지역 우선 검토 · 일반 2단계, 당위성 인정 시 3단계, 정책목표 인정 시 4단계까지 위원회 검토</td><td>${schemeSheetSourceFor('innovation_growth','용도지역 변경','INNOVATION_GROWTH_OP','3-2-1 용도지역 변경')}</td></tr>`,
-      `<tr><td><b>용도지역 변경 공공기여</b></td><td>${escHtml(zoningPc)}</td><td>상한용적률-기준용적률 증가분의 50%가 원칙 · 복합개발계획 용적률이 상한 이하이면 계획용적률-기준용적률 적용</td><td>${schemeSheetSourceFor('innovation_growth','공공기여','INNOVATION_GROWTH_OP','3-2-2 공공시설등 설치제공기준')}</td></tr>`,
-      `<tr><td><b>법적상한 규제특례</b></td><td>${escHtml(d.legal_far!=null?`법적상한 ${d.legal_far}%까지 검토`:'목표 용도지역 확정 후 법적상한 산정')}</td><td>운영기준상 법적상한까지 규제특례 경로를 별도 관리</td><td>${schemeSheetSourceFor('innovation_growth','법적상한','INNOVATION_GROWTH_OP','3-3-2 규제특례')}</td></tr>`,
-      `<tr><td><b>규제특례 공공기여</b></td><td>국민주택규모 주택 50% / 기반시설·생활인프라 30%</td><td>상한 초과~법적상한 증가용적률에 적용 · 두 방식 복합 시 각각 기준 적용</td><td>${schemeSheetSourceFor('innovation_growth','규제특례 공공기여','INNOVATION_GROWTH_OP','3-3-3~3-3-4')}</td></tr>`
+      `<tr><td><b>용도지역 계획</b></td><td>${escHtml(zoningText)}</td><td>${escHtml(target?'사용자가 선택한 목표 용도지역 조합만 적용 · 자동 종상향 없음':'목표 용도지역 미선택 · 자동 종상향 확정 금지')}</td><td>${schemeSheetSourceFor('innovation_growth','용도지역 변경','INNOVATION_GROWTH_OP','3-2-1 용도지역 변경')}</td></tr>`,
+      `<tr><td><b>용적률 체계</b></td><td>${escHtml(densityText)}</td><td>성장거점형 운영기준의 기준용적률·상한용적률·법적상한을 단계별로 구분하여 표시</td><td>${schemeSheetSourceFor('innovation_growth','용적률·공공기여','INNOVATION_GROWTH_OP','3-1-1 성장거점형 용적률 기준')}</td></tr>`,
+      `<tr><td><b>변경가능 시나리오</b></td><td>${escHtml(scenario)}</td><td>운영기준에 직접 제시된 용도지역 변경조합만 시나리오로 제시 · 계획·위원회 심의 전 확정값 아님</td><td>${schemeSheetSourceFor('innovation_growth','용도지역 변경','INNOVATION_GROWTH_OP','3-2-1 용도지역 변경')}</td></tr>`,
+      `<tr><td><b>용도지역 변경 공공기여</b></td><td>${escHtml(zoningPc)}</td><td>상한용적률-기준용적률 증가분의 50%가 원칙 · 계획용적률이 상한 이하이면 계획용적률-기준용적률을 적용</td><td>${schemeSheetSourceFor('innovation_growth','공공기여','INNOVATION_GROWTH_OP','3-2-2 공공시설등 설치제공기준')}</td></tr>`,
+      `<tr><td><b>법적상한 규제특례</b></td><td>${escHtml(d.legal_far!=null?`법적상한 ${d.legal_far}%까지 검토`:'목표 용도지역 확정 후 법적상한 산정')}</td><td>상한용적률을 초과하여 법적상한까지 활용하는 별도 규제특례 경로 · 자동확정 아님</td><td>${schemeSheetSourceFor('innovation_growth','법적상한','INNOVATION_GROWTH_OP','3-3-2 규제특례')}</td></tr>`,
+      `<tr><td><b>규제특례 공공기여</b></td><td>국민주택규모 주택 50% / 기반시설·생활인프라 30%</td><td>상한 초과~법적상한 증가용적률에 적용 · 두 방식 복합 시 각각의 기준을 적용</td><td>${schemeSheetSourceFor('innovation_growth','규제특례 공공기여','INNOVATION_GROWTH_OP','3-3-3~3-3-4')}</td></tr>`
     ].join('');
   }
   const z=c.zoning||f?.zoning?.current||'';
-  const nationalMax={'제2종일반주거(7층)':250,'제2종일반주거':250,'제3종일반주거':300,'준주거':500,'준공업':400}[z]??null;
-  const specialMax={'제2종일반주거(7층)':300,'제2종일반주거':300,'제3종일반주거':360,'준주거':700,'준공업':400}[z]??null;
-  const specialText=nationalMax!=null&&specialMax!=null?`국토계획법 상한 ${nationalMax}% · 도심복합개발 규제특례 최대 ${specialMax}%`:'현 용도지역의 국토계획법 상한·규제특례 범위 확인';
-  const specialSrc=schemeSheetSourceCell({sourceType:'법률·시행령',sourceTitle:'도심 복합개발 지원에 관한 법률·시행령 + 국토계획법 시행령',sourceLocator:'도심복합개발법 제37조제2항 / 시행령 제27조제1항제3호 / 국토계획법 시행령 제85조제1항',sourceEffective:'도심복합개발법 시행령 2026-07-01 / 국토계획법 시행령 2026-09-08',sourceUrl:'https://www.law.go.kr/LSW/lsLinkCommonInfo.do?chrClsCd=010202&lspttninfSeq=193705',sourceVerified:true});
+  const baseText=d.base_far!=null?`${z||'현 용도지역'} · 서울시 조례용적률 ${d.base_far}% 이하`:(d.far||'서울시 도시계획조례 제48조 현 용도지역 용적률 확인');
   return [
-    `<tr><td><b>기준 용적률</b></td><td>${escHtml(d.far||'-')}</td><td>주거중심형은 현 용도지역의 서울시 도시계획조례 제48조 용적률을 기준값으로 사용</td><td>${schemeSheetSourceFor('innovation_housing','기준 용적률','SEOUL_URBAN_PLAN_ORD','제48조 용도지역 안에서의 용적률')}</td></tr>`,
-    `<tr><td><b>법적상한·규제특례</b></td><td>${escHtml(specialText)}</td><td>도심복합개발법 제37조 및 시행령 제27조제1항제3호에 따라 주거지역은 국토계획법 시행령 제85조 상한의 120%, 준주거지역은 140%까지 완화 가능 · 준공업지역은 시행령 제85조 상한까지 · 계획·심의에 따른 조건부 최대범위이며 자동확정 아님</td><td>${specialSrc}</td></tr>`,
-    `<tr><td><b>국민주택규모 주택 공급</b></td><td>${escHtml(d.contribution||'-')}</td><td>복합개발계획 용적률에서 서울시 조례용적률을 뺀 초과용적률의 50%</td><td>${schemeSheetSourceFor('innovation_housing','국민주택규모 주택 공급','INNOVATION_ORD','제21조제1항제2호')}</td></tr>`,
-    `<tr><td><b>공공기여 기본구조</b></td><td>${escHtml(d.public_contribution_rule||'-')}</td><td>규제특례 적용에 따른 토지가치 상승분 범위 · 기반시설·공공시설·생활인프라·국민주택규모 주택 등으로 구성하고 필수 기반시설 우선</td><td>${schemeSheetSourceFor('innovation_housing','공공기여 기본구조','INNOVATION_ORD','제20조')}</td></tr>`
+    `<tr><td><b>용도지역·기준 용적률</b></td><td>${escHtml(baseText)}</td><td>주거중심형 POPUP은 현 용도지역의 서울시 도시계획조례 제48조 용적률을 기준값으로 표시 · 자동 종상향 없음</td><td>${schemeSheetSourceFor('innovation_housing','기준 용적률','SEOUL_URBAN_PLAN_ORD','제48조 용도지역 안에서의 용적률')}</td></tr>`,
+    `<tr><td><b>법적상한·추가특례</b></td><td>별도 검토(HOLD)</td><td>현재 Rule에서는 법적상한 및 추가특례를 자동 계산·추천하지 않음 · 계획조건과 적용근거를 별도 확인한 뒤 반영</td><td>${schemeSheetSourceFor('innovation_housing','용적률 특례','INNOVATION','법 제37조·제38조')}</td></tr>`,
+    `<tr><td><b>국민주택규모 주택 공급</b></td><td>${escHtml(d.contribution||'-')}</td><td>복합개발계획 용적률이 서울시 조례용적률을 초과하는 경우 그 초과용적률의 50%를 국민주택규모 주택으로 건설·공급</td><td>${schemeSheetSourceFor('innovation_housing','국민주택규모 주택 공급','INNOVATION_ORD','제21조제1항제2호')}</td></tr>`,
+    `<tr><td><b>공공기여 기본구조</b></td><td>${escHtml(d.public_contribution_rule||'-')}</td><td>규제특례 적용에 따른 토지가치 상승분 범위에서 기반시설·공공시설·생활인프라·국민주택규모 주택 등으로 구성 · 필수 기반시설 우선</td><td>${schemeSheetSourceFor('innovation_housing','공공기여 기본구조','INNOVATION_ORD','제20조')}</td></tr>`
   ].join('');
 }
 
@@ -18038,196 +18054,136 @@ function renderUrbanRedevelopmentDetailPopup(){
 }
 
 
-function selectSmallscalePopupRoute(route){
-  activeSmallscaleRoute=route;
-  try{renderSmallscaleSchemeDetailPopup();}catch(e){console.error('[smallscale-popup-route]',e);renderSmallscalePopupEmergency(e);}
+// ============================================================
+// R40 SMALLSCALE POPUP-3 — 사업방식별 계획기준·용적률·공공부담
+// - 표시 전용: 후보 PASS/FAIL, Fact Store, 가로구역·접도·노후도 엔진에 영향 없음
+// - 소규모재개발은 2025.06.23 업무처리기준의 전용 밀도체계를 우선 표시
+// - 모아타운은 5번째 법정사업이 아니라 관리계획 overlay
+// ============================================================
+function smallscalePopupPlanRow(label,value,condition,source){
+  return `<tr><td><b>${escHtml(label)}</b></td><td>${escHtml(value||'-')}</td><td>${escHtml(condition||'-')}</td><td>${source||''}</td></tr>`;
 }
-function popupSmallscaleFarProfile(key,current,target){
-  // 2025.05.19 운영기준 제4장 4-1의 직접 수치표는 소규모재건축·소규모재개발만 적용.
-  if(!['reconstruction','redevelopment'].includes(key))return null;
-  if(target && target!==current){
+function smallscaleOrdinanceFarText(z){
+  const map={'제1종일반주거':150,'제2종일반주거(7층)':200,'제2종일반주거':200,'제3종일반주거':250,'준주거':400};
+  const n=map[z];
+  return n==null?`${z||'현 용도지역'} · 도시계획조례 및 건축용도별 기준 확인`:`${z||'현 용도지역'} · 조례기준 ${n}%`;
+}
+function smallscaleReconstructionFarProfile(current,target){
+  const norm=z=>z==='제2종일반주거(7층)'?'제2종일반주거':z;
+  const c=norm(current),t=norm(target);
+  if(target&&target!==current){
     const changed={
       '제1종일반주거->제2종일반주거':{before:150,after:200,legal:250},
       '제2종일반주거->제3종일반주거':{before:200,after:250,legal:300}
     };
-    return changed[`${current}->${target}`]||null;
+    return changed[`${c}->${t}`]||null;
   }
-  const noChange={
+  const same={
     '제2종일반주거':{base:200,legal:250},
     '제3종일반주거':{base:250,legal:300}
   };
-  return noChange[current]||null;
+  return same[c]||null;
 }
-
-function popupSmallscaleLegalFar(zone){
+function smallscaleRedevelopmentUpzoneProfile(current,target){
+  const norm=z=>z==='제2종일반주거(7층)'?'제2종일반주거':z;
+  const c=norm(current),t=norm(target);
+  if(!target||target===current)return null;
   const map={
-    '제1종일반주거':200,
-    '제2종일반주거(7층)':250,
-    '제2종일반주거':250,
-    '제3종일반주거':300,
-    '준주거':500
+    '제1종일반주거->제2종일반주거':{base:150,cap:250},
+    '제1종일반주거->제3종일반주거':{base:150,cap:300},
+    '제2종일반주거->제3종일반주거':{base:200,cap:300},
+    '제2종일반주거->준주거':{base:200,cap:500},
+    '제3종일반주거->준주거':{base:250,cap:500}
   };
-  return map[zone]??null;
+  return map[`${c}->${t}`]||null;
 }
-
-function popupSmallscaleFarText(p,current,target){
-  if(!p)return '운영기준 직접 수치 없음 · 별도 법령/계획 확인';
-  if(target && target!==current && p.before!=null){
-    return `${current} ${p.before}% → ${target} ${p.after}% · 법적상한 ${p.legal}%`;
-  }
-  return `${current} · 조례(기준) ${p.base}% · 법적상한 ${p.legal}%`;
-}
-
-function popupSmallscaleGrossFloorText(area,far,label=''){ 
-  const a=Number(area),f=Number(far);
-  if(!Number.isFinite(a)||a<=0||!Number.isFinite(f)||f<=0)return '-';
-  return `${label?label+' ':''}${Math.round(a*f/100).toLocaleString('ko-KR')}㎡`;
-}
-
-function smallscaleDensityPlanRowsForPopup(key,res,store,f){
-  // 소규모주택정비 팝업 표시 전용.
-  // 후보 PASS/FAIL, Fact Store, 가로구역·접도·노후도 엔진에는 영향을 주지 않는다.
-  const c=store?.common||{};
-  const current=f?.zoning?.current||c.zoning||'';
-  const target=(c.targetZoning&&c.targetZoning!==current)?c.targetZoning:null;
-  const area=Number(c.area);
-  const areaKnown=Number.isFinite(area)&&area>0;
-  const ordinanceFar=ordinanceFarForZone(current);
-  const legalFar=popupSmallscaleLegalFar(current);
-  const legal120=Number.isFinite(Number(legalFar))?Number(legalFar)*1.2:null;
-  const base=current?`${current}${ordinanceFar!=null?` · 서울 도시계획조례 ${ordinanceFar}%`:' · 조례용적률 별도 확인'}`:'현행 용도지역 미확인';
-
-  const sourceAct=schemeSheetSourceFor('smallscale','소규모주택정비법 현행 특례','SMALL_ACT_CURRENT','제48조·제49조·제49조의2·제49조의3');
-  const sourceOrd=schemeSheetSourceFor('smallscale','서울시 소규모주택정비 조례','SMALL_ORD_CURRENT','제49조의2·제50조·제50조의2·제50조의4');
-  const sourceFar=schemeSheetSourceFor('smallscale','조례 용적률 완화 운영기준','SMALL_FAR_2025','제2장 / 제4장 4-1·4-2 / 제5장 / 제6장');
-  const sourceAuto=schemeSheetSourceFor('smallscale','자율주택정비 계획기준','SMALL_AUTONOMOUS','사업대상·주택수·노후도');
-  const sourceBlock=schemeSheetSourceFor('smallscale','가로주택정비 계획기준','SMALL_BLOCK','가로구역·사업면적·노후도·주택수');
-  const sourceRecon=schemeSheetSourceFor('smallscale','소규모재건축 계획기준','SMALL_RECONSTRUCTION','주택단지·면적·세대수·노후도');
-  const sourceRedev=schemeSheetSourceFor('smallscale','소규모재개발 계획기준','SMALL_REDEVELOPMENT','역세권·준공업지역 / 면적 / 노후도 / 접도 / 기존 사업지역 제외');
-  const sourceMoa=schemeSheetSourceFor('smallscale','모아타운·모아주택 관리계획','MOA_POLICY','모아주택·모아타운 활성화를 위한 심의기준(2026.7.8. 개정)');
-  const routeSource=key==='autonomous'?sourceAuto:key==='block'?sourceBlock:key==='reconstruction'?sourceRecon:key==='redevelopment'?sourceRedev:sourceMoa;
-
-  let out=popupPlanRow('현행 용도지역·조례용적률',base,'특례 적용 전 기준점. 법정사업별 근거가 확인된 특례만 중첩하고 다른 사업의 용적률표를 공용하지 않음',routeSource);
-
-  // 소규모주택정비사업 공통 특례: 법 제49조. 계획변수가 없으므로 자동 적용하지 않고 적용가능 경로만 표시한다.
-  if(key!=='moa'){
-    out+=popupPlanRow('임대주택 건설 용적률 특례','공공임대·공공지원민간임대 20% 이상 → 법적상한 / 공공임대 10~20% 미만 → 비율연동 상한','소규모주택정비법 제49조의 공통 특례. 실제 임대비율이 계획변수로 입력되기 전에는 자동 용적률로 채택하지 않음. 세대수 기준 적용 시 서울시 조례상 임대주택 평균 전용면적 40㎡ 이상',`${sourceAct}<br>${sourceOrd}`);
-    out+=popupPlanRow('정비기반시설·공동이용시설 제공 특례','조건 충족 시 법적상한용적률의 120%까지 검토','사업시행구역 인근 토지 제공 또는 법정 요건을 갖춘 구역 내 토지·시설 제공 경로. 통합심의 필요하며 서울시 조례의 토지·건축물 제공 산식으로 최종 용적률 산정. 자동 최대치 적용 금지',`${sourceAct}<br>${sourceOrd}`);
-  }
+function smallscalePlanRowsForPopup(key,res,store,f){
+  const c=store?.common||{},current=c.zoning||'',target=(c.targetZoning&&c.targetZoning!==current)?c.targetZoning:null;
+  const srcLaw=schemeSheetSourceFor('smallscale','용적률 특례','SMALL_HOUSING','법 제49조·제49조의2·제49조의3 / 서울시 조례 제50조·제50조의2·제50조의4');
+  const src2025=schemeSheetSourceFor('smallscale','조례 용적률 완화','SMALL_FAR_2025','제4장 4-1·4-2 / 제5장 / 제6장');
+  const srcRedevelopment=schemeSheetSourceFor('smallscale','소규모재개발 밀도','SMALL_REDEVELOPMENT','제3장 3-1-1~3-2-6');
+  const srcMoa=schemeSheetSourceFor('smallscale','모아타운·관리지역','MOA_POLICY','관리계획·통합심의 기준');
+  const moa=f?.routes?.moa||{};
+  const moaText=moa.status==='PASS'?`관리지역 적용 · ${moa.value||'지정 확인'}`:moa.status==='FAIL'?'관리지역 미지정':`관리지역 ${moa.value||'확인 필요'}`;
+  let rows='';
 
   if(key==='autonomous'){
-    const maxText=legalFar!=null?`법적상한 ${legalFar}% → 최대 ${Number(legal120).toFixed(0)}%`:'법적상한용적률의 120%';
-    out+=popupPlanRow('자율주택 법정특례',maxText,'2026년 현행 소규모주택정비법 제49조의2: 자율주택정비사업은 서울시 통합심의를 거쳐 법적상한용적률의 120%까지 검토 가능. 계획·심의 전 자동확정 아님',sourceAct);
-    out+=popupPlanRow('법적상한 초과분 공공공급','초과 용적률 해당면적의 50% · 통합심의 시 40%까지 완화 가능','법적상한을 초과하여 120% 특례를 쓰는 경우 국민주택규모 주택을 공공에 공급. 서울시 조례상 기본 50%, 사업추진 곤란 인정 시 시통합심의위원회 심의를 거쳐 40%까지 완화 가능. 비율 산정에는 사업성 보정계수 적용 가능',`${sourceAct}<br>${sourceOrd}`);
-    out+=popupPlanRow('2025.05.19 운영기준과의 관계','적용대상에는 포함 · 제4장 4-1 숫자표는 자동 공용하지 않음','업로드 운영기준은 자율주택을 적용대상으로 규정하지만, 200→250·250→300 직접 수치표 및 그 수치표의 사업계획 수립기준 적용 문구는 소규모재건축·소규모재개발을 특정함',sourceFar);
-    if(areaKnown&&ordinanceFar!=null){
-      const grossBase=popupSmallscaleGrossFloorText(area,ordinanceFar,'조례기준');
-      const grossMax=legal120!=null?popupSmallscaleGrossFloorText(area,legal120,'120%특례'):'-';
-      out+=popupPlanRow('개략 연면적 참고',`${grossBase}${grossMax!=='-'?` / ${grossMax}`:''}`,'검토구역 전체면적 단순환산이며 도로·정비기반시설 공제, 건폐율·높이·주차·일조·건축계획을 반영하지 않은 계획잠재량 참고값',sourceAct);
-    }
-  }else if(key==='block'){
-    out+=popupPlanRow('가로주택 기본 밀도체계','현 용도지역 조례용적률을 기준으로 개별 특례 중첩','2025.05.19 자율·소규모재건축·소규모재개발 운영기준의 직접 적용대상이 아니므로 200→250·250→300 표를 가로주택에 복사하지 않음',`${sourceBlock}<br>${sourceFar}`);
-    out+=popupPlanRow('관리지역 통합시행','관리지역에서 연접 사업 통합 가능 · 서울 임대주택 10% 이상 조건','관리지역의 서로 연접한 소규모주택정비사업 통합시행 경로. 2026년 법 개정 후에도 통합사업 전체면적은 개별 법정사업의 면적한도를 초과할 수 없음. 지정 여부와 사업유형별 면적기준을 함께 적용',`${sourceAct}<br>${sourceOrd}`);
-    out+=popupPlanRow('모아타운·모아주택 중첩','관리계획 승인·통합심의 조건부','가로주택정비를 모아주택으로 추진하는 경우 관리계획의 도로·보행·공동이용시설·통합심의 조건을 추가 적용. 모아타운 지정 자체가 별도 법정사업은 아님',sourceMoa);
-    if(areaKnown&&ordinanceFar!=null){
-      out+=popupPlanRow('개략 연면적 참고',popupSmallscaleGrossFloorText(area,ordinanceFar,'조례기준'),'임대주택·기반시설 제공 등 특례를 선택하지 않은 기준값. 특례 용적률은 계획변수 입력 후 별도 산정',sourceBlock);
-    }
-  }else if(key==='reconstruction'||key==='redevelopment'){
-    const profile=popupSmallscaleFarProfile(key,current,target);
+    rows+=smallscalePopupPlanRow('기본 용적률',smallscaleOrdinanceFarText(current),'현 용도지역 조례용적률을 기본값으로 두고 특례는 별도 조건 충족 시 적용',srcLaw);
+    rows+=smallscalePopupPlanRow('법적상한 초과 특례','법적상한용적률의 120%까지 검토','자율주택정비사업은 통합심의를 거쳐 적용 · 자동확정 아님',srcLaw);
+    rows+=smallscalePopupPlanRow('법적상한 초과분 공공공급','초과용적률의 50% 해당면적 · 사업추진 곤란 인정 시 통합심의로 40%까지 완화 가능','국민주택규모 주택 공급 · 사업성 보정계수 적용 여부는 별도 기준 확인',srcLaw);
+    rows+=smallscalePopupPlanRow('임대주택 건설 특례','공공임대·공공지원민간임대 20% 이상 → 법적상한 / 공공임대 10~20% 미만 → 비례완화','실제 임대비율은 계획변수이므로 초기 입지판정과 분리',srcLaw);
+    rows+=smallscalePopupPlanRow('정비기반시설·공동이용시설 제공 특례','조건 충족 시 법적상한용적률의 120% 범위 검토','법 제49조의3 및 서울시 조례 제50조의4 산정방식 적용 · 제공면적·시설비 등 계획값 확정 후 산정',srcLaw);
+    rows+=smallscalePopupPlanRow('2025.05.19 운영기준 관계','적용대상에는 포함 · 제4장 4-1 수치표는 소규모재건축·소규모재개발 직접 규정','200→250→300 수치표를 자율주택에 자동 복사하지 않음',src2025);
+    rows+=smallscalePopupPlanRow('모아타운·관리지역 중첩',moaText,'모아타운은 별도 법정사업이 아니라 관리계획·통합심의 overlay',srcMoa);
+    return rows;
+  }
+
+  if(key==='block'){
+    rows+=smallscalePopupPlanRow('기본 용적률',smallscaleOrdinanceFarText(current),'현 용도지역 조례용적률을 기준으로 개별 법정특례를 중첩 검토',srcLaw);
+    rows+=smallscalePopupPlanRow('임대주택 건설 특례','공공임대·공공지원민간임대 20% 이상 → 법적상한 / 공공임대 10~20% 미만 → 비례완화','실제 임대비율은 사업계획 단계에서 입력 · 초기 사업요건 PASS/FAIL에는 사용하지 않음',srcLaw);
+    rows+=smallscalePopupPlanRow('정비기반시설·공동이용시설 제공 특례','조건 충족 시 법적상한용적률의 120% 범위 검토','법 제49조의3 및 서울시 조례 산정방식 적용 · 제공면적·시설비 등 계획값 확정 후 산정',srcLaw);
+    rows+=smallscalePopupPlanRow('2025.05.19 운영기준 관계','직접 적용대상 아님','해당 운영기준의 200→250→300 수치표를 가로주택에 자동 적용하지 않음',src2025);
+    rows+=smallscalePopupPlanRow('모아타운·관리지역 중첩',moaText,'관리지역에서는 관리계획·통합심의 기준을 추가 적용',srcMoa);
+    return rows;
+  }
+
+  if(key==='reconstruction'){
+    const p=smallscaleReconstructionFarProfile(current,target);
     if(target){
-      out+=popupPlanRow('용도지역 계획',`${current||'-'} → ${target}`,profile?popupSmallscaleFarText(profile,current,target):'2025.05.19 운영기준 직접 수치표에 없는 변경경로 · 별도 법령·계획 확인',sourceFar);
+      const far=p?`${current} ${p.before}% → ${target} ${p.after}% · 법적상한 ${p.legal}%`:`${current} → ${target} · 2025 운영기준 직접 수치 없음`;
+      rows+=smallscalePopupPlanRow('용도지역 변경 · 용적률',far,p?'2025.05.19 운영기준 제4장 직접 수치 적용 · 목표 용도지역은 계획변수':'목표 조합은 별도 법령·계획기준 확인',src2025);
     }else{
-      out+=popupPlanRow('용도지역 계획','목표 용도지역 미선택 · 현 용도지역 유지 기준','종상향을 자동 전제하지 않음. 목표 용도지역이 명시된 경우에만 운영기준의 변경표를 적용',sourceFar);
-      out+=popupPlanRow('2025 조례→법적상한 완화',profile?popupSmallscaleFarText(profile,current,null):'운영기준 직접 수치 없음 · 별도 법령/계획 확인','제2종일반주거 200→250, 제3종일반주거 250→300을 직접 제시하는 한시 운영기준',sourceFar);
+      const far=p?`${current} · 조례(기준) ${p.base}% · 법적상한 ${p.legal}%`:`${current||'현 용도지역'} · 운영기준 직접 수치 없음`;
+      rows+=smallscalePopupPlanRow('기본 용적률',far,p?'용도지역 변경 없음 · 2025.05.19 한시 완화기준 적용 가능':'제2종·제3종 일반주거 외에는 별도 기준 확인',src2025);
+      rows+=smallscalePopupPlanRow('용도지역 변경','목표 용도지역 미선택','종상향을 자동 전제로 하지 않음 · 계획변수 선택 시 1종→2종, 2종→3종 직접 수치표만 표시',src2025);
     }
+    rows+=smallscalePopupPlanRow('법적상한 적용 공공공급','조례용적률 초과분의 50% 해당면적 국민주택규모 주택','법 제49조의2제3항 및 서울시 조례 비율 · 공공소규모재건축 예외 여부 별도 확인',srcLaw);
+    rows+=smallscalePopupPlanRow('사업계획 수립기준','지형순응·일조/경관·열린단지·방재안전·주변 기반시설 정비','법적상한 완화 시 2025 운영기준 제5장 적용',src2025);
+    rows+=smallscalePopupPlanRow('완화분 주택규모','완화받은 용적률 해당면적 → 국민주택규모(85㎡ 이하) 주택 공급','2025 운영기준 제5장 5-6',src2025);
+    rows+=smallscalePopupPlanRow('정비기반시설·공동이용시설 제공 특례','조건 충족 시 법적상한용적률의 120% 범위 검토','법 제49조의3 및 서울시 조례 제50조의4 산정방식 적용 · 계획값 확정 후 산정',srcLaw);
+    rows+=smallscalePopupPlanRow('모아타운·관리지역 중첩',moaText,'관리지역 지정 시 관리계획·통합심의 기준을 추가 적용',srcMoa);
+    return rows;
+  }
 
-    if(key==='reconstruction'){
-      const reconLegal=profile?.legal??legalFar;
-      out+=popupPlanRow('소규모재건축 법정특례',reconLegal!=null?`통합심의 → 법적상한 ${reconLegal}%까지`:'통합심의 → 법적상한용적률까지','민간 소규모재건축은 조례용적률을 넘어 법적상한용적률까지 적용 가능. 계획·심의를 거쳐 확정',sourceAct);
-      out+=popupPlanRow('법적상한 적용 공공공급','조례용적률 초과분의 50% 해당면적','서울시 조례상 소규모재건축 법정특례의 공급비율은 50%. 국민주택규모 주택을 공공에 공급하며 사업성 보정계수 적용 가능',`${sourceAct}<br>${sourceOrd}`);
-      const publicMax=reconLegal!=null?Number(reconLegal)*1.2:null;
-      out+=popupPlanRow('공공소규모재건축 추가특례',publicMax!=null?`법적상한 ${reconLegal}% → 최대 ${publicMax.toFixed(0)}%`:'법적상한용적률의 120%까지','공공소규모재건축의 공공시행자등은 통합심의를 거쳐 추가특례 검토 가능. 법적상한 초과분 공급비율은 서울시 기본 50%, 사업추진 곤란 인정 시 40%까지 완화 가능',`${sourceAct}<br>${sourceOrd}`);
+  if(key==='redevelopment'){
+    const up=smallscaleRedevelopmentUpzoneProfile(current,target);
+    const same=smallscaleReconstructionFarProfile(current,null);
+    if(target){
+      const far=up?`${current} 기준 ${up.base}% → ${target} 상한 ${up.cap}%`:`${current} → ${target} · 업무처리기준 직접 조합 없음`;
+      rows+=smallscalePopupPlanRow('용도지역 조정 · 전용 밀도',far,up?'소규모재개발 업무처리기준 3-2-1 직접 적용 · 통합심의 결정':'업무처리기준에 직접 기재되지 않은 조합은 자동산정하지 않음',srcRedevelopment);
     }else{
-      out+=popupPlanRow('역세권 소규모재개발 용도지역 특례','법정 요건 충족 시 용도지역 세분 변경 간주 + 법적상한 검토','역세권 소규모재개발의 법정 경로. 서울시 조례상 제2·3종 또는 제3종·준주거 등 변경은 구역 정형화·통합심의와 중심지·정주환경·경관·자연환경 조건을 함께 검토',`${sourceAct}<br>${sourceOrd}`);
-      out+=popupPlanRow('용도지역 특례 공공공급','종전 용도지역 조례용적률 초과분의 50% 해당면적','서울시 조례상 소규모재개발 공급비율 50%. 공공임대주택 외 대통령령·서울시 조례가 정한 공공임대산업시설·공공임대상가 등 공급경로가 있으며 사업성 보정계수 적용 가능',`${sourceAct}<br>${sourceOrd}`);
+      const far=same?`${current} · 2025 한시완화 조례기준 ${same.base}% → 법적상한 ${same.legal}%`:`${current||'현 용도지역'} · 도시계획조례 제48조~제51조 적용`;
+      rows+=smallscalePopupPlanRow('용도지역 유지 · 기본 용적률',far,'용도지역 유지 시 도시계획조례가 기본 · 제2종·제3종 일반주거는 2025.05.19 한시완화기준을 별도 중첩 검토',same?src2025:srcRedevelopment);
+      rows+=smallscalePopupPlanRow('용도지역 조정','목표 용도지역 미선택','자동 종상향 금지 · 선택 시 전용 조정표(1종→2·3종, 2종→3종·준주거, 3종→준주거) 적용',srcRedevelopment);
     }
-
-    out+=popupPlanRow('법적상한 완화 건축계획','지형순응 · 일조·경관 · 열린단지 · 방재안전 · 주변 기반시설 정비','2025.05.19 운영기준 제5장. 반경 200m 건축물 현황, 종·횡단면, 일조·경관 시뮬레이션, 개방형 단지, 보도형 전면공지 등을 통합심의 계획에 반영',sourceFar);
-    out+=popupPlanRow('완화분 주택규모','완화받은 용적률 해당면적 → 전용 85㎡ 이하 주택 건설·공급','2025.05.19 운영기준의 국민주택규모 의무. 법정 공공공급 부담과는 별개의 계획조건으로 구분하여 표시',sourceFar);
-    out+=popupPlanRow('법적상한 초과·모아타운 연계','정비기반시설·공동이용시설 설치 시 관리계획·통합심의 연계','2025 운영기준은 법적상한을 초과하는 정비기반시설·공동이용시설 경로에서 모아타운 관리계획 수립 및 일괄 통합심의 가능성을 명시. 현행 법 제49조의3 특례와 함께 검토',`${sourceFar}<br>${sourceAct}`);
-    out+=popupPlanRow('운영기준 적용기한','한시 운영기준 · 사업시행계획인가 신청시점 확인','도시계획조례 관련 조항 시행일부터 3년이 되는 날까지 사업시행계획인가를 신청한 경우까지 적용. 기존 인가·심의 사업도 변경인가를 통한 적용 가능 여부가 규정됨',sourceFar);
-
-    const appliedFar=target&&profile?.after!=null?profile.after:profile?.base;
-    const appliedLegal=profile?.legal;
-    if(areaKnown&&(appliedFar!=null||appliedLegal!=null)){
-      const a=appliedFar!=null?popupSmallscaleGrossFloorText(area,appliedFar,'조례/변경후'):null;
-      const b=appliedLegal!=null?popupSmallscaleGrossFloorText(area,appliedLegal,'법적상한'):null;
-      out+=popupPlanRow('개략 연면적 참고',[a,b].filter(Boolean).join(' / '),'검토구역 전체면적 × 용적률 단순환산. 정비기반시설 공제·대지정형화·건폐율·높이·일조·주차·건축배치를 반영하지 않은 계획잠재량 참고값',sourceFar);
-    }
-  }else if(key==='moa'){
-    out+=popupPlanRow('모아타운·모아주택 성격','5번째 법정사업이 아닌 관리계획·통합심의 overlay','실제 시행사업은 자율주택·가로주택·소규모재건축·소규모재개발 중 하나로 확정하고 해당 법정사업 Rule을 우선 적용',sourceMoa);
-    out+=popupPlanRow('관리계획 적용내용','도로·보행·공동이용시설·사업구역 통합·건축계획을 관리계획에서 조정','개별 사업의 면적·노후도·주택수 등 법정 진입요건을 없애는 제도가 아니며 관리계획 승인·통합심의 결과를 추가로 반영',sourceMoa);
-    out+=popupPlanRow('밀도특례 적용원칙','법정사업 + 특례근거 + 관리계획을 중첩','관리지역 지정만으로 특정 용적률을 자동 확정하지 않음. 자율/가로/소규모재건축/소규모재개발 중 실제 사업유형과 임대주택·기반시설 제공 여부에 따라 특례를 선택',`${sourceMoa}<br>${sourceAct}`);
-    out+=popupPlanRow('통합시행','관리지역 내 연접 사업 통합 가능 · 서울 임대주택 10% 이상','통합 후에도 각 법정사업의 대상지역 면적한도를 초과할 수 없으므로 대규모 단일사업으로 무제한 확대되는 구조가 아님',`${sourceAct}<br>${sourceOrd}`);
+    rows+=smallscalePopupPlanRow('용도지역 조정 공공기여','종전 용도지역 조례용적률 초과분의 50% 해당면적','공공임대주택 등 건축물 공급 · 공공임대주택은 표준건축비 매입, 부속토지 기부채납',srcRedevelopment);
+    rows+=smallscalePopupPlanRow('용도지역 유지 · 임대주택 특례','공공임대·공공지원민간임대 20% 이상 → 법적상한 / 공공임대 10~20% 미만 → 비례완화','일반주거 적용계수 2.5 · 준주거 적용계수 5.0',srcRedevelopment);
+    rows+=smallscalePopupPlanRow('고밀준주거 특례','250m 과반 포함: 중심지 700% / 비중심지 600% · 250m 과반 미포함: 중심지 600% / 비중심지 500%','중심지는 도심·광역중심·지역중심·지구중심 · 인접 도로폭·주변환경을 통합심의에서 판단',srcRedevelopment);
+    rows+=smallscalePopupPlanRow('공공기여 건축물','공공임대주택 우선 · 공공임대산업시설·공공임대상가 가능','예정구역 지정 전 관리주체와 사전협의',srcRedevelopment);
+    rows+=smallscalePopupPlanRow('2025 한시완화 적용 시 계획조건','제5장 사업계획 수립기준 + 완화받은 용적률 해당면적은 국민주택규모(85㎡ 이하) 주택','제2종·제3종 일반주거에서 2025.05.19 운영기준을 중첩 적용하는 경우에 한함',src2025);
+    rows+=smallscalePopupPlanRow('건축계획 주요조건','준주거 변경 시 비주거용도 검토 · 도시형생활주택 설치 불가','경관·일조·저층주거지 부영향 저감 및 관련 용도지구·용도구역 고려',srcRedevelopment);
+    rows+=smallscalePopupPlanRow('모아타운·관리지역 중첩',moaText,'모아타운은 별도 사업유형이 아니라 관리계획 overlay',srcMoa);
+    return rows;
   }
 
-  const moaStatus=f?.routes?.moa?.status||res?.facts?.routes?.moa?.status;
-  if(key!=='moa'){
-    out+=popupPlanRow('모아타운·관리지역 중첩',moaStatus==='PASS'?'관리지역/모아타운 경로 확인':'지정·관리계획 확인 후 적용',moaStatus==='PASS'?'선택 법정사업 기준에 관리계획·모아주택 심의기준을 추가로 중첩 검토':'모아타운은 별도 법정사업이 아니며 지정·승인 여부가 확인될 때만 관리계획 특례를 추가 적용',sourceMoa);
-  }
-  return out;
+  // moa 정책탭: 법정사업 밀도표를 만들지 않는다.
+  rows+=smallscalePopupPlanRow('관리계획 overlay',moaText,'실제 법정사업은 자율주택·가로주택·소규모재건축·소규모재개발 중 하나를 선택',srcMoa);
+  rows+=smallscalePopupPlanRow('용적률 적용원칙','선택한 법정사업의 3번 계획기준을 따름','모아타운 자체를 5번째 법정사업 밀도체계로 처리하지 않음',srcMoa);
+  return rows;
 }
 
-function smallscalePopupSafeStore(){
-  if(latestSiteFactStore)return latestSiteFactStore;
-  if(analysisState?.fact_store)return analysisState.fact_store;
-  let common={};
-  try{common=commonSchemeData()||{};}catch(e){common={};}
-  return {common,site:{address:''},scheme_specific:{}};
-}
-function smallscalePopupSafeFacts(store,res){
-  const existing=res?.facts||store?.scheme_specific?.smallscale;
-  if(existing)return existing;
-  const routeStub=label=>({label,status:'REVIEW',criteria:[],value:'현황분석 필요'});
-  return {
-    routes:{
-      autonomous:routeStub('자율주택정비사업'),
-      block:routeStub('가로주택정비사업'),
-      reconstruction:routeStub('소규모재건축사업'),
-      redevelopment:routeStub('소규모재개발사업'),
-      moa:{...routeStub('모아타운·모아주택 추진경로'),value:'지정·관리계획 현황 확인 필요'}
-    },
-    stock:{detached_count:null,multi_row_units:null,reconstruction_units:null},
-    aging:{assessment:null},street_block:{analysis_scope_m2:null},
-    zoning:{current:store?.common?.zoning||''}
-  };
-}
-function renderSmallscalePopupEmergency(error=null){
-  const title=document.getElementById('schemeDetailPopupTitle'),body=document.getElementById('schemeDetailPopupBody');if(!body)return;
-  const store=smallscalePopupSafeStore(),res=schemeResults.smallscale||latestSchemeModuleResults.smallscale||null,f=smallscalePopupSafeFacts(store,res);
-  let key=activeSmallscaleRoute||'block';if(!SMALLSCALE_ROUTE_UI[key])key='block';
-  const meta=SMALLSCALE_ROUTE_UI[key]||{label:'소규모주택정비사업',short:'소규모주택정비'};
-  if(title)title.textContent=`${meta.label} 기초검토서`;
-  let planRows='';
-  try{planRows=smallscaleDensityPlanRowsForPopup(key,res,store,f);}catch(planError){
-    console.error('[smallscale-popup-plan-emergency]',planError);
-    const z=f?.zoning?.current||store?.common?.zoning||'현 용도지역 미확인';
-    planRows=popupPlanRow('현행 용도지역·용적률',z,'상세 Rule 표시 중 오류 · 법적 판정값은 변경하지 않음',schemeSheetSourceFor('smallscale','용적률·계획기준','SMALL_HOUSING','소규모주택정비법·서울시 조례'));
-  }
-  body.innerHTML=`<div class="activation-sheet">
-    <div class="activation-sheet-title"><div><h3>${escHtml(meta.label)}</h3><p>소규모주택정비법 사업별 계획기준 표시</p></div><div class="activation-feasibility"><span>현황연결</span><b class="REVIEW">확인필요</b></div></div>
-    <section class="activation-section"><h4>3. 계획기준·용적률·특례·공공부담</h4><table class="activation-table"><thead><tr><th>검토항목</th><th>적용값</th><th>적용조건·해석</th><th>근거</th></tr></thead><tbody>${planRows}</tbody></table></section>
-    <div class="scheme-modal-note"><b>표시 복구모드</b> ${error?escHtml(String(error?.message||error)):'현황 Fact가 아직 완성되지 않았습니다.'} · 3번 계획기준은 표시 전용이며 후보 PASS/FAIL·overall·추천순위를 변경하지 않습니다.</div>
-  </div>`;
+function selectSmallscalePopupRoute(route){
+  activeSmallscaleRoute=route;
+  try{renderSmallscaleSchemeDetailPopup();}catch(e){console.error('[smallscale-popup-route]',e);renderSchemePopupFallback('smallscale',e);}
 }
 function renderSmallscaleSchemeDetailPopup(){
   const title=document.getElementById('schemeDetailPopupTitle'),body=document.getElementById('schemeDetailPopupBody');if(!body)return;
-  const res=schemeResults.smallscale||latestSchemeModuleResults.smallscale||null,store=smallscalePopupSafeStore(),f=smallscalePopupSafeFacts(store,res);
-  const hasLiveFacts=!!(res?.facts||latestSiteFactStore?.scheme_specific?.smallscale||analysisState?.fact_store?.scheme_specific?.smallscale);
+  const res=schemeResults.smallscale||latestSchemeModuleResults.smallscale,store=latestSiteFactStore,f=res?.facts||store?.scheme_specific?.smallscale;
+  if(!f||!store){if(title)title.textContent='소규모주택정비사업 기초검토서';body.innerHTML='<div class="scheme-modal-note"><b>현황분석 필요</b> 먼저 검토하기를 실행해 건축물대장·가로구역·도로·도시계획 Fact를 생성해 주세요.</div>';return;}
   const legalKeys=['autonomous','block','reconstruction','redevelopment'];
   let key=activeSmallscaleRoute||'block';
-  if(!f.routes?.[key]&&!SMALLSCALE_ROUTE_UI[key])key='block';
-  const route=f.routes?.[key]||{status:'REVIEW',criteria:[],value:'현황분석 필요'},meta=SMALLSCALE_ROUTE_UI[key]||{label:'소규모주택정비사업',short:'소규모주택정비'};
+  if(!f.routes?.[key])key='block';
+  const route=f.routes[key]||{},meta=SMALLSCALE_ROUTE_UI[key]||{label:'소규모주택정비사업',short:'소규모주택정비'};
   if(title)title.textContent=`${meta.label} 기초검토서`;
   const tabs=legalKeys.map(k=>{
     const rr=f.routes?.[k]||{},mm=SMALLSCALE_ROUTE_UI[k]||{short:k};
@@ -18239,28 +18195,27 @@ function renderSmallscaleSchemeDetailPopup(){
     return `<div><span>${escHtml(mm.short)}</span><b>${escHtml(rr.status==='PASS'?'충족':rr.status==='FAIL'?'불충족':rr.conditional?'조건부':'확인필요')}</b></div>`;
   }).join('');
   const criteria=(route.criteria||[]);
-  const criterionRows=criteria.length?criteria.map(c=>{
+  const criterionRows=criteria.map(c=>{
     const fake={status:c.status||'REVIEW',conditional:c.conditional===true};
     return `<tr><td><b>${escHtml(c.item||'-')}</b></td><td>${escHtml(c.rule||'-')}</td><td>${escHtml(c.value??'-')}<div class="activation-next">${escHtml(c.note||'')}</div></td><td>${activationStatusCell(fake)}</td><td>${schemeSheetSourceFor('smallscale',c.item,c.source_id||route.source_id||'SMALL_HOUSING',c.locator||'')}</td></tr>`;
-  }).join(''):`<tr><td colspan="5"><div class="activation-next"><b>현황분석 필요</b> · 사업요건 판정값은 검토 실행 후 연결됩니다. 계획기준 표는 아래에서 먼저 확인할 수 있습니다.</div></td></tr>`;
+  }).join('');
   const stock=f.stock||{};
   const commonStatus=`단독 ${stock.detached_count??'-'}호 · 다세대/연립 ${stock.multi_row_units==null?'-':stock.multi_row_units+'세대'} · 재건축대상 아파트/연립 ${stock.reconstruction_units==null?'-':stock.reconstruction_units+'세대'}`;
   const routeOverall=route.status||'REVIEW';
   const routeNote=key==='autonomous'?'사업대상지 진입관문을 먼저 판정하고, 대상주택수·노후도를 각각 별도 판정합니다.':key==='block'?'가로구역 해당여부·가로구역 면적·사업시행구역 면적·노후도·기존주택수를 각각 독립 판정합니다.':key==='reconstruction'?'건축물대장상 아파트·연립주택 단지형 여부를 진입관문으로 두고 면적·세대수·노후도를 판정합니다.':key==='redevelopment'?'역세권/준공업 입지·면적·노후도·8m/4m 접도·기존 사업지역 배제를 각각 판정합니다. 접도만 데이터 미산정 시 확인필요를 허용합니다.':'모아타운은 별도 법정사업이 아니라 4개 법정사업에 연결되는 관리계획·통합심의 정책경로입니다.';
   const sourceNote=key==='redevelopment'?'서울시 소규모재개발사업 업무처리기준 및 서울시 소규모주택정비 조례':key==='reconstruction'?'서울시 소규모재건축 안내·업무처리기준':key==='autonomous'?'서울시 자율주택정비사업 안내':key==='block'?'서울시 가로주택정비사업 안내 및 소규모주택정비법 시행령·시행규칙':'모아주택·모아타운 활성화를 위한 심의기준';
-  const planRows=smallscaleDensityPlanRowsForPopup(key,res,store,f);
+  const planRows=smallscalePlanRowsForPopup(key,res,store,f);
   body.innerHTML=`<div class="activation-sheet">
     <div class="smallscale-route-tabs">${tabs}</div>${policy}
     <div class="activation-sheet-title"><div><h3>${escHtml(meta.label)}</h3><p>${escHtml(sourceNote)}</p></div><div class="activation-feasibility"><span>${key==='moa'?'정책경로':'사업요건 종합'}</span><b class="${escHtml(routeOverall)}">${escHtml(key==='moa'?(routeOverall==='PASS'?'관리지역 적용':'정책경로 확인'):schemeSheetFeasibility(routeOverall,route.conditional===true))}</b></div></div>
-    ${hasLiveFacts?'':`<div class="scheme-modal-note"><b>현황 Fact 연결 대기</b> 사업요건 수치는 검토 실행 후 연결되지만, 아래 계획기준·용적률·특례·공공부담 Rule은 항상 표시합니다.</div>`}
     <div class="smallscale-route-summary">${summaries}</div>
     <section class="activation-section"><h4>1. 공통 현황</h4><table class="activation-table"><tbody>
-      <tr><th>위치</th><td>${escHtml(store?.site?.address||'-')}</td><th>사업대상지 면적</th><td>${escHtml(fmtSchemeArea(store?.common?.area))}</td></tr>
+      <tr><th>위치</th><td>${escHtml(store.site.address||'-')}</td><th>사업대상지 면적</th><td>${escHtml(fmtSchemeArea(store.common.area))}</td></tr>
       <tr><th>건축물대장 주택수</th><td>${escHtml(commonStatus)}</td><th>노후도</th><td>${escHtml(ageFactValue(f.aging?.assessment))}</td></tr>
       <tr><th>관리지역</th><td>${escHtml(f.routes?.moa?.value||'-')}</td><th>가로구역</th><td>${escHtml(f.street_block?.analysis_scope_m2==null?'-':fmtSchemeArea(f.street_block.analysis_scope_m2))}</td></tr>
     </tbody></table></section>
     <section class="activation-section"><h4>2. ${escHtml(meta.short)} 사업요건 검토</h4><table class="activation-table smallscale-criterion-table"><thead><tr><th>검토항목</th><th>기준</th><th>대상지 현황</th><th>판정</th><th>근거</th></tr></thead><tbody>${criterionRows}</tbody></table></section>
-    <section class="activation-section"><h4>3. 계획기준·용적률·특례·공공부담</h4><table class="activation-table"><thead><tr><th>검토항목</th><th>적용값</th><th>적용조건·해석</th><th>근거</th></tr></thead><tbody>${planRows}</tbody></table></section>
+    <section class="activation-section"><h4>3. 계획기준·용적률·공공부담</h4><table class="activation-table"><thead><tr><th>검토항목</th><th>적용값</th><th>적용조건·해석</th><th>근거</th></tr></thead><tbody>${planRows}</tbody></table></section>
     <div class="scheme-modal-note"><b>판정원칙</b> ${escHtml(routeNote)} 하나의 필수요건이라도 명확히 불충족이면 해당 법정사업은 불충족으로 판정합니다. 건축물대장에 세대수·가구수 자료가 있으면 주택수는 확인필요로 남기지 않습니다. 3번 계획기준은 표시 전용이며 후보 PASS/FAIL·overall·추천순위를 변경하지 않습니다.</div>
   </div>`;
 }
@@ -18850,7 +18805,7 @@ function appendBaseReviewDisclaimer(name){
   body.insertAdjacentHTML('beforeend',baseReviewDisclaimerHtml(name));
 }
 function renderSchemeDetailPopup(name){
-  if(name==='smallscale'){try{renderSmallscaleSchemeDetailPopup();}catch(e){console.error('[smallscale-popup-detail]',e);renderSmallscalePopupEmergency(e);}appendBaseReviewDisclaimer(name);return;}
+  if(name==='smallscale'){renderSmallscaleSchemeDetailPopup();appendBaseReviewDisclaimer(name);return;}
   if(['redevelopment','reconstruction','residential_environment','general_housing','prior_negotiation'].includes(name)){renderRemainingSchemeDetailPopup(name);appendBaseReviewDisclaimer(name);return;}
   if(name==='activation'){renderActivationDetailPopup();appendBaseReviewDisclaimer(name);return;}
   if(name==='growth_potential'){renderGrowthPotentialDetailPopup();appendBaseReviewDisclaimer(name);return;}
