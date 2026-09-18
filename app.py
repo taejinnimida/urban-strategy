@@ -548,7 +548,7 @@ def analyze_parcels_for_geometry(geometry: Dict[str, Any]) -> Dict[str, Any]:
     pnus = [str((f.get("properties") or {}).get("pnu") or "") for f in features]
     area_map: Dict[str, Optional[float]] = {}
     # Modest concurrency: I/O-bound calls, conservative for a free Render instance/API.
-    with ThreadPoolExecutor(max_workers=min(6, max(1, len(pnus)))) as ex:
+    with ThreadPoolExecutor(max_workers=min(2, max(1, len(pnus)))) as ex:
         futs = {ex.submit(_vworld_official_land_area, pnu): pnu for pnu in pnus}
         for fut in as_completed(futs):
             pnu = futs[fut]
@@ -5976,7 +5976,7 @@ def _safe_medical_reference(geometry: Dict[str, Any]) -> Dict[str, Any]:
     items: List[Dict[str, Any]] = []
     parcel_calls = len(screened)
     if screened:
-        with ThreadPoolExecutor(max_workers=min(4, len(screened))) as pool:
+        with ThreadPoolExecutor(max_workers=min(2, len(screened))) as pool:
             future_map = {pool.submit(_resolve_medical_candidate, cand): cand for cand in screened}
             for fut in as_completed(future_map):
                 cand = future_map[fut]
@@ -7404,7 +7404,7 @@ def land_official_price_batch(inp: LandPriceBatchInput):
 
     rows: List[Dict[str, Any]] = []
     errors: List[Dict[str, Any]] = []
-    max_workers = min(6, len(pnus))
+    max_workers = min(2, len(pnus))
     with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="land-price") as pool:
         future_map = {
             pool.submit(_server_individual_land_price_vworld, pnu, int(inp.year), 8): pnu
@@ -7471,7 +7471,7 @@ def land_use_restrictions(inp: PnuListInput):
 
     # Low concurrency on purpose: the prototype must not hammer VWorld and is
     # designed for only a few simultaneous users.
-    with ThreadPoolExecutor(max_workers=min(4, len(pnus))) as pool:
+    with ThreadPoolExecutor(max_workers=min(2, len(pnus))) as pool:
         futures = {pool.submit(work, pnu): pnu for pnu in pnus}
         for fut in as_completed(futures):
             pnu = futures[fut]
@@ -7555,7 +7555,7 @@ def regulatory_land_use_restrictions(inp: PnuListInput):
     errors: List[Dict[str, str]] = []
     def work(pnu: str):
         return pnu, _land_use_rows_for_pnu(pnu)
-    with ThreadPoolExecutor(max_workers=min(4, len(pnus))) as pool:
+    with ThreadPoolExecutor(max_workers=min(2, len(pnus))) as pool:
         futures = {pool.submit(work, pnu): pnu for pnu in pnus}
         for fut in as_completed(futures):
             pnu = futures[fut]
@@ -7611,7 +7611,7 @@ def building_hub_title_batch(inp: BuildingHubBatchInput):
     errors: List[Dict[str, Any]] = []
 
     # Small concurrent fan-out keeps each browser request short without flooding data.go.kr.
-    with ThreadPoolExecutor(max_workers=min(5, len(pnus))) as ex:
+    with ThreadPoolExecutor(max_workers=min(2, len(pnus))) as ex:
         futures = {ex.submit(_query_building_hub_title, pnu): pnu for pnu in pnus}
         for fut in as_completed(futures):
             pnu = futures[fut]
@@ -7647,7 +7647,7 @@ def building_hub_floor_batch(inp: BuildingHubBatchInput):
         if p and p not in seen:
             seen.add(p);pnus.append(p)
     records: List[Dict[str, Any]]=[]; errors: List[Dict[str, Any]]=[]
-    with ThreadPoolExecutor(max_workers=min(5, len(pnus) or 1)) as ex:
+    with ThreadPoolExecutor(max_workers=min(2, len(pnus) or 1)) as ex:
         futures={ex.submit(_query_building_hub_floor,pnu):pnu for pnu in pnus}
         for fut in as_completed(futures):
             pnu=futures[fut]

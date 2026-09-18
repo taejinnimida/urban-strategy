@@ -2961,21 +2961,53 @@ function vworldJsonp(baseUrl, params, timeoutMs=20000){
   });
 }
 
+// 동일 대상지 반복검토에서 Render/API 순간호출이 몰리지 않도록 same-origin API 시작시점을 완만하게 분산한다.
+// 판정 RULE과 데이터 내용은 건드리지 않고 네트워크 수명관리만 담당한다.
+const BACKEND_API_MIN_GAP_MS=300;
+const BACKEND_API_RATE_LIMIT_DEFAULT_MS=30000;
+let backendApiNextRequestAt=0;
+let backendApiRateLimitUntil=0;
+let backendApiGate=Promise.resolve();
+function delayMs(ms){return new Promise(resolve=>setTimeout(resolve,Math.max(0,Number(ms)||0)));}
+function retryAfterMs(response){
+  const raw=String(response?.headers?.get?.('retry-after')||'').trim();
+  if(/^\d+(?:\.\d+)?$/.test(raw))return Math.max(1000,Math.round(Number(raw)*1000));
+  const when=Date.parse(raw);if(Number.isFinite(when))return Math.max(1000,when-Date.now());
+  return BACKEND_API_RATE_LIMIT_DEFAULT_MS;
+}
+async function waitBackendApiSlot(url){
+  if(!String(url||'').startsWith('/api/'))return;
+  let release;const previous=backendApiGate;backendApiGate=new Promise(resolve=>{release=resolve;});
+  await previous.catch(()=>{});
+  try{
+    const now=Date.now();
+    const wait=Math.max(0,backendApiNextRequestAt-now,backendApiRateLimitUntil-now);
+    if(wait>0)await delayMs(wait);
+    backendApiNextRequestAt=Date.now()+BACKEND_API_MIN_GAP_MS;
+  }finally{release();}
+}
 async function fetchBackendJson(url,options={}){
+  await waitBackendApiSlot(url);
   const response=await fetch(url,options);
   const contentType=String(response.headers.get('content-type')||'').toLowerCase();
   const text=await response.text();
+  if(response.status===429){
+    const wait=retryAfterMs(response);backendApiRateLimitUntil=Math.max(backendApiRateLimitUntil,Date.now()+wait);
+    const preview=String(text||'').replace(/\s+/g,' ').trim().slice(0,120);
+    const err=new Error(`일시 호출제한(HTTP 429) · ${Math.ceil(wait/1000)}초 후 재조회 가능${preview?` · ${preview}`:''}`);
+    err.code='RATE_LIMIT';err.http_status=429;err.retry_after_ms=wait;err.content_type=contentType;err.response_preview=preview;throw err;
+  }
   let data=null;
   try{data=text?JSON.parse(text):{};}
   catch(e){
     const preview=String(text||'').replace(/\s+/g,' ').trim().slice(0,160)||'(empty body)';
-    const err=new Error(`HTTP ${response.status} · ${contentType||'content-type 없음'} · JSON 아님 · ${preview}`);
-    err.http_status=response.status;err.content_type=contentType;err.response_preview=preview;throw err;
+    const err=new Error(`HTTP ${response.status} · ${contentType||'content-type 없음'} · JSON 응답 아님 · ${preview}`);
+    err.code='NON_JSON_RESPONSE';err.http_status=response.status;err.content_type=contentType;err.response_preview=preview;throw err;
   }
   if(!response.ok){
     const msg=data?.detail||data?.message||`HTTP ${response.status}`;
     const err=new Error(`${msg} · HTTP ${response.status}${contentType?` · ${contentType}`:''}`);
-    err.http_status=response.status;err.content_type=contentType;err.payload=data;throw err;
+    err.code=response.status===429?'RATE_LIMIT':'HTTP_ERROR';err.http_status=response.status;err.content_type=contentType;err.payload=data;throw err;
   }
   return data;
 }
@@ -3082,13 +3114,11 @@ async function fetchSpatialFeaturesBrowser(layerId, geometry, uniqueKeys=[]){
 async function fetchOfficialAreaBrowser(pnu){
   // R9: official area is fetched through our FastAPI proxy, never directly
   // from api.vworld.kr in the browser (NED is CORS-blocked on Render origins).
-  const r=await fetch('/api/land/characteristics-one',{
+  const d=await fetchBackendJson('/api/land/characteristics-one',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({pnu:String(pnu)})
   });
-  if(!r.ok) throw new Error('토지특성 프록시 HTTP '+r.status);
-  const d=await r.json();
   const area=Number(d?.record?.lndpclAr);
   return Number.isFinite(area)&&area>0?area:null;
 }
@@ -3096,6 +3126,8 @@ async function fetchOfficialAreaBrowser(pnu){
 async function mapLimit(items,limit,fn){
   const results=new Array(items.length);
   let cursor=0;
+  // 외부자료 호출 폭주 방지: 정확성 우선 플랫폼에서는 동시 fan-out을 최대 2개로 제한한다.
+  const effectiveLimit=Math.min(Math.max(1,Number(limit)||1),2,Math.max(1,items.length));
   async function worker(){
     while(true){
       const i=cursor++;
@@ -3104,7 +3136,7 @@ async function mapLimit(items,limit,fn){
       catch(e){results[i]=null;}
     }
   }
-  await Promise.all(Array.from({length:Math.min(limit,Math.max(1,items.length))},worker));
+  await Promise.all(Array.from({length:effectiveLimit},worker));
   return results;
 }
 
@@ -4401,7 +4433,7 @@ const ccSchoolAbsoluteOverlap=L.geoJSON(null,{style:{weight:1.8,color:'#b42318',
 const ccSchoolAbsoluteBoundary=L.geoJSON(null,{style:{weight:3,color:'#101828',fillOpacity:0}}).addTo(ccSchoolAbsoluteMini);
 
 async function loadBuiltInCenterDataset(){
-  try{const r=await fetch('/api/reference/centers');if(!r.ok)throw new Error('HTTP '+r.status);const fc=await r.json();centerReferenceFeatures=fc.features||[];refreshStationCenterMiniMaps();}
+  try{const fc=await fetchBackendJson('/api/reference/centers');centerReferenceFeatures=fc.features||[];refreshStationCenterMiniMaps();}
   catch(e){console.warn('center reference load failed',e);}
 }
 function refreshStationCenterMiniMaps(){
@@ -5422,8 +5454,7 @@ async function fetchIndependentRoadFacts(radiusM=220){
   if(independentRoadFactCache.key===key&&independentRoadFactCache.data)return independentRoadFactCache.data;
   if(independentRoadFactCache.key===key&&independentRoadFactCache.promise)return independentRoadFactCache.promise;
   const promise=(async()=>{
-    const res=await fetch('/api/spatial/road-facts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry:activeGeometry,radius_m:radiusM})});
-    const data=await res.json();if(!res.ok)throw new Error(data.detail||'도로 FACT 조회 실패');
+    const data=await fetchBackendJson('/api/spatial/road-facts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry:activeGeometry,radius_m:radiusM})});
     independentRoadFactCache.key=key;independentRoadFactCache.data=data;independentRoadFactCache.promise=null;return data;
   })().catch(e=>{independentRoadFactCache.promise=null;throw e;});
   independentRoadFactCache.key=key;independentRoadFactCache.promise=promise;return promise;
@@ -5659,8 +5690,8 @@ async function analyzeOneSchemeStreetBlock(key,roadFacts,planningRoadBase,nonBui
   if(prep.skip)return prep.state;
   const requestStreetBlock=async radius=>{
     const t0=performance.now();
-    const response=await fetch('/api/spatial/street-block',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry:activeGeometry,barrier_features:prep.topologyBarriers,road_features:prep.inputs.allManage,road_surface_features:prep.inputs.allSurfaces,road_area_features:prep.inputs.rwAreas,road_min_width_m:prep.cfg.existing_min_m,outer_closure_all_roads:true,max_radius_m:radius}),signal:signal||undefined});
-    const data=await response.json();if(!response.ok)throw new Error(data.detail||`${prep.cfg.label} 가로구역 산정 실패`);data._client_elapsed_ms=Math.round(performance.now()-t0);return data;
+    const data=await fetchBackendJson('/api/spatial/street-block',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry:activeGeometry,barrier_features:prep.topologyBarriers,road_features:prep.inputs.allManage,road_surface_features:prep.inputs.allSurfaces,road_area_features:prep.inputs.rwAreas,road_min_width_m:prep.cfg.existing_min_m,outer_closure_all_roads:true,max_radius_m:radius}),signal:signal||undefined});
+    data._client_elapsed_ms=Math.round(performance.now()-t0);return data;
   };
   let data=await requestStreetBlock(320);
   const needsWideRetry=data?.metadata?.frame_boundary_touched===true||data?.metadata?.merge_limit_reached===true;
@@ -5678,8 +5709,7 @@ async function requestSchemeStreetBlockBatch(prepared,radius,signal=null){
   const first=list[0];
   const schemes={};for(const prep of list)schemes[prep.key]={barrier_features:prep.topologyBarriers,road_min_width_m:prep.cfg.existing_min_m,outer_closure_all_roads:true};
   const t0=performance.now();
-  const response=await fetch('/api/spatial/street-block-batch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry:activeGeometry,road_features:first.inputs.allManage,road_surface_features:first.inputs.allSurfaces,road_area_features:first.inputs.rwAreas,schemes,max_radius_m:radius}),signal:signal||undefined});
-  const data=await response.json();if(!response.ok)throw new Error(data.detail||'제도별 가로구역 batch 산정 실패');
+  const data=await fetchBackendJson('/api/spatial/street-block-batch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry:activeGeometry,road_features:first.inputs.allManage,road_surface_features:first.inputs.allSurfaces,road_area_features:first.inputs.rwAreas,schemes,max_radius_m:radius}),signal:signal||undefined});
   data._client_elapsed_ms=Math.round(performance.now()-t0);return data;
 }
 
@@ -5884,9 +5914,7 @@ let routeCommercialReferencePromise=null;
 async function loadRouteCommercialReference(){
   if(routeCommercialReferenceCache)return routeCommercialReferenceCache;
   if(routeCommercialReferencePromise)return routeCommercialReferencePromise;
-  routeCommercialReferencePromise=fetch('/api/reference/route-commercial',{cache:'force-cache'}).then(async r=>{
-    const data=await r.json();
-    if(!r.ok)throw new Error(data?.detail||`노선상업 참조도형 HTTP ${r.status}`);
+  routeCommercialReferencePromise=fetchBackendJson('/api/reference/route-commercial',{cache:'force-cache'}).then(data=>{
     if(data?.type!=='FeatureCollection'||!Array.isArray(data.features))throw new Error('노선상업 참조도형 형식 오류');
     routeCommercialReferenceCache=data;
     return data;
@@ -6079,8 +6107,7 @@ async function analyzeStreetBlock(signal=null){
     const roadSurfaceFeatures=roadResult.surface_features||[];
     setAnalysisProgressDetail('가로구역',`ROAD_BT ${roadFeatures.length}건 · RW 실폭면 ${roadSurfaceFeatures.length}건 · 철도/하천 ${barrierResult.features?.length||0}건 · 기초단위구 연산`);
     if(!roadFeatures.length)streetBlockAnalysis.warnings.push('가로구역 병합판정용 TL_SPRD_MANAGE ROAD_BT 도로자료를 확보하지 못했습니다.');
-    const response=await fetch('/api/spatial/street-block',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry:activeGeometry,barrier_features:barrierResult.features,road_features:roadFeatures,road_surface_features:roadSurfaceFeatures,max_radius_m:searchRadiusM}),signal:signal||undefined});
-    const data=await response.json();if(!response.ok)throw new Error(data.detail||'가로구역 자동추출 실패');
+    const data=await fetchBackendJson('/api/spatial/street-block',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry:activeGeometry,barrier_features:barrierResult.features,road_features:roadFeatures,road_surface_features:roadSurfaceFeatures,max_radius_m:searchRadiusM}),signal:signal||undefined});
     if(token!==streetBlockAnalysis.requestToken || signal?.aborted)return {status:'cancelled'};
     streetBlockAnalysis.status=data.status||'unresolved';streetBlockAnalysis.blockFeature=data.block||null;streetBlockAnalysis.blockFeatures=data.blocks?.features||[];streetBlockAnalysis.basicUnitContext=data.basic_unit_context?.features||[];streetBlockAnalysis.roadBarriers=data.road_barriers?.features||[];streetBlockAnalysis.roadContext=data.road_context?.features||[];streetBlockAnalysis.facilityBarriers=data.facility_barriers?.features||[];streetBlockAnalysis.metadata=Object.assign({},data.metadata||{},{road_fact_source:roadResult.road_facts?'TL_SPRD_RW+TL_SPRD_MANAGE local':'VWorld/cache fallback',rw_feature_count:Number(roadResult.road_facts?.metadata?.rw_count||0),road_surface_feature_count:Number(roadResult.road_facts?.metadata?.surface_count||0),rw_unmatched_count:Number(roadResult.road_facts?.metadata?.rw_unmatched_count||0),rw_mixed_width_count:Number(roadResult.road_facts?.metadata?.rw_mixed_width_count||0)});streetBlockAnalysis.errors=[...(barrierResult.errors||[]),...(roadResult.errors||[]).map(error=>({id:'road_manage',error}))];
     streetBlockAnalysis.blockAreaM2=Number(data.metadata?.block_area_m2);if(!Number.isFinite(streetBlockAnalysis.blockAreaM2))streetBlockAnalysis.blockAreaM2=null;
@@ -6466,9 +6493,7 @@ async function loadRenewalReference(force=false){
   if(renewalAnalysis.loading)return renewalAnalysis.features;
   renewalAnalysis.loading=true;renewalAnalysis.error='';
   try{
-    const r=await fetch('/api/reference/renewal-zones',{cache:force?'reload':'default'});
-    if(!r.ok)throw new Error('HTTP '+r.status);
-    const fc=await r.json();
+    const fc=await fetchBackendJson('/api/reference/renewal-zones',{cache:force?'reload':'default'});
     renewalAnalysis.features=fc.features||[];renewalAnalysis.metadata=fc.metadata||{};renewalAnalysis.loaded=true;
   }catch(e){renewalAnalysis.error=String(e.message||e);renewalAnalysis.loaded=false;}
   finally{renewalAnalysis.loading=false;}
@@ -8240,29 +8265,66 @@ function setSiteReviewStatus(text,state='idle'){
   const btn=document.getElementById('siteReviewBtn');if(btn){btn.disabled=siteReviewRunning||!activeGeometry;btn.textContent=siteReviewRunning?'검토 중…':'검토하기';}
 }
 const analysisStepRegistry=new Map();
+const analysisFactStepCache=new Map();
+const ANALYSIS_FACT_CACHE_TTL_MS=10*60*1000;
+const ANALYSIS_PARTIAL_CACHE_TTL_MS=60*1000;
+let analysisRunSequence=0;
+let currentAnalysisRunId=0;
+function analysisBoundarySignature(){
+  try{return JSON.stringify(boundaryReferenceGeometry||activeGeometry||null);}catch(e){return String(boundaryReferenceMetrics?.area_m2||'none');}
+}
+function resetAnalysisFactStepCache(){analysisFactStepCache.clear();}
+function cachedAnalysisStep(label,signature){
+  const row=analysisFactStepCache.get(label);
+  if(!row||row.signature!==signature)return null;
+  const ttl=row.result?.status==='partial'?ANALYSIS_PARTIAL_CACHE_TTL_MS:ANALYSIS_FACT_CACHE_TTL_MS;
+  if(Date.now()-Number(row.saved_at||0)>ttl)return null;
+  return ['fulfilled','partial'].includes(row.result?.status)?row.result:null;
+}
+function analysisValueHasRateLimit(value){
+  try{return /HTTP\s*429|Too Many Requests|일시 호출제한|Just a moment/i.test(JSON.stringify(value));}catch(e){return false;}
+}
 async function safeAnalysisStep(label,fn,timeoutMs=ANALYSIS_STEP_TIMEOUT_MS,options={}){
   analysisStepRegistry.set(label,{fn,timeoutMs,options});
+  const runId=currentAnalysisRunId,signature=analysisBoundarySignature();
+  if(options.reuse!==false){
+    const cached=cachedAnalysisStep(label,signature);
+    if(cached){
+      const prefix=cached.status==='fulfilled'?'직전 성공 Fact 재사용':'직전 확보 Fact 재사용';
+      const detail=[prefix,cached.detail||''].filter(Boolean).join(' · ');
+      markAnalysisProgress(label,cached.status,detail);
+      return {...cached,label,cached:true,detail};
+    }
+  }
   let timer=null,timedOut=false;const controller=new AbortController();markAnalysisProgress(label,'running',options.runningDetail||'');
   try{
     const timeout=new Promise((_,reject)=>{timer=setTimeout(()=>{timedOut=true;const err=new Error(`${label} 응답시간 초과(${Math.round(timeoutMs/1000)}초)`);err.code='ANALYSIS_TIMEOUT';try{controller.abort();}catch(_e){}reject(err);},timeoutMs);});
     const value=await Promise.race([Promise.resolve().then(()=>fn(controller.signal)),timeout]);
     if(timer)clearTimeout(timer);
+    if(runId!==currentAnalysisRunId)return {label,status:'rejected',reason:'이전 분석실행 결과 무효화',error_kind:'SUPERSEDED'};
     let classified={status:'fulfilled',detail:''};
     if(typeof options.classify==='function'){try{classified=Object.assign(classified,options.classify(value)||{});}catch(e){console.warn('[analysis-classify]',label,e);}}
     const status=['fulfilled','partial','rejected'].includes(classified.status)?classified.status:'fulfilled';
+    const valueRateLimited=analysisValueHasRateLimit(value);
+    const result={label,status,value,reason:classified.reason||'',detail:classified.detail||'',error_kind:(status==='rejected'&&valueRateLimited)?'RATE_LIMIT':'',data_status:(status==='rejected'&&valueRateLimited)?'RATE_LIMIT':undefined};
+    if(options.reuse!==false&&['fulfilled','partial'].includes(status))analysisFactStepCache.set(label,{signature,saved_at:Date.now(),result});
     markAnalysisProgress(label,status,classified.detail||'');
-    return {label,status,value,reason:classified.reason||''};
+    return result;
   }catch(e){
     if(timer)clearTimeout(timer);try{controller.abort();}catch(_e){}
-    const reason=String(e?.message||e);
+    const reason=String(e?.message||e),errorKind=e?.code==='RATE_LIMIT'||e?.http_status===429||/HTTP\s*429|Too Many Requests|일시 호출제한/i.test(reason)?'RATE_LIMIT':(timedOut?'TIMEOUT':'ERROR');
     if(timedOut && typeof options.onTimeout==='function'){try{options.onTimeout(reason);}catch(cleanErr){console.warn('[analysis-timeout-cleanup]',label,cleanErr);}}
-    markAnalysisProgress(label,'rejected',timedOut?`시간초과 ${Math.round(timeoutMs/1000)}초`:reason.slice(0,120));
+    const detail=errorKind==='RATE_LIMIT'?'일시 호출제한(429) · 기존 성공 Fact가 없으면 미확인 유지':timedOut?`시간초과 ${Math.round(timeoutMs/1000)}초`:reason.slice(0,120);
+    if(runId===currentAnalysisRunId)markAnalysisProgress(label,'rejected',detail);
     console.error(`[site-review] ${label}`,e);
-    return {label,status:'rejected',reason};
+    return {label,status:'rejected',reason,error_kind:errorKind,data_status:errorKind==='RATE_LIMIT'?'RATE_LIMIT':undefined};
   }
 }
 function clearBoundaryAnalysisForNewGeometry(options={}){
   analysisGeometry=null;
+  resetAnalysisFactStepCache();
+  currentAnalysisRunId=++analysisRunSequence;
+  backendApiRateLimitUntil=0;
   resetAnalysisProgress();resetRenewalFeasibilityAnalysis();buildingHubRequestToken+=1;planningAnalysis.requestToken=(planningAnalysis.requestToken||0)+1;
   // FIX(r6-fix2): 필지선택으로 구역계를 갱신/재편집하는 경로는 사용자가 하나씩 고른 selectedParcelPnus/parcelFeatureMap을
   // 여기서 통째로 비우면 안 된다. keepParcelSelection=true면 필지 선택 상태는 보존하고
@@ -8319,11 +8381,9 @@ async function runAllAutoAnalyses(options={}){
   }
   analysisGeometry=activeGeometry?JSON.parse(JSON.stringify(activeGeometry)):null;
 
-  // 토지/건축 공간은 가벼운 독립조회라 둘만 병렬 실행한다.
-  const landBuilding=await Promise.all([
-    safeAnalysisStep('토지대장',analyzeLandLedger,180000),
-    safeAnalysisStep('건축물 공간',analyzeBuildings,180000)
-  ]);results.push(...landBuilding);
+  // 429/Render 호출제한 방지: 토지대장과 건축물 공간도 순차 실행한다.
+  results.push(await safeAnalysisStep('토지대장',analyzeLandLedger,180000));
+  results.push(await safeAnalysisStep('건축물 공간',analyzeBuildings,180000));
 
   results.push(await safeAnalysisStep('정비사업 사업성 보정계수',analyzeRenewalBusinessFeasibility,240000,{classify:v=>{
     if(v?.status==='complete')return {status:'fulfilled',detail:`${v.year}년 · 대지 ${v.resolved_parcels}/${v.eligible_parcels}필지 · 계수 ${Number(v.coefficient).toFixed(2)}`};
@@ -8393,7 +8453,10 @@ async function measureAndSync(){
 async function runSiteReview(){
   if(!activeGeometry){setSiteReviewStatus('먼저 구역계를 설정하세요.','review');return;}
   if(siteReviewRunning)return;
-  siteReviewRunning=true;analysisStepRegistry.clear();openMappedSpatialModulesForAnalysis();beginAnalysisProgress();setSiteReviewStatus('검토 시작 · 정확성 우선 모드 · 도형과 공식 공간자료를 확인합니다.','running');
+  siteReviewRunning=true;currentAnalysisRunId=++analysisRunSequence;analysisStepRegistry.clear();
+  // 새 검토가 시작되면 이전 timeout 후 뒤늦게 도착하는 요청이 현재 화면을 덮지 않도록 기존 request token을 무효화한다.
+  buildingHubRequestToken+=1;planningAnalysis.requestToken=(planningAnalysis.requestToken||0)+1;streetBlockAnalysis.requestToken=(streetBlockAnalysis.requestToken||0)+1;
+  openMappedSpatialModulesForAnalysis();beginAnalysisProgress();setSiteReviewStatus('검토 시작 · 정확성 우선 모드 · 동일 대상 성공 Fact는 재사용하고 실패 항목만 재조회합니다.','running');
   let finalState='done',finalText='검토 완료 · 공식 공간 Fact와 사업별 판정을 갱신했습니다.';
   try{
     // 도형면적은 이미 브라우저의 동일 GeoJSON으로 정확히 계산 가능하므로 불필요한 서버 왕복을 하지 않는다.
@@ -8431,8 +8494,11 @@ async function runSiteReview(){
       // partial 및 명시적 NO_DATA / UNKNOWN / NOT_IMPLEMENTED는 재분석하지 않는다.
       const RETRY_BUDGET_MS=150000,RETRY_WAIT_MS=15000,retryStartedAt=Date.now();
       const retryableFailed=failed.filter(step=>{
-        const dataState=String(step?.value?.data_status||step?.value?.status||step?.value?.quality||'').toUpperCase();
-        return !['NO_DATA','UNKNOWN','NOT_IMPLEMENTED'].includes(dataState);
+        const dataState=String(step?.data_status||step?.value?.data_status||step?.value?.status||step?.value?.quality||'').toUpperCase();
+        const errorKind=String(step?.error_kind||'').toUpperCase();
+        // 429는 즉시 재호출할수록 제한시간이 늘어날 수 있으므로 13번 마지막 재분석 대상에서 제외한다.
+        const noRetryDataStates=['NO_DATA','UNKNOWN','NOT_IMPLEMENTED'];
+        return errorKind!=='RATE_LIMIT'&&dataState!=='RATE_LIMIT'&&!noRetryDataStates.includes(dataState);
       });
       const retryLabels=[...new Set(retryableFailed.map(x=>x.label).filter(label=>analysisStepRegistry.has(label)))];
       const retryDefinitions=new Map(retryLabels.map(label=>[label,analysisStepRegistry.get(label)]));
@@ -8446,7 +8512,7 @@ async function runSiteReview(){
           const def=retryDefinitions.get(label);if(!def)continue;
           const remainingBudgetMs=RETRY_BUDGET_MS-(Date.now()-retryStartedAt);if(remainingBudgetMs<=0)break;
           const retryTimeoutMs=Math.max(1000,Math.min(Number(def.timeoutMs)||ANALYSIS_STEP_TIMEOUT_MS,remainingBudgetMs));
-          const result=await safeAnalysisStep(label,def.fn,retryTimeoutMs,def.options);retriedCount+=1;
+          const result=await safeAnalysisStep(label,def.fn,retryTimeoutMs,{...def.options,reuse:false});retriedCount+=1;
           const idx=steps.findIndex(x=>x.label===label);if(idx>=0)steps[idx]=result;
           if(result.status!=='rejected')recovered+=1;
         }
@@ -8459,7 +8525,10 @@ async function runSiteReview(){
     }
     if(failed.length){
       finalState='review';
-      finalText=`검토 완료 · 실패/미완료: ${failed.map(x=>x.label).join('·')}${partial.length?` · 일부확보: ${partial.map(x=>x.label).join('·')}`:''}. 확보된 Fact만으로 나머지 사업을 판정했습니다.`;
+      const rateLimited=failed.filter(x=>x.error_kind==='RATE_LIMIT');
+      finalText=rateLimited.length
+        ?`검토 완료 · 외부자료 일시 호출제한(429): ${rateLimited.map(x=>x.label).join('·')}${failed.length>rateLimited.length?` · 기타 미완료: ${failed.filter(x=>x.error_kind!=='RATE_LIMIT').map(x=>x.label).join('·')}`:''}${partial.length?` · 일부확보: ${partial.map(x=>x.label).join('·')}`:''}. 직전 성공 Fact는 유지하고 제한된 항목만 미확인으로 남겼습니다.`
+        :`검토 완료 · 실패/미완료: ${failed.map(x=>x.label).join('·')}${partial.length?` · 일부확보: ${partial.map(x=>x.label).join('·')}`:''}. 확보된 Fact만으로 나머지 사업을 판정했습니다.`;
     }else if(partial.length){
       finalState='review';
       finalText=`검토 완료 · 일부 Fact가 완결되지 않았습니다: ${partial.map(x=>x.label).join('·')}. 확보된 값은 유지하고 미확보 기준은 확인필요로 남겼습니다.`;
@@ -8617,9 +8686,7 @@ async function loadOfficialStationLineMap(force=false){
   if(stationOfficialLineMap.size&&!force)return;
   try{
     const url='/api/reference/station-lines'+(force?'?force=1':'');
-    const r=await fetch(url,{cache:force?'reload':'default'});
-    if(!r.ok)throw new Error('HTTP '+r.status);
-    const data=await r.json(),m=new Map();
+    const data=await fetchBackendJson(url,{cache:force?'reload':'default'}),m=new Map();
     for(const row of (data.stations||[])){
       const k=stationNameKey(row.name);if(!k)continue;
       m.set(k,{lines:[...(row.lines||[])],transfer:normalizeOfficialTransfer(row.transfer),transfer_status:row.transfer_status||'',line_count:Number(row.line_count||0),sources:[...(row.sources||[])]});
@@ -8633,9 +8700,7 @@ async function probeOfficialStationLine(name,force=false){
   if(existing?.transfer_status==='CONFIRMED_TRANSFER'||existing?.transfer_status==='CONFIRMED_SINGLE_LINE')return existing;
   try{
     const url='/api/reference/station-line/'+encodeURIComponent(String(name||'').replace(/역$/,''))+(force?'?force=1':'');
-    const r=await fetch(url,{cache:force?'reload':'default'});
-    if(!r.ok)throw new Error('HTTP '+r.status);
-    const row=await r.json();
+    const row=await fetchBackendJson(url,{cache:force?'reload':'default'});
     if(!Array.isArray(row.lines)||!row.lines.length)return existing;
     const merged={
       lines:[...new Set([...(existing?.lines||[]),...(row.lines||[])])],
@@ -8676,9 +8741,7 @@ async function loadBuiltInStationDataset(force=false){
   if(status)status.textContent='내장자료 로딩';
   if(note)note.textContent='행안부 지하철역사 + 위치정보요약DB + 서울시 중심지 SHP를 불러오는 중입니다.';
   try{
-    const r=await fetch('/api/reference/stations',{cache:force?'reload':'default'});
-    if(!r.ok)throw new Error('HTTP '+r.status);
-    const fc=await r.json();
+    const fc=await fetchBackendJson('/api/reference/stations',{cache:force?'reload':'default'});
     stationFeatures=fc.features||[];
     stationSourceName=fc.name||'내장 지하철역사';
     stationAnalysis.loaded=stationFeatures.length>0;
@@ -8756,9 +8819,7 @@ let stationEntranceReferenceStatus={loaded:false,linkage_complete:false,official
 async function loadStationEntrances(force=false){
   if(stationEntranceMap.size&&!force)return;
   try{
-    const r=await fetch('/api/reference/station-entrances',{cache:force?'reload':'default'});
-    if(!r.ok)throw new Error('HTTP '+r.status);
-    const data=await r.json();
+    const data=await fetchBackendJson('/api/reference/station-entrances',{cache:force?'reload':'default'});
     const rows=(data?.stations&&typeof data.stations==='object')?data.stations:data;
     const meta=(data?.metadata&&typeof data.metadata==='object')?data.metadata:{};
     const m=new Map();
@@ -10478,9 +10539,7 @@ async function analyzeRenewalBusinessFeasibility(){
   const priceByPnu=new Map(),errors=[...ledgerErrors];
   for(const batch of chunkArray(eligible.map(x=>x.pnu),100)){
     try{
-      const r=await fetch('/api/land/official-price-batch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pnus:batch,year:base.year})});
-      if(!r.ok)throw new Error(`HTTP ${r.status}`);
-      const data=await r.json();
+      const data=await fetchBackendJson('/api/land/official-price-batch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pnus:batch,year:base.year})});
       for(const row of data.rows||[]){const pnu=String(row.pnu||'');const price=Number(row.price_per_m2);if(pnu&&Number.isFinite(price)&&price>0&&Number(row.year)===Number(base.year))priceByPnu.set(pnu,row);}
       for(const e of data.errors||[])errors.push(e);
     }catch(e){for(const pnu of batch)errors.push({pnu,error:String(e?.message||e)});}
@@ -16719,14 +16778,12 @@ async function analyzeBuildingHub(signal=null){
   for(const batch of chunks){
     try{
       if(signal?.aborted || token!==buildingHubRequestToken)throw new DOMException('건축HUB 분석 취소','AbortError');
-      const r=await fetch('/api/building-hub/title-batch',{
+      const d=await fetchBackendJson('/api/building-hub/title-batch',{
         method:'POST',
         headers:{'Content-Type':'application/json'},
         body:JSON.stringify({pnus:batch}),
         signal:signal||undefined
       });
-      const d=await r.json();
-      if(!r.ok)throw new Error(d.detail||'건축HUB 조회 실패');
       allRecords.push(...(d.records||[]));
       errors.push(...(d.errors||[]));
       done+=batch.length;
@@ -16734,6 +16791,7 @@ async function analyzeBuildingHub(signal=null){
       setAnalysisProgressDetail('건축HUB',`${done}/${pnus.length}필지 · 표제부 ${allRecords.length}건 · 오류 ${errors.length}건`);
     }catch(e){
       if(signal?.aborted || token!==buildingHubRequestToken)throw e;
+      if(e?.code==='RATE_LIMIT'||e?.http_status===429)throw e;
       errors.push({error:String(e.message||e),batch_size:batch.length});
       done+=batch.length;setAnalysisProgressDetail('건축HUB',`${done}/${pnus.length}필지 · 표제부 ${allRecords.length}건 · 오류 ${errors.length}건`);
     }
@@ -16757,11 +16815,11 @@ async function analyzeBuildingHub(signal=null){
   for(const batch of chunkArray(floorPnus,5)){
     try{
       if(signal?.aborted || token!==buildingHubRequestToken)throw new DOMException('건축HUB 분석 취소','AbortError');
-      const fr=await fetch('/api/building-hub/floor-batch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pnus:batch}),signal:signal||undefined});
-      const fd=await fr.json();if(!fr.ok)throw new Error(fd.detail||'건축HUB 층별개요 조회 실패');
+      const fd=await fetchBackendJson('/api/building-hub/floor-batch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pnus:batch}),signal:signal||undefined});
       floorRecords.push(...(fd.records||[]));floorErrors.push(...(fd.errors||[]));
     }catch(e){
       if(signal?.aborted || token!==buildingHubRequestToken)throw e;
+      if(e?.code==='RATE_LIMIT'||e?.http_status===429)throw e;
       floorErrors.push({error:String(e.message||e),batch_size:batch.length});
     }
   }
@@ -16902,15 +16960,14 @@ async function fetchLandCharacteristicsBrowser(pnu){
   // forbidden because api.vworld.kr does not return Access-Control-Allow-Origin
   // for this Render origin and generated one failed request per parcel/year.
   try{
-    const r=await fetch('/api/land/characteristics-one',{
+    const d=await fetchBackendJson('/api/land/characteristics-one',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({pnu:String(pnu)})
     });
-    const d=await r.json();
-    if(r.ok && d.record)return d.record;
-    if(r.ok && d.vworld_ready===true)return null;
-  }catch(e){}
+    if(d.record)return d.record;
+    if(d.vworld_ready===true)return null;
+  }catch(e){if(e?.code==='RATE_LIMIT'||e?.http_status===429)throw e;}
 
   // Last-resort browser fallback: JSONP does not use fetch/CORS.  This path is
   // only reached when the server proxy has no usable record.
@@ -16939,17 +16996,16 @@ async function fetchLandLedgerBrowser(pnu){
   // endpoint is CORS-blocked on the deployed Render origin and previously
   // produced dozens of red console errors plus needless retries.
   try{
-    const r=await fetch('/api/land/ledger-one',{
+    const d=await fetchBackendJson('/api/land/ledger-one',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({pnu:String(pnu)})
     });
-    const d=await r.json();
-    if(r.ok && d.record)return d.record;
+    if(d.record)return d.record;
     // If the server had a configured VWorld key and still found no record,
     // do not repeat the same official calls in the browser.
-    if(r.ok && d.vworld_ready===true)return null;
-  }catch(e){}
+    if(d.vworld_ready===true)return null;
+  }catch(e){if(e?.code==='RATE_LIMIT'||e?.http_status===429)throw e;}
 
   // Preserve one non-CORS fallback only when the server proxy is unavailable
   // or has no configured VWorld key.
@@ -16994,11 +17050,13 @@ async function analyzeLandLedger(){
   const resultMap=new Map();
 
   // 특정 PNU 오류가 전체 토지현황 조회를 중단하지 않도록 필지별 실패 격리.
-  let failed=0;
+  let failed=0,rateLimitError=null;
   const results=await mapLimit(pnus,5,async pnu=>{
-    let rec=null;try{rec=await fetchLandLedgerBrowser(pnu);}catch(e){failed++;}
+    if(rateLimitError)return null;
+    let rec=null;try{rec=await fetchLandLedgerBrowser(pnu);}catch(e){failed++;if(e?.code==='RATE_LIMIT'||e?.http_status===429)rateLimitError=e;}
     done++;summary.textContent=`토지대장 조회 ${done}/${pnus.length}필지${failed?` · 실패 ${failed}`:''}`;return rec;
   });
+  if(rateLimitError)throw rateLimitError;
 
   let official=0,small=0,geometryFallback=0;
   let latestDates=[];
