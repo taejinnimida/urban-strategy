@@ -1747,8 +1747,9 @@ def _land_use_rows_for_pnu(pnu: str) -> List[Dict[str, Any]]:
 
 def _land_use_category(name: str) -> Optional[str]:
     n = re.sub(r"\s+", "", str(name or ""))
-    # VWorld NED 필지속성은 비오톱·공익용산지 보조확인에만 사용한다.
-    # 도시재생혁신지구는 김포공항 확정 SHP를 직접 사용하므로 여기서 분류하지 않는다.
+    # 토지이음/VWorld NED 토지이용계획정보 중 공용 보전 FACT만 분류한다.
+    # 도시재생혁신지구는 사용자 확정 김포공항 SHP를 기존 추진사업 FACT에 직접 병합하므로
+    # 이 NED 분류·판정 경로에서는 더 이상 다루지 않는다.
     if "비오톱" in n and "1등급" in n:
         return "biotope_grade1"
     if "공익용산지" in n:
@@ -1848,80 +1849,6 @@ def _route_commercial_reference_data():
     })
     data["metadata"] = meta
     return data
-
-URBAN_REGEN_INNOVATION_SHP_BASE = _data_path("urban_regeneration_innovation_gimpo")
-URBAN_REGEN_INNOVATION_SHP_FILES = tuple(URBAN_REGEN_INNOVATION_SHP_BASE + ext for ext in (".shp", ".shx", ".dbf", ".prj"))
-
-
-def _urban_regen_innovation_shp_ready() -> bool:
-    return all(os.path.isfile(path) for path in URBAN_REGEN_INNOVATION_SHP_FILES)
-
-
-@lru_cache(maxsize=1)
-def _urban_regen_innovation_reference_data():
-    """김포공항 도시재생혁신지구 확정 SHP를 WGS84 GeoJSON으로 제공한다.
-
-    기존 UQ120/BZ604 도시재생활성화지역, VWorld NED 필지속성, 수동 벡터화
-    GeoJSON/대표지번/근접버퍼는 도시재생혁신지구 판정에 사용하지 않는다.
-    """
-    if not _urban_regen_innovation_shp_ready():
-        return {
-            "type": "FeatureCollection",
-            "name": "gimpo_airport_urban_regeneration_innovation",
-            "metadata": {
-                "available": False,
-                "source_type": "USER_CONFIRMED_SHP",
-                "legal_source": False,
-                "reference_name": "김포공항 도시재생혁신지구 SHP",
-                "source_crs": "EPSG:5181",
-                "negative_authority": True,
-                "reason": "urban_regeneration_innovation_gimpo SHP 구성파일 미설치",
-            },
-            "features": [],
-        }
-
-    reader = shapefile.Reader(URBAN_REGEN_INNOVATION_SHP_BASE, encoding="utf-8", encodingErrors="replace")
-    fields = [f[0] for f in reader.fields[1:]]
-    to_wgs = Transformer.from_crs(5181, 4326, always_xy=True).transform
-    features: List[Dict[str, Any]] = []
-    source_area_m2 = 0.0
-    for idx, sr in enumerate(reader.iterShapeRecords(), start=1):
-        props = dict(zip(fields, list(sr.record)))
-        geom_source = shape(sr.shape.__geo_interface__)
-        if not geom_source.is_valid:
-            geom_source = geom_source.buffer(0)
-        if geom_source.is_empty:
-            continue
-        source_area_m2 += float(geom_source.area)
-        geom_wgs = geometry_transform(to_wgs, geom_source)
-        props.update({
-            "reference_id": f"GIMPO_URBAN_REGEN_INNOVATION_{idx}",
-            "name": str(props.get("NAME_KR") or "김포공항 도시재생혁신지구"),
-            "category": "urban_regeneration_innovation",
-            "source_type": "USER_CONFIRMED_SHP",
-            "source_file": "urban_regeneration_innovation_gimpo.shp",
-            "source_crs": "EPSG:5181",
-        })
-        features.append({"type": "Feature", "id": props["reference_id"], "geometry": mapping(geom_wgs), "properties": props})
-
-    return {
-        "type": "FeatureCollection",
-        "name": "gimpo_airport_urban_regeneration_innovation",
-        "metadata": {
-            "available": bool(features),
-            "source_type": "USER_CONFIRMED_SHP",
-            "legal_source": False,
-            "reference_name": "김포공항 도시재생혁신지구 SHP",
-            "reference_scope": "서울 도시재생혁신지구 분석 기준도형",
-            "source_crs": "EPSG:5181",
-            "geometry_basis": "user_confirmed_dxf_converted_to_shp",
-            "feature_count": len(features),
-            "source_area_m2": round(source_area_m2, 2),
-            "negative_authority": True,
-            "note": "사용자 확정 DXF를 SHP로 변환한 김포공항 도시재생혁신지구 경계. UQ120/BZ604 및 VWorld NED는 이 분석에 사용하지 않음.",
-        },
-        "features": features,
-    }
 
 REGULATION_CHANGE_MONITOR_PATH = _data_path("regulation_change_monitor.json")
 @lru_cache(maxsize=1)
@@ -2100,6 +2027,97 @@ PLANPLUS_PROJECT_TYPES = {'BZ101': ('renewal', '신속통합기획'),
  'BZ601': ('other', '도시개발사업'),
  'BZ602': ('other', '리모델링활성화구역'),
  'BZ603': ('other', '시장정비사업')}
+URBAN_REGEN_INNOVATION_SHP_BASE = _data_path("urban_regeneration_innovation_gimpo")
+URBAN_REGEN_INNOVATION_SHP_REQUIRED = tuple(
+    URBAN_REGEN_INNOVATION_SHP_BASE + ext for ext in (".shp", ".shx", ".dbf", ".prj")
+)
+
+
+def _urban_regen_innovation_shp_ready() -> bool:
+    return all(os.path.isfile(path) for path in URBAN_REGEN_INNOVATION_SHP_REQUIRED)
+
+
+@lru_cache(maxsize=1)
+def _urban_regen_innovation_project_features() -> Dict[str, Any]:
+    """사용자 확정 DXF에서 변환한 김포공항 도시재생혁신지구 SHP를
+    기존 추진사업 FACT(UQ120 registry)에 병합한다.
+
+    UQ120/BZ604 도시재생활성화지역은 더 이상 사용하지 않으며, 별도 NED·참조
+    GeoJSON·대표지번·근접버퍼 분석모듈도 사용하지 않는다.
+    """
+    metadata = {
+        "available": False,
+        "source": "user_confirmed_shp",
+        "source_title": "김포공항 도시재생혁신지구 SHP",
+        "source_file": "urban_regeneration_innovation_gimpo.shp",
+        "source_crs": "EPSG:5181",
+        "geometry_basis": "user_confirmed_dxf_converted_to_shp",
+        "feature_count": 0,
+        "source_area_m2": None,
+    }
+    if not _urban_regen_innovation_shp_ready():
+        metadata["reason"] = "urban_regeneration_innovation_gimpo SHP 구성파일 미설치"
+        return {"features": [], "metadata": metadata}
+
+    try:
+        reader = shapefile.Reader(
+            URBAN_REGEN_INNOVATION_SHP_BASE,
+            encoding="utf-8",
+            encodingErrors="replace",
+        )
+        fields = [f[0] for f in reader.fields[1:]]
+    except Exception as exc:
+        metadata["reason"] = f"김포공항 도시재생혁신지구 SHP 로딩 실패: {str(exc)[:180]}"
+        return {"features": [], "metadata": metadata}
+    to_wgs = Transformer.from_crs(5181, 4326, always_xy=True).transform
+    features: List[Dict[str, Any]] = []
+    source_area_m2 = 0.0
+    for idx, sr in enumerate(reader.iterShapeRecords(), start=1):
+        row = dict(zip(fields, list(sr.record)))
+        try:
+            geom = shape(sr.shape.__geo_interface__)
+            if not geom.is_valid:
+                geom = geom.buffer(0)
+            geom = _polygonal_only(geom)
+            if geom is None or geom.is_empty:
+                continue
+            source_area_m2 += float(geom.area)
+            geom_wgs = geometry_transform(to_wgs, geom)
+        except Exception:
+            continue
+        features.append({
+            "type": "Feature",
+            "geometry": mapping(geom_wgs),
+            "properties": {
+                "source": "planplus_project",
+                "source_title": "김포공항 도시재생혁신지구 SHP",
+                "source_layer": "urban_regeneration_innovation_gimpo",
+                "source_feature_id": f"GIMPO_URBAN_REGEN_INNOVATION_{idx}",
+                "project_code": "URBAN_REGEN_INNOVATION_GIMPO",
+                "project_group": "other",
+                "type_label": "도시재생혁신지구",
+                "name": str(row.get("NAME_KR") or "김포공항 도시재생혁신지구"),
+                "project_stage_code": "",
+                "project_stage_label": "기준경계",
+                "group_code": "",
+                "district_code": "11500",
+                "notice_no": "",
+                "notice_date": "",
+                "data_reference_date": "2026-09-18",
+                "history_status": "reference_boundary",
+                "source_type": "USER_CONFIRMED_SHP",
+            },
+        })
+    metadata.update({
+        "available": bool(features),
+        "feature_count": len(features),
+        "source_area_m2": round(source_area_m2, 2),
+    })
+    if not features:
+        metadata["reason"] = "김포공항 도시재생혁신지구 SHP 형상 0건"
+    return {"features": features, "metadata": metadata}
+
+
 PLANPLUS_STAGE_LABELS = {'PP0101': '대상지선정(추진중)',
  'PP0102': '대상지선정',
  'PP0103': '기획완료',
@@ -2373,16 +2391,19 @@ def _planplus_project_reference_data():
                 "history_status": "current_stage_only",
             },
         })
+    innovation = _urban_regen_innovation_project_features()
+    features.extend(innovation.get("features") or [])
     return {
         "type": "FeatureCollection",
-        "name": "서울플랜+ 기존 추진사업 현황",
+        "name": "서울플랜+ 기존 추진사업 현황 + 김포공항 도시재생혁신지구",
         "features": features,
         "metadata": {
             "reference_month": "2026-02",
-            "source": "서울 도시계획사업 현황(서울플랜+, UQ120)",
+            "source": "서울 도시계획사업 현황(서울플랜+, UQ120) + 김포공항 도시재생혁신지구 SHP",
             "classification_source": "uq120_project.zip 내부 서울플랜+ 코드정의표",
             "history_scope": "현재 추진단계까지 제공 · 단계별 고시/승인일 이력은 후속 결정고시 연계 필요",
             "create_dat_semantics": "CREATE_DAT은 고시일이 아닌 데이터 생성일",
+            "urban_regeneration_innovation_shp": innovation.get("metadata") or {},
         },
     }
 
@@ -6780,10 +6801,6 @@ def reference_route_commercial():
     return _route_commercial_reference_data()
 
 
-@app.get("/api/reference/urban-regeneration-innovation")
-def reference_urban_regeneration_innovation():
-    """김포공항 도시재생혁신지구 확정 SHP 기준도형."""
-    return _urban_regen_innovation_reference_data()
 
 
 @app.get("/api/reference/regulation-change-monitor")
@@ -6808,7 +6825,7 @@ def _reference_data_readiness() -> Dict[str, bool]:
         "public_forest": os.path.isfile(_data_path("forest_classification_seoul_202608.zip")),
         "school_protection": os.path.isfile(_data_path("school_protection_seoul_202608.zip")),
         "route_commercial_model": os.path.isfile(_data_path("route_commercial_reference.geojson")),
-        "urban_regeneration_innovation_reference": _urban_regen_innovation_shp_ready(),
+        "urban_regeneration_innovation_shp": _urban_regen_innovation_shp_ready(),
         "regulation_change_monitor": os.path.isfile(_data_path("regulation_change_monitor.json")),
         "safe_downtown_exclusion_model": os.path.isfile(_data_path("safe_downtown_exclusion_reference.geojson")),
         "hill_terrain_model": all(os.path.isfile(_data_path(x)) for x in (HILL_GRID_META_FILE,HILL_GRID_ELEV_FILE,HILL_GRID_SLOPE_FILE)),
@@ -6827,6 +6844,7 @@ def health():
         "vworld_configured": vworld_ready(),
         "build_marker": APP_BUILD_MARKER,
         "pipeline_patch_marker": "R18_PIPELINE_STABILIZATION_20260910",
+        "urban_regeneration_source_marker": "GIMPO_SHP_INTEGRATED_PROJECT_FACT_R3_20260918",
         "station_runtime_build_marker": STATION_RUNTIME_BUILD_MARKER,
         "seoul_open_data_configured": bool(_seoul_open_data_key()),
         "seoul_open_data_env": _seoul_open_data_key_info()[1] or None,
