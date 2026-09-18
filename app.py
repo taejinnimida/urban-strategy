@@ -1747,17 +1747,52 @@ def _land_use_rows_for_pnu(pnu: str) -> List[Dict[str, Any]]:
 
 def _land_use_category(name: str) -> Optional[str]:
     n = re.sub(r"\s+", "", str(name or ""))
-    # 토지이음/VWorld NED 토지이용계획정보의 규제지역 명칭을 그대로 분류한다.
-    # 도심공공주택복합 배제 자동판정은 사용자 확정에 따라 인정사업을 제외하고
-    # 도시재생혁신지구·주거재생혁신지구 2종만 사용한다.
-    if "주거재생혁신지구" in n:
-        return "housing_regeneration_innovation"
-    if "도시재생혁신지구" in n:
-        return "urban_regeneration_innovation"
+    # VWorld NED 필지속성은 비오톱·공익용산지 보조확인에만 사용한다.
+    # 도시재생혁신지구는 김포공항 확정 SHP를 직접 사용하므로 여기서 분류하지 않는다.
     if "비오톱" in n and "1등급" in n:
         return "biotope_grade1"
     if "공익용산지" in n:
         return "public_interest_forest"
+    return None
+
+
+def _regulatory_land_use_category(name: str) -> Optional[str]:
+    """개발·계획제한 독립 정보모듈용 NED 명칭 분류.
+
+    양성 행만 규제 존재의 근거로 사용한다. 전용 공간원도형이 연결되지 않은
+    항목은 NED 음성만으로 '규제 없음'을 확정하지 않는다.
+    """
+    n = re.sub(r"\s+", "", str(name or ""))
+    if not n:
+        return None
+    if "도시자연공원구역" in n:
+        return "urban_natural_park"
+    if ("자연공원" in n or "공원구역" in n) and "도시자연공원" not in n:
+        return "natural_park"
+    if "생태경관보전지역" in n or "생태·경관보전지역" in n:
+        return "ecological_landscape"
+    if "야생생물특별보호구역" in n or "야생동식물특별보호구역" in n:
+        return "wildlife_special"
+    if "공익용산지" in n:
+        return "public_interest_forest"
+    if "보전산지" in n and "준보전산지" not in n:
+        return "conservation_forest"
+    if "상수원보호구역" in n:
+        return "water_source"
+    if "하천구역" in n:
+        return "river_zone"
+    if "철도보호지구" in n or "철도보호구역" in n:
+        return "railroad_protection"
+    if "장애물제한표면" in n or "공항시설보호지구" in n:
+        return "airport_obstacle"
+    if any(k in n for k in ("군사시설보호", "비행안전구역", "비행안전", "대공방어")):
+        return "military_flight"
+    if "자연재해위험개선지구" in n or "자연재해위험지구" in n:
+        return "disaster_risk"
+    if "역사문화환경보존지역" in n or "역사문화환경보존구역" in n:
+        return "heritage_environment"
+    if "교육환경보호구역" in n:
+        return "education_environment"
     return None
 
 RENEWAL_LEGAL_ZIP_PATH = _data_path("uq181_legal.zip")
@@ -1814,43 +1849,79 @@ def _route_commercial_reference_data():
     data["metadata"] = meta
     return data
 
-URBAN_REGEN_INNOVATION_REFERENCE_PATH = _data_path("urban_regeneration_innovation_reference.geojson")
+URBAN_REGEN_INNOVATION_SHP_BASE = _data_path("urban_regeneration_innovation_gimpo")
+URBAN_REGEN_INNOVATION_SHP_FILES = tuple(URBAN_REGEN_INNOVATION_SHP_BASE + ext for ext in (".shp", ".shx", ".dbf", ".prj"))
+
+
+def _urban_regen_innovation_shp_ready() -> bool:
+    return all(os.path.isfile(path) for path in URBAN_REGEN_INNOVATION_SHP_FILES)
+
+
 @lru_cache(maxsize=1)
 def _urban_regen_innovation_reference_data():
-    """서울 현행 도시재생혁신지구 고시·공식계획도 벡터화 참조도형.
+    """김포공항 도시재생혁신지구 확정 SHP를 WGS84 GeoJSON으로 제공한다.
 
-    원 SHP 자체가 아니므로 직접중첩은 양성 보조근거로 사용하되, 경계부 비중첩은
-    신뢰도 버퍼와 대표지번으로 보수적으로 처리한다. VWorld NED는 양성신호만 보조근거로 사용한다.
+    기존 UQ120/BZ604 도시재생활성화지역, VWorld NED 필지속성, 수동 벡터화
+    GeoJSON/대표지번/근접버퍼는 도시재생혁신지구 판정에 사용하지 않는다.
     """
-    try:
-        with open(URBAN_REGEN_INNOVATION_REFERENCE_PATH, encoding="utf-8") as fp:
-            data = json.load(fp)
-    except FileNotFoundError:
+    if not _urban_regen_innovation_shp_ready():
         return {
             "type": "FeatureCollection",
-            "name": "seoul_urban_regeneration_innovation_reference",
+            "name": "gimpo_airport_urban_regeneration_innovation",
             "metadata": {
                 "available": False,
-                "source_type": "OFFICIAL_NOTICE_DIGITIZED_REFERENCE",
-                "legal_source": True,
-                "reference_name": "서울 현행 도시재생혁신지구 고시도 벡터화 참조",
-                "negative_authority": False,
-                "reason": "urban_regeneration_innovation_reference.geojson 미설치",
+                "source_type": "USER_CONFIRMED_SHP",
+                "legal_source": False,
+                "reference_name": "김포공항 도시재생혁신지구 SHP",
+                "source_crs": "EPSG:5181",
+                "negative_authority": True,
+                "reason": "urban_regeneration_innovation_gimpo SHP 구성파일 미설치",
             },
             "features": [],
         }
-    if not isinstance(data, dict) or data.get("type") != "FeatureCollection":
-        raise RuntimeError("urban_regeneration_innovation_reference.geojson 형식 오류")
-    meta = dict(data.get("metadata") or {})
-    meta.update({
-        "available": True,
-        "source_type": "OFFICIAL_NOTICE_DIGITIZED_REFERENCE",
-        "legal_source": True,
-        "reference_name": meta.get("reference_name") or "서울 현행 도시재생혁신지구 고시도 벡터화 참조",
-        "negative_authority": False,
-    })
-    data["metadata"] = meta
-    return data
+
+    reader = shapefile.Reader(URBAN_REGEN_INNOVATION_SHP_BASE, encoding="utf-8", encodingErrors="replace")
+    fields = [f[0] for f in reader.fields[1:]]
+    to_wgs = Transformer.from_crs(5181, 4326, always_xy=True).transform
+    features: List[Dict[str, Any]] = []
+    source_area_m2 = 0.0
+    for idx, sr in enumerate(reader.iterShapeRecords(), start=1):
+        props = dict(zip(fields, list(sr.record)))
+        geom_source = shape(sr.shape.__geo_interface__)
+        if not geom_source.is_valid:
+            geom_source = geom_source.buffer(0)
+        if geom_source.is_empty:
+            continue
+        source_area_m2 += float(geom_source.area)
+        geom_wgs = geometry_transform(to_wgs, geom_source)
+        props.update({
+            "reference_id": f"GIMPO_URBAN_REGEN_INNOVATION_{idx}",
+            "name": str(props.get("NAME_KR") or "김포공항 도시재생혁신지구"),
+            "category": "urban_regeneration_innovation",
+            "source_type": "USER_CONFIRMED_SHP",
+            "source_file": "urban_regeneration_innovation_gimpo.shp",
+            "source_crs": "EPSG:5181",
+        })
+        features.append({"type": "Feature", "id": props["reference_id"], "geometry": mapping(geom_wgs), "properties": props})
+
+    return {
+        "type": "FeatureCollection",
+        "name": "gimpo_airport_urban_regeneration_innovation",
+        "metadata": {
+            "available": bool(features),
+            "source_type": "USER_CONFIRMED_SHP",
+            "legal_source": False,
+            "reference_name": "김포공항 도시재생혁신지구 SHP",
+            "reference_scope": "서울 도시재생혁신지구 분석 기준도형",
+            "source_crs": "EPSG:5181",
+            "geometry_basis": "user_confirmed_dxf_converted_to_shp",
+            "feature_count": len(features),
+            "source_area_m2": round(source_area_m2, 2),
+            "negative_authority": True,
+            "note": "사용자 확정 DXF를 SHP로 변환한 김포공항 도시재생혁신지구 경계. UQ120/BZ604 및 VWorld NED는 이 분석에 사용하지 않음.",
+        },
+        "features": features,
+    }
 
 REGULATION_CHANGE_MONITOR_PATH = _data_path("regulation_change_monitor.json")
 @lru_cache(maxsize=1)
@@ -2028,8 +2099,7 @@ PLANPLUS_PROJECT_TYPES = {'BZ101': ('renewal', '신속통합기획'),
  'BZ502': ('national', '도심 공공주택 복합사업'),
  'BZ601': ('other', '도시개발사업'),
  'BZ602': ('other', '리모델링활성화구역'),
- 'BZ603': ('other', '시장정비사업'),
- 'BZ604': ('other', '도시재생활성화지역')}
+ 'BZ603': ('other', '시장정비사업')}
 PLANPLUS_STAGE_LABELS = {'PP0101': '대상지선정(추진중)',
  'PP0102': '대상지선정',
  'PP0103': '기획완료',
@@ -3492,6 +3562,89 @@ def analyze_school_absolute_protection_intersections(geometry: Dict[str, Any]) -
     }
 
 
+def analyze_school_protection_intersections(geometry: Dict[str, Any]) -> Dict[str, Any]:
+    """UO101 절대(UOA110)·상대(UOA120) 보호구역을 규제정보용으로 함께 조회한다.
+
+    기존 안심주택 UOA110 판정 함수와 endpoint는 변경하지 않는다.
+    """
+    local = _school_absolute_local_shape()
+    if not local.get("available"):
+        raise FileNotFoundError(str(local.get("reason") or "학교 보호구역 원본 미설치"))
+    site = shape(geometry)
+    if site.geom_type not in {"Polygon", "MultiPolygon"} or site.is_empty:
+        raise ValueError("유효한 Polygon 또는 MultiPolygon 구역계가 필요합니다.")
+    if not site.is_valid:
+        site = site.buffer(0)
+    if site.is_empty or not site.is_valid:
+        raise ValueError("유효한 Polygon 또는 MultiPolygon 구역계가 필요합니다.")
+
+    source_crs = local["source_crs"]
+    to_source = Transformer.from_crs(4326, source_crs, always_xy=True).transform
+    to_wgs = Transformer.from_crs(source_crs, 4326, always_xy=True).transform
+    site_source = geometry_transform(to_source, site)
+    reader = shapefile.Reader(local["base"], encoding="cp949", encodingErrors="replace")
+    fields = [f[0] for f in reader.fields[1:]]
+    buckets = {"absolute": [], "relative": []}
+    overlap_buckets = {"absolute": [], "relative": []}
+    overlap_geoms = {"absolute": [], "relative": []}
+    candidate_count = 0
+    for sr in reader.iterShapeRecords(bbox=list(site_source.bounds)):
+        try:
+            candidate_count += 1
+            props = {k: _json_property(v) for k, v in zip(fields, list(sr.record))}
+            mnum = str(props.get("MNUM") or "").upper()
+            key = "absolute" if "UOA110" in mnum else ("relative" if "UOA120" in mnum else None)
+            if not key:
+                continue
+            geom_source = shape(sr.shape.__geo_interface__)
+            if geom_source.is_empty:
+                continue
+            if not geom_source.is_valid:
+                geom_source = geom_source.buffer(0)
+            if geom_source.is_empty:
+                continue
+            geom = geometry_transform(to_wgs, geom_source)
+            if geom.is_empty or not geom.intersects(site):
+                continue
+            inter_geom = _polygonal_only(site.intersection(geom))
+            if inter_geom is None or inter_geom.is_empty:
+                continue
+            p = dict(props)
+            p["_zone_type"] = "ABSOLUTE_PROTECTION_UOA110" if key == "absolute" else "RELATIVE_PROTECTION_UOA120"
+            buckets[key].append({"type": "Feature", "geometry": mapping(geom), "properties": p})
+            overlap_buckets[key].append({"type": "Feature", "geometry": mapping(inter_geom), "properties": p})
+            overlap_geoms[key].append(inter_geom)
+        except Exception:
+            continue
+
+    to_metric = Transformer.from_crs(4326, 5174, always_xy=True).transform
+    site_m2 = float(geometry_transform(to_metric, site).area)
+    def pack(key: str) -> Dict[str, Any]:
+        union_wgs = unary_union(overlap_geoms[key]) if overlap_geoms[key] else None
+        area = float(geometry_transform(to_metric, union_wgs).area) if union_wgs is not None and not union_wgs.is_empty else 0.0
+        names = []
+        for f in buckets[key]:
+            p = f.get("properties") or {}
+            name = str(p.get("REMARK") or p.get("ALIAS") or ("절대보호구역" if key == "absolute" else "상대보호구역")).strip()
+            if name and name not in names:
+                names.append(name)
+        return {
+            "known": True, "present": bool(buckets[key]), "overlap_area_m2": area,
+            "overlap_pct": (area / site_m2 * 100.0) if site_m2 > 0 else None,
+            "zone_count": len(buckets[key]), "school_names": names,
+            "features": buckets[key], "overlap_features": overlap_buckets[key],
+        }
+    absolute, relative = pack("absolute"), pack("relative")
+    return {
+        "status": "matched" if absolute["present"] or relative["present"] else "none",
+        "known": True, "absolute": absolute, "relative": relative,
+        "source": "국가공간정보 연속주제도 UO101 · UOA110/UOA120 학교 교육환경보호구역",
+        "source_type": "OFFLINE_SHP_LSMD_CONT_UO101_BBOX",
+        "file": local.get("file"), "bbox_candidate_count": candidate_count,
+        "note": "규제정보 제공용 중첩 FACT이며 교육환경평가·학교 일조·소음·통학안전 등 별도 검토 필요 여부를 자동 확정하지 않음",
+    }
+
+
 def _biotope_zip_path() -> Optional[str]:
     """서울시 개별비오톱(2025 기준) 중 1등급 폴리곤 묶음."""
     path = _data_path("biotope_seoul.zip")
@@ -3744,16 +3897,18 @@ def analyze_forest_classification_intersections(geometry: Dict[str, Any]) -> Dic
         raise ValueError("유효한 Polygon 또는 MultiPolygon 구역계가 필요합니다.")
     public_result = _forest_class_intersection(site, layers, "public_interest_forest")
     forestry_result = _forest_class_intersection(site, layers, "forestry_forest")
+    conservation_result = _forest_class_intersection(site, layers, "conservation_forest")
     return {
-        "status": "matched" if public_result["intersects"] or forestry_result["intersects"] else "none",
+        "status": "matched" if public_result["intersects"] or forestry_result["intersects"] or conservation_result["intersects"] else "none",
         "public_interest_forest": public_result,
         "forestry_forest": forestry_result,
+        "conservation_forest": conservation_result,
         "metadata": {
             "source": layers.get("source"),
             "file": layers.get("file"),
             "source_crs": layers.get("crs"),
             "dataset_counts": layers.get("counts"),
-            "classification_basis": "MNUM UFM120=공익용산지, UFM110=임업용산지",
+            "classification_basis": "MNUM UFM100=보전산지(상위분류), UFM120=공익용산지, UFM110=임업용산지 · 상위/하위 중복합산 금지",
             "geometry_basis": "site_exact_intersection",
         },
     }
@@ -6627,7 +6782,7 @@ def reference_route_commercial():
 
 @app.get("/api/reference/urban-regeneration-innovation")
 def reference_urban_regeneration_innovation():
-    """서울 현행 도시재생혁신지구 고시·공식계획도 벡터화 참조도형."""
+    """김포공항 도시재생혁신지구 확정 SHP 기준도형."""
     return _urban_regen_innovation_reference_data()
 
 
@@ -6653,7 +6808,7 @@ def _reference_data_readiness() -> Dict[str, bool]:
         "public_forest": os.path.isfile(_data_path("forest_classification_seoul_202608.zip")),
         "school_protection": os.path.isfile(_data_path("school_protection_seoul_202608.zip")),
         "route_commercial_model": os.path.isfile(_data_path("route_commercial_reference.geojson")),
-        "urban_regeneration_innovation_reference": os.path.isfile(_data_path("urban_regeneration_innovation_reference.geojson")),
+        "urban_regeneration_innovation_reference": _urban_regen_innovation_shp_ready(),
         "regulation_change_monitor": os.path.isfile(_data_path("regulation_change_monitor.json")),
         "safe_downtown_exclusion_model": os.path.isfile(_data_path("safe_downtown_exclusion_reference.geojson")),
         "hill_terrain_model": all(os.path.isfile(_data_path(x)) for x in (HILL_GRID_META_FILE,HILL_GRID_ELEV_FILE,HILL_GRID_SLOPE_FILE)),
@@ -6954,6 +7109,20 @@ def school_absolute_protection_intersections(inp: GeometryInput):
     except Exception as exc:
         logging.exception("school absolute protection intersection failed")
         raise HTTPException(status_code=500, detail=f"학교 절대보호구역 중첩분석 오류: {exc}") from exc
+
+
+@app.post("/api/spatial/school-protection-intersections")
+def school_protection_intersections(inp: GeometryInput):
+    """규제정보용 UO101 UOA110/UOA120 대상지 중첩 분석. 기존 안심주택 판정과 독립."""
+    try:
+        return analyze_school_protection_intersections(inp.geometry)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logging.exception("school protection intersection failed")
+        raise HTTPException(status_code=500, detail=f"학교 교육환경보호구역 중첩분석 오류: {exc}") from exc
 
 
 @app.get("/api/spatial/biotope-data-status")
@@ -7275,8 +7444,6 @@ def land_use_restrictions(inp: PnuListInput):
     categories: Dict[str, Dict[str, Any]] = {
         "biotope_grade1": {"affected_pnus": [], "rows": []},
         "public_interest_forest": {"affected_pnus": [], "rows": []},
-        "urban_regeneration_innovation": {"affected_pnus": [], "rows": []},
-        "housing_regeneration_innovation": {"affected_pnus": [], "rows": []},
     }
     success_pnus: List[str] = []
     errors: List[Dict[str, str]] = []
@@ -7329,8 +7496,6 @@ def land_use_restrictions(inp: PnuListInput):
         "error_parcels": len(errors),
         "biotope_grade1": categories["biotope_grade1"],
         "public_interest_forest": categories["public_interest_forest"],
-        "urban_regeneration_innovation": categories["urban_regeneration_innovation"],
-        "housing_regeneration_innovation": categories["housing_regeneration_innovation"],
         "errors": errors,
         "source": {
             "provider": "VWorld NED",
@@ -7339,6 +7504,72 @@ def land_use_restrictions(inp: PnuListInput):
             "geometry_basis": "parcel_attribute_only",
             "note": "비오톱1등급·공익용산지는 해당/저촉 필지를 표시하며 규제 원도형 또는 정확 중첩면적을 의미하지 않습니다.",
         },
+    }
+
+
+@app.post("/api/spatial/regulatory-land-use-restrictions")
+def regulatory_land_use_restrictions(inp: PnuListInput):
+    """개발·계획제한 독립 모듈용 VWorld NED 양성 규제행 조회.
+
+    전용 공간원도형이 없는 항목의 음성 결과는 '없음' 확정근거로 사용하지 않도록
+    complete 여부와 양성행만 반환한다. 기존 사업판정 endpoint와 완전히 분리한다.
+    """
+    pnus: List[str] = []
+    seen = set()
+    for raw in inp.pnus:
+        pnu = str(raw or "").strip()
+        if len(pnu) != 19 or not pnu.isdigit() or pnu in seen:
+            continue
+        seen.add(pnu); pnus.append(pnu)
+    if not pnus:
+        raise HTTPException(status_code=422, detail="유효한 19자리 PNU가 없습니다.")
+    if not _vworld_key():
+        raise HTTPException(status_code=503, detail="VWORLD_API_KEY가 설정되지 않았습니다.")
+
+    keys = [
+        "urban_natural_park", "natural_park", "ecological_landscape", "wildlife_special",
+        "public_interest_forest", "conservation_forest", "water_source", "river_zone",
+        "railroad_protection", "airport_obstacle", "military_flight", "disaster_risk",
+        "heritage_environment", "education_environment",
+    ]
+    categories: Dict[str, Dict[str, Any]] = {k: {"affected_pnus": [], "rows": []} for k in keys}
+    success_pnus: List[str] = []
+    errors: List[Dict[str, str]] = []
+    def work(pnu: str):
+        return pnu, _land_use_rows_for_pnu(pnu)
+    with ThreadPoolExecutor(max_workers=min(4, len(pnus))) as pool:
+        futures = {pool.submit(work, pnu): pnu for pnu in pnus}
+        for fut in as_completed(futures):
+            pnu = futures[fut]
+            try:
+                _, rows = fut.result(); success_pnus.append(pnu)
+                for row in rows:
+                    cat = _regulatory_land_use_category(row.get("prposAreaDstrcCodeNm"))
+                    if cat not in categories:
+                        continue
+                    clean = {
+                        "pnu": pnu, "relation_code": str(row.get("cnflcAt") or ""),
+                        "relation_name": str(row.get("cnflcAtNm") or ""),
+                        "code": str(row.get("prposAreaDstrcCode") or ""),
+                        "name": str(row.get("prposAreaDstrcCodeNm") or ""),
+                        "manage_no": str(row.get("manageNo") or ""),
+                        "last_update": str(row.get("lastUpdtDt") or ""),
+                    }
+                    categories[cat]["rows"].append(clean)
+                    if pnu not in categories[cat]["affected_pnus"]:
+                        categories[cat]["affected_pnus"].append(pnu)
+            except Exception as exc:
+                errors.append({"pnu": pnu, "error": str(exc)[:300]})
+    success_set = set(success_pnus); complete = len(success_set) == len(pnus)
+    for value in categories.values():
+        value["affected_pnus"].sort(); value["present"] = bool(value["affected_pnus"])
+        value["positive_evidence"] = bool(value["present"]); value["checked_parcels"] = len(success_set)
+        value["negative_complete"] = bool(complete)
+    return {
+        "status": "available" if complete else ("partial" if success_set else "error"),
+        "queried_parcels": len(pnus), "success_parcels": len(success_set), "error_parcels": len(errors),
+        "categories": categories, "errors": errors,
+        "source": {"provider": "국토교통부 / VWorld NED", "dataset": "토지이용계획정보", "operation": "getLandUseAttr", "geometry_basis": "parcel_attribute_only", "negative_rule": "전용 공간원도형 미연결 항목은 NED 음성만으로 비해당 확정 금지"},
     }
 
 
