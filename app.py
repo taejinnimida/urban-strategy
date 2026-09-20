@@ -12,6 +12,7 @@ import io
 import zipfile
 import html
 import hmac
+import hashlib
 import threading
 import time
 import uuid
@@ -548,7 +549,7 @@ def analyze_parcels_for_geometry(geometry: Dict[str, Any]) -> Dict[str, Any]:
     pnus = [str((f.get("properties") or {}).get("pnu") or "") for f in features]
     area_map: Dict[str, Optional[float]] = {}
     # Modest concurrency: I/O-bound calls, conservative for a free Render instance/API.
-    with ThreadPoolExecutor(max_workers=min(6, max(1, len(pnus)))) as ex:
+    with ThreadPoolExecutor(max_workers=min(2, max(1, len(pnus)))) as ex:
         futs = {ex.submit(_vworld_official_land_area, pnu): pnu for pnu in pnus}
         for fut in as_completed(futs):
             pnu = futs[fut]
@@ -901,6 +902,106 @@ def _vworld_features_in_bbox(layer: str, target_geom, size: int = 1000, max_page
         if len(feats) < page_size:
             break
     return all_features
+
+
+# UQ111 용도지역은 사업판정의 핵심 FACT이므로 브라우저 JSONP에 직접 의존하지 않는다.
+# 동일 구역계의 정상 조회결과만 짧게 캐시하고, 일시장애 시 최근 성공값을 fallback으로 사용한다.
+_ZONING_FACT_CACHE: Dict[str, Dict[str, Any]] = {}
+_ZONING_FACT_CACHE_LOCK = threading.Lock()
+_ZONING_FACT_CACHE_TTL_SEC = 600
+_ZONING_FACT_CACHE_STALE_SEC = 3600
+
+
+def _zoning_cache_key(geometry: Dict[str, Any]) -> str:
+    raw = json.dumps(geometry, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _zoning_cache_get(key: str, allow_stale: bool = False) -> Optional[Dict[str, Any]]:
+    now = time.time()
+    with _ZONING_FACT_CACHE_LOCK:
+        row = _ZONING_FACT_CACHE.get(key)
+        if not row:
+            return None
+        age = now - float(row.get("saved_at") or 0)
+        limit = _ZONING_FACT_CACHE_STALE_SEC if allow_stale else _ZONING_FACT_CACHE_TTL_SEC
+        if age > limit:
+            if age > _ZONING_FACT_CACHE_STALE_SEC:
+                _ZONING_FACT_CACHE.pop(key, None)
+            return None
+        return {"features": row.get("features") or [], "age_sec": round(age, 1)}
+
+
+def _zoning_cache_put(key: str, features: List[Dict[str, Any]]) -> None:
+    # 용도지역 0건은 정상 FACT로 캐시하지 않는다. 서울 대상지에서 UQ111 0건은
+    # 일시 조회실패/원자료 누락과 구분되지 않으므로 다음 실행에서 다시 확인해야 한다.
+    if not features:
+        return
+    with _ZONING_FACT_CACHE_LOCK:
+        if key not in _ZONING_FACT_CACHE and len(_ZONING_FACT_CACHE) >= 128:
+            oldest = min(_ZONING_FACT_CACHE.items(), key=lambda kv: float(kv[1].get("saved_at") or 0))[0]
+            _ZONING_FACT_CACHE.pop(oldest, None)
+        _ZONING_FACT_CACHE[key] = {"saved_at": time.time(), "features": features}
+
+
+def analyze_zoning_features(geometry: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        site_wgs = _polygonal_only(shape(geometry))
+    except Exception as exc:
+        raise ValueError(f"구역계 GeoJSON을 읽을 수 없습니다: {exc}") from exc
+    if site_wgs is None or site_wgs.is_empty:
+        raise ValueError("구역계는 Polygon 또는 MultiPolygon이어야 합니다.")
+    if not site_wgs.is_valid:
+        site_wgs = _polygonal_only(site_wgs.buffer(0))
+    if site_wgs is None or site_wgs.is_empty or not site_wgs.is_valid:
+        raise ValueError("유효하지 않은 구역계입니다.")
+
+    key = _zoning_cache_key(geometry)
+    cached = _zoning_cache_get(key, allow_stale=False)
+    if cached and cached.get("features"):
+        return {
+            "status": "cached", "known": True, "features": cached["features"],
+            "cache_hit": True, "cache_age_sec": cached.get("age_sec"),
+            "layer": "LT_C_UQ111",
+            "source": {"provider": "VWorld", "dataset": "LT_C_UQ111", "route": "server_cache"},
+        }
+
+    try:
+        features = _vworld_features_in_bbox("LT_C_UQ111", site_wgs, size=300, max_pages=5)
+        if features:
+            _zoning_cache_put(key, features)
+            return {
+                "status": "available", "known": True, "features": features,
+                "cache_hit": False, "cache_age_sec": 0, "layer": "LT_C_UQ111",
+                "source": {"provider": "VWorld", "dataset": "LT_C_UQ111", "route": "server_direct_or_proxy"},
+            }
+
+        stale = _zoning_cache_get(key, allow_stale=True)
+        if stale and stale.get("features"):
+            return {
+                "status": "stale_cache", "known": True, "features": stale["features"],
+                "cache_hit": True, "cache_age_sec": stale.get("age_sec"),
+                "warning": "VWorld UQ111 재조회 0건 · 최근 정상 FACT 재사용",
+                "layer": "LT_C_UQ111",
+                "source": {"provider": "VWorld", "dataset": "LT_C_UQ111", "route": "server_stale_cache"},
+            }
+        return {
+            "status": "no_data", "known": False, "features": [], "cache_hit": False,
+            "layer": "LT_C_UQ111",
+            "source": {"provider": "VWorld", "dataset": "LT_C_UQ111", "route": "server_direct_or_proxy"},
+            "message": "LT_C_UQ111 조회 결과가 0건입니다. 핵심 FACT를 확정하지 않습니다.",
+        }
+    except Exception as exc:
+        stale = _zoning_cache_get(key, allow_stale=True)
+        if stale and stale.get("features"):
+            return {
+                "status": "stale_cache", "known": True, "features": stale["features"],
+                "cache_hit": True, "cache_age_sec": stale.get("age_sec"),
+                "warning": f"VWorld UQ111 일시장애 · 최근 정상 FACT 재사용 · {str(exc)[:180]}",
+                "layer": "LT_C_UQ111",
+                "source": {"provider": "VWorld", "dataset": "LT_C_UQ111", "route": "server_stale_cache"},
+            }
+        raise
 
 
 def _vworld_features_at_point(layer: str, lon: float, lat: float, size: int = 100) -> List[Dict[str, Any]]:
@@ -2796,13 +2897,19 @@ def analyze_development_intersections(geometry: Dict[str, Any]) -> Dict[str, Any
         industrial_park_context = industrial_result.get("context_features") or []
         industrial_park_metadata = industrial_result.get("metadata") or {}
     except Exception as exc:
+        # 산업단지 전용경계는 LT_C_DAMDAN을 권위자료로 사용한다.
+        # UQ181에는 현재 배포자료상 UQ1400/UQ1300 산업단지 계열이 없으므로
+        # API 실패를 "비중첩 확정"으로 대체하지 않는다.
         industrial_park_metadata = {
             "available": False,
+            "fallback_available": False,
+            "fallback_authoritative": False,
             "source": "VWorld 2D Data API",
             "source_layer": VWORLD_LAYER_INDUSTRIAL_PARK,
             "source_title": "국토교통부 산업단지 단지경계",
             "source_type": "VWORLD_LIVE",
             "error": str(exc),
+            "note": "산업단지 전용경계 조회 실패 · 적용제외 여부는 REVIEW 유지",
         }
         logger.warning("industrial park boundary analysis unavailable: %s", exc)
     return {
@@ -5512,6 +5619,234 @@ def _seoul_open_data_rows(service: str, limit: int = 10000) -> List[Dict[str, An
         start = end + 1
     return rows
 
+# ---------------------------------------------------------------------------
+# 지구단위계획 CURRENT PLAN 참조정보
+# - 공간중첩 자체는 기존 VWorld LT_C_UPISUQ161 결과를 사용한다.
+# - 서울 열린데이터광장 upisCUq161 / upisDistUnitPlan은 관리코드·조서정보를
+#   확인하는 참조 경로다. 공공누리 4유형 자료(upisDistUnitPlan)는 원문값을
+#   필요한 범위에서만 전달하며, 사업판정·추천·밀도 산정에는 사용하지 않는다.
+# ---------------------------------------------------------------------------
+_DISTRICT_UNIT_REFERENCE_CACHE: Dict[str, Any] = {"ts": 0.0, "data": None}
+_DISTRICT_UNIT_REFERENCE_CACHE_TTL = 6 * 60 * 60
+
+
+def _row_value_ci(row: Dict[str, Any], *names: str) -> str:
+    if not isinstance(row, dict):
+        return ""
+    for name in names:
+        if name in row and row.get(name) not in (None, ""):
+            return str(row.get(name)).strip()
+    lower = {str(k).lower(): v for k, v in row.items()}
+    for name in names:
+        value = lower.get(str(name).lower())
+        if value not in (None, ""):
+            return str(value).strip()
+    return ""
+
+
+def _district_unit_feature_key_candidates(hit: Dict[str, Any]) -> Dict[str, List[str]]:
+    props = hit.get("properties") if isinstance(hit, dict) else {}
+    props = props if isinstance(props, dict) else {}
+
+    def vals(*names: str) -> List[str]:
+        out: List[str] = []
+        for name in names:
+            value = _row_value_ci(props, name)
+            if value and value not in out:
+                out.append(value)
+        direct = _row_value_ci(hit if isinstance(hit, dict) else {}, *names)
+        if direct and direct not in out:
+            out.append(direct)
+        return out
+
+    objt = vals("OBJT_ID", "objt_id", "OBJECTID", "objectid")
+    feature_id = str(hit.get("feature_id") or "").strip() if isinstance(hit, dict) else ""
+    if feature_id:
+        if feature_id not in objt:
+            objt.append(feature_id)
+        tail = feature_id.rsplit(".", 1)[-1]
+        if tail and tail not in objt:
+            objt.append(tail)
+
+    return {
+        "rpt": vals("FIG_RPT_MNG_CD", "fig_rpt_mng_cd", "RPT_MNG_CD", "rpt_mng_cd"),
+        "announcement": vals("DCSN_ANCMNT_MNG_CD", "dcsn_ancmnt_mng_cd", "ANCMNT_MNG_CD", "ancmnt_mng_cd"),
+        "stut": vals("STUT_FIG_MNG_NO", "stut_fig_mng_no", "STUT_FIG_MNG_NM"),
+        "objt": objt,
+        "label": [x for x in [str(hit.get("name") or "").strip(), _row_value_ci(props, "LBL_NM", "lbl_nm")] if x],
+    }
+
+
+def _district_unit_reference_tables() -> Dict[str, Any]:
+    key = _seoul_open_data_key()
+    if not key:
+        return {"status": "NO_KEY", "uq161": [], "plans": [], "message": "SEOUL_OPEN_DATA_KEY 미설정"}
+
+    now = time.time()
+    cached = _DISTRICT_UNIT_REFERENCE_CACHE.get("data")
+    if cached is not None and now - float(_DISTRICT_UNIT_REFERENCE_CACHE.get("ts") or 0) < _DISTRICT_UNIT_REFERENCE_CACHE_TTL:
+        return cached
+
+    try:
+        # UQ161은 공간도형의 관리코드 확인용(공공누리 1유형),
+        # 지구단위계획 조서는 CURRENT PLAN 참조용(공공누리 4유형)이다.
+        uq161 = _seoul_open_data_rows("upisCUq161", limit=20000)
+        plans = _seoul_open_data_rows("upisDistUnitPlan", limit=20000)
+        data = {"status": "OK", "uq161": uq161, "plans": plans, "message": ""}
+    except Exception as exc:
+        data = {"status": "ERROR", "uq161": [], "plans": [], "message": str(exc)[:300]}
+    _DISTRICT_UNIT_REFERENCE_CACHE["ts"] = now
+    _DISTRICT_UNIT_REFERENCE_CACHE["data"] = data
+    return data
+
+
+def _district_unit_reference_lookup(hits: List[Dict[str, Any]]) -> Dict[str, Any]:
+    base = {
+        "status": "NO_MATCH",
+        "known": False,
+        "matches": [],
+        "announcement_codes": [],
+        "message": "공식 조서 자동연결 미확정",
+        "source_type": "SEOUL_OPEN_DATA_REFERENCE_ONLY",
+        "license": "UQ161_KOGL_TYPE_1__DIST_UNIT_PLAN_KOGL_TYPE_4",
+        "services": ["upisCUq161", "upisDistUnitPlan"],
+        "match_policy": "관리코드 우선 → 객체/현황도형번호 → 유일한 정확 라벨 일치; 유사명칭 추정 금지",
+        "effect_on_scheme_status": "NONE",
+    }
+    if not hits:
+        return {**base, "status": "NOT_APPLICABLE", "known": True, "message": "지구단위계획구역 중첩 없음"}
+
+    tables = _district_unit_reference_tables()
+    if tables.get("status") == "NO_KEY":
+        return {**base, "status": "NO_KEY", "message": tables.get("message") or "서울 열린데이터 API 키 미설정"}
+    if tables.get("status") != "OK":
+        return {**base, "status": "ERROR", "message": tables.get("message") or "서울 열린데이터 조회 실패"}
+
+    uq161_rows: List[Dict[str, Any]] = list(tables.get("uq161") or [])
+    plan_rows: List[Dict[str, Any]] = list(tables.get("plans") or [])
+
+    uq_by_rpt: Dict[str, List[Dict[str, Any]]] = {}
+    uq_by_ann: Dict[str, List[Dict[str, Any]]] = {}
+    uq_by_stut: Dict[str, List[Dict[str, Any]]] = {}
+    uq_by_objt: Dict[str, List[Dict[str, Any]]] = {}
+    uq_by_label: Dict[str, List[Dict[str, Any]]] = {}
+    for row in uq161_rows:
+        for value, target in (
+            (_row_value_ci(row, "FIG_RPT_MNG_CD"), uq_by_rpt),
+            (_row_value_ci(row, "DCSN_ANCMNT_MNG_CD"), uq_by_ann),
+            (_row_value_ci(row, "STUT_FIG_MNG_NO"), uq_by_stut),
+            (_row_value_ci(row, "OBJT_ID"), uq_by_objt),
+        ):
+            if value:
+                target.setdefault(value, []).append(row)
+        label = _name_key(_row_value_ci(row, "LBL_NM"))
+        if label:
+            uq_by_label.setdefault(label, []).append(row)
+
+    plan_by_rpt: Dict[str, List[Dict[str, Any]]] = {}
+    plan_by_ann: Dict[str, List[Dict[str, Any]]] = {}
+    for row in plan_rows:
+        rpt = _row_value_ci(row, "RPT_MNG_CD")
+        ann = _row_value_ci(row, "DCSN_ANCMNT_MNG_CD")
+        if rpt:
+            plan_by_rpt.setdefault(rpt, []).append(row)
+        if ann:
+            plan_by_ann.setdefault(ann, []).append(row)
+
+    out_matches: List[Dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    announcement_codes: List[str] = []
+
+    for hit in hits[:20]:
+        if not isinstance(hit, dict):
+            continue
+        keys = _district_unit_feature_key_candidates(hit)
+        official_rows: List[Dict[str, Any]] = []
+        match_method = ""
+
+        # 1) 관리코드가 직접 넘어오면 가장 신뢰도 높은 연결
+        for rpt in keys["rpt"]:
+            official_rows.extend(uq_by_rpt.get(rpt, []))
+        if official_rows:
+            match_method = "FIG_RPT_MNG_CD"
+        if not official_rows:
+            for ann in keys["announcement"]:
+                official_rows.extend(uq_by_ann.get(ann, []))
+            if official_rows:
+                match_method = "DCSN_ANCMNT_MNG_CD"
+        if not official_rows:
+            for stut in keys["stut"]:
+                official_rows.extend(uq_by_stut.get(stut, []))
+            if official_rows:
+                match_method = "STUT_FIG_MNG_NO"
+        if not official_rows:
+            for objt in keys["objt"]:
+                official_rows.extend(uq_by_objt.get(objt, []))
+            if official_rows:
+                match_method = "OBJT_ID"
+        # 마지막 수단은 '유일한 정확 라벨'만 허용. 부분/유사문자열 매칭은 금지한다.
+        if not official_rows:
+            for label in keys["label"]:
+                rows = uq_by_label.get(_name_key(label), [])
+                if len(rows) == 1:
+                    official_rows = rows[:]
+                    match_method = "LBL_NM_EXACT_UNIQUE"
+                    break
+
+        uniq_official: Dict[str, Dict[str, Any]] = {}
+        for row in official_rows:
+            identity = _row_value_ci(row, "OBJT_ID") or _row_value_ci(row, "STUT_FIG_MNG_NO") or _row_value_ci(row, "FIG_RPT_MNG_CD")
+            uniq_official[identity or json.dumps(row, ensure_ascii=False, sort_keys=True)] = row
+
+        for uq in uniq_official.values():
+            rpt = _row_value_ci(uq, "FIG_RPT_MNG_CD")
+            ann = _row_value_ci(uq, "DCSN_ANCMNT_MNG_CD")
+            linked_plans = list(plan_by_rpt.get(rpt, [])) if rpt else []
+            if not linked_plans and ann:
+                linked_plans = list(plan_by_ann.get(ann, []))
+            if not linked_plans:
+                linked_plans = [{}]
+
+            for plan in linked_plans:
+                plan_ann = _row_value_ci(plan, "DCSN_ANCMNT_MNG_CD") or ann
+                if plan_ann and plan_ann not in announcement_codes:
+                    announcement_codes.append(plan_ann)
+                identity = (_row_value_ci(plan, "RPT_MNG_CD") or rpt, plan_ann)
+                if identity in seen:
+                    continue
+                seen.add(identity)
+                out_matches.append({
+                    "match_method": match_method or "MANAGEMENT_CODE",
+                    "label": _row_value_ci(uq, "LBL_NM") or str(hit.get("name") or "").strip(),
+                    "rpt_mng_cd": _row_value_ci(plan, "RPT_MNG_CD") or rpt,
+                    "project_code": _row_value_ci(plan, "PRJC_CD"),
+                    "rpt_type": _row_value_ci(plan, "RPT_TYPE"),
+                    "category": _row_value_ci(plan, "LCLSF"),
+                    "region_name": _row_value_ci(plan, "RGN_NM"),
+                    "location_name": _row_value_ci(plan, "PSTN_NM"),
+                    "area_existing": _row_value_ci(plan, "AREA_EXS"),
+                    "area_change_code": _row_value_ci(plan, "AREA_ICDC_CD"),
+                    "area_change": _row_value_ci(plan, "AREA_CHG"),
+                    "area_after_change": _row_value_ci(plan, "AREA_CHG_AFTR"),
+                    "announcement_code": plan_ann,
+                    "spatial_object_id": _row_value_ci(uq, "OBJT_ID"),
+                    "spatial_figure_mng_no": _row_value_ci(uq, "STUT_FIG_MNG_NO"),
+                    "floorplan_no": _row_value_ci(uq, "FLRPLN_NO"),
+                    "spatial_created_at": _row_value_ci(uq, "STUT_FIG_CRT_DT"),
+                })
+
+    if not out_matches:
+        return {**base, "status": "NO_MATCH", "message": "공간중첩은 확인됐으나 서울시 공식 조서와 관리코드 자동연결이 확인되지 않았습니다."}
+    return {
+        **base,
+        "status": "CONFIRMED",
+        "known": True,
+        "matches": out_matches[:40],
+        "announcement_codes": announcement_codes[:40],
+        "message": f"서울시 공식 지구단위계획 조서 {len(out_matches)}건 관리코드 연결",
+    }
+
+
 @lru_cache(maxsize=8)
 def _seoul_space_catalog_keyword(keyword: str) -> Dict[str, Any]:
     """Search Seoul's spatial-information inventory for a legacy/original layer.
@@ -5976,7 +6311,7 @@ def _safe_medical_reference(geometry: Dict[str, Any]) -> Dict[str, Any]:
     items: List[Dict[str, Any]] = []
     parcel_calls = len(screened)
     if screened:
-        with ThreadPoolExecutor(max_workers=min(4, len(screened))) as pool:
+        with ThreadPoolExecutor(max_workers=min(2, len(screened))) as pool:
             future_map = {pool.submit(_resolve_medical_candidate, cand): cand for cand in screened}
             for fut in as_completed(future_map):
                 cand = future_map[fut]
@@ -6043,6 +6378,31 @@ app = FastAPI(
 
 class GeometryInput(BaseModel):
     geometry: Dict[str, Any]
+
+
+class DistrictUnitPlanReferenceInput(BaseModel):
+    # 브라우저에서 확인한 UQ161 중첩도형의 최소 식별정보만 받는다.
+    # 이 endpoint는 CURRENT PLAN 참조정보 제공용이며 사업 PASS/FAIL에 사용하지 않는다.
+    hits: List[Dict[str, Any]] = Field(default_factory=list, max_length=20)
+
+
+@app.post("/api/spatial/zoning")
+def spatial_zoning(inp: GeometryInput):
+    """사업판정용 핵심 용도지역 FACT.
+
+    브라우저의 VWorld JSONP 직접조회 대신 서버 direct→official proxy fallback과
+    최근 정상 FACT 캐시를 사용한다. 0건은 NONE으로 확정하지 않는다.
+    """
+    try:
+        return analyze_zoning_features(inp.geometry)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("zoning UQ111 analysis failed")
+        message = str(exc)[:240]
+        if "HTTP 429" in message or "429" in message and "VWorld" in message:
+            raise HTTPException(status_code=429, detail=f"용도지역 LT_C_UQ111 일시 호출제한: {message}") from exc
+        raise HTTPException(status_code=502, detail=f"용도지역 LT_C_UQ111 조회 실패: {message}") from exc
 
 
 class RoadFactInput(BaseModel):
@@ -7080,6 +7440,27 @@ def development_intersections(inp: GeometryInput):
         _release_heavy_analysis_cache("development")
 
 
+@app.post("/api/reference/district-unit-plan-current")
+def district_unit_plan_current_reference(inp: DistrictUnitPlanReferenceInput):
+    """지구단위계획 CURRENT PLAN 공식 참조정보를 관리코드로 연결한다.
+
+    공간중첩 판정은 기존 LT_C_UPISUQ161 결과가 담당한다. 이 endpoint는
+    서울 열린데이터광장의 UQ161 속성/지구단위계획 조서를 참조해 구역명·위치·
+    면적·결정고시관리코드를 연결할 뿐이며 사업 PASS/FAIL/REVIEW를 변경하지 않는다.
+    """
+    try:
+        return _district_unit_reference_lookup(list(inp.hits or []))
+    except Exception as exc:
+        logging.exception("district unit plan current reference failed")
+        return {
+            "status": "ERROR", "known": False, "matches": [], "announcement_codes": [],
+            "message": str(exc)[:300], "source_type": "SEOUL_OPEN_DATA_REFERENCE_ONLY",
+            "license": "UQ161_KOGL_TYPE_1__DIST_UNIT_PLAN_KOGL_TYPE_4",
+            "services": ["upisCUq161", "upisDistUnitPlan"],
+            "effect_on_scheme_status": "NONE",
+        }
+
+
 @app.post("/api/reference/safe-medical-nearby")
 def safe_medical_nearby(inp: GeometryInput):
     """안심주택 인정 의료시설의 대표지번 1필지 경계와 350m 범위를 계산합니다.
@@ -7404,7 +7785,7 @@ def land_official_price_batch(inp: LandPriceBatchInput):
 
     rows: List[Dict[str, Any]] = []
     errors: List[Dict[str, Any]] = []
-    max_workers = min(6, len(pnus))
+    max_workers = min(2, len(pnus))
     with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="land-price") as pool:
         future_map = {
             pool.submit(_server_individual_land_price_vworld, pnu, int(inp.year), 8): pnu
@@ -7471,7 +7852,7 @@ def land_use_restrictions(inp: PnuListInput):
 
     # Low concurrency on purpose: the prototype must not hammer VWorld and is
     # designed for only a few simultaneous users.
-    with ThreadPoolExecutor(max_workers=min(4, len(pnus))) as pool:
+    with ThreadPoolExecutor(max_workers=min(2, len(pnus))) as pool:
         futures = {pool.submit(work, pnu): pnu for pnu in pnus}
         for fut in as_completed(futures):
             pnu = futures[fut]
@@ -7555,7 +7936,7 @@ def regulatory_land_use_restrictions(inp: PnuListInput):
     errors: List[Dict[str, str]] = []
     def work(pnu: str):
         return pnu, _land_use_rows_for_pnu(pnu)
-    with ThreadPoolExecutor(max_workers=min(4, len(pnus))) as pool:
+    with ThreadPoolExecutor(max_workers=min(2, len(pnus))) as pool:
         futures = {pool.submit(work, pnu): pnu for pnu in pnus}
         for fut in as_completed(futures):
             pnu = futures[fut]
@@ -7611,7 +7992,7 @@ def building_hub_title_batch(inp: BuildingHubBatchInput):
     errors: List[Dict[str, Any]] = []
 
     # Small concurrent fan-out keeps each browser request short without flooding data.go.kr.
-    with ThreadPoolExecutor(max_workers=min(5, len(pnus))) as ex:
+    with ThreadPoolExecutor(max_workers=min(2, len(pnus))) as ex:
         futures = {ex.submit(_query_building_hub_title, pnu): pnu for pnu in pnus}
         for fut in as_completed(futures):
             pnu = futures[fut]
@@ -7647,7 +8028,7 @@ def building_hub_floor_batch(inp: BuildingHubBatchInput):
         if p and p not in seen:
             seen.add(p);pnus.append(p)
     records: List[Dict[str, Any]]=[]; errors: List[Dict[str, Any]]=[]
-    with ThreadPoolExecutor(max_workers=min(5, len(pnus) or 1)) as ex:
+    with ThreadPoolExecutor(max_workers=min(2, len(pnus) or 1)) as ex:
         futures={ex.submit(_query_building_hub_floor,pnu):pnu for pnu in pnus}
         for fut in as_completed(futures):
             pnu=futures[fut]
