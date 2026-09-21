@@ -1,0 +1,183 @@
+--- /mnt/data/r11_price_work/app.before_r11.html	2026-09-21 00:52:00.981915317 +0000
++++ /mnt/data/r11_price_work/app.html	2026-09-21 01:00:29.050873211 +0000
+@@ -1927,6 +1927,10 @@
+ <div><span>도시계획시설 GIS중첩</span><b id="ccLandPlanningInfra">-</b></div>
+ <div><span>제외 기반시설 합계</span><b id="ccLandInfra">-</b></div>
+ <div><span>기초 순수대지</span><b id="ccLandNet">-</b></div>
++<div><span>공시지가 기준연도</span><b id="ccLandPriceYear">-</b></div>
++<div><span>사업구역 평균공시지가(대)</span><b id="ccLandPriceAvg">-</b></div>
++<div><span>공시지가 산정면적(대)</span><b id="ccLandPriceArea">-</b></div>
++<div><span>공시지가 확인률</span><b id="ccLandPriceCoverage">-</b></div>
+ </div>
+ <div class="spatial-tags" id="ccLandLegend"><span>지목 조회 전</span></div>
+ <div class="spatial-caption">도면정보 · 구역 내 필지 진하게 / 구역 밖 주변지적 얇게 / 90㎡ 미만 강조</div>
+@@ -1940,13 +1944,18 @@
+ <div><span>서울시 기준공시지가</span><b id="spRenewalFeasSeoulAvg">-</b></div>
+ <div><span>재개발 지가비율</span><b id="spRenewalFeasRawRatio">-</b></div>
+ <div><span>재개발 보정계수</span><b id="spRenewalFeasRedevCoefficient">-</b></div>
+-<div><span>재건축 공시지가 요소</span><b id="spRenewalFeasReconPriceFactor">-</b></div>
+-<div><span>대지(지목) 산정면적</span><b id="spRenewalFeasSiteArea">-</b></div>
++<div><span>재건축 공시지가 보정계수</span><b id="spRenewalFeasReconPriceFactor">-</b></div>
++<div><span>재건축 대지면적 α</span><b id="spRenewalFeasReconAlpha">-</b></div>
++<div><span>재건축 세대밀도 β</span><b id="spRenewalFeasReconBeta">-</b></div>
++<div><span>재건축 최종 보정계수</span><b id="spRenewalFeasReconCoefficient">-</b></div>
++<div><span>소정법 보정계수</span><b id="spRenewalFeasSmallscaleCoefficient">-</b></div>
++<div><span>소규모재건축</span><b id="spRenewalFeasSmallRecon">별도기준 확인</b></div>
++<div><span>공시지가 산정면적(지목 대)</span><b id="spRenewalFeasSiteArea">-</b></div>
+ <div><span>가격 확인</span><b id="spRenewalFeasCoverage">-</b></div>
+ <div><span>서울시 대비 지가수준</span><b id="spRenewalFeasPriceLevel">-</b></div>
+ <div><span>산정상태</span><b id="spRenewalFeasQuality">미조회</b></div>
+ </div>
+-<div class="spatial-tags" id="spRenewalFeasLegend"><span>공통 대상지 FACT · 지목 ‘대’ · 면적가중평균</span><span>검토구역과 교차하는 모든 필지 조회 · 재개발/재건축 서울시 기준 분리</span></div>
++<div class="spatial-tags" id="spRenewalFeasLegend"><span>FACT · 토지정보의 사업구역 평균공시지가 재사용</span><span>RULE · 재개발/재건축/소정법 사업별 서울시 기준 분리</span><span>밀도계산 미연결 · 후속 사업별 팝업에서 사용</span></div>
+ <div class="spatial-caption" id="spRenewalFeasNote">산정원칙 · 사용자 검토구역과 교차하는 모든 지적필지를 확인한 뒤 지목 ‘대’만 대상으로 개별공시지가를 면적가중평균합니다. 경계가 필지와 일치하지 않는 경우에는 공식 필지면적에 구역 내 중첩비율을 적용합니다. 재개발과 재건축의 서울시 기준공시지가는 각각의 공식 공고값을 사용합니다.</div>
+ </section>
+ <section class="spatial-module site-analysis-card site-analysis-local" id="siteDetail_zoning">
+@@ -10599,6 +10608,87 @@
+     2025:{value:8043979,source:'서울특별시공고 제2026-529호'}
+   })
+ });
++const SEOUL_RENEWAL_BUSINESS_COEFFICIENT_RULES=Object.freeze({
++  redevelopment:Object.freeze({min:1,max:2,source:'2030 서울 도시·주거환경정비기본계획 및 정비사업 사업성 개선방안 세부기준',formula:'서울시 재개발 평균공시지가 ÷ 사업구역 평균공시지가'}),
++  reconstruction:Object.freeze({min:1,max:2,source:'정비사업 사업성 개선방안 세부기준',formula:'공시지가 보정계수 + α(대지면적) + β(세대밀도)'}),
++  smallscale:Object.freeze({min:1,max:1.5,seoul_basis:'redevelopment',applies_to:['autonomous','block','redevelopment'],separate_review:['reconstruction'],source:'서울시 모아주택 사업성 보정계수 세부기준(2026.1.14.)',formula:'서울시 재개발 평균공시지가 ÷ 사업시행구역 평균공시지가'})
++});
++function ceilBusinessCoefficient2(v){
++  const n=Number(v);return Number.isFinite(n)?Math.ceil(n*100-1e-10)/100:null;
++}
++function clampBusinessCoefficient(v,min,max){
++  const n=Number(v);return Number.isFinite(n)?Math.max(min,Math.min(max,n)):null;
++}
++function businessCoefficientAdjustedAllowedFar(baseFarPct,standardAllowedFarPct,coefficient){
++  const base=Number(baseFarPct),allowed=Number(standardAllowedFarPct),coef=Number(coefficient);
++  if(!(Number.isFinite(base)&&Number.isFinite(allowed)&&Number.isFinite(coef)))return {status:'REVIEW',base_far_pct:Number.isFinite(base)?base:null,standard_allowed_far_pct:Number.isFinite(allowed)?allowed:null,coefficient:Number.isFinite(coef)?coef:null,standard_incentive_pct:null,adjusted_allowed_far_pct:null,note:'기준용적률·허용용적률·사업성 보정계수 FACT 필요'};
++  const incentive=Math.max(0,allowed-base),adjusted=base+incentive*coef;
++  return {status:'FORMULA_READY',base_far_pct:base,standard_allowed_far_pct:allowed,coefficient:coef,standard_incentive_pct:incentive,adjusted_allowed_far_pct:adjusted,note:'허용용적률 = 기준용적률 + (기존 허용용적률 인센티브량 × 사업성 보정계수) · 법적상한/상한용적률 적용은 후속 밀도모듈에서 별도'};
++}
++function siteOfficialLandPriceFact(){
++  const a=renewalFeasibilityAnalysis||{},eligible=Number(a.eligible_area_m2||0),resolved=Number(a.resolved_area_m2||0);
++  const coverage=eligible>0?resolved/eligible*100:null;
++  const avg=Number(a.target_avg_price);
++  return {
++    status:a.status==='complete'?'CONFIRMED':a.status==='partial'?'REVIEW':a.status==='loading'?'REVIEW':'UNKNOWN',
++    analysis_status:a.status||'unavailable',year:a.year??null,average_price_per_m2:Number.isFinite(avg)&&avg>0?avg:null,
++    land_category:'대',weighted_method:'면적가중평균',intersecting_parcels:Number(a.intersecting_parcels||0),
++    eligible_parcels:Number(a.eligible_parcels||0),resolved_parcels:Number(a.resolved_parcels||0),
++    eligible_area_m2:eligible,resolved_area_m2:resolved,coverage_pct:Number.isFinite(coverage)?coverage:null,
++    boundary_partial_parcels:Number(a.boundary_partial_parcels||0),source:'국토교통부 VWorld 개별공시지가 · 토지임야대장 지목/공식면적'
++  };
++}
++function reconstructionCoefficientSiteAreaFact(){
++  let parcelArea=null,boundaryArea=Number(boundaryReferenceMetrics?.area_m2);
++  try{const b=selectedParcelLandBase();const a=Number(b?.parcelArea);if(Number.isFinite(a)&&a>0)parcelArea=a;}catch(e){}
++  const area=parcelArea??(Number.isFinite(boundaryArea)&&boundaryArea>0?boundaryArea:null);
++  return {area_m2:area,status:area!=null?'CONFIRMED':'REVIEW',source:parcelArea!=null?'선택필지 공식면적 합계':'사용자 사업구역 도형면적'};
++}
++function reconstructionExistingHouseholdFact(){
++  let rows=[];try{rows=buildingRawFacts().filter(reconstructionEligibleBuildingRecord);}catch(e){rows=[];}
++  let total=0,known=0;
++  for(const r of rows){const h=Number(r.household_count),f=Number(r.family_count),v=Number.isFinite(h)&&h>0?h:Number.isFinite(f)&&f>0?f:null;if(v!=null){total+=v;known++;}}
++  return {households:known?total:null,eligible_records:rows.length,known_records:known,status:rows.length&&known===rows.length?'CONFIRMED':'REVIEW',source:'건축HUB 표제부 세대수/가구수'};
++}
++function reconstructionLandAreaAlpha(areaM2){
++  const area=Number(areaM2);
++  if(!(Number.isFinite(area)&&area>0))return {status:'REVIEW',applicable:null,raw:null,value:null,note:'재건축 대지면적 FACT 필요'};
++  if(area>=20000)return {status:'CONFIRMED',applicable:false,raw:0,value:0,note:'대지면적 20,000㎡ 이상 · α 적용대상 아님'};
++  const raw=area<=10000?0.2:0.2-(area-10000)*(0.2-0.1)/(20000-10000);
++  const value=ceilBusinessCoefficient2(raw);
++  return {status:'CONFIRMED',applicable:true,raw,value,note:area<=10000?'10,000㎡ 이하 · α 0.20':'10,000~20,000㎡ 미만 · 직선보간'};
++}
++function reconstructionDensityBeta(availableFarPct,areaM2,households){
++  const far=Number(availableFarPct),area=Number(areaM2),hh=Number(households);
++  if(!(Number.isFinite(area)&&area>0&&Number.isFinite(hh)&&hh>0))return {status:'REVIEW',applicable:null,value:null,available_far_pct:Number.isFinite(far)?far:null,average_supply_area_m2:null,capacity_households:null,required_far_pct:null,note:'재건축 대지면적·현황세대수 FACT 필요'};
++  const requiredFar=hh*110/area*100;
++  if(!(Number.isFinite(far)&&far>0))return {status:'REVIEW',applicable:null,value:null,available_far_pct:null,average_supply_area_m2:null,capacity_households:null,required_far_pct:requiredFar,note:'가용용적률 FACT 연계 후 β 자동산정'};
++  const supply=far/100*area/hh,capacity=far/100*area/110;
++  if(supply>=110)return {status:'CONFIRMED',applicable:false,raw:0,value:0,available_far_pct:far,average_supply_area_m2:supply,capacity_households:capacity,required_far_pct:requiredFar,note:'가용용적률 전체로 현황세대에 세대당 공급면적 110㎡ 이상 확보 가능 · β 미적용'};
++  const raw=supply<80?0.2:0.2-(supply-80)*(0.2-0.1)/(110-80);
++  const value=Math.max(0.1,Math.min(0.2,ceilBusinessCoefficient2(raw)));
++  return {status:'CONFIRMED',applicable:true,raw,value,available_far_pct:far,average_supply_area_m2:supply,capacity_households:capacity,required_far_pct:requiredFar,note:supply<80?'세대당 공급면적 80㎡ 미만 · β 0.20':'세대당 공급면적 80~110㎡ 미만 · 직선보간'};
++}
++function renewalBusinessCoefficientFacts(overrides={}){
++  const a=renewalFeasibilityAnalysis||{},land=siteOfficialLandPriceFact(),target=Number(land.average_price_per_m2);
++  const redevSeoul=Number(a.redevelopment_seoul_avg_price??a.seoul_avg_price),reconSeoul=Number(a.reconstruction_seoul_avg_price);
++  const priceReady=land.status==='CONFIRMED'&&Number.isFinite(target)&&target>0;
++  const redevRaw=priceReady&&Number.isFinite(redevSeoul)&&redevSeoul>0?redevSeoul/target:null;
++  const redevRounded=redevRaw==null?null:ceilBusinessCoefficient2(redevRaw);
++  const redevelopment={status:redevRounded==null?'REVIEW':'CONFIRMED',raw:redevRaw,price_factor:redevRounded,coefficient:redevRounded==null?null:clampBusinessCoefficient(redevRounded,1,2),range:[1,2],seoul_avg_price:Number.isFinite(redevSeoul)?redevSeoul:null,source:SEOUL_RENEWAL_BUSINESS_COEFFICIENT_RULES.redevelopment.source};
++  const areaFact=reconstructionCoefficientSiteAreaFact(),houseFact=reconstructionExistingHouseholdFact();
++  const reconRaw=priceReady&&Number.isFinite(reconSeoul)&&reconSeoul>0?reconSeoul/target:null,reconPrice=reconRaw==null?null:ceilBusinessCoefficient2(reconRaw);
++  const alpha=reconstructionLandAreaAlpha(areaFact.area_m2);
++  const availableFar=overrides.available_far_pct??a.reconstruction_available_far_pct??null;
++  const beta=reconstructionDensityBeta(availableFar,areaFact.area_m2,houseFact.households);
++  const reconReady=reconPrice!=null&&alpha.status==='CONFIRMED'&&beta.status==='CONFIRMED';
++  const reconSum=reconReady?reconPrice+Number(alpha.value||0)+Number(beta.value||0):null;
++  const reconstruction={status:reconReady?'CONFIRMED':'REVIEW',raw:reconRaw,price_factor:reconPrice,alpha,beta,area_fact:areaFact,household_fact:houseFact,coefficient:reconSum==null?null:clampBusinessCoefficient(ceilBusinessCoefficient2(reconSum),1,2),range:[1,2],seoul_avg_price:Number.isFinite(reconSeoul)?reconSeoul:null,source:SEOUL_RENEWAL_BUSINESS_COEFFICIENT_RULES.reconstruction.source};
++  const smallRaw=redevRaw,smallRounded=smallRaw==null?null:ceilBusinessCoefficient2(smallRaw);
++  const smallscale={status:smallRounded==null?'REVIEW':'CONFIRMED',raw:smallRaw,price_factor:smallRounded,coefficient:smallRounded==null?null:clampBusinessCoefficient(smallRounded,1,1.5),range:[1,1.5],seoul_avg_price:Number.isFinite(redevSeoul)?redevSeoul:null,seoul_basis:'재개발 서울시 평균공시지가',applies_to:[...SEOUL_RENEWAL_BUSINESS_COEFFICIENT_RULES.smallscale.applies_to],small_reconstruction:{status:'REVIEW',note:'조례상 사업성 보정계수 적용근거는 있으나 모아주택 세부기준의 적용대상과 구분하여 소규모재건축 별도 시장기준 연결 필요'},source:SEOUL_RENEWAL_BUSINESS_COEFFICIENT_RULES.smallscale.source};
++  const futureFarApplication={status:'FORMULA_READY',scope:'도정법 재개발·재건축',required_facts:['기준용적률','허용용적률','사업성 보정계수'],formula:'기준용적률 + ((허용용적률 - 기준용적률) × 사업성 보정계수)',legal_ceiling_application:'후속 밀도모듈에서 별도',connected:false};
++  return {land_price_fact:land,redevelopment,reconstruction,smallscale,future_far_application:futureFarApplication,density_connected:false,note:'사업성 보정계수와 향후 허용용적률 적용 산식까지만 준비 · 실제 허용용적률/상한/법적상한 밀도계산에는 아직 연결하지 않음'};
++}
+ let renewalFeasibilityAnalysis={
+   loaded:false,loading:false,status:'unavailable',year:null,
+   redevelopment_seoul_avg_price:null,reconstruction_seoul_avg_price:null,seoul_avg_price:null,target_avg_price:null,
+@@ -10625,8 +10715,9 @@
+   try{renderRenewalFeasibilityStatus();}catch(e){}
+ }
+ function renewalFeasibilitySpatialFacts(){
+-  const a=renewalFeasibilityAnalysis||{};
++  const a=renewalFeasibilityAnalysis||{},landPriceFact=siteOfficialLandPriceFact(),businessCoefficients=renewalBusinessCoefficientFacts();
+   return {
++    land_price_fact:landPriceFact,business_coefficients:businessCoefficients,
+     loaded:a.loaded===true,status:a.status||'unavailable',year:a.year??null,
+     redevelopment_seoul_avg_price:a.redevelopment_seoul_avg_price??a.seoul_avg_price??null,
+     reconstruction_seoul_avg_price:a.reconstruction_seoul_avg_price??null,
+@@ -10782,18 +10873,35 @@
+ function renderRenewalFeasibilityStatus(){
+   const a=renewalFeasibilityAnalysis||{},set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
+   const won=v=>v==null?'-':`${Math.round(Number(v)).toLocaleString('ko-KR')}원/㎡`;
++  const land=siteOfficialLandPriceFact(),coeff=renewalBusinessCoefficientFacts();
+   const redevRaw=Number(a.redevelopment_land_price_ratio??a.raw_coefficient),reconRaw=Number(a.reconstruction_land_price_ratio);
+   const redevRawText=Number.isFinite(redevRaw)?redevRaw.toFixed(3):'-',reconRawText=Number.isFinite(reconRaw)?reconRaw.toFixed(3):'-';
++
++  // LAND FACT: 사업방식과 무관한 공통 토지정보
++  set('ccLandPriceYear',land.year?`${land.year}년`:'-');
++  set('ccLandPriceAvg',won(land.average_price_per_m2));
++  set('ccLandPriceArea',land.eligible_area_m2>0?`${Number(land.eligible_area_m2).toLocaleString('ko-KR',{maximumFractionDigits:1})}㎡`:'-');
++  set('ccLandPriceCoverage',land.eligible_parcels?`${land.resolved_parcels}/${land.eligible_parcels}필지 · ${land.coverage_pct==null?'-':land.coverage_pct.toFixed(1)+'%'}`:'-');
++
++  // RULE: 사업방식별 서울시 사업성 보정계수
+   set('spRenewalFeasYear',a.year?`${a.year}년`:'-');
+   set('spRenewalFeasTargetAvg',won(a.target_avg_price));
+-  set('spRenewalFeasSeoulAvg',`재개발 ${won(a.redevelopment_seoul_avg_price)} · 재건축 ${won(a.reconstruction_seoul_avg_price)}`);
++  set('spRenewalFeasSeoulAvg',`재개발·소정법 ${won(a.redevelopment_seoul_avg_price)} · 재건축 ${won(a.reconstruction_seoul_avg_price)}`);
+   set('spRenewalFeasRawRatio',redevRawText);
+-  set('spRenewalFeasRedevCoefficient',a.coefficient==null?'-':Number(a.coefficient).toFixed(2));
+-  set('spRenewalFeasReconPriceFactor',reconRawText);
++  set('spRenewalFeasRedevCoefficient',coeff.redevelopment.coefficient==null?'-':Number(coeff.redevelopment.coefficient).toFixed(2));
++  set('spRenewalFeasReconPriceFactor',coeff.reconstruction.price_factor==null?reconRawText:Number(coeff.reconstruction.price_factor).toFixed(2));
++  const alpha=coeff.reconstruction.alpha;
++  set('spRenewalFeasReconAlpha',alpha?.value==null?'-':`${Number(alpha.value).toFixed(2)} · ${coeff.reconstruction.area_fact?.area_m2?Number(coeff.reconstruction.area_fact.area_m2).toLocaleString('ko-KR',{maximumFractionDigits:1})+'㎡':'면적 미확인'}`);
++  const beta=coeff.reconstruction.beta;
++  const betaText=beta?.value!=null?`${Number(beta.value).toFixed(2)}${beta.applicable===false?' · 미적용':''}`:beta?.required_far_pct!=null?`REVIEW · 가용용적률 ${Number(beta.required_far_pct).toFixed(2)}% 기준 비교 필요`:'REVIEW · 가용용적률/세대수 필요';
++  set('spRenewalFeasReconBeta',betaText);
++  set('spRenewalFeasReconCoefficient',coeff.reconstruction.coefficient==null?'REVIEW · β 연계 후 산정':Number(coeff.reconstruction.coefficient).toFixed(2));
++  set('spRenewalFeasSmallscaleCoefficient',coeff.smallscale.coefficient==null?'-':`${Number(coeff.smallscale.coefficient).toFixed(2)} · 자율/가로/소규모재개발`);
++  set('spRenewalFeasSmallRecon','REVIEW · 별도 시장기준 연계');
+   set('spRenewalFeasSiteArea',a.eligible_area_m2>0?`${Number(a.eligible_area_m2).toLocaleString('ko-KR',{maximumFractionDigits:1})}㎡`:'-');
+   set('spRenewalFeasCoverage',a.intersecting_parcels?`교차 ${a.intersecting_parcels}필지 · 대 ${a.resolved_parcels}/${a.eligible_parcels}필지 · 면적 ${a.eligible_area_m2>0?(a.resolved_area_m2/a.eligible_area_m2*100).toFixed(1):'0.0'}%`:'-');
+   const redevLevel=Number(a.redevelopment_price_level_pct??a.price_level_pct),reconLevel=Number(a.reconstruction_price_level_pct);
+-  set('spRenewalFeasPriceLevel',`${Number.isFinite(redevLevel)?`재개발 ${redevLevel.toFixed(1)}%`:'재개발 -'} · ${Number.isFinite(reconLevel)?`재건축 ${reconLevel.toFixed(1)}%`:'재건축 -'}`);
++  set('spRenewalFeasPriceLevel',`${Number.isFinite(redevLevel)?`재개발·소정법 ${redevLevel.toFixed(1)}%`:'재개발·소정법 -'} · ${Number.isFinite(reconLevel)?`재건축 ${reconLevel.toFixed(1)}%`:'재건축 -'}`);
+   set('spRenewalFeasQuality',a.status==='complete'?'공통 FACT 완료':a.status==='partial'?'일부미확인':a.status==='loading'?'조회중':'미산정');
+   const st=document.getElementById('spRenewalFeasState');
+   if(st)st.textContent=a.status==='complete'?`AUTO · ${a.year}년`:a.status==='partial'?`REVIEW · ${a.year||'-'}년`:a.status==='loading'?'공시지가 조회 중':'공시지가 조회 전';
+@@ -10804,7 +10912,7 @@
+     if(a.unknown_category_parcels)issues.push(`지목 미확인 ${a.unknown_category_parcels}필지`);
+     if(a.missing_area_parcels)issues.push(`공식면적 미확인 ${a.missing_area_parcels}필지`);
+     if(a.errors?.length)issues.push(`자료 미확보 ${a.errors.length}건`);
+-    note.innerHTML=`<b>대상지 FACT</b> · 사용자 검토구역과 실제 교차하는 모든 지적필지를 조회하고, 서울시 세부기준에 따라 지목 ‘대’만 동일연도 개별공시지가로 면적가중평균합니다. 경계가 필지와 일치하지 않으면 공식 필지면적×구역내 중첩비율을 초기검토 면적으로 사용합니다. <b>서울시 기준값</b> · 재개발과 재건축은 매년 별도로 공고된 평균공시지가를 각각 적용합니다. <b>계획대지와 구분</b> · 기존 정비기반시설 공제는 계획가능 대지·연면적 산정에서 별도로 처리하며, 이 평균공시지가 모집단을 임의로 바꾸지 않습니다.${issues.length?` <b>확인필요</b> · ${escHtml(issues.join(' · '))}`:''}`;
++    note.innerHTML=`<b>FACT</b> · 사업방식과 무관하게 사용자 사업구역과 교차하는 필지 중 지목 ‘대’만 동일연도 개별공시지가로 면적가중평균하며, 이 값은 토지정보에 저장합니다. 경계필지는 공식 필지면적×구역내 중첩비율을 초기검토 면적으로 사용합니다. <b>RULE</b> · 재개발은 서울시 재개발 평균공시지가 기준 1.00~2.00, 재건축은 재건축 평균공시지가 보정계수+α+β(최종 1.00~2.00), 자율·가로·소규모재개발은 서울시 재개발 평균공시지가 기준 1.00~1.50을 적용합니다. 재건축 β는 별도 가용용적률 FACT가 연결되면 자동산정하도록 산식을 준비했습니다. <b>현재 범위</b> · 사업성 보정계수까지만 구축하며 사업별 허용용적률·밀도계산에는 아직 연결하지 않습니다.${issues.length?` <b>확인필요</b> · ${escHtml(issues.join(' · '))}`:''}`;
+   }
+ }
+ async function analyzeRenewalBusinessFeasibility(){
