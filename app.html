@@ -1629,6 +1629,16 @@ body.service-layout-ready>.shell{display:none!important}
 
 /* 2026-09-21 규제지역 3종 독립 분석 */
 .regulatory-summary-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;padding:8px}.regulatory-summary-grid>div{border:1px solid #eaecf0;border-radius:7px;background:#fff;padding:7px}.regulatory-summary-grid span{display:block;font-size:8px;color:#667085}.regulatory-summary-grid b{display:block;margin-top:2px;font-size:11px;color:#101828}.regulatory-result-list{display:grid;gap:5px;padding:0 8px 8px}.regulatory-row{display:grid;grid-template-columns:minmax(150px,.9fr) minmax(110px,.55fr) minmax(150px,.8fr) minmax(220px,1.35fr);gap:6px;align-items:start;border:1px solid #eaecf0;border-radius:7px;padding:7px;background:#fff;font-size:8.5px}.regulatory-row b{font-size:9px}.regulatory-row small{display:block;color:#667085;line-height:1.4}.regulatory-status{font-weight:900}.regulatory-status.STRONG{color:#b42318}.regulatory-status.CONDITIONAL{color:#b54708}.regulatory-status.PLANNING{color:#344054}.regulatory-status.NATURE{color:#067647}.regulatory-status.HERITAGE{color:#6938ef}.regulatory-status.WATER{color:#175cd3}.regulatory-status.DISASTER{color:#c4320a}.regulatory-status.UNKNOWN{color:#667085}.regulatory-empty{padding:8px;border:1px dashed #d0d5dd;border-radius:7px;color:#667085;background:#fcfcfd}.regulatory-source{display:block;margin-top:2px;color:#667085}.regulatory-group-panel .regulatory-summary-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.regulatory-group-panel .spatial-mini-map{height:255px}@media(max-width:720px){.regulatory-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.regulatory-row{grid-template-columns:1fr}.regulatory-group-panel .spatial-mini-map{height:210px}}
+
+/* R14: 사이트분석 화면용 4칸 그리드. R13까지는 아래 규칙이 인쇄보고서 문자열에만 있었다. */
+.site-detail-layout .spatial-module-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+.site-analysis-card{min-width:0}
+.site-analysis-wide{grid-column:span 2}
+.site-analysis-card .spatial-mini-map{height:178px}
+.site-analysis-context .spatial-mini-map{height:225px}
+.site-analysis-diagnostic .spatial-mini-map{height:205px}
+@media(max-width:1180px) and (min-width:721px){.site-detail-layout .spatial-module-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.site-analysis-wide{grid-column:span 2}}
+@media(max-width:720px){.site-detail-layout .spatial-module-grid{grid-template-columns:1fr}.site-analysis-wide{grid-column:span 1!important}.site-analysis-card .spatial-mini-map,.site-analysis-context .spatial-mini-map,.site-analysis-diagnostic .spatial-mini-map{height:190px}}
 </style>
 </head>
 <body>
@@ -2194,7 +2204,19 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="spatial-caption">도면정보 · 이 표는 사업 전체 적합성이 아니라 각 제도의 역세권 입지경로만 검토합니다. 충족(초록)=해당 역세권 경로 충족, 미충족(빨강)=확보된 공식 Fact 기준 해당 역세권 경로 불충족, 확인필요(노랑)=노선·가로구역·포함률 등 필수 Fact 미확정, 역세권 경로 미사용(회색)=같은 사업의 다른 입지경로를 적용한 경우입니다. 성장거점형은 환승결절 500m 경로만 표시하고 중심지+간선도로 경로는 이 표에서 판정하지 않습니다. 최종 인허가 판정이 아니라 초기 검토엔진입니다.</div>
 <div class="spatial-mini-map" id="ccStationMiniMap"></div>
 </section>
-<section class="spatial-module site-analysis-card site-analysis-context" id="siteDetail_activationArterial">
+<section class="spatial-module site-analysis-card site-analysis-context" id="siteDetail_center">
+<div class="spatial-module-head"><b>중심지</b><span>서울 중심지체계</span></div>
+<div class="spatial-metrics">
+<div><span>중심지 위계</span><b id="spCenterType">-</b></div>
+<div><span>중심지명</span><b id="spCenterName">-</b></div>
+<div><span>판정기준역</span><b id="spCenterStation">-</b></div>
+<div><span>활성화 영향</span><b id="spCenterEffect">-</b></div>
+</div>
+<div class="spatial-tags"><span>도심·광역·지역중심 → 역세권활성화 350m</span></div>
+<div class="spatial-caption">도면정보 · 중심지 전체는 옅게 / 대상지 중첩부분 진하게</div>
+<div class="spatial-mini-map" id="ccCenterMiniMap"></div>
+</section>
+<section class="spatial-module site-analysis-card site-analysis-context site-analysis-wide" id="siteDetail_activationArterial">
 <div class="spatial-module-head"><b>간선도로</b><span id="spActivationArterialState">자동분석 전</span></div>
 <div class="spatial-metrics">
 <div><span>대상 노선</span><b id="spActivationArterialRoad">-</b></div>
@@ -2213,18 +2235,6 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="spatial-module-head" style="margin-top:10px"><b>역세권 특례제도 간선도로 검토</b><span>6개 제도 경로 비교 · 활성화는 노선형 상업지역 경로</span></div>
 <div class="station-scheme-list" id="widthRoadSchemeSummary"><div class="station-scheme-row head"><b>사업방식</b><span>판정</span><span>간선도로 근거</span></div><div class="station-scheme-row"><b>분석 전</b><span class="scheme-tag INFO">-</span><span>구역계를 설정하고 검토하기를 눌러야 계산됩니다.</span></div></div>
 <div class="spatial-caption">이 표는 역세권 특례제도의 간선도로 관련 경로를 한곳에서 비교합니다. 안심주택·성장잠재권·장기전세·도심복합 유형은 접도현황 엔진의 <b>도로 폭원·접면 공간 Fact</b>를 사용하고, <b>역세권활성화 간선가로형은 도로폭 기준이 아니라 위 노선형 상업지역 참조도형과 역세권활성화 전용 가로구역의 관계</b>를 그대로 표시합니다. 도로위계·간선도로 교차지·6m 도로 폐합 등 별도 법정 정의는 각 독립 Rule Module의 판정을 유지합니다.</div>
-</section>
-<section class="spatial-module site-analysis-card site-analysis-context" id="siteDetail_center">
-<div class="spatial-module-head"><b>중심지</b><span>서울 중심지체계</span></div>
-<div class="spatial-metrics">
-<div><span>중심지 위계</span><b id="spCenterType">-</b></div>
-<div><span>중심지명</span><b id="spCenterName">-</b></div>
-<div><span>판정기준역</span><b id="spCenterStation">-</b></div>
-<div><span>활성화 영향</span><b id="spCenterEffect">-</b></div>
-</div>
-<div class="spatial-tags"><span>도심·광역·지역중심 → 역세권활성화 350m</span></div>
-<div class="spatial-caption">도면정보 · 중심지 전체는 옅게 / 대상지 중첩부분 진하게</div>
-<div class="spatial-mini-map" id="ccCenterMiniMap"></div>
 </section>
 <section class="spatial-module site-analysis-card site-analysis-context site-analysis-wide" id="siteDetail_safeMedical">
 <div class="spatial-module-head"><b>의료시설(안심주택)</b><span id="spSafeMedicalState">공식자료 조회 전</span></div>
@@ -5054,7 +5064,7 @@ function renderSchoolAbsoluteProtectionSpatialStatus(){
   setTimeout(()=>{try{ccSchoolAbsoluteMini.invalidateSize(false);}catch(e){}},0);
 }
 function resetRegulatoryConstraintAnalysis(){
-  regulatoryConstraintAnalysis.loaded=false;regulatoryConstraintAnalysis.loading=false;regulatoryConstraintAnalysis.status='unavailable';regulatoryConstraintAnalysis.items=[];regulatoryConstraintAnalysis.errors=[];regulatoryConstraintAnalysis.ned={status:'unavailable',queried_parcels:0,success_parcels:0,error_parcels:0,categories:{}};regulatoryConstraintAnalysis.school={known:false,absolute:null,relative:null,error:''};regulatoryConstraintAnalysis.disaster={status:'unavailable',errors:[]};regulatoryConstraintAnalysis.generated_at=null;
+  regulatoryConstraintAnalysis.loaded=false;regulatoryConstraintAnalysis.loading=false;regulatoryConstraintAnalysis.status='unavailable';regulatoryConstraintAnalysis.items=[];regulatoryConstraintAnalysis.errors=[];regulatoryConstraintAnalysis.ned={status:'unavailable',queried_parcels:0,success_parcels:0,error_parcels:0,categories:{}};regulatoryConstraintAnalysis.school={known:false,absolute:null,relative:null,error:''};regulatoryConstraintAnalysis.disaster={status:'unavailable',errors:[]};regulatoryConstraintAnalysis.generated_at=null;regulatoryConstraintAnalysis.geometry_signature='';
   try{for(const box of [ccNaturalRegulation,ccTransportSecurityRegulation,ccDisasterRegulation]){box.layer.clearLayers();box.boundary.clearLayers();}ccHeritageEnvironment.clearLayers();}catch(e){}
   try{mainMapRegulatoryLayer.clearLayers();syncMainMapLayerVisibility();}catch(e){}
 }
@@ -5097,16 +5107,38 @@ function tagRegulatoryFeatures(features,item){
 function regulatoryConstraintMapFeatures(){
   const out=[];for(const item of regulatoryConstraintAnalysis.items||[]){if(!item.present)continue;out.push(...tagRegulatoryFeatures(item.features,item));}return out;
 }
-async function analyzeRegulatoryConstraints(){
+function mergeRegulatoryNedResults(previous,current,allPnus){
+  if(!previous||!Array.isArray(previous.successful_pnus))return current;
+  const categories={},keys=new Set([...Object.keys(previous.categories||{}),...Object.keys(current.categories||{})]);
+  for(const key of keys){
+    const rows=[...((previous.categories||{})[key]?.rows||[]),...((current.categories||{})[key]?.rows||[])],seen=new Set(),mergedRows=[];
+    for(const row of rows){const sig=[row.pnu,row.code,row.manage_no,row.name,row.relation_code].join('|');if(seen.has(sig))continue;seen.add(sig);mergedRows.push(row);}
+    const affected=[...new Set(mergedRows.map(x=>String(x.pnu||'')).filter(Boolean))].sort();
+    categories[key]={rows:mergedRows,affected_pnus:affected,present:affected.length>0,positive_evidence:affected.length>0,checked_parcels:0,negative_complete:false};
+  }
+  const successful=[...new Set([...(previous.successful_pnus||[]),...(current.successful_pnus||[])])].sort();
+  const requested=[...new Set((allPnus||[]).map(String))];
+  const successSet=new Set(successful),failed=requested.filter(x=>!successSet.has(x));
+  for(const value of Object.values(categories)){value.checked_parcels=successful.length;value.negative_complete=failed.length===0;}
+  return {...current,status:failed.length?(successful.length?'partial':'error'):'available',queried_parcels:requested.length,success_parcels:successful.length,error_parcels:failed.length,requested_pnus:requested,successful_pnus:successful,failed_pnus:failed,categories};
+}
+async function analyzeRegulatoryConstraints(options=null){
+  options=options||{};
   if(!activeGeometry)return regulatoryConstraintAnalysis;
-  const a=regulatoryConstraintAnalysis;a.loading=true;a.loaded=false;a.status='loading';a.items=[];a.errors=[];
+  const a=regulatoryConstraintAnalysis,signature=analysisBoundarySignature();
+  const retryFailedOnly=options.retryFailedOnly===true&&a.loaded&&a.geometry_signature===signature;
+  const previousNed=retryFailedOnly?a.ned:null,previousDisaster=retryFailedOnly?a.disaster:null;
+  a.loading=true;a.loaded=false;a.status='loading';a.items=[];a.errors=[];a.geometry_signature=signature;
   const pnus=[...selectedParcelPnus].map(String).filter(x=>/^\d{19}$/.test(x));
   let ned={status:'unavailable',queried_parcels:pnus.length,success_parcels:0,error_parcels:0,categories:{}},disaster={status:'unavailable',errors:[]};
-  const reqNed=pnus.length?fetchBackendJson('/api/spatial/regulatory-land-use-restrictions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pnus})}):Promise.reject(new Error('선택필지 PNU 미확보'));
-  const reqDisaster=fetchBackendJson('/api/spatial/disaster-reference-intersections',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry:activeGeometry})});
+  const failedPnus=retryFailedOnly?(previousNed?.failed_pnus||[]):pnus;
+  const reqNed=failedPnus.length?fetchBackendJson('/api/spatial/regulatory-land-use-restrictions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pnus:failedPnus})}):(retryFailedOnly?Promise.resolve(previousNed):Promise.reject(new Error('선택필지 PNU 미확보')));
+  const keepDisaster=retryFailedOnly&&previousDisaster?.status==='available';
+  const reqDisaster=keepDisaster?Promise.resolve(previousDisaster):fetchBackendJson('/api/spatial/disaster-reference-intersections',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry:activeGeometry})});
   const [nedRes,disasterRes]=await Promise.allSettled([reqNed,reqDisaster]);
-  if(nedRes.status==='fulfilled')ned=nedRes.value;else a.errors.push({source:'VWORLD_NED',error:String(nedRes.reason?.message||nedRes.reason)});
+  if(nedRes.status==='fulfilled')ned=retryFailedOnly?mergeRegulatoryNedResults(previousNed,nedRes.value,pnus):nedRes.value;else{if(retryFailedOnly&&previousNed)ned=previousNed;a.errors.push({source:'VWORLD_NED',error:String(nedRes.reason?.message||nedRes.reason)});}
   if(disasterRes.status==='fulfilled')disaster=disasterRes.value;else a.errors.push({source:'SEOUL_DISASTER',error:String(disasterRes.reason?.message||disasterRes.reason)});
+  if(Array.isArray(ned?.errors)&&ned.errors.length)a.errors.push(...ned.errors.map(x=>({source:`VWORLD_NED_${x.pnu||''}`,error:x.error||''})));
   if(Array.isArray(disaster?.errors)&&disaster.errors.length)a.errors.push(...disaster.errors.map(x=>({source:`SEOUL_DISASTER_${x.source||''}`,error:x.error||''})));
   a.ned=ned;a.disaster=disaster;a.school={known:false,absolute:null,relative:null,error:''};
 
@@ -6520,7 +6552,7 @@ const sharedConservationAnalysis={
   conservationForest:{known:false,present:null,area_m2:null,pct:null,features:[],affected_pnus:[],rows:[],geometry_basis:'NONE'},
   source:{geometry_basis:'mixed'}
 };
-const regulatoryConstraintAnalysis={loaded:false,loading:false,status:'unavailable',items:[],errors:[],ned:{status:'unavailable',queried_parcels:0,success_parcels:0,error_parcels:0,categories:{}},school:{known:false,absolute:null,relative:null,error:''},disaster:{status:'unavailable',errors:[]},generated_at:null};
+const regulatoryConstraintAnalysis={loaded:false,loading:false,status:'unavailable',items:[],errors:[],ned:{status:'unavailable',queried_parcels:0,success_parcels:0,error_parcels:0,categories:{}},school:{known:false,absolute:null,relative:null,error:''},disaster:{status:'unavailable',errors:[]},generated_at:null,geometry_signature:''};
 
 const ccPlanningMini=L.map('ccPlanningMiniMap',{
   zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,
@@ -8555,16 +8587,16 @@ async function analyzeRoadAccess(){
 let siteReviewRunning=false;
 // 정확성 우선: 외부 공식자료가 느린 경우에도 성급히 REVIEW로 끊지 않도록 단계별 대기시간을 넉넉히 둔다.
 const ANALYSIS_STEP_TIMEOUT_MS=180000;
-const ANALYSIS_PROGRESS_ORDER=['도형면적','제도별 가로구역','연속지적','역세권 경계','토지대장','건축물 공간','도시계획 GIS','용도지역 핵심 FACT','상생주택 보전환경','구릉지 지형 FACT','정비사업 GIS','개발사업 GIS','의료시설','안심주택 도심배제','학교 절대보호구역','건축HUB','도로·접도','노선형 상업지역','주변 공간현황','사업판정'];
+const ANALYSIS_PROGRESS_ORDER=['도형면적','제도별 가로구역','연속지적','역세권 경계','토지대장','건축물 공간','도시계획 GIS','용도지역 핵심 FACT','상생주택 보전환경','구릉지 지형 FACT','정비사업 GIS','개발사업 GIS','의료시설','안심주택 도심배제','학교 절대보호구역','규제지역 3종·문화재 보강','건축HUB','도로·접도','노선형 상업지역','주변 공간현황','사업판정'];
 // 내부 작업명은 실행·진단용으로 유지하고, 화면에는 사이트 분석 카드명과 같은 이름만 표시한다.
 const ANALYSIS_PROGRESS_DISPLAY=[
   {label:'토지',sources:['도형면적','연속지적','토지대장']},
   {label:'용도지역',sources:['용도지역 핵심 FACT']},
-  {label:'용도지구',sources:['도시계획 GIS']},
-  {label:'도시계획시설',sources:['도시계획 GIS']},
+  {label:'용도지구',sources:['도시계획 GIS'],planningKinds:['district']},
+  {label:'도시계획시설',sources:['도시계획 GIS'],planningKinds:['facility']},
   {label:'정비구역 현황',sources:['정비사업 GIS']},
   {label:'도시계획(개발)구역',sources:['도시계획 GIS','개발사업 GIS']},
-  {label:'문화재관련 현황',sources:['도시계획 GIS']},
+  {label:'문화재관련 현황',sources:['도시계획 GIS'],planningKinds:['heritage']},
   {label:'자연환경분석',sources:['상생주택 보전환경']},
   {label:'구릉지 분석',sources:['구릉지 지형 FACT']},
   {label:'건축물',sources:['건축물 공간','건축HUB']},
@@ -8579,17 +8611,36 @@ const ANALYSIS_PROGRESS_DISPLAY=[
   {label:'접도현황',sources:['도로·접도']},
   {label:'접도진단',sources:['도로·접도']},
   {label:'가로구역 검토',sources:['제도별 가로구역']},
+  {label:'자연환경 규제',sources:['규제지역 3종·문화재 보강'],regulatoryGroup:'natural'},
+  {label:'교통·안보 규제',sources:['규제지역 3종·문화재 보강'],regulatoryGroup:'transport'},
+  {label:'자연재해 규제',sources:['규제지역 3종·문화재 보강'],regulatoryGroup:'disaster'},
   {label:'사업판정',sources:['사업판정']}
 ];
 const ANALYSIS_PROGRESS_RUNNING_LABEL={
   '도형면적':'토지','연속지적':'토지','토지대장':'토지','제도별 가로구역':'가로구역 검토','역세권 경계':'역세권',
   '도시계획 GIS':'용도지구·도시계획시설','용도지역 핵심 FACT':'용도지역','상생주택 보전환경':'자연환경분석','구릉지 지형 FACT':'구릉지 분석',
   '정비사업 GIS':'정비구역 현황','개발사업 GIS':'도시계획(개발)구역',
-  '의료시설':'의료시설(안심주택)','안심주택 도심배제':'의료시설(안심주택)','학교 절대보호구역':'절대보호구역 50m(안심주택)',
+  '의료시설':'의료시설(안심주택)','안심주택 도심배제':'의료시설(안심주택)','학교 절대보호구역':'절대보호구역 50m(안심주택)','규제지역 3종·문화재 보강':'자연환경·교통안보·자연재해 규제',
   '건축물 공간':'건축물','건축HUB':'건축물·노후도','도로·접도':'접도현황·접도진단','노선형 상업지역':'간선도로','사업판정':'사업판정'
 };
 const analysisProgressState={startedAt:0,timer:null,steps:new Map(),finished:false,finalState:'done'};
 function formatAnalysisElapsed(ms){const sec=Math.max(0,Math.floor(ms/1000)),m=Math.floor(sec/60),s=sec%60;return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;}
+function planningKindProgress(kinds,base){
+  const specs=PLANNING_LAYER_SPECS.filter(x=>kinds.includes(x.kind)),states=specs.map(x=>planningAnalysis.layerStatus?.[x.id]?.status||'NOT_RUN');
+  if(base.status==='waiting'||base.status==='running')return {...base,detail:`${specs.length}개 레이어 ${base.status==='running'?'조회 중':'대기'}`};
+  const done=states.filter(x=>['SUCCESS_DATA','SUCCESS_EMPTY'].includes(x)).length,errors=states.filter(x=>x==='ERROR').length,notRun=states.filter(x=>x==='NOT_RUN').length;
+  const status=done===specs.length?'fulfilled':done>0?'partial':errors&&errors===specs.length?'rejected':base.status;
+  return {...base,status,detail:`${done}/${specs.length} 완료${errors?` · 실패 ${errors}`:''}${notRun?` · 미실행 ${notRun}`:''}`};
+}
+function regulatoryGroupProgress(group,base){
+  if(base.status==='waiting'||base.status==='running'||base.status==='rejected')return base;
+  const a=regulatoryConstraintAnalysis,items=(a.items||[]).filter(x=>x.group===group),unknown=items.filter(x=>!x.known).length,errors=items.filter(x=>x.data_status==='ERROR').length;
+  const nedFailed=['natural','transport'].includes(group)&&a.ned?.status==='error';
+  const nedPartial=['natural','transport','disaster'].includes(group)&&a.ned?.status==='partial';
+  const disasterFailed=group==='disaster'&&a.disaster?.status==='error';
+  const status=nedFailed?'rejected':(nedPartial||disasterFailed||errors)?'partial':'fulfilled';
+  return {...base,status,detail:`확인 ${(items||[]).filter(x=>x.present).length}건 · 미확인 ${unknown}건${errors?` · 조회오류 ${errors}`:''}`};
+}
 function analysisDisplayStep(item){
   const states=item.sources.map(src=>analysisProgressState.steps.get(src)||{status:'waiting',elapsed_ms:null,detail:''});
   const started=states.some(x=>x.status!=='waiting'),running=states.some(x=>x.status==='running'),waiting=states.some(x=>x.status==='waiting');
@@ -8601,7 +8652,10 @@ function analysisDisplayStep(item){
   }
   const elapsedVals=states.filter(x=>x.elapsed_ms!=null&&Number.isFinite(Number(x.elapsed_ms))).map(x=>Number(x.elapsed_ms)),elapsed_ms=elapsedVals.length?elapsedVals.reduce((a,b)=>a+b,0):null;
   const details=[...new Set(states.map(x=>String(x.detail||'').trim()).filter(Boolean))];
-  return {status,elapsed_ms,detail:details.join(' · ')};
+  let result={status,elapsed_ms,detail:details.join(' · ')};
+  if(item.planningKinds)result=planningKindProgress(item.planningKinds,result);
+  if(item.regulatoryGroup)result=regulatoryGroupProgress(item.regulatoryGroup,result);
+  return result;
 }
 function renderAnalysisProgress(){
   const root=document.getElementById('siteAnalysisProgress'),elapsed=document.getElementById('siteAnalysisElapsed'),bar=document.getElementById('siteAnalysisProgressBar'),steps=document.getElementById('siteAnalysisProgressSteps'),title=document.getElementById('siteAnalysisProgressTitle'),note=document.getElementById('siteAnalysisProgressNote');
@@ -8883,6 +8937,18 @@ async function runSiteReview(){
     if(measured.status==='rejected')steps.unshift(measured);
     let failed=steps.filter(x=>x.status==='rejected');
     let partial=steps.filter(x=>x.status==='partial');
+    // R14: 일반 RETRY13은 rejected-only 원칙을 유지한다. 규제 NED의 일부 PNU 실패만
+    // 별도 1회 보완조회하여 이미 성공한 PNU와 서울시 재해자료를 보존한다.
+    const regulatoryPartial=partial.find(step=>step.label==='규제지역 3종·문화재 보강');
+    if(regulatoryPartial){
+      await new Promise(resolve=>setTimeout(resolve,1500));
+      const def=analysisStepRegistry.get('규제지역 3종·문화재 보강');
+      if(def){
+        const result=await safeAnalysisStep('규제지역 3종·문화재 보강',()=>analyzeRegulatoryConstraints({retryFailedOnly:true}),Math.min(Number(def.timeoutMs)||ANALYSIS_STEP_TIMEOUT_MS,150000),{...def.options,reuse:false});
+        const idx=steps.findIndex(x=>x.label==='규제지역 3종·문화재 보강');if(idx>=0)steps[idx]=result;
+        failed=steps.filter(x=>x.status==='rejected');partial=steps.filter(x=>x.status==='partial');
+      }
+    }
     if(failed.length){
       // 기존 전체 분석은 그대로 종료한 뒤, 일시적 장애로 rejected 된 단계만 마지막에 딱 1회 순차 재실행한다.
       // partial 및 명시적 NO_DATA / UNKNOWN / NOT_IMPLEMENTED는 재분석하지 않는다.

@@ -8310,6 +8310,9 @@ def regulatory_land_use_restrictions(inp: PnuListInput):
     return {
         "status": "available" if complete else ("partial" if success_set else "error"),
         "queried_parcels": len(pnus), "success_parcels": len(success_set), "error_parcels": len(errors),
+        "requested_pnus": pnus,
+        "successful_pnus": sorted(success_set),
+        "failed_pnus": sorted({row["pnu"] for row in errors}),
         "categories": categories, "errors": errors,
         "source": {"provider": "국토교통부 / VWorld NED", "dataset": "토지이용계획정보", "operation": "getLandUseAttr", "geometry_basis": "parcel_attribute_only", "negative_rule": "전용 공간원도형 미연결 항목은 NED 음성만으로 비해당 확정 금지"},
     }
