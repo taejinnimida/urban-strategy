@@ -1891,6 +1891,12 @@ def _regulatory_land_use_category(name: str) -> Optional[str]:
         return "military_flight"
     if "자연재해위험개선지구" in n or "자연재해위험지구" in n:
         return "disaster_risk"
+    if "산사태취약지역" in n or "산사태위험지역" in n:
+        return "landslide_risk"
+    if "급경사지붕괴위험지역" in n or "급경사지붕괴위험지구" in n:
+        return "steep_slope_risk"
+    if "홍수관리구역" in n:
+        return "flood_management"
     if "역사문화환경보존지역" in n or "역사문화환경보존구역" in n:
         return "heritage_environment"
     if "교육환경보호구역" in n:
@@ -7906,6 +7912,141 @@ def land_use_restrictions(inp: PnuListInput):
     }
 
 
+
+# -----------------------------------------------------------------------------
+# R12: 재해규제 독립분석용 서울시 공식 침수공간자료
+# - 서울 열린데이터광장 공개 ZIP을 최초 요청 시 /tmp에 캐시한다.
+# - 서비스 장애/파일구조 변경 시 ERROR로 돌려 UNKNOWN을 유지하며 비해당으로 오판하지 않는다.
+# - 침수예상도는 위험예측 FACT, 침수흔적도는 과거 발생이력 FACT로 서로 구분한다.
+# -----------------------------------------------------------------------------
+SEOUL_FLOOD_EXPECTED_URL = "https://datafile.seoul.go.kr/bigfile/iot/inf/nio_download.do?infId=OA-21172&infSeq=3&seq=2&seqNo=&useCache=false"
+SEOUL_FLOOD_TRACE_2025_URL = "https://datafile.seoul.go.kr/bigfile/iot/inf/nio_download.do?infId=OA-15636&infSeq=1&seq=102&seqNo=&useCache=false"
+_DISASTER_DOWNLOAD_LOCK = threading.Lock()
+
+
+def _download_official_zip(url: str, cache_name: str) -> str:
+    cache_dir = os.path.join("/tmp", "urban_strategy_disaster")
+    os.makedirs(cache_dir, exist_ok=True)
+    path = os.path.join(cache_dir, cache_name)
+    if os.path.isfile(path) and os.path.getsize(path) > 100 and zipfile.is_zipfile(path):
+        return path
+    with _DISASTER_DOWNLOAD_LOCK:
+        if os.path.isfile(path) and os.path.getsize(path) > 100 and zipfile.is_zipfile(path):
+            return path
+        tmp = path + ".part"
+        try:
+            resp = requests.get(url, timeout=45, headers={"User-Agent": "urban-strategy/2.5 official-public-data"})
+            resp.raise_for_status()
+            with open(tmp, "wb") as fp:
+                fp.write(resp.content)
+            if not zipfile.is_zipfile(tmp):
+                raise RuntimeError(f"공식 ZIP 응답 형식 오류 · content-type={resp.headers.get('content-type','')}")
+            os.replace(tmp, path)
+        finally:
+            if os.path.isfile(tmp):
+                try: os.remove(tmp)
+                except OSError: pass
+    return path
+
+
+def _zip_shapefile_stems(zf: zipfile.ZipFile) -> List[str]:
+    names = zf.namelist()
+    stems=[]
+    for n in names:
+        if not n.lower().endswith('.shp'):
+            continue
+        stem=os.path.splitext(n)[0]
+        if any(os.path.splitext(x)[0]==stem and x.lower().endswith('.dbf') for x in names) and any(os.path.splitext(x)[0]==stem and x.lower().endswith('.shx') for x in names):
+            stems.append(stem)
+    return stems
+
+
+def _analyze_remote_polygon_zip(geometry: Dict[str, Any], *, url: str, cache_name: str, source_label: str, default_epsg: int = 5186) -> Dict[str, Any]:
+    site=shape(geometry)
+    if site.geom_type not in {"Polygon","MultiPolygon"} or site.is_empty:
+        raise ValueError("유효한 Polygon 또는 MultiPolygon 구역계가 필요합니다.")
+    if not site.is_valid:
+        site=site.buffer(0)
+    if site.is_empty or not site.is_valid:
+        raise ValueError("유효하지 않은 구역계입니다.")
+    path=_download_official_zip(url, cache_name)
+    context_features=[];overlap_features=[];overlap_geoms=[];source_files=[];candidate_count=0
+    with zipfile.ZipFile(path) as zf:
+        names=zf.namelist();stems=_zip_shapefile_stems(zf)
+        if not stems:
+            raise RuntimeError("공식 ZIP에서 SHP/SHX/DBF 세트를 찾지 못했습니다.")
+        for stem in stems:
+            shp=next(n for n in names if os.path.splitext(n)[0]==stem and n.lower().endswith('.shp'))
+            shx=next(n for n in names if os.path.splitext(n)[0]==stem and n.lower().endswith('.shx'))
+            dbf=next(n for n in names if os.path.splitext(n)[0]==stem and n.lower().endswith('.dbf'))
+            prj=next((n for n in names if os.path.splitext(n)[0]==stem and n.lower().endswith('.prj')),None)
+            source_crs=CRS.from_epsg(default_epsg)
+            if prj:
+                try: source_crs=CRS.from_wkt(zf.read(prj).decode('utf-8',errors='ignore'))
+                except Exception: pass
+            to_source=Transformer.from_crs(4326,source_crs,always_xy=True).transform
+            to_wgs=Transformer.from_crs(source_crs,4326,always_xy=True).transform
+            site_src=geometry_transform(to_source,site)
+            reader=shapefile.Reader(shp=io.BytesIO(zf.read(shp)),shx=io.BytesIO(zf.read(shx)),dbf=io.BytesIO(zf.read(dbf)),encoding='cp949',encodingErrors='replace')
+            fields=[f[0] for f in reader.fields[1:]]
+            source_files.append(os.path.basename(shp))
+            for sr in reader.iterShapeRecords(bbox=list(site_src.bounds)):
+                try:
+                    candidate_count+=1
+                    props={k:_json_property(v) for k,v in zip(fields,list(sr.record))}
+                    gsrc=shape(sr.shape.__geo_interface__)
+                    if gsrc.is_empty: continue
+                    if not gsrc.is_valid: gsrc=gsrc.buffer(0)
+                    if gsrc.is_empty or not gsrc.intersects(site_src): continue
+                    gwgs=geometry_transform(to_wgs,gsrc)
+                    if gwgs.is_empty or not gwgs.intersects(site): continue
+                    inter=_polygonal_only(site.intersection(gwgs))
+                    if inter is None or inter.is_empty: continue
+                    props['_source_file']=os.path.basename(shp)
+                    context_features.append({'type':'Feature','geometry':mapping(gwgs),'properties':props})
+                    overlap_features.append({'type':'Feature','geometry':mapping(inter),'properties':props})
+                    overlap_geoms.append(inter)
+                except Exception:
+                    continue
+    to_metric=Transformer.from_crs(4326,5174,always_xy=True).transform
+    site_area=float(geometry_transform(to_metric,site).area)
+    union=unary_union(overlap_geoms) if overlap_geoms else None
+    area=float(geometry_transform(to_metric,union).area) if union is not None and not union.is_empty else 0.0
+    return {
+        'status':'matched' if overlap_features else 'none','known':True,'present':bool(overlap_features),
+        'overlap_area_m2':area,'overlap_pct':(area/site_area*100.0) if site_area>0 else None,
+        'feature_count':len(context_features),'features':context_features,'overlap_features':overlap_features,
+        'bbox_candidate_count':candidate_count,'source':source_label,'source_type':'OFFICIAL_REMOTE_SHP',
+        'source_files':source_files,'cache_file':os.path.basename(path),
+    }
+
+
+def analyze_disaster_reference_intersections(geometry: Dict[str, Any]) -> Dict[str, Any]:
+    specs=[
+        ('flood_expected',SEOUL_FLOOD_EXPECTED_URL,'seoul_flood_expected.zip','서울특별시 풍수해 침수예상도 · 서울 열린데이터광장 OA-21172'),
+        ('flood_trace_2025',SEOUL_FLOOD_TRACE_2025_URL,'seoul_flood_trace_2025.zip','서울특별시 2025년 침수흔적도 · 서울 열린데이터광장 OA-15636'),
+    ]
+    out={};errors=[]
+    for key,url,cache_name,label in specs:
+        try: out[key]=_analyze_remote_polygon_zip(geometry,url=url,cache_name=cache_name,source_label=label,default_epsg=5186)
+        except Exception as exc:
+            out[key]={'status':'error','known':False,'present':False,'overlap_area_m2':None,'overlap_pct':None,'features':[],'overlap_features':[],'source':label,'source_type':'OFFICIAL_REMOTE_SHP','error':str(exc)[:300]}
+            errors.append({'source':key,'error':str(exc)[:300]})
+    return {'status':'available' if not errors else ('partial' if len(errors)<len(specs) else 'error'),**out,'errors':errors,
+            'note':'침수예상도는 위험예측, 침수흔적도는 과거 발생이력 FACT로 분리. 산림청 산사태위험지도는 신청형 원자료라 자동 원도형 교차는 하지 않고 NED 산사태취약지역 양성정보만 별도 확인.'}
+
+
+@app.post("/api/spatial/disaster-reference-intersections")
+def disaster_reference_intersections(inp: GeometryInput):
+    try:
+        return analyze_disaster_reference_intersections(inp.geometry)
+    except ValueError as exc:
+        raise HTTPException(status_code=422,detail=str(exc)) from exc
+    except Exception as exc:
+        logging.exception('disaster reference analysis failed')
+        raise HTTPException(status_code=502,detail=f"재해 공간자료 조회 실패: {str(exc)[:240]}") from exc
+
+
 @app.post("/api/spatial/regulatory-land-use-restrictions")
 def regulatory_land_use_restrictions(inp: PnuListInput):
     """개발·계획제한 독립 모듈용 VWorld NED 양성 규제행 조회.
@@ -7929,6 +8070,7 @@ def regulatory_land_use_restrictions(inp: PnuListInput):
         "urban_natural_park", "natural_park", "ecological_landscape", "wildlife_special",
         "public_interest_forest", "conservation_forest", "water_source", "river_zone",
         "railroad_protection", "airport_obstacle", "military_flight", "disaster_risk",
+        "landslide_risk", "steep_slope_risk", "flood_management",
         "heritage_environment", "education_environment",
     ]
     categories: Dict[str, Dict[str, Any]] = {k: {"affected_pnus": [], "rows": []} for k in keys}
