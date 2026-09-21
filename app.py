@@ -6386,6 +6386,11 @@ class GeometryInput(BaseModel):
     geometry: Dict[str, Any]
 
 
+class PlanningLayersInput(BaseModel):
+    geometry: Dict[str, Any]
+    layer_ids: List[str] = Field(..., min_length=1, max_length=5)
+
+
 class DistrictUnitPlanReferenceInput(BaseModel):
     # 브라우저에서 확인한 UQ161 중첩도형의 최소 식별정보만 받는다.
     # 이 endpoint는 CURRENT PLAN 참조정보 제공용이며 사업 PASS/FAIL에 사용하지 않는다.
@@ -6409,6 +6414,202 @@ def spatial_zoning(inp: GeometryInput):
         if "HTTP 429" in message or "429" in message and "VWorld" in message:
             raise HTTPException(status_code=429, detail=f"용도지역 LT_C_UQ111 일시 호출제한: {message}") from exc
         raise HTTPException(status_code=502, detail=f"용도지역 LT_C_UQ111 조회 실패: {message}") from exc
+
+
+# R13: 도시관리계획 23개 레이어를 브라우저 JSONP가 아니라 서버의
+# direct -> VWorld 공식 proxy 경로로만 조회한다. 여러 브라우저 요청이 동시에
+# 들어와도 이 세마포어 하나가 서버 프로세스 전체 VWorld 호출을 최대 2개로 제한한다.
+PLANNING_LAYER_IDS = frozenset({
+    "LT_C_UQ111", "LT_C_UQ121", "LT_C_UQ123", "LT_C_UQ124", "LT_C_UQ125",
+    "LT_C_UQ126", "LT_C_UQ128", "LT_C_UQ129", "LT_C_UQ130", "LT_C_UQ162",
+    "LT_C_UD801", "LT_C_UO301", "LT_C_UPISUQ151", "LT_C_UPISUQ152",
+    "LT_C_UPISUQ153", "LT_C_UPISUQ154", "LT_C_UPISUQ155", "LT_C_UPISUQ156",
+    "LT_C_UPISUQ157", "LT_C_UPISUQ158", "LT_C_UPISUQ159", "LT_C_UPISUQ161",
+    "LT_C_UPISUQ171",
+})
+_PLANNING_VWORLD_SEMAPHORE = threading.BoundedSemaphore(2)
+_PLANNING_LAYER_CACHE: Dict[str, Dict[str, Any]] = {}
+_PLANNING_LAYER_CACHE_LOCK = threading.Lock()
+_PLANNING_LAYER_CACHE_TTL_SEC = 10 * 60
+
+
+class PlanningLayerFetchError(RuntimeError):
+    def __init__(self, message: str, *, retryable: bool = False, retry_after: Optional[float] = None):
+        super().__init__(message)
+        self.retryable = bool(retryable)
+        self.retry_after = retry_after
+
+
+def _planning_geometry_signature(geometry: Dict[str, Any]) -> str:
+    raw = json.dumps(geometry, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _planning_cache_get(cache_key: str) -> Optional[Dict[str, Any]]:
+    with _PLANNING_LAYER_CACHE_LOCK:
+        row = _PLANNING_LAYER_CACHE.get(cache_key)
+        if not row or time.time() - float(row.get("saved_at") or 0) > _PLANNING_LAYER_CACHE_TTL_SEC:
+            if row:
+                _PLANNING_LAYER_CACHE.pop(cache_key, None)
+            return None
+        return json.loads(json.dumps(row["result"], ensure_ascii=False))
+
+
+def _planning_cache_put(cache_key: str, result: Dict[str, Any]) -> None:
+    # ERROR는 저장하지 않으며 기존 정상 캐시도 절대 덮어쓰지 않는다.
+    if result.get("status") not in {"SUCCESS_DATA", "SUCCESS_EMPTY"}:
+        return
+    with _PLANNING_LAYER_CACHE_LOCK:
+        _PLANNING_LAYER_CACHE[cache_key] = {
+            "saved_at": time.time(),
+            "result": json.loads(json.dumps(result, ensure_ascii=False)),
+        }
+        if len(_PLANNING_LAYER_CACHE) > 300:
+            oldest = sorted(_PLANNING_LAYER_CACHE, key=lambda k: _PLANNING_LAYER_CACHE[k]["saved_at"])[:50]
+            for key in oldest:
+                _PLANNING_LAYER_CACHE.pop(key, None)
+
+
+def _planning_retry_after(resp: requests.Response) -> Optional[float]:
+    raw = (resp.headers.get("Retry-After") or "").strip()
+    try:
+        return max(0.0, min(float(raw), 30.0)) if raw else None
+    except ValueError:
+        return None
+
+
+def _fetch_planning_layer_once(layer_id: str, geometry: Dict[str, Any]) -> tuple[List[Dict[str, Any]], str]:
+    if not _vworld_key():
+        raise PlanningLayerFetchError("VWORLD_API_KEY가 설정되지 않았습니다.", retryable=False)
+    target = shape(geometry)
+    if target.geom_type not in {"Polygon", "MultiPolygon"} or target.is_empty:
+        raise PlanningLayerFetchError("유효한 Polygon 또는 MultiPolygon 구역계가 필요합니다.", retryable=False)
+    if not target.is_valid:
+        target = target.buffer(0)
+    if target.is_empty or not target.is_valid:
+        raise PlanningLayerFetchError("유효하지 않은 구역계입니다.", retryable=False)
+    minx, miny, maxx, maxy = target.bounds
+    all_features: List[Dict[str, Any]] = []
+    seen = set()
+    routes = []
+    for page in range(1, 11):
+        params = {
+            "key": _vworld_key(), "domain": _vworld_domain(), "service": "data",
+            "version": "2.0", "request": "getfeature", "format": "json",
+            "size": 1000, "page": page, "geometry": "true", "attribute": "true",
+            "crs": "EPSG:4326", "data": layer_id,
+            "geomfilter": f"BOX({minx},{miny},{maxx},{maxy})",
+        }
+        try:
+            with _PLANNING_VWORLD_SEMAPHORE:
+                resp, route = _vworld_get(VWORLD_DATA_URL, params=params, timeout=20, proxy_timeout=30)
+        except Exception as exc:
+            raise PlanningLayerFetchError(str(exc), retryable=True) from exc
+        routes.append(route)
+        if resp.status_code == 429:
+            raise PlanningLayerFetchError("VWorld HTTP 429 호출제한", retryable=True, retry_after=_planning_retry_after(resp))
+        if resp.status_code >= 500:
+            raise PlanningLayerFetchError(f"VWorld HTTP {resp.status_code}", retryable=True)
+        if resp.status_code >= 400:
+            raise PlanningLayerFetchError(f"VWorld HTTP {resp.status_code}: {resp.text[:240]}", retryable=False)
+        try:
+            payload = resp.json()
+        except Exception as exc:
+            raise PlanningLayerFetchError("VWorld JSON 응답 파싱 오류", retryable=True) from exc
+        response = payload.get("response") or {}
+        status = str(response.get("status") or "").upper()
+        if status == "NOT_FOUND":
+            break
+        if status != "OK":
+            message = _response_error_message(payload)
+            retryable = bool(re.search(r"tempor|timeout|limit|429|server|unavailable|일시|제한", message, re.I))
+            raise PlanningLayerFetchError(message, retryable=retryable)
+        feats = (((response.get("result") or {}).get("featureCollection") or {}).get("features") or [])
+        for feature in feats:
+            if not feature.get("geometry"):
+                continue
+            props = feature.get("properties") or {}
+            key = str(feature.get("id") or props.get("unq_mnno") or props.get("UNQ_MNNO") or "")
+            if not key:
+                key = hashlib.sha1(json.dumps(feature.get("geometry"), sort_keys=True).encode("utf-8")).hexdigest()
+            if key in seen:
+                continue
+            try:
+                if not shape(feature["geometry"]).intersects(target):
+                    continue
+            except Exception:
+                continue
+            seen.add(key)
+            all_features.append(feature)
+        if len(feats) < 1000:
+            break
+    else:
+        raise PlanningLayerFetchError(f"{layer_id} 후보가 10,000건을 넘어 조회를 중단했습니다.", retryable=False)
+    route = "vworld_proxy" if "vworld_proxy" in routes else "direct"
+    return all_features, route
+
+
+def _planning_layer_result(layer_id: str, geometry: Dict[str, Any]) -> Dict[str, Any]:
+    started = time.monotonic()
+    signature = _planning_geometry_signature(geometry)
+    cache_key = f"{signature}:{layer_id}"
+    cached = _planning_cache_get(cache_key)
+    if cached is not None:
+        cached.update({"cache_hit": True, "elapsed_ms": int((time.monotonic() - started) * 1000)})
+        return cached
+    attempts = 0
+    last_error = ""
+    route = ""
+    for retry_index in range(3):
+        attempts += 1
+        try:
+            features, route = _fetch_planning_layer_once(layer_id, geometry)
+            result = {
+                "layer_id": layer_id,
+                "status": "SUCCESS_DATA" if features else "SUCCESS_EMPTY",
+                "feature_count": len(features), "features": features, "error": "",
+                "attempts": attempts, "route": route,
+                "elapsed_ms": int((time.monotonic() - started) * 1000), "cache_hit": False,
+            }
+            _planning_cache_put(cache_key, result)
+            return result
+        except PlanningLayerFetchError as exc:
+            last_error = str(exc)[:400]
+            if not exc.retryable or retry_index >= 2:
+                break
+            delay = exc.retry_after if exc.retry_after is not None else (1.5 if retry_index == 0 else 4.0)
+            time.sleep(max(0.0, min(delay, 30.0)))
+        except Exception as exc:
+            last_error = str(exc)[:400]
+            if retry_index >= 2:
+                break
+            time.sleep(1.5 if retry_index == 0 else 4.0)
+    return {
+        "layer_id": layer_id, "status": "ERROR", "feature_count": 0, "features": [],
+        "error": last_error or "도시관리계획 레이어 조회 실패", "attempts": attempts,
+        "route": route, "elapsed_ms": int((time.monotonic() - started) * 1000), "cache_hit": False,
+    }
+
+
+@app.post("/api/spatial/planning-layers")
+def spatial_planning_layers(inp: PlanningLayersInput):
+    layer_ids = list(dict.fromkeys(str(x or "").strip() for x in inp.layer_ids))
+    invalid = [x for x in layer_ids if x not in PLANNING_LAYER_IDS]
+    if invalid:
+        raise HTTPException(status_code=422, detail=f"허용되지 않은 도시관리계획 레이어: {', '.join(invalid)}")
+    results: List[Dict[str, Any]] = []
+    # 요청 안에서도 최대 2개, 프로세스 전체에서는 위 전역 세마포어로 최대 2개다.
+    with ThreadPoolExecutor(max_workers=min(2, len(layer_ids))) as pool:
+        futures = {pool.submit(_planning_layer_result, layer_id, inp.geometry): layer_id for layer_id in layer_ids}
+        by_id = {}
+        for future in as_completed(futures):
+            layer_id = futures[future]
+            try:
+                by_id[layer_id] = future.result()
+            except Exception as exc:
+                by_id[layer_id] = {"layer_id": layer_id, "status": "ERROR", "feature_count": 0, "features": [], "error": str(exc)[:400], "attempts": 1, "route": "", "elapsed_ms": 0, "cache_hit": False}
+        results = [by_id[layer_id] for layer_id in layer_ids]
+    return {"geometry_signature": _planning_geometry_signature(inp.geometry), "requested": len(layer_ids), "results": results}
 
 
 class RoadFactInput(BaseModel):
@@ -8132,6 +8333,7 @@ def building_hub_title_batch(inp: BuildingHubBatchInput):
 
     records: List[Dict[str, Any]] = []
     errors: List[Dict[str, Any]] = []
+    pnu_status: Dict[str, Dict[str, Any]] = {}
 
     # Small concurrent fan-out keeps each browser request short without flooding data.go.kr.
     with ThreadPoolExecutor(max_workers=min(2, len(pnus))) as ex:
@@ -8141,15 +8343,22 @@ def building_hub_title_batch(inp: BuildingHubBatchInput):
             try:
                 items = fut.result()
                 records.extend(_normalize_building_title(item, pnu) for item in items)
+                pnu_status[pnu] = {"pnu": pnu, "status": "SUCCESS_DATA" if items else "SUCCESS_EMPTY", "record_count": len(items), "error": ""}
             except Exception as exc:
                 logger.warning("BuildingHUB title failed pnu=%s error=%s", pnu, exc)
                 errors.append({"pnu": pnu, "error": str(exc)})
+                pnu_status[pnu] = {"pnu": pnu, "status": "ERROR", "record_count": 0, "error": str(exc)}
 
     return {
         "requested_pnu_count": len(pnus),
         "record_count": len(records),
         "records": records,
         "errors": errors,
+        "pnu_status": [pnu_status[pnu] for pnu in pnus],
+        "successful_pnus": [pnu for pnu in pnus if pnu_status.get(pnu, {}).get("status") == "SUCCESS_DATA"],
+        "empty_pnus": [pnu for pnu in pnus if pnu_status.get(pnu, {}).get("status") == "SUCCESS_EMPTY"],
+        "failed_pnus": [pnu for pnu in pnus if pnu_status.get(pnu, {}).get("status") == "ERROR"],
+        "complete": all(pnu_status.get(pnu, {}).get("status") in {"SUCCESS_DATA", "SUCCESS_EMPTY"} for pnu in pnus),
         "source": {
             "provider": "국토교통부",
             "dataset": "건축HUB 건축물대장정보 서비스",
@@ -8169,18 +8378,19 @@ def building_hub_floor_batch(inp: BuildingHubBatchInput):
         p=str(p).strip()
         if p and p not in seen:
             seen.add(p);pnus.append(p)
-    records: List[Dict[str, Any]]=[]; errors: List[Dict[str, Any]]=[]
+    records: List[Dict[str, Any]]=[]; errors: List[Dict[str, Any]]=[]; pnu_status: Dict[str, Dict[str, Any]]={}
     with ThreadPoolExecutor(max_workers=min(2, len(pnus) or 1)) as ex:
         futures={ex.submit(_query_building_hub_floor,pnu):pnu for pnu in pnus}
         for fut in as_completed(futures):
             pnu=futures[fut]
             try:
-                items=fut.result();records.extend(_normalize_building_floor(item,pnu) for item in items)
+                items=fut.result();records.extend(_normalize_building_floor(item,pnu) for item in items);pnu_status[pnu]={"pnu":pnu,"status":"SUCCESS_DATA" if items else "SUCCESS_EMPTY","record_count":len(items),"error":""}
             except Exception as exc:
                 logger.warning("BuildingHUB floor failed pnu=%s error=%s",pnu,exc)
-                errors.append({"pnu":pnu,"error":str(exc)})
+                errors.append({"pnu":pnu,"error":str(exc)});pnu_status[pnu]={"pnu":pnu,"status":"ERROR","record_count":0,"error":str(exc)}
     return {
         "requested_pnu_count":len(pnus),"record_count":len(records),"records":records,"errors":errors,
+        "pnu_status":[pnu_status[pnu] for pnu in pnus],"successful_pnus":[pnu for pnu in pnus if pnu_status.get(pnu,{}).get("status")=="SUCCESS_DATA"],"empty_pnus":[pnu for pnu in pnus if pnu_status.get(pnu,{}).get("status")=="SUCCESS_EMPTY"],"failed_pnus":[pnu for pnu in pnus if pnu_status.get(pnu,{}).get("status")=="ERROR"],"complete":all(pnu_status.get(pnu,{}).get("status") in {"SUCCESS_DATA","SUCCESS_EMPTY"} for pnu in pnus),
         "source":{"provider":"국토교통부","dataset":"건축HUB 건축물대장정보 서비스","operation":"getBrFlrOulnInfo","engine_as_of_date":ENGINE_AS_OF_DATE.isoformat()},
     }
 

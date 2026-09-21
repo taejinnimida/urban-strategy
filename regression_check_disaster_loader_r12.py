@@ -3,7 +3,7 @@ import tempfile, zipfile, importlib.util, sys
 import shapefile
 from pyproj import CRS
 
-base=Path('/mnt/data/r11_work')
+base=Path(__file__).resolve().parent
 tmp=Path(tempfile.mkdtemp(prefix='disaster_unit_'))
 stem=tmp/'test'
 w=shapefile.Writer(str(stem), shapeType=shapefile.POLYGON, encoding='cp949')
