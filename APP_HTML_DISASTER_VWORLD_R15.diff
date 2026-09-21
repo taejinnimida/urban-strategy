@@ -1,0 +1,117 @@
+--- /mnt/data/orig_r14/app.html	2026-09-21 03:36:24.000000000 +0000
++++ /mnt/data/work_r14/app.html	2026-09-21 04:31:07.484895283 +0000
+@@ -2400,8 +2400,8 @@
+ <div class="spatial-module-head"><b>자연재해 규제</b><span id="spDisasterRegState">분석 전 · 공식 재해자료</span></div>
+ <div class="regulatory-summary-grid"><div><span>재해 FACT</span><b id="spDisasterRegConfirmed">-</b></div><div><span>미확인 자료</span><b id="spDisasterRegUnknown">-</b></div><div><span>공식 공간자료</span><b id="spDisasterRegOfficial">-</b></div></div>
+ <div class="spatial-mini-map" id="ccDisasterRegulationMiniMap"></div>
+-<div class="regulatory-result-list" id="spDisasterRegResultList"><div class="regulatory-empty">자연재해위험개선지구·방재지구·침수예상도·침수흔적·산사태/급경사지·홍수관리 정보를 확인합니다.</div></div>
+-<div class="spatial-caption"><b>재해자료 구분</b> · 침수예상도는 위험예측, 침수흔적도는 발생이력입니다. 산림청 산사태위험지도 원자료는 신청형 다운로드 자료이므로 자동 비해당 판정에 사용하지 않고, NED 산사태취약지역 양성 FACT를 우선 표시합니다.</div>
++<div class="regulatory-result-list" id="spDisasterRegResultList"><div class="regulatory-empty">자연재해위험개선지구 원도형·방재지구·침수예상도·침수흔적·산사태위험지도/취약지역·급경사지·홍수관리 정보를 확인합니다.</div></div>
++<div class="spatial-caption"><b>재해자료 구분</b> · 침수예상도는 위험예측, 침수흔적도는 발생이력입니다. 산사태위험지도는 사용자 제공 2026 산불추가 서울 10m 원자료의 1~5등급을 등급별 면적으로 계산합니다. 값 127은 위험 없음이 아니라 NoData/등급 미제공으로 처리합니다.</div>
+ </section>
+ 
+ </div>
+@@ -5159,13 +5159,15 @@
+   nedItem('airport_obstacle','공항 장애물 제한표면','airport_obstacle','CONDITIONAL','transport','높이계획에 영향을 줄 가능성','공항별 장애물 제한표면·표고 및 높이 협의 확인');
+   nedItem('military_flight','군사시설보호·비행안전·대공방어','military_flight','CONDITIONAL','transport','군사·비행안전 관련 협의 가능','관할 군부대·관계기관 규제도 및 협의사항 확인');
+ 
+-  // 3) 자연재해 규제 — 법정지구 + 공식 침수공간자료 + NED 양성 재해항목.
+-  nedItem('disaster_risk','자연재해위험개선지구','disaster_risk','DISASTER','disaster','재해저감·방재계획 조건 가능','지구 지정현황·정비계획·재해영향평가 관련사항 확인');
+-  nedItem('landslide_risk','산사태취약지역','landslide_risk','DISASTER','disaster','산사태 취약지역 지정 시 재해예방·행위검토 필요','산림청 산사태정보시스템 및 관할기관 지정현황 확인');
++  // 3) 자연재해 규제 — 법정지구 + 공식/번들 공간자료 + NED 양성 재해항목.
++  const addOfficialDisaster=(id,label,key,impact,follow)=>{const f=disaster?.[key]||{},rasterMeta=key==='landslide_risk_map'?`유효등급 ${f.valid_coverage_pct==null?'-':Number(f.valid_coverage_pct).toFixed(1)+'%'} · NoData ${f.nodata_pct==null?'-':Number(f.nodata_pct).toFixed(1)+'%'} · 격자 ${Number(f.resolution_m||10)}m`:'';const detail=[f.error||'',rasterMeta,f.detail||'',f.scope_note||''].filter(Boolean).join(' · ');add(regulatoryItem(id,label,'DISASTER',{group:'disaster',known:f.known===true,present:f.present===true,area_m2:f.overlap_area_m2,pct:f.overlap_pct,features:f.overlap_features||f.features||[],rows:f.distribution||f.rows||[],source:f.source||'',source_type:f.source_type||'OFFICIAL_REMOTE_SHP',data_status:f.known===true?'CONFIRMED':(f.status==='error'?'ERROR':'UNKNOWN'),detail,impact_note:impact,followup:follow}));};
++  addOfficialDisaster('disaster_risk_map','자연재해위험개선지구(원도형)','natural_disaster_risk_district','법정 재해위험지구 원도형 중첩은 방재·정비계획 검토 FACT','관리번호·결정조서·정비계획 및 현재 지정상태 확인');
++  nedItem('disaster_risk','자연재해위험개선지구(필지속성 보조)','disaster_risk','DISASTER','disaster','재해저감·방재계획 조건 가능','원도형과 필지속성이 다르면 결정조서·관할기관 자료로 재확인');
++  addOfficialDisaster('landslide_risk_map','산사태위험지도 등급분포','landslide_risk_map','10m 격자의 1~5등급 분포는 배치·절토·옹벽·재해안전 검토의 기초 FACT','등급별 중첩면적을 확인하고 정밀 지형·지질·현장조사는 계획단계에서 별도 검토');
++  nedItem('landslide_risk','산사태취약지역(지정)','landslide_risk','DISASTER','disaster','산사태 취약지역 지정 시 재해예방·행위검토 필요','산림청 산사태정보시스템 및 관할기관 지정현황 확인');
+   nedItem('steep_slope_risk','급경사지 붕괴위험지역','steep_slope_risk','DISASTER','disaster','급경사지 붕괴위험 관련 정비·안전조건 가능','급경사지 위험지역 지정·정비계획 확인');
+   nedItem('flood_management','홍수관리구역','flood_management','DISASTER','disaster','홍수관리 및 하천 관련 행위제한 가능','홍수관리구역 지정도서·하천관리기관 협의 확인');
+   const dpf=exact('LT_C_UQ125');add(regulatoryItem('disaster_prevention_district','방재지구','DISASTER',{group:'disaster',...dpf,source:'VWorld LT_C_UQ125',source_type:'VWORLD_VECTOR',impact_note:'방재지구의 재해저감 계획조건 확인 필요',followup:'방재지구 결정조서·도면 및 건축·방재기준 확인'}));
+-  const addOfficialDisaster=(id,label,key,impact,follow)=>{const f=disaster?.[key]||{};add(regulatoryItem(id,label,'DISASTER',{group:'disaster',known:f.known===true,present:f.present===true,area_m2:f.overlap_area_m2,pct:f.overlap_pct,features:f.overlap_features||f.features||[],source:f.source||'',source_type:f.source_type||'OFFICIAL_REMOTE_SHP',data_status:f.known===true?'CONFIRMED':(f.status==='error'?'ERROR':'UNKNOWN'),detail:f.error||'',impact_note:impact,followup:follow}));};
+   addOfficialDisaster('flood_expected','서울시 풍수해 침수예상도','flood_expected','예상 침수범위·침수심은 배치·지하공간·방재계획에 영향','서울안전누리 원자료의 침수심·설계빈도와 사업계획 방재대책 확인');
+   addOfficialDisaster('flood_trace_2025','서울시 침수흔적도(2025)','flood_trace_2025','과거 실제 침수이력은 방재계획·지하공간 검토 참고 FACT','연도별 침수원인·침수심 및 최신 침수이력 추가 확인');
+ 
+@@ -5184,14 +5186,14 @@
+   box.boundary.addData({type:'Feature',geometry:activeGeometry,properties:{}});
+   const a=regulatoryConstraintAnalysis,items=(a.items||[]).filter(x=>x.group===group),confirmed=items.filter(x=>x.present),unknown=items.filter(x=>!x.known),mapFs=[];for(const item of confirmed)mapFs.push(...tagRegulatoryFeatures(item.features,item));if(mapFs.length)box.layer.addData({type:'FeatureCollection',features:mapFs});
+   set(confirmedId,`${confirmed.length}건`);set(unknownId,`${unknown.length}건`);set(stateId,a.loading?'규제자료 분석 중':!a.loaded?'분석 전':confirmed.length?`추가검토 ${confirmed.length}건 · 미확인 ${unknown.length}건`:`중첩 확인 없음 · 미확인 ${unknown.length}건`);
+-  if(list){const visible=[...confirmed,...unknown];if(!visible.length)list.innerHTML='<div class="regulatory-empty">현재 확보된 공식자료 기준 해당 규제 중첩 없음</div>';else list.innerHTML=visible.map(x=>{const metric=x.overlap_area_m2!=null?`${Math.round(x.overlap_area_m2).toLocaleString('ko-KR')}㎡${x.overlap_pct!=null?` · ${Number(x.overlap_pct).toFixed(1)}%`:''}`:x.present?'해당/저촉 확인':'정량값 미확보';const state=x.present?regulatoryRelationText(x):(x.data_status==='ERROR'?'자료조회 오류':'미확인 · 추후 보완 필요');const cls=x.present?x.category:'UNKNOWN';return `<div class="regulatory-row"><div><b>${escHtml(x.label)}</b><small class="regulatory-source">${escHtml(regulatoryCategoryLabel(x.category))} · ${escHtml(x.source||'자료원 미연결')}</small></div><div><span class="regulatory-status ${cls}">${escHtml(state)}</span><small>${escHtml(metric)}</small></div><div><b>영향</b><small>${escHtml(x.impact_note)}</small></div><div><b>추가확인</b><small>${escHtml(x.followup)}${x.detail?` · ${escHtml(x.detail)}`:''}</small></div></div>`;}).join('');}
++  if(list){const visible=[...confirmed,...unknown];if(!visible.length)list.innerHTML='<div class="regulatory-empty">현재 확보된 공식자료 기준 해당 규제 중첩 없음</div>';else list.innerHTML=visible.map(x=>{let metric=x.overlap_area_m2!=null?`${Math.round(x.overlap_area_m2).toLocaleString('ko-KR')}㎡${x.overlap_pct!=null?` · ${Number(x.overlap_pct).toFixed(1)}%`:''}`:x.present?'해당/저촉 확인':'정량값 미확보';if(x.id==='landslide_risk_map'&&Array.isArray(x.rows)&&x.rows.length){const grades=x.rows.filter(r=>Number(r.area_m2)>0).map(r=>`${Number(r.grade)}등급 ${Math.round(Number(r.area_m2||0)).toLocaleString('ko-KR')}㎡${r.pct_of_site==null?'':`(${Number(r.pct_of_site).toFixed(1)}%)`}`);if(grades.length)metric=grades.join(' · ');}const state=x.present?regulatoryRelationText(x):(x.data_status==='ERROR'?'자료조회 오류':'미확인 · 추후 보완 필요');const cls=x.present?x.category:'UNKNOWN';return `<div class="regulatory-row"><div><b>${escHtml(x.label)}</b><small class="regulatory-source">${escHtml(regulatoryCategoryLabel(x.category))} · ${escHtml(x.source||'자료원 미연결')}</small></div><div><span class="regulatory-status ${cls}">${escHtml(state)}</span><small>${escHtml(metric)}</small></div><div><b>영향</b><small>${escHtml(x.impact_note)}</small></div><div><b>추가확인</b><small>${escHtml(x.followup)}${x.detail?` · ${escHtml(x.detail)}`:''}</small></div></div>`;}).join('');}
+   fitCompactMiniMap(box.map,box.boundary,box.layer);
+ }
+ function renderRegulatoryConstraintSpatialStatus(){
+   renderRegulatoryGroup('natural',ccNaturalRegulation,'spNaturalRegState','spNaturalRegConfirmed','spNaturalRegUnknown','spNaturalRegResultList');
+   renderRegulatoryGroup('transport',ccTransportSecurityRegulation,'spTransportRegState','spTransportRegConfirmed','spTransportRegUnknown','spTransportRegResultList');
+   renderRegulatoryGroup('disaster',ccDisasterRegulation,'spDisasterRegState','spDisasterRegConfirmed','spDisasterRegUnknown','spDisasterRegResultList');
+-  const d=(regulatoryConstraintAnalysis.items||[]).filter(x=>x.group==='disaster'),official=d.filter(x=>['OFFICIAL_REMOTE_SHP','VWORLD_VECTOR'].includes(x.source_type));const el=document.getElementById('spDisasterRegOfficial');if(el)el.textContent=`${official.filter(x=>x.known).length}/${official.length}종`;
++  const d=(regulatoryConstraintAnalysis.items||[]).filter(x=>x.group==='disaster'),official=d.filter(x=>['OFFICIAL_REMOTE_SHP','BUNDLED_OFFICIAL_SHP','BUNDLED_OFFICIAL_RASTER','VWORLD_VECTOR'].includes(x.source_type));const el=document.getElementById('spDisasterRegOfficial');if(el)el.textContent=`${official.filter(x=>x.known).length}/${official.length}종`;
+ }
+ 
+ function schemeFrontageEvidenceFacts(cArg=null){
+@@ -6434,8 +6436,8 @@
+   renderSafeMedicalSpatialStatus();
+   setTimeout(()=>invalidateAllSpatialMaps(false),0);
+ }
+-function regulatoryMiniStyle(f){const p=f.properties||{},cat=p._regulatory_category||'CONDITIONAL',spec={STRONG:['#7a271a','#f97066'],CONDITIONAL:['#b54708','#fec84b'],NATURE:['#067647','#75e0a7'],HERITAGE:['#6938ef','#bdb4fe'],WATER:['#175cd3','#84adff'],DISASTER:['#c4320a','#fdb022'],PLANNING:['#344054','#98a2b3'],DISASTER:['#b42318','#fecdca']}[cat]||['#344054','#98a2b3'];return {weight:2,color:spec[0],fillColor:spec[1],fillOpacity:.24,dashArray:cat==='PLANNING'?'5,3':null};}
+-function makeRegulationMini(id){const mp=L.map(id,{zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,doubleClickZoom:false,boxZoom:false,keyboard:false,touchZoom:false}).setView([37.5665,126.9780],15);return {map:mp,boundary:L.geoJSON(null,{style:{weight:2.4,color:'#101828',fillOpacity:0,dashArray:'4,3'}}).addTo(mp),layer:L.geoJSON(null,{style:regulatoryMiniStyle,onEachFeature:(f,l)=>{const p=f.properties||{};l.bindTooltip(`${escHtml(p._regulatory_label||'규제정보')} · ${escHtml(p._regulatory_relation||'중첩')}`);}}).addTo(mp)};}
++function regulatoryMiniStyle(f){const p=f.properties||{},grade=Number(p._landslide_grade);if(Number.isFinite(grade)&&grade>=1&&grade<=5){const clr={1:'#ff0000',2:'#ffc900',3:'#b6ff8e',4:'#30c2ff',5:'#0000ff'}[grade];return {weight:.8,color:clr,fillColor:clr,fillOpacity:.42};}const cat=p._regulatory_category||'CONDITIONAL',spec={STRONG:['#7a271a','#f97066'],CONDITIONAL:['#b54708','#fec84b'],NATURE:['#067647','#75e0a7'],HERITAGE:['#6938ef','#bdb4fe'],WATER:['#175cd3','#84adff'],PLANNING:['#344054','#98a2b3'],DISASTER:['#b42318','#fecdca']}[cat]||['#344054','#98a2b3'];return {weight:2,color:spec[0],fillColor:spec[1],fillOpacity:.24,dashArray:cat==='PLANNING'?'5,3':null};}
++function makeRegulationMini(id){const mp=L.map(id,{zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,doubleClickZoom:false,boxZoom:false,keyboard:false,touchZoom:false}).setView([37.5665,126.9780],15);return {map:mp,boundary:L.geoJSON(null,{style:{weight:2.4,color:'#101828',fillOpacity:0,dashArray:'4,3'}}).addTo(mp),layer:L.geoJSON(null,{style:regulatoryMiniStyle,onEachFeature:(f,l)=>{const p=f.properties||{};l.bindTooltip(`${escHtml(p._regulatory_label||'규제정보')}${p._landslide_grade?` · ${Number(p._landslide_grade)}등급`:''} · ${escHtml(p._regulatory_relation||'중첩')}`);}}).addTo(mp)};}
+ const ccNaturalRegulation=makeRegulationMini('ccNaturalRegulationMiniMap');
+ const ccTransportSecurityRegulation=makeRegulationMini('ccTransportSecurityRegulationMiniMap');
+ const ccDisasterRegulation=makeRegulationMini('ccDisasterRegulationMiniMap');
+@@ -6966,12 +6968,12 @@
+   if(!Array.isArray(specs)||!specs.length)return [];
+   if(specs.length>5)throw new Error('도시관리계획 묶음은 최대 5개 레이어입니다.');
+   const data=await fetchBackendJson('/api/spatial/planning-layers',{
+-    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry,layer_ids:specs.map(x=>x.id)})
++    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry,layer_ids:specs.map(x=>x.id),client_origin:window.location.origin})
+   });
+   const byId=new Map((data?.results||[]).map(x=>[x.layer_id,x]));
+   return specs.map(spec=>{
+     const row=byId.get(spec.id)||{status:'ERROR',feature_count:0,features:[],error:'레이어 결과 누락',attempts:1,route:'',elapsed_ms:0};
+-    return {spec,features:Array.isArray(row.features)?row.features:[],error:row.status==='ERROR'?(row.error||'조회 실패'):null,errorCode:row.status==='ERROR'?'PLANNING_LAYER_ERROR':'',status:row.status||'ERROR',attempts:Number(row.attempts||1),route:row.route||'',elapsed_ms:Number(row.elapsed_ms||0),cache_hit:!!row.cache_hit};
++    return {spec,features:Array.isArray(row.features)?row.features:[],error:row.status==='ERROR'?(row.error||'조회 실패'):null,errorCode:row.status==='ERROR'?'PLANNING_LAYER_ERROR':'',status:row.status||'ERROR',attempts:Number(row.attempts||1),route:row.route||'',direct_error:row.direct_error||'',proxy_status:row.proxy_status??null,domain_sent:row.domain_sent||data?.client_domain||'',elapsed_ms:Number(row.elapsed_ms||0),cache_hit:!!row.cache_hit};
+   });
+ }
+ function updatePlanningCompleteness(){
+@@ -6996,7 +6998,7 @@
+ function recordPlanningLayerResults(results){
+   for(const row of results||[]){
+     const id=row?.spec?.id;if(!id)continue;
+-    const next={status:row.status||'ERROR',count:Number(row.features?.length||0),error:row.error||'',attempts:Number(row.attempts||1),route:row.route||'',elapsed_ms:Number(row.elapsed_ms||0),cache_hit:!!row.cache_hit};
++    const next={status:row.status||'ERROR',count:Number(row.features?.length||0),error:row.error||'',attempts:Number(row.attempts||1),route:row.route||'',direct_error:row.direct_error||'',proxy_status:row.proxy_status??null,domain_sent:row.domain_sent||'',elapsed_ms:Number(row.elapsed_ms||0),cache_hit:!!row.cache_hit};
+     const prev=planningAnalysis.layerStatus?.[id];
+     if(next.status==='ERROR'&&['SUCCESS_DATA','SUCCESS_EMPTY'].includes(prev?.status))continue;
+     planningAnalysis.layerStatus[id]=next;
+@@ -7009,8 +7011,9 @@
+     if(!result)continue;
+     const {spec,features,error}=result;
+     if(error){
+-      planningAnalysis.errors.push({id:spec.id,error});
+-      if(spec.kind==='facility')planningAnalysis.facilityErrors.push({id:spec.id,label:spec.label,error});
++      const diag={id:spec.id,error,route:result.route||'',direct_error:result.direct_error||'',proxy_status:result.proxy_status??null,domain_sent:result.domain_sent||''};
++      planningAnalysis.errors.push(diag);
++      if(spec.kind==='facility')planningAnalysis.facilityErrors.push({id:spec.id,label:spec.label,...diag});
+       continue;
+     }
+     for(const f of features||[]){
+@@ -7435,7 +7438,9 @@
+     const mix=planningAnalysis.zoningMixed?' · 혼합용도지역':'';
+     const ferr=planningAnalysis.facilityErrors.length?` · 시설 미응답 ${planningAnalysis.facilityErrors.length}개`:'';
+     const renewal=renewalAnalysis.loaded?` · 서울시 정비GIS ${renewalAnalysis.overlaps.length}건 중첩`:` · 정비GIS ${renewalAnalysis.error?'실패':'미조회'}`;
+-    status.textContent=`VWorld ${planningAnalysis.queried}개 레이어 조회${quality}${ferr}${dup}${overlap}${unknown}${mix}${renewal}`;
++    const firstErr=(planningAnalysis.errors||[])[0];
++    const routeDiag=firstErr?` · 진단 ${firstErr.route||'경로미확인'}${firstErr.domain_sent?' · domain '+firstErr.domain_sent:''}${firstErr.direct_error?' · direct '+firstErr.direct_error:''}${firstErr.proxy_status!=null?' · proxy HTTP '+firstErr.proxy_status:''}`:'';
++    status.textContent=`VWorld ${planningAnalysis.queried}개 레이어 조회${quality}${ferr}${dup}${overlap}${unknown}${mix}${renewal}${routeDiag}`;
+   }
+ 
+   // 도면은 대상구역 내부 교차부분만 표시하여 외부 선이 난잡하게 보이지 않도록 한다.
+@@ -7608,7 +7613,7 @@
+   planningAnalysis.zoningOverlapArea=0;planningAnalysis.zoningUnknown=0;planningAnalysis.zoningRawFeatureCount=0;planningAnalysis.zoningUnionFeatureCount=0;
+   planningAnalysis.errors=(planningAnalysis.errors||[]).filter(x=>x.id!=='LT_C_UQ111');
+   if(result?.error){
+-    planningAnalysis.errors.push({id:'LT_C_UQ111',error:String(result.error)});
++    planningAnalysis.errors.push({id:'LT_C_UQ111',error:String(result.error),route:result.route||'',direct_error:result.direct_error||'',proxy_status:result.proxy_status??null,domain_sent:result.domain_sent||''});
+   }else{
+     ingestPlanningResults([result],zoneFeature);
+   }

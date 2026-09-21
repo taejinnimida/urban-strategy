@@ -1,0 +1,398 @@
+### regression_check_activation_prior_competition_r4.py
+PASS BZ604 mapping removed 
+PASS legacy urban-regeneration GeoJSON absent 
+PASS legacy urban-regeneration endpoint absent 
+PASS Gimpo innovation SHP set complete 
+PASS Gimpo innovation SHP backend ready 
+PASS Gimpo innovation SHP feature count=1 1
+PASS Gimpo innovation SHP CRS EPSG:5181 EPSG:5181
+PASS Gimpo innovation SHP area stable 359275.76 m2
+PASS raw/core function preserved: checkActivationFromFacts 9656bb0b44a514ef
+PASS raw/core function preserved: priorNegotiationSpatialFacts 1595572e0678f49e
+PASS raw/core function preserved: checkPriorNegotiationFromFacts fb89d91796ef82ef
+PASS raw/core function preserved: densityForScheme 8200438b9fa05b11
+PASS raw/core function preserved: buildSiteFactStore f0223a1e8a2ea50c
+PASS raw/core function preserved: analyzeSchemeStreetBlocks 452e520df0492f09
+PASS raw/core function preserved: analyzeRoadAccess 747f5d4c0422cca8
+PASS raw/core function preserved: runAllAutoAnalyses d7e776b9b6b57b7c
+PASS competition panel inserted 
+PASS competition state isolated 
+PASS runAll computes competition after rule modules 
+PASS raw result not overwritten 
+PASS competition display uses red adjustable class 
+PASS activation route UI surfaced 
+PASS one-parcel under-5000 scenario present 
+PASS competition retained in recommendations 
+PASS AI receives competition FACT 
+PASS competition unit scenarios competition-unit-pass
+PASS retry13 one-time sequential 
+PASS retry13 excludes no-data states 
+PASS browser JavaScript syntax 
+PASS app.py compile 
+
+SUMMARY 30/30 PASS
+### regression_check_analysis_stability_r5.py
+PASS same-site step cache present 
+PASS partial cache short TTL 
+PASS cache cleared on geometry reset 
+PASS fulfilled/partial cache reuse 
+PASS run id superseded guard 
+PASS 429 classified separately 
+PASS 429 excluded from retry13 
+PASS retry13 still one pass 
+PASS backend API paced 
+PASS non-json API response normalized 
+PASS frontend network mapLimit capped at 2 
+PASS land/building top-level sequential 
+PASS key APIs use checked JSON helper 
+PASS building hub rate-limit stops batch storm 
+PASS backend building hub workers capped 
+PASS backend official price workers capped 
+PASS same-site cache and 429 runtime unit stability-unit-pass
+[site-review] Y Error: HTTP 429 Too Many Requests
+    at rate (/mnt/data/work_r14/_stability_unit_tmp.js:20:31)
+    at evalmachine.<anonymous>:36:64 {
+  code: 'RATE_LIMIT',
+  http_status: 429
+}
+PASS browser JavaScript syntax 
+PASS app.py compile 
+
+SUMMARY 19/19 PASS
+### regression_check_core_fact_gate_r13.py
+PASS 23 required planning layers 23
+PASS planning batch endpoint 
+PASS planning request max five 
+PASS global VWorld concurrency two 
+PASS sequential frontend planning batches 
+PASS planning browser JSONP removed from planning path 
+PASS planning statuses present 
+PASS planning failed-only retry 
+PASS planning error cannot overwrite normal 
+PASS land official area gate 
+PASS land preliminary separated 
+PASS building spatial error rethrown 
+PASS hub per-PNU state 
+PASS hub failed-only retry cache 
+PASS land failed-only retry cache 
+PASS AI gated 
+PASS priority gated 
+PASS candidate gated 
+PASS floor incompleteness retained 
+PASS runtime planning/gate/small/age scenarios core-fact-js-unit-pass
+PASS SUCCESS_EMPTY is normal 
+PASS same geometry normal cache reused 
+PASS different geometry cache isolated 
+PASS retryable planning error retried twice 
+PASS ERROR not cached 
+PASS HUB SUCCESS_DATA distinguished 
+PASS HUB SUCCESS_EMPTY distinguished 
+PASS HUB ERROR distinguished 
+PASS runtime Python endpoint/cache scenarios 
+PASS browser JavaScript syntax 
+PASS app.py compile 
+
+SUMMARY 31/31 PASS
+### regression_check_disaster_loader_r12.py
+PASS disaster remote SHP loader 981423.8 100.0
+### regression_check_disaster_vworld_r15.py
+WARNING:urban_strategy.vworld:VWorld direct call failed with HTTP 502; trying official proxy
+INFO:urban_strategy.vworld:VWorld proxy fallback route status=502 (direct_error=HTTP 502)
+WARNING:urban_strategy.vworld:Planning VWorld client_origin rejected origin=https://evil.example request_host=example.com
+PASS landslide source archive bundled 
+PASS risk district source archive bundled 
+PASS landslide RLE bundled 
+PASS landslide EPSG5181 EPSG:5181
+PASS landslide 10m grid 
+PASS landslide nodata 127 
+PASS landslide grades 1-5 
+PASS landslide process date 2026-08-05 
+PASS risk district source has 6 polygons 6
+PASS risk district exact overlap works 3227.9
+PASS risk district source type bundled official shp 
+PASS risk district blank attrs not invented 
+PASS landslide raster matched valid data 
+PASS landslide grade preserved 1
+PASS landslide returns nodata separately 
+PASS landslide source type bundled official raster 
+PASS VWorld failed direct falls back to proxy 
+PASS VWorld direct error retained {'route': 'vworld_proxy', 'domain_sent': 'https://example.com', 'direct_status': None, 'direct_error': 'HTTP 502', 'proxy_status': 502, 'proxy_error': ''}
+PASS VWorld proxy status retained {'route': 'vworld_proxy', 'domain_sent': 'https://example.com', 'direct_status': None, 'direct_error': 'HTTP 502', 'proxy_status': 502, 'proxy_error': ''}
+PASS VWorld domain retained {'route': 'vworld_proxy', 'domain_sent': 'https://example.com', 'direct_status': None, 'direct_error': 'HTTP 502', 'proxy_status': 502, 'proxy_error': ''}
+PASS matching client origin accepted 
+PASS foreign client origin rejected 
+PASS frontend sends window origin 
+PASS frontend exposes route diagnostics 
+PASS disaster UI includes risk district map 
+PASS disaster UI includes landslide grade map 
+PASS disaster UI preserves NoData rule 
+PASS app.py compile 
+PASS browser JavaScript syntax 
+
+SUMMARY 29/29 PASS
+### regression_check_district_unit_plan_r9.py
+PASS CURRENT PLAN card present 
+PASS backend current-plan endpoint present 
+PASS frontend calls real backend endpoint 
+PASS official Seoul services explicit 
+PASS management-code-first match policy 
+PASS no fuzzy-name inference 
+PASS unsupported VWorld UQ165 not queried 
+PASS UQ165 left as separate follow-up 
+PASS district plan never changes scheme status 
+PASS professional judgment policy explicit 
+PASS detailed fields not invented 
+PASS internal/unverified API not used 
+PASS official source links present 
+PASS AI gets review-only current plan 
+PASS R8 baseline comparison skipped R12 배포 ZIP에 app.before_r9.html이 포함되지 않아 기존 전용 회귀해시로 대체
+PASS backend exact RPT code resolves CONFIRMED
+PASS backend returns announcement management code ['A1']
+PASS unique exact label fallback only CONFIRMED
+PASS ambiguous label stays no-match NO_MATCH
+PASS app.py compile 
+PASS browser JavaScript syntax 
+
+SUMMARY 21/21 PASS
+### regression_check_land_price_business_coefficient_r11.py
+PASS land card shows site average official price 
+PASS land card shows year and coverage 
+PASS site land price FACT helper exists 
+PASS official price population remains land-category dae 
+PASS official price remains area-weighted 
+PASS boundary partial parcel keeps proportional official area 
+PASS business coefficient rule registry exists 
+PASS redevelopment rule range and Seoul basis 
+PASS reconstruction alpha helper exists 
+PASS reconstruction beta helper uses available FAR 
+PASS reconstruction final formula staged 
+PASS smallscale uses redevelopment Seoul average 
+PASS smallscale direct routes explicit 
+PASS small reconstruction not guessed 
+PASS future allowed FAR formula staged 
+PASS density linkage deliberately deferred 
+PASS coefficient UI field spRenewalFeasRedevCoefficient 
+PASS coefficient UI field spRenewalFeasReconPriceFactor 
+PASS coefficient UI field spRenewalFeasReconAlpha 
+PASS coefficient UI field spRenewalFeasReconBeta 
+PASS coefficient UI field spRenewalFeasReconCoefficient 
+PASS coefficient UI field spRenewalFeasSmallscaleCoefficient 
+PASS coefficient UI field spRenewalFeasSmallRecon 
+PASS business coefficient formula unit cases r11-formula-unit-pass
+PASS R10 core preserved: buildSiteFactStore f0223a1e8a2ea50c
+PASS R10 core preserved: densityForScheme 8200438b9fa05b11
+PASS R10 core preserved: runAllSchemeChecks ea1389e3a751711a
+PASS R10 core preserved: checkActivationFromFacts 9656bb0b44a514ef
+PASS R10 core preserved: analyzeSchemeStreetBlocks 452e520df0492f09
+PASS R10 core preserved: analyzeRoadAccess 747f5d4c0422cca8
+PASS R10 core preserved: runAllAutoAnalyses d7e776b9b6b57b7c
+PASS browser JavaScript syntax 
+PASS app.py compile 
+
+SUMMARY 33/33 PASS
+### regression_check_regulation_3panel_disaster_r12.py
+PASS old monolithic regulation panel removed
+PASS siteDetail_naturalRegulations exists
+PASS siteDetail_transportSecurityRegulations exists
+PASS siteDetail_disasterRegulations exists
+PASS ccNaturalRegulationMiniMap exists
+PASS ccTransportSecurityRegulationMiniMap exists
+PASS ccDisasterRegulationMiniMap exists
+PASS planning facility removed from regulation item list
+PASS district unit plan removed from regulation item list
+PASS CURRENT PLAN modal preserved
+PASS planning facility dedicated module preserved
+PASS heritage environment UI merged
+PASS heritage environment classified in heritage group
+PASS existing heritage vector/WMS preserved
+PASS natural group includes 'natural_park'
+PASS natural group includes 'ecological_landscape'
+PASS natural group includes 'wildlife_special'
+PASS natural group includes 'water_source'
+PASS natural group includes 'river_zone'
+PASS transport group includes 'railroad_protection'
+PASS transport group includes 'airport_obstacle'
+PASS transport group includes 'military_flight'
+PASS disaster group includes 'disaster_risk'
+PASS disaster group includes 'landslide_risk'
+PASS disaster group includes 'steep_slope_risk'
+PASS disaster group includes 'flood_management'
+PASS disaster group includes 'flood_expected'
+PASS disaster group includes 'flood_trace_2025'
+PASS disaster endpoint exists
+PASS Seoul flood expected source exists
+PASS Seoul flood trace source exists
+PASS NED server category landslide_risk
+PASS NED server category steep_slope_risk
+PASS NED server category flood_management
+PASS retry/zoning preserved: analysisStepRegistry
+PASS retry/zoning preserved: RETRY_BUDGET_MS=150000
+PASS retry/zoning preserved: RETRY_WAIT_MS=15000
+PASS retry/zoning preserved: 분석실패 현황 재분석
+PASS retry/zoning preserved: safeAnalysisStep('용도지역 핵심 FACT'
+PASS core JS unchanged densityForScheme
+PASS core JS unchanged runAllSchemeChecks
+PASS core JS unchanged checkActivationFromFacts
+PASS core JS unchanged analyzeSchemeStreetBlocks
+PASS core JS unchanged analyzeRoadAccess
+PASS core JS unchanged buildSiteFactStore
+PASS zoning server endpoint preserved
+PASS app internal version preserved
+RESULT 47/47 PASS
+### regression_check_semiindustrial_popup_r8.py
+WARNING:urban_strategy.vworld:industrial park boundary analysis unavailable: VWorld LT_C_DAMDAN HTTP 502
+PASS packaged reference present: uq120_project.zip 2288957
+PASS packaged reference present: uq181_legal.zip 3859796
+PASS packaged reference present: centers.json 804960
+PASS UQ120 SHP bundled 
+PASS center polygon reference usable 76
+PASS site-analysis UI present: siteDetail_urbanRedevelopment 
+PASS site-analysis UI present: ccUrbanRedevelopmentMiniMap 
+PASS site-analysis UI present: spUrbanRedevDistrictCount 
+PASS site-analysis UI present: spUrbanRedevPlannedCount 
+PASS site-analysis UI present: siteDetail_industrialPark 
+PASS site-analysis UI present: ccIndustrialParkMiniMap 
+PASS site-analysis UI present: spIndustrialParkCount 
+PASS site-analysis UI present: spIndustrialParkSource 
+PASS urban redevelopment map filters legal/project types 
+PASS industrial park map uses dedicated DAMDAN result 
+PASS industrial unavailable not painted as zero 
+PASS center source load state tracked 
+PASS confirmed noncenter centerKnown fix 
+PASS urban redevelopment UQ120 fact row linked 
+PASS public complex 2030 industrial route linked 
+PASS public complex industrial ratio fact linked 
+PASS public complex 10k density exception linked 
+PASS old qualitative industrial-underdeveloped gate removed 
+PASS legal factory ratio not replaced by current proxy 
+PASS innovation housing frontage quantitative row 
+PASS innovation housing 6m enclosure separate row 
+PASS old fixed frontage review removed 
+PASS innovation apartment precheck retained 
+PASS innovation legal factory hard gate retained 
+PASS industrial live failure not authoritative fallback 
+PASS industrial live failure remains REVIEW 
+PASS unrelated core preserved: densityForScheme 8200438b9fa05b11
+PASS unrelated core preserved: checkActivationFromFacts 9656bb0b44a514ef
+PASS unrelated core preserved: checkPriorNegotiationFromFacts fb89d91796ef82ef
+PASS unrelated core preserved: analyzeSchemeStreetBlocks 452e520df0492f09
+PASS unrelated core preserved: analyzeRoadAccess 747f5d4c0422cca8
+PASS unrelated core preserved: runAllSchemeChecks ea1389e3a751711a
+PASS unrelated core preserved: runAllAutoAnalyses d7e776b9b6b57b7c
+PASS UQ120 BZ102 loaded into renewal facts 131
+PASS UQ181 urban district loaded 1061
+PASS server center reference endpoint source ready 76
+PASS backend DAMDAN failure classified unavailable VWORLD_LIVE
+PASS browser JavaScript syntax 
+PASS app.py compile 
+
+SUMMARY 44/44 PASS
+### regression_check_site_analysis_regulatory_r14.py
+PASS live UI has four-column site-analysis grid
+PASS live UI has two-column wide cards
+PASS station-center-arterial DOM order
+PASS arterial uses two columns
+PASS road condition uses two columns
+PASS road diagnosis uses two columns
+PASS regulatory step registered
+PASS three regulatory progress cards
+PASS planning cards have independent kinds
+PASS NED endpoint exposes successful PNU
+PASS NED endpoint exposes failed PNU
+PASS frontend retries failed NED PNU only
+PASS frontend preserves successful disaster data
+PASS partial regulatory analysis enters isolated retry
+PASS runtime NED partial is not empty
+PASS runtime NED preserves successful PNU
+PASS runtime NED exposes failed-only retry target
+SUMMARY 17/17 PASS
+### regression_check_unitplan_modal_arterial_ui_r10.py
+PASS site card has detail button 
+PASS district unit review modal exists 
+PASS district unit modal renderer exists 
+PASS district unit modal keeps no-status-impact 
+PASS district unit detailed fields stay document review 
+PASS scheme popup links same review modal 
+PASS official source links retained 
+PASS arterial UI includes activation special row 
+PASS activation arterial row uses existing route result 
+PASS activation arterial row says width-independent 
+PASS width summary injects UI-only activation fact 
+PASS arterial UI header explains 6 routes 
+PASS R9 core preserved: buildSiteFactStore f0223a1e8a2ea50c
+PASS R9 core preserved: densityForScheme 8200438b9fa05b11
+PASS R9 core preserved: runAllSchemeChecks ea1389e3a751711a
+PASS R9 core preserved: checkActivationFromFacts 9656bb0b44a514ef
+PASS R9 core preserved: activationArterialRouteDecision cbb1a5554cd30f9d
+PASS R9 core preserved: schemeRoadEvidenceFacts 484e33b35204b251
+PASS R9 core preserved: analyzeSchemeStreetBlocks 452e520df0492f09
+PASS R9 core preserved: analyzeRoadAccess 747f5d4c0422cca8
+PASS R9 core preserved: runAllAutoAnalyses d7e776b9b6b57b7c
+PASS browser JavaScript syntax 
+
+SUMMARY 22/22 PASS
+### regression_check_urban_regen_integrated_r3.py
+PASS BZ604 mapping removed 
+PASS legacy GeoJSON file absent 
+PASS legacy GeoJSON path absent in code 
+PASS legacy reference endpoint removed 
+PASS dedicated urban-regeneration browser module removed 
+PASS legacy NED urban-regeneration categories removed 
+PASS SHP component set complete 
+PASS backend SHP ready 
+PASS SHP feature count=1 1
+PASS SHP source CRS EPSG:5181 EPSG:5181
+PASS SHP source area stable 359275.76 m2
+PASS SHP WGS84 geometry valid Polygon
+PASS SHP enters existing-project overlap FACT [('도시재생혁신지구', 93.9184)]
+PASS project registry carries SHP metadata 
+PASS public-complex exclusion reads existing-project FACT 
+PASS autonomous-housing target does not confuse innovation with activation 
+PASS retry13 status present 
+PASS retry13 one-time sequential 
+PASS retry13 excludes partial/no-data states 
+PASS retry13 re-runs gated rule engine only after recovery 
+PASS R2 baseline comparison skipped R12 배포 ZIP에 app.before.html이 포함되지 않아 후속 버전 전용 회귀해시로 대체
+PASS app.py compile 
+PASS browser JavaScript syntax 
+
+SUMMARY 23/23 PASS
+### regression_check_zoning_fact_r6.py
+PASS zoning critical progress step added 
+PASS bulk planning no longer claims zoning success by layer count alone 
+PASS critical zoning dedicated one-layer recheck 
+PASS critical zoning retry is registered with safeAnalysisStep 
+PASS zoning zero is not confirmed 
+PASS zoning UI says core fact missing 
+PASS planning quality partial when zoning empty 
+PASS scheme progress not green when zoning missing 
+PASS candidate summary explains zoning hold 
+PASS retry13 remains rejected-only 
+PASS unrelated core preserved: densityForScheme 8200438b9fa05b11
+PASS unrelated core preserved: checkActivationFromFacts 9656bb0b44a514ef
+PASS unrelated core preserved: checkPriorNegotiationFromFacts fb89d91796ef82ef
+PASS unrelated core preserved: analyzeSchemeStreetBlocks 452e520df0492f09
+PASS unrelated core preserved: analyzeRoadAccess 747f5d4c0422cca8
+PASS unrelated core preserved: runAllSchemeChecks ea1389e3a751711a
+PASS zoning zero runtime -> REVIEW zoning-zero-review-pass
+PASS browser JavaScript syntax 
+PASS app.py compile 
+
+SUMMARY 19/19 PASS
+### regression_check_zoning_server_r7.py
+PASS server zoning endpoint present 
+PASS UQ111 planning path uses backend 
+PASS UQ111 included in unified server planning path 
+PASS zoning ordered before other planning layers 
+PASS zoning cache present 
+PASS zero zoning is not cached 
+PASS stale cache fallback present 
+PASS 429 propagated for frontend cooldown 
+PASS zoning source label server proxy 
+PASS R6 baseline comparison skipped R12 배포 ZIP에 app.before_zoning_server_r7.html이 포함되지 않아 R12 전용 회귀해시로 대체
+PASS server zoning successful fetch cached ('available', 'cached', 1)
+PASS server zoning stale fallback on transient error stale_cache
+PASS browser JavaScript syntax 
+PASS app.py compile 
+
+SUMMARY 14/14 PASS

@@ -1,0 +1,579 @@
+--- /mnt/data/orig_r14/app.py	2026-09-21 03:28:19.000000000 +0000
++++ /mnt/data/work_r14/app.py	2026-09-21 04:33:08.448171152 +0000
+@@ -17,12 +17,13 @@
+ import time
+ import uuid
+ import sys
++import struct
+ from array import array
+ from collections import deque
+ import xml.etree.ElementTree as ET
+ from datetime import date, datetime
+ from zoneinfo import ZoneInfo
+-from urllib.parse import quote, unquote
++from urllib.parse import quote, unquote, urlparse
+ from concurrent.futures import ThreadPoolExecutor, as_completed
+ from functools import lru_cache
+ from pathlib import Path
+@@ -274,47 +275,70 @@
+     return (os.getenv("VWORLD_API_KEY") or "").strip()
+ 
+ 
++def _normalize_vworld_domain(raw: str) -> str:
++    raw = str(raw or "").strip().rstrip("/")
++    if not raw:
++        return ""
++    if raw.startswith("http://") or raw.startswith("https://"):
++        return raw
++    if raw == "localhost" or raw.startswith("localhost:"):
++        return "http://" + raw
++    return "https://" + raw
++
++
+ def _vworld_domain() -> str:
+     raw = (
+         (os.getenv("VWORLD_DOMAIN") or "").strip()
+         or (os.getenv("RENDER_EXTERNAL_HOSTNAME") or "").strip()
+         or "localhost"
+     )
+-    if raw.startswith("http://") or raw.startswith("https://"):
+-        return raw.rstrip("/")
+-    if raw == "localhost" or raw.startswith("localhost:"):
+-        return "http://" + raw.rstrip("/")
+-    return "https://" + raw.rstrip("/")
++    return _normalize_vworld_domain(raw)
+ 
+ 
+-def _vworld_referer() -> str:
+-    return _vworld_domain() + "/"
++def _vworld_referer(domain: Optional[str] = None) -> str:
++    return (_normalize_vworld_domain(domain or "") or _vworld_domain()) + "/"
+ 
+ 
+-def _vworld_headers() -> Dict[str, str]:
++def _vworld_headers(domain: Optional[str] = None) -> Dict[str, str]:
+     return {
+-        "Referer": _vworld_referer(),
++        "Referer": _vworld_referer(domain),
+         "User-Agent": "urban-strategy/0.4.2",
+         "Accept": "application/json, text/xml;q=0.9, */*;q=0.8",
+     }
+ 
+ 
+-def _vworld_get(url: str, params: Dict[str, Any], timeout: int = 20, proxy_timeout: Optional[int] = None):
++_VWORLD_DIAGNOSTIC_LOCAL = threading.local()
++
++
++def _set_vworld_diagnostic(**values: Any) -> None:
++    _VWORLD_DIAGNOSTIC_LOCAL.last = dict(values)
++
++
++def _last_vworld_diagnostic() -> Dict[str, Any]:
++    return dict(getattr(_VWORLD_DIAGNOSTIC_LOCAL, "last", {}) or {})
++
++
++def _vworld_get(url: str, params: Dict[str, Any], timeout: int = 20, proxy_timeout: Optional[int] = None, referer_domain: Optional[str] = None):
+     """VWorld direct call first, then VWorld's own proxy on transport/5xx failure.
+ 
+     The proxy path is used by VWorld's published utilization examples.
+     API keys remain server-side because this function runs only in FastAPI.
+     Returns (response, route) where route is "direct" or "vworld_proxy".
+     """
++    domain_sent = _normalize_vworld_domain(str(params.get("domain") or "")) or _normalize_vworld_domain(referer_domain or "") or _vworld_domain()
+     direct_error = None
++    _set_vworld_diagnostic(route="", domain_sent=domain_sent, direct_status=None, direct_error="", proxy_status=None, proxy_error="")
+     try:
+-        resp = requests.get(url, params=params, headers=_vworld_headers(), timeout=timeout)
++        resp = requests.get(url, params=params, headers=_vworld_headers(referer_domain or domain_sent), timeout=timeout)
+         if resp.status_code < 500:
++            _set_vworld_diagnostic(route="direct", domain_sent=domain_sent, direct_status=resp.status_code, direct_error="", proxy_status=None, proxy_error="")
+             return resp, "direct"
+         direct_error = f"HTTP {resp.status_code}"
++        _set_vworld_diagnostic(route="direct", domain_sent=domain_sent, direct_status=resp.status_code, direct_error=direct_error, proxy_status=None, proxy_error="")
+         logger.warning("VWorld direct call failed with %s; trying official proxy", direct_error)
+     except requests.RequestException as exc:
+         direct_error = repr(exc)
++        _set_vworld_diagnostic(route="direct", domain_sent=domain_sent, direct_status=None, direct_error=direct_error, proxy_status=None, proxy_error="")
+         logger.warning("VWorld direct connection failed (%s); trying official proxy", direct_error)
+ 
+     # Build the exact inner VWorld URL, then ask VWorld's own proxy to fetch it.
+@@ -324,12 +348,13 @@
+         resp = requests.get(
+             proxy_url,
+             headers={
+-                "Referer": _vworld_referer(),
++                "Referer": _vworld_referer(referer_domain or domain_sent),
+                 "User-Agent": "urban-strategy/0.4.2",
+                 "Accept": "application/json, text/xml;q=0.9, */*;q=0.8",
+             },
+             timeout=(proxy_timeout if proxy_timeout is not None else timeout + 10),
+         )
++        _set_vworld_diagnostic(route="vworld_proxy", domain_sent=domain_sent, direct_status=None, direct_error=direct_error or "", proxy_status=resp.status_code, proxy_error="")
+         logger.info(
+             "VWorld proxy fallback route status=%s (direct_error=%s)",
+             resp.status_code,
+@@ -337,6 +362,8 @@
+         )
+         return resp, "vworld_proxy"
+     except requests.RequestException as exc:
++        proxy_error = repr(exc)
++        _set_vworld_diagnostic(route="vworld_proxy", domain_sent=domain_sent, direct_status=None, direct_error=direct_error or "", proxy_status=None, proxy_error=proxy_error)
+         logger.error(
+             "VWorld direct and proxy both failed direct=%s proxy=%r",
+             direct_error,
+@@ -6389,6 +6416,9 @@
+ class PlanningLayersInput(BaseModel):
+     geometry: Dict[str, Any]
+     layer_ids: List[str] = Field(..., min_length=1, max_length=5)
++    # 브라우저 origin을 함께 보내 서버 호출의 VWorld domain/referer를 동일하게 맞춘다.
++    # 서버는 실제 요청 Host와 일치하는 origin만 허용한다.
++    client_origin: Optional[str] = None
+ 
+ 
+ class DistrictUnitPlanReferenceInput(BaseModel):
+@@ -6431,13 +6461,47 @@
+ _PLANNING_LAYER_CACHE: Dict[str, Dict[str, Any]] = {}
+ _PLANNING_LAYER_CACHE_LOCK = threading.Lock()
+ _PLANNING_LAYER_CACHE_TTL_SEC = 10 * 60
++_PLANNING_REQUEST_LOCAL = threading.local()
++
++
++def _validated_planning_client_origin(raw: Optional[str], request: Request) -> str:
++    """브라우저가 실제 접속한 origin을 VWorld 인증 domain으로 재사용한다.
++
++    임의 외부 origin으로 서버 키를 중계하지 않도록 X-Forwarded-Host/Host와
++    hostname이 같은 경우에만 허용하고, 불일치/파싱실패는 기존 서버 domain으로
++    폴백한다. 키 자체는 브라우저 응답에 노출하지 않는다.
++    """
++    fallback = _vworld_domain()
++    value = _normalize_vworld_domain(raw or "")
++    if not value:
++        return fallback
++    try:
++        parsed = urlparse(value)
++        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
++            return fallback
++        forwarded = (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").split(",", 1)[0].strip()
++        request_host = forwarded.split(":", 1)[0].strip().lower()
++        if request_host and parsed.hostname.lower() != request_host:
++            logger.warning("Planning VWorld client_origin rejected origin=%s request_host=%s", value, request_host)
++            return fallback
++        return value
++    except Exception:
++        return fallback
++
++
++def _planning_request_domain() -> str:
++    return _normalize_vworld_domain(getattr(_PLANNING_REQUEST_LOCAL, "domain", "") or "") or _vworld_domain()
+ 
+ 
+ class PlanningLayerFetchError(RuntimeError):
+-    def __init__(self, message: str, *, retryable: bool = False, retry_after: Optional[float] = None):
++    def __init__(self, message: str, *, retryable: bool = False, retry_after: Optional[float] = None, route: str = "", direct_error: str = "", proxy_status: Optional[int] = None, domain_sent: str = ""):
+         super().__init__(message)
+         self.retryable = bool(retryable)
+         self.retry_after = retry_after
++        self.route = str(route or "")
++        self.direct_error = str(direct_error or "")[:300]
++        self.proxy_status = proxy_status
++        self.domain_sent = str(domain_sent or "")
+ 
+ 
+ def _planning_geometry_signature(geometry: Dict[str, Any]) -> str:
+@@ -6489,12 +6553,13 @@
+     if target.is_empty or not target.is_valid:
+         raise PlanningLayerFetchError("유효하지 않은 구역계입니다.", retryable=False)
+     minx, miny, maxx, maxy = target.bounds
++    planning_domain = _planning_request_domain()
+     all_features: List[Dict[str, Any]] = []
+     seen = set()
+     routes = []
+     for page in range(1, 11):
+         params = {
+-            "key": _vworld_key(), "domain": _vworld_domain(), "service": "data",
++            "key": _vworld_key(), "domain": planning_domain, "service": "data",
+             "version": "2.0", "request": "getfeature", "format": "json",
+             "size": 1000, "page": page, "geometry": "true", "attribute": "true",
+             "crs": "EPSG:4326", "data": layer_id,
+@@ -6502,16 +6567,19 @@
+         }
+         try:
+             with _PLANNING_VWORLD_SEMAPHORE:
+-                resp, route = _vworld_get(VWORLD_DATA_URL, params=params, timeout=20, proxy_timeout=30)
++                resp, route = _vworld_get(VWORLD_DATA_URL, params=params, timeout=20, proxy_timeout=30, referer_domain=planning_domain)
+         except Exception as exc:
+-            raise PlanningLayerFetchError(str(exc), retryable=True) from exc
++            diag = _last_vworld_diagnostic()
++            raise PlanningLayerFetchError(str(exc), retryable=True, route=str(diag.get("route") or ""), direct_error=str(diag.get("direct_error") or ""), proxy_status=diag.get("proxy_status"), domain_sent=str(diag.get("domain_sent") or planning_domain)) from exc
+         routes.append(route)
++        diag = _last_vworld_diagnostic()
++        error_kwargs = {"route": route, "direct_error": str(diag.get("direct_error") or ""), "proxy_status": diag.get("proxy_status"), "domain_sent": str(diag.get("domain_sent") or planning_domain)}
+         if resp.status_code == 429:
+-            raise PlanningLayerFetchError("VWorld HTTP 429 호출제한", retryable=True, retry_after=_planning_retry_after(resp))
++            raise PlanningLayerFetchError("VWorld HTTP 429 호출제한", retryable=True, retry_after=_planning_retry_after(resp), **error_kwargs)
+         if resp.status_code >= 500:
+-            raise PlanningLayerFetchError(f"VWorld HTTP {resp.status_code}", retryable=True)
++            raise PlanningLayerFetchError(f"VWorld HTTP {resp.status_code}", retryable=True, **error_kwargs)
+         if resp.status_code >= 400:
+-            raise PlanningLayerFetchError(f"VWorld HTTP {resp.status_code}: {resp.text[:240]}", retryable=False)
++            raise PlanningLayerFetchError(f"VWorld HTTP {resp.status_code}: {resp.text[:240]}", retryable=False, **error_kwargs)
+         try:
+             payload = resp.json()
+         except Exception as exc:
+@@ -6523,7 +6591,8 @@
+         if status != "OK":
+             message = _response_error_message(payload)
+             retryable = bool(re.search(r"tempor|timeout|limit|429|server|unavailable|일시|제한", message, re.I))
+-            raise PlanningLayerFetchError(message, retryable=retryable)
++            diag = _last_vworld_diagnostic()
++            raise PlanningLayerFetchError(message, retryable=retryable, route=route, direct_error=str(diag.get("direct_error") or ""), proxy_status=diag.get("proxy_status"), domain_sent=str(diag.get("domain_sent") or planning_domain))
+         feats = (((response.get("result") or {}).get("featureCollection") or {}).get("features") or [])
+         for feature in feats:
+             if not feature.get("geometry"):
+@@ -6560,21 +6629,34 @@
+     attempts = 0
+     last_error = ""
+     route = ""
++    direct_error = ""
++    proxy_status: Optional[int] = None
++    domain_sent = ""
+     for retry_index in range(3):
+         attempts += 1
+         try:
+             features, route = _fetch_planning_layer_once(layer_id, geometry)
++            diag_getter = globals().get("_last_vworld_diagnostic")
++            diag = diag_getter() if callable(diag_getter) else {}
++            direct_error = str(diag.get("direct_error") or "")[:300]
++            proxy_status = diag.get("proxy_status")
++            domain_sent = str(diag.get("domain_sent") or domain_sent)
+             result = {
+                 "layer_id": layer_id,
+                 "status": "SUCCESS_DATA" if features else "SUCCESS_EMPTY",
+                 "feature_count": len(features), "features": features, "error": "",
+-                "attempts": attempts, "route": route,
++                "attempts": attempts, "route": route, "direct_error": direct_error,
++                "proxy_status": proxy_status, "domain_sent": domain_sent,
+                 "elapsed_ms": int((time.monotonic() - started) * 1000), "cache_hit": False,
+             }
+             _planning_cache_put(cache_key, result)
+             return result
+         except PlanningLayerFetchError as exc:
+             last_error = str(exc)[:400]
++            route = exc.route or route
++            direct_error = exc.direct_error or direct_error
++            proxy_status = exc.proxy_status if exc.proxy_status is not None else proxy_status
++            domain_sent = exc.domain_sent or domain_sent
+             if not exc.retryable or retry_index >= 2:
+                 break
+             delay = exc.retry_after if exc.retry_after is not None else (1.5 if retry_index == 0 else 4.0)
+@@ -6587,29 +6669,42 @@
+     return {
+         "layer_id": layer_id, "status": "ERROR", "feature_count": 0, "features": [],
+         "error": last_error or "도시관리계획 레이어 조회 실패", "attempts": attempts,
+-        "route": route, "elapsed_ms": int((time.monotonic() - started) * 1000), "cache_hit": False,
++        "route": route, "direct_error": direct_error, "proxy_status": proxy_status, "domain_sent": domain_sent,
++        "elapsed_ms": int((time.monotonic() - started) * 1000), "cache_hit": False,
+     }
+ 
+ 
+ @app.post("/api/spatial/planning-layers")
+-def spatial_planning_layers(inp: PlanningLayersInput):
++def spatial_planning_layers(inp: PlanningLayersInput, request: Request):
+     layer_ids = list(dict.fromkeys(str(x or "").strip() for x in inp.layer_ids))
+     invalid = [x for x in layer_ids if x not in PLANNING_LAYER_IDS]
+     if invalid:
+         raise HTTPException(status_code=422, detail=f"허용되지 않은 도시관리계획 레이어: {', '.join(invalid)}")
++    client_domain = _validated_planning_client_origin(inp.client_origin, request)
++
++    def work(layer_id: str) -> Dict[str, Any]:
++        _PLANNING_REQUEST_LOCAL.domain = client_domain
++        try:
++            result = _planning_layer_result(layer_id, inp.geometry)
++            if result.get("cache_hit") or not result.get("domain_sent"):
++                result["domain_sent"] = client_domain
++            return result
++        finally:
++            _PLANNING_REQUEST_LOCAL.domain = ""
++
+     results: List[Dict[str, Any]] = []
+     # 요청 안에서도 최대 2개, 프로세스 전체에서는 위 전역 세마포어로 최대 2개다.
+     with ThreadPoolExecutor(max_workers=min(2, len(layer_ids))) as pool:
+-        futures = {pool.submit(_planning_layer_result, layer_id, inp.geometry): layer_id for layer_id in layer_ids}
++        futures = {pool.submit(work, layer_id): layer_id for layer_id in layer_ids}
+         by_id = {}
+         for future in as_completed(futures):
+             layer_id = futures[future]
+             try:
+                 by_id[layer_id] = future.result()
+             except Exception as exc:
+-                by_id[layer_id] = {"layer_id": layer_id, "status": "ERROR", "feature_count": 0, "features": [], "error": str(exc)[:400], "attempts": 1, "route": "", "elapsed_ms": 0, "cache_hit": False}
++                by_id[layer_id] = {"layer_id": layer_id, "status": "ERROR", "feature_count": 0, "features": [], "error": str(exc)[:400], "attempts": 1, "route": "", "direct_error": "", "proxy_status": None, "domain_sent": client_domain, "elapsed_ms": 0, "cache_hit": False}
+         results = [by_id[layer_id] for layer_id in layer_ids]
+-    return {"geometry_signature": _planning_geometry_signature(inp.geometry), "requested": len(layer_ids), "results": results}
++    return {"geometry_signature": _planning_geometry_signature(inp.geometry), "requested": len(layer_ids), "client_domain": client_domain, "server_domain": _vworld_domain(), "results": results}
+ 
+ 
+ class RoadFactInput(BaseModel):
+@@ -7411,6 +7506,7 @@
+         "vworld_configured": vworld_ready(),
+         "build_marker": APP_BUILD_MARKER,
+         "pipeline_patch_marker": "R18_PIPELINE_STABILIZATION_20260910",
++        "regulatory_disaster_vworld_patch_marker": "R15_DISASTER_BUNDLES_VWORLD_DOMAIN_DIAGNOSTICS_20260921",
+         "urban_regeneration_source_marker": "GIMPO_SHP_INTEGRATED_PROJECT_FACT_R3_20260918",
+         "station_runtime_build_marker": STATION_RUNTIME_BUILD_MARKER,
+         "seoul_open_data_configured": bool(_seoul_open_data_key()),
+@@ -7441,6 +7537,9 @@
+         "reconstruction_gate": "requires apartment-complex evidence or explicit reconstruction target confirmation",
+         "site_status_card": "neutral raw land/building facts + visible regime-specific aging facts + scheme-specific supplemental facts",
+         "planning_gis": "VWorld zoning/district/facility/district-unit-plan polygon intersection engine",
++        "vworld_planning_domain_policy": "browser origin accepted only when request Host matches; fallback VWORLD_DOMAIN/RENDER_EXTERNAL_HOSTNAME",
++        "disaster_bundled_landslide_raster": os.path.isfile(LANDSLIDE_RISK_RLE_PATH) and os.path.isfile(LANDSLIDE_RISK_META_PATH),
++        "disaster_bundled_risk_district": os.path.isfile(NATURAL_DISASTER_RISK_DISTRICT_ZIP),
+         "renewal_gis": "server-side UQ181/UQ120 intersection; legal-priority; promotion separate; full matched boundaries returned for status map",
+         "development_gis": "VWorld district-unit plan + bundled Seoul UQ181 legal projects + VWorld LT_C_DAMDAN industrial-park boundaries",
+         "safe_housing_location_paths": "station / arterial-road-side / medical-facility-center evaluated separately; OR combined",
+@@ -8222,6 +8321,216 @@
+     }
+ 
+ 
++# R15: 사용자 제공 공식 재해 원자료 번들
++# - 자연재해위험개선지구: LSMD_CONT_UP201 서울 202609 SHP 원도형
++# - 산사태위험지도: 2026 산불추가 서울 10m TIFF를 무손실 row-RLE로 변환한 파생자료
++#   (원본 11.zip도 함께 보존). 값 127은 '위험 없음'이 아니라 NoData이다.
++NATURAL_DISASTER_RISK_DISTRICT_ZIP = _data_path("source_natural_disaster_risk_district_seoul_202609.zip")
++LANDSLIDE_RISK_RLE_PATH = _data_path("landslide_risk_2026_seoul_10m_rle.zlib")
++LANDSLIDE_RISK_META_PATH = _data_path("landslide_risk_2026_seoul_10m_meta.json")
++LANDSLIDE_RISK_SOURCE_ZIP = _data_path("source_landslide_risk_2026_seoul_11.zip")
++
++
++def _analyze_local_polygon_zip(geometry: Dict[str, Any], *, path: str, source_label: str, default_epsg: int = 5186) -> Dict[str, Any]:
++    site = shape(geometry)
++    if site.geom_type not in {"Polygon", "MultiPolygon"} or site.is_empty:
++        raise ValueError("유효한 Polygon 또는 MultiPolygon 구역계가 필요합니다.")
++    if not site.is_valid:
++        site = site.buffer(0)
++    if site.is_empty or not site.is_valid:
++        raise ValueError("유효하지 않은 구역계입니다.")
++    if not os.path.isfile(path) or not zipfile.is_zipfile(path):
++        raise RuntimeError(f"번들 SHP ZIP을 찾지 못했습니다: {os.path.basename(path)}")
++
++    context_features: List[Dict[str, Any]] = []
++    overlap_features: List[Dict[str, Any]] = []
++    overlap_geoms = []
++    source_files: List[str] = []
++    candidate_count = 0
++    blank_attribute_counts = {"NTFDATE": 0, "ALIAS": 0, "REMARK": 0}
++    total_records = 0
++    with zipfile.ZipFile(path) as zf:
++        names = zf.namelist()
++        stems = _zip_shapefile_stems(zf)
++        if not stems:
++            raise RuntimeError("번들 ZIP에서 SHP/SHX/DBF 세트를 찾지 못했습니다.")
++        for stem in stems:
++            shp = next(n for n in names if os.path.splitext(n)[0] == stem and n.lower().endswith('.shp'))
++            shx = next(n for n in names if os.path.splitext(n)[0] == stem and n.lower().endswith('.shx'))
++            dbf = next(n for n in names if os.path.splitext(n)[0] == stem and n.lower().endswith('.dbf'))
++            prj = next((n for n in names if os.path.splitext(n)[0] == stem and n.lower().endswith('.prj')), None)
++            source_crs = CRS.from_epsg(default_epsg)
++            if prj:
++                try:
++                    source_crs = CRS.from_wkt(zf.read(prj).decode('utf-8', errors='ignore'))
++                except Exception:
++                    pass
++            to_source = Transformer.from_crs(4326, source_crs, always_xy=True).transform
++            to_wgs = Transformer.from_crs(source_crs, 4326, always_xy=True).transform
++            site_src = geometry_transform(to_source, site)
++            reader = shapefile.Reader(
++                shp=io.BytesIO(zf.read(shp)), shx=io.BytesIO(zf.read(shx)), dbf=io.BytesIO(zf.read(dbf)),
++                encoding='cp949', encodingErrors='replace'
++            )
++            fields = [f[0] for f in reader.fields[1:]]
++            total_records += len(reader)
++            source_files.append(os.path.basename(shp))
++            for sr in reader.iterShapeRecords(bbox=list(site_src.bounds)):
++                try:
++                    candidate_count += 1
++                    props = {k: _json_property(v) for k, v in zip(fields, list(sr.record))}
++                    for key in blank_attribute_counts:
++                        if key in props and not str(props.get(key) or '').strip():
++                            blank_attribute_counts[key] += 1
++                    gsrc = shape(sr.shape.__geo_interface__)
++                    if gsrc.is_empty:
++                        continue
++                    if not gsrc.is_valid:
++                        gsrc = gsrc.buffer(0)
++                    if gsrc.is_empty or not gsrc.intersects(site_src):
++                        continue
++                    gwgs = geometry_transform(to_wgs, gsrc)
++                    inter = _polygonal_only(site.intersection(gwgs))
++                    if inter is None or inter.is_empty:
++                        continue
++                    props['_source_file'] = os.path.basename(shp)
++                    context_features.append({'type': 'Feature', 'geometry': mapping(gwgs), 'properties': props})
++                    overlap_features.append({'type': 'Feature', 'geometry': mapping(inter), 'properties': props})
++                    overlap_geoms.append(inter)
++                except Exception:
++                    continue
++    to_metric = Transformer.from_crs(4326, 5174, always_xy=True).transform
++    site_area = float(geometry_transform(to_metric, site).area)
++    union = unary_union(overlap_geoms) if overlap_geoms else None
++    area = float(geometry_transform(to_metric, union).area) if union is not None and not union.is_empty else 0.0
++    return {
++        'status': 'matched' if overlap_features else 'none', 'known': True, 'present': bool(overlap_features),
++        'overlap_area_m2': area, 'overlap_pct': (area / site_area * 100.0) if site_area > 0 else None,
++        'feature_count': len(context_features), 'features': context_features, 'overlap_features': overlap_features,
++        'bbox_candidate_count': candidate_count, 'source': source_label, 'source_type': 'BUNDLED_OFFICIAL_SHP',
++        'source_files': source_files, 'bundle_file': os.path.basename(path), 'source_record_count': total_records,
++        'blank_attribute_counts': blank_attribute_counts,
++        'detail': '제공 원자료의 명칭·고시일·비고 필드가 공란일 수 있으므로 결정조서의 명칭·고시일은 별도 확인해야 합니다.',
++        'scope_note': '이 결과는 사용자 제공 2026-09 LSMD_CONT_UP201 서울 파일과의 중첩 FACT이며, 파일 외 지정현황까지 없다고 단정하지 않습니다.',
++    }
++
++
++@lru_cache(maxsize=1)
++def _load_landslide_risk_reference() -> tuple[Dict[str, Any], bytes]:
++    if not os.path.isfile(LANDSLIDE_RISK_META_PATH) or not os.path.isfile(LANDSLIDE_RISK_RLE_PATH):
++        raise RuntimeError("산사태위험지도 10m 번들 파생자료가 없습니다.")
++    with open(LANDSLIDE_RISK_META_PATH, encoding='utf-8') as fp:
++        meta = json.load(fp)
++    raw = zlib.decompress(Path(LANDSLIDE_RISK_RLE_PATH).read_bytes())
++    record_size = int(meta.get('record_size') or 9)
++    expected = int(meta.get('record_count') or 0) * record_size
++    if expected <= 0 or len(raw) != expected:
++        raise RuntimeError(f"산사태위험지도 RLE 무결성 오류 expected={expected} actual={len(raw)}")
++    if len(meta.get('row_record_offsets') or []) != int(meta.get('height') or 0) + 1:
++        raise RuntimeError("산사태위험지도 row offset 메타데이터 오류")
++    return meta, raw
++
++
++def _analyze_landslide_risk_raster(geometry: Dict[str, Any]) -> Dict[str, Any]:
++    site = shape(geometry)
++    if site.geom_type not in {"Polygon", "MultiPolygon"} or site.is_empty:
++        raise ValueError("유효한 Polygon 또는 MultiPolygon 구역계가 필요합니다.")
++    if not site.is_valid:
++        site = site.buffer(0)
++    if site.is_empty or not site.is_valid:
++        raise ValueError("유효하지 않은 구역계입니다.")
++
++    meta, raw = _load_landslide_risk_reference()
++    source_crs = CRS.from_string(str(meta.get('crs') or 'EPSG:5181'))
++    to_source = Transformer.from_crs(4326, source_crs, always_xy=True).transform
++    to_wgs = Transformer.from_crs(source_crs, 4326, always_xy=True).transform
++    site_src = geometry_transform(to_source, site)
++    site_area = float(site_src.area)
++    left = float(meta['left']); top = float(meta['top'])
++    px = float(meta['pixel_width_m']); py = float(meta['pixel_height_m'])
++    width = int(meta['width']); height = int(meta['height'])
++    right = left + width * px; bottom = top - height * py
++    raster_extent = box(left, bottom, right, top)
++    inside = _polygonal_only(site_src.intersection(raster_extent))
++    inside_area = float(inside.area) if inside is not None and not inside.is_empty else 0.0
++    if inside_area <= 0:
++        return {
++            'status': 'out_of_coverage', 'known': False, 'present': False, 'overlap_area_m2': None, 'overlap_pct': None,
++            'valid_coverage_area_m2': 0.0, 'valid_coverage_pct': 0.0, 'nodata_area_m2': None, 'nodata_pct': None,
++            'outside_extent_area_m2': site_area, 'features': [], 'overlap_features': [], 'distribution': [],
++            'source': '산림청 산사태위험지도 2026 산불추가 · 서울 10m 원자료(사용자 제공)', 'source_type': 'BUNDLED_OFFICIAL_RASTER',
++            'resolution_m': 10, 'crs': str(meta.get('crs') or 'EPSG:5181'), 'nodata_value': int(meta.get('nodata') or 127),
++            'source_process_date': meta.get('source_process_date'), 'detail': '대상지가 제공 래스터 범위 밖이므로 비해당으로 판정하지 않습니다.'
++        }
++
++    minx, miny, maxx, maxy = inside.bounds
++    row_min = max(0, int(math.floor((top - maxy) / py)))
++    row_max = min(height - 1, int(math.floor((top - miny) / py)))
++    col_min = max(0, int(math.floor((minx - left) / px)))
++    col_max = min(width - 1, int(math.floor((maxx - left) / px)))
++    offsets = meta['row_record_offsets']
++    rec_size = int(meta.get('record_size') or 9)
++    by_grade: Dict[int, List[Any]] = {g: [] for g in range(1, 6)}
++    grade_area = {g: 0.0 for g in range(1, 6)}
++    candidate_runs = 0
++    for row in range(row_min, row_max + 1):
++        start_idx = int(offsets[row]); end_idx = int(offsets[row + 1])
++        for rec_idx in range(start_idx, end_idx):
++            r, c0, c1, grade = struct.unpack_from('<IHHB', raw, rec_idx * rec_size)
++            if c1 <= col_min or c0 > col_max or grade not in by_grade:
++                continue
++            candidate_runs += 1
++            x0 = left + c0 * px; x1 = left + c1 * px
++            y1 = top - r * py; y0 = y1 - py
++            inter = _polygonal_only(site_src.intersection(box(x0, y0, x1, y1)))
++            if inter is None or inter.is_empty:
++                continue
++            area = float(inter.area)
++            if area <= 1e-6:
++                continue
++            grade_area[int(grade)] += area
++            by_grade[int(grade)].append(inter)
++
++    valid_area = sum(grade_area.values())
++    nodata_area = max(0.0, inside_area - valid_area)
++    outside_area = max(0.0, site_area - inside_area)
++    overlap_features: List[Dict[str, Any]] = []
++    distribution: List[Dict[str, Any]] = []
++    for grade in range(1, 6):
++        area = grade_area[grade]
++        distribution.append({
++            'grade': grade, 'area_m2': area,
++            'pct_of_site': (area / site_area * 100.0) if site_area > 0 else None,
++            'pct_of_valid': (area / valid_area * 100.0) if valid_area > 0 else None,
++        })
++        if not by_grade[grade]:
++            continue
++        merged = unary_union(by_grade[grade])
++        if merged.is_empty:
++            continue
++        gwgs = geometry_transform(to_wgs, merged)
++        overlap_features.append({
++            'type': 'Feature', 'geometry': mapping(gwgs),
++            'properties': {'_landslide_grade': grade, 'grade': grade, 'area_m2': area, 'source': '11.tif'}
++        })
++    known = valid_area > 0.5
++    return {
++        'status': 'matched' if known else 'nodata', 'known': known, 'present': known,
++        'overlap_area_m2': valid_area if known else None,
++        'overlap_pct': (valid_area / site_area * 100.0) if known and site_area > 0 else None,
++        'valid_coverage_area_m2': valid_area, 'valid_coverage_pct': (valid_area / site_area * 100.0) if site_area > 0 else None,
++        'nodata_area_m2': nodata_area, 'nodata_pct': (nodata_area / site_area * 100.0) if site_area > 0 else None,
++        'outside_extent_area_m2': outside_area, 'outside_extent_pct': (outside_area / site_area * 100.0) if site_area > 0 else None,
++        'distribution': distribution, 'features': overlap_features, 'overlap_features': overlap_features,
++        'candidate_run_count': candidate_runs,
++        'source': '산림청 산사태위험지도 2026 산불추가 · 서울 10m 원자료(사용자 제공)',
++        'source_type': 'BUNDLED_OFFICIAL_RASTER', 'resolution_m': 10, 'crs': str(meta.get('crs') or 'EPSG:5181'),
++        'nodata_value': int(meta.get('nodata') or 127), 'source_process_date': meta.get('source_process_date'),
++        'bundle_file': os.path.basename(LANDSLIDE_RISK_SOURCE_ZIP),
++        'detail': '1~5등급 유효 셀만 등급별 면적을 계산합니다. 값 127은 위험 없음이 아니라 NoData/등급 미제공이므로 음성 판정에 사용하지 않습니다.',
++    }
++
++
+ def analyze_disaster_reference_intersections(geometry: Dict[str, Any]) -> Dict[str, Any]:
+     specs=[
+         ('flood_expected',SEOUL_FLOOD_EXPECTED_URL,'seoul_flood_expected.zip','서울특별시 풍수해 침수예상도 · 서울 열린데이터광장 OA-21172'),
+@@ -8233,8 +8542,25 @@
+         except Exception as exc:
+             out[key]={'status':'error','known':False,'present':False,'overlap_area_m2':None,'overlap_pct':None,'features':[],'overlap_features':[],'source':label,'source_type':'OFFICIAL_REMOTE_SHP','error':str(exc)[:300]}
+             errors.append({'source':key,'error':str(exc)[:300]})
+-    return {'status':'available' if not errors else ('partial' if len(errors)<len(specs) else 'error'),**out,'errors':errors,
+-            'note':'침수예상도는 위험예측, 침수흔적도는 과거 발생이력 FACT로 분리. 산림청 산사태위험지도는 신청형 원자료라 자동 원도형 교차는 하지 않고 NED 산사태취약지역 양성정보만 별도 확인.'}
++
++    try:
++        out['natural_disaster_risk_district'] = _analyze_local_polygon_zip(
++            geometry, path=NATURAL_DISASTER_RISK_DISTRICT_ZIP,
++            source_label='LSMD_CONT_UP201 서울 202609 자연재해위험개선지구 원도형(사용자 제공)', default_epsg=5186
++        )
++    except Exception as exc:
++        out['natural_disaster_risk_district']={'status':'error','known':False,'present':False,'overlap_area_m2':None,'overlap_pct':None,'features':[],'overlap_features':[],'source':'LSMD_CONT_UP201 서울 202609 자연재해위험개선지구 원도형(사용자 제공)','source_type':'BUNDLED_OFFICIAL_SHP','error':str(exc)[:300]}
++        errors.append({'source':'natural_disaster_risk_district','error':str(exc)[:300]})
++
++    try:
++        out['landslide_risk_map'] = _analyze_landslide_risk_raster(geometry)
++    except Exception as exc:
++        out['landslide_risk_map']={'status':'error','known':False,'present':False,'overlap_area_m2':None,'overlap_pct':None,'features':[],'overlap_features':[],'distribution':[],'source':'산림청 산사태위험지도 2026 산불추가 · 서울 10m 원자료(사용자 제공)','source_type':'BUNDLED_OFFICIAL_RASTER','error':str(exc)[:300]}
++        errors.append({'source':'landslide_risk_map','error':str(exc)[:300]})
++
++    source_count=len(specs)+2
++    return {'status':'available' if not errors else ('partial' if len(errors)<source_count else 'error'),**out,'errors':errors,
++            'note':'침수예상도=위험예측, 침수흔적도=과거 발생이력, 자연재해위험개선지구=제공 LSMD 원도형, 산사태위험지도=10m 1~5등급 분포 FACT로 분리한다. 산사태 값 127은 위험 없음이 아니라 NoData이다.'}
+ 
+ 
+ @app.post("/api/spatial/disaster-reference-intersections")
