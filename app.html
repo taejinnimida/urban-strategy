@@ -4781,12 +4781,23 @@ function computePublicForestFactFromBundled(payload){
 }
 async function analyzeSharedConservation(options={}){
   if(!activeGeometry)return sharedConservationAnalysis;
-  sharedConservationAnalysis.loading=true;sharedConservationAnalysis.loaded=false;sharedConservationAnalysis.errors=[];
-  // 도시자연공원구역은 기존 VWorld 벡터를 유지한다. 개발제한구역은 R16 사용자 확보 공식 SHP 원도형을 우선한다.
-  sharedConservationAnalysis.urbanPark=unionAndClipPlanningLayer('LT_C_UQ162');
-  sharedConservationAnalysis.greenbelt={known:false,present:null,area_m2:null,pct:null,features:[],affected_pnus:[],rows:[],geometry_basis:'NONE'};
-  sharedConservationAnalysis.biotope={known:false,present:null,area_m2:null,pct:null,features:[],affected_pnus:[],rows:[],geometry_basis:'NONE'};
-  sharedConservationAnalysis.publicForest={known:false,present:null,area_m2:null,pct:null,features:[],affected_pnus:[],rows:[],geometry_basis:'NONE'};
+  const signature=analysisBoundarySignature();
+  const sameGeometry=sharedConservationAnalysis.geometry_signature===signature;
+  // LOCAL-FIRST: 같은 구역계에서 이미 확보한 보유자료 FACT는 후속 외부 보강조회가 시작된다는 이유만으로
+  // known:false로 되돌리지 않는다. 구역계가 바뀐 경우에만 초기화한다.
+  sharedConservationAnalysis.loading=true;
+  sharedConservationAnalysis.loaded=sameGeometry&&sharedConservationAnalysis.loaded===true;
+  sharedConservationAnalysis.errors=[];
+  sharedConservationAnalysis.geometry_signature=signature;
+  // 도시자연공원구역은 VWorld 벡터 보강자료다. 신규 값이 확인될 때만 교체하고,
+  // 같은 구역계의 기존 확인값은 외부 장애로 지우지 않는다.
+  const urbanParkNext=unionAndClipPlanningLayer('LT_C_UQ162');
+  if(urbanParkNext?.known===true||!sameGeometry)sharedConservationAnalysis.urbanPark=urbanParkNext;
+  if(!sameGeometry){
+    sharedConservationAnalysis.greenbelt={known:false,present:null,area_m2:null,pct:null,features:[],affected_pnus:[],rows:[],geometry_basis:'NONE'};
+    sharedConservationAnalysis.biotope={known:false,present:null,area_m2:null,pct:null,features:[],affected_pnus:[],rows:[],geometry_basis:'NONE'};
+    sharedConservationAnalysis.publicForest={known:false,present:null,area_m2:null,pct:null,features:[],affected_pnus:[],rows:[],geometry_basis:'NONE'};
+  }
   let biotopeExact=false,forestExact=false,greenbeltExact=false,nedData=null;
   const [bioRes,forestRes,regulatoryRes]=await Promise.allSettled([
     fetchBackendJson('/api/spatial/biotope-intersections',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry:activeGeometry})}),
@@ -4832,7 +4843,7 @@ async function analyzeSharedConservation(options={}){
   }
   const known=[sharedConservationAnalysis.urbanPark?.known,sharedConservationAnalysis.greenbelt?.known,sharedConservationAnalysis.biotope?.known,sharedConservationAnalysis.publicForest?.known].filter(Boolean).length;
   sharedConservationAnalysis.status=known===4?'matched':known>0?'partial':'unavailable';
-  sharedConservationAnalysis.loaded=true;sharedConservationAnalysis.loading=false;
+  sharedConservationAnalysis.loaded=true;sharedConservationAnalysis.loading=false;sharedConservationAnalysis.geometry_signature=signature;
   renderSharedConservationSpatialStatus();
   return sharedConservationAnalysis;
 }
@@ -5164,6 +5175,13 @@ async function analyzeRegulatoryConstraints(options=null){
   if(Array.isArray(ned?.errors)&&ned.errors.length)a.errors.push(...ned.errors.map(x=>({source:`VWORLD_NED_${x.pnu||''}`,error:x.error||''})));
   if(Array.isArray(disaster?.errors)&&disaster.errors.length)a.errors.push(...disaster.errors.map(x=>({source:`SEOUL_DISASTER_${x.source||''}`,error:x.error||''})));
   if(Array.isArray(bundled?.errors)&&bundled.errors.length)a.errors.push(...bundled.errors.map(x=>({source:`BUNDLED_${x.source||''}`,error:x.error||''})));
+  // LOCAL-FIRST 보존: 같은 구역계에서 이미 확인된 번들 원도형/재해 FACT는
+  // 후속 외부 보강 단계의 부분오류나 일시적 로더 실패로 UNKNOWN으로 강등하지 않는다.
+  if(previousBundled){
+    for(const [key,prev] of Object.entries(previousBundled)){
+      if(prev&&typeof prev==='object'&&prev.known===true&&bundled?.[key]?.known!==true)bundled={...bundled,[key]:prev};
+    }
+  }
   if(previousDisaster){for(const key of ['natural_disaster_risk_district','landslide_risk_map']){if(previousDisaster[key]?.known===true&&disaster?.[key]?.known!==true)disaster={...disaster,[key]:previousDisaster[key]};}}
   a.ned=ned;a.disaster=disaster;a.bundled=bundled;a.ecvam=ecvam;a.school={known:false,absolute:null,relative:null,error:''};
 
@@ -6598,7 +6616,7 @@ const safeMedicalAnalysis={loaded:false,loading:false,status:'unavailable',items
 const safeDowntownExclusionAnalysis={loaded:false,loading:false,status:'unavailable',known:false,present:null,overlapAreaM2:null,overlapPct:null,features:[],overlapFeatures:[],metadata:{},error:''};
 const schoolAbsoluteProtectionAnalysis={loaded:false,loading:false,status:'unavailable',known:false,present:null,overlapAreaM2:null,overlapPct:null,zoneCount:0,schoolNames:[],features:[],overlapFeatures:[],source:'',sourceType:'',file:'',error:''};
 const sharedConservationAnalysis={
-  loaded:false,loading:false,status:'unavailable',errors:[],
+  loaded:false,loading:false,status:'unavailable',errors:[],geometry_signature:'',
   urbanPark:{known:false,present:null,area_m2:null,pct:null,features:[]},
   greenbelt:{known:false,present:null,area_m2:null,pct:null,features:[]},
   biotope:{known:false,present:null,area_m2:null,pct:null,features:[],affected_pnus:[],rows:[],geometry_basis:'NONE'},
@@ -6690,7 +6708,7 @@ function resetPlanningAnalysis(){
   hillAnalysis.loaded=false;hillAnalysis.loading=false;hillAnalysis.status='unavailable';hillAnalysis.source_status='';hillAnalysis.intersects=null;hillAnalysis.overlap_area_m2=null;hillAnalysis.overlap_pct=null;hillAnalysis.distance_m=null;hillAnalysis.site_area_m2=null;hillAnalysis.valid_terrain_area_m2=null;hillAnalysis.nodata_area_m2=null;hillAnalysis.nodata_pct=null;hillAnalysis.pixel_count_in_site=0;hillAnalysis.elevation={};hillAnalysis.slope={};hillAnalysis.reference_areas={};hillAnalysis.contextFeatures=[];hillAnalysis.overlaps=[];hillAnalysis.metadata={};hillAnalysis.error='';
   safeMedicalAnalysis.loaded=false;safeMedicalAnalysis.loading=false;safeMedicalAnalysis.status='unavailable';safeMedicalAnalysis.items=[];safeMedicalAnalysis.metadata={};safeMedicalAnalysis.errors=[];safeMedicalAnalysis.warnings=[];safeMedicalAnalysis.sourceStats={};safeMedicalAnalysis.nearbyCounts={};safeMedicalAnalysis.message='';safeDowntownExclusionAnalysis.loaded=false;safeDowntownExclusionAnalysis.loading=false;safeDowntownExclusionAnalysis.status='unavailable';safeDowntownExclusionAnalysis.known=false;safeDowntownExclusionAnalysis.present=null;safeDowntownExclusionAnalysis.overlapAreaM2=null;safeDowntownExclusionAnalysis.overlapPct=null;safeDowntownExclusionAnalysis.features=[];safeDowntownExclusionAnalysis.overlapFeatures=[];safeDowntownExclusionAnalysis.metadata={};safeDowntownExclusionAnalysis.error='';
   schoolAbsoluteProtectionAnalysis.loaded=false;schoolAbsoluteProtectionAnalysis.loading=false;schoolAbsoluteProtectionAnalysis.status='unavailable';schoolAbsoluteProtectionAnalysis.known=false;schoolAbsoluteProtectionAnalysis.present=null;schoolAbsoluteProtectionAnalysis.overlapAreaM2=null;schoolAbsoluteProtectionAnalysis.overlapPct=null;schoolAbsoluteProtectionAnalysis.zoneCount=0;schoolAbsoluteProtectionAnalysis.schoolNames=[];schoolAbsoluteProtectionAnalysis.features=[];schoolAbsoluteProtectionAnalysis.overlapFeatures=[];schoolAbsoluteProtectionAnalysis.source='';schoolAbsoluteProtectionAnalysis.sourceType='';schoolAbsoluteProtectionAnalysis.file='';schoolAbsoluteProtectionAnalysis.error='';
-  sharedConservationAnalysis.loaded=false;sharedConservationAnalysis.loading=false;sharedConservationAnalysis.status='unavailable';sharedConservationAnalysis.errors=[];sharedConservationAnalysis.urbanPark={known:false,present:null,area_m2:null,pct:null,features:[]};sharedConservationAnalysis.greenbelt={known:false,present:null,area_m2:null,pct:null,features:[]};sharedConservationAnalysis.biotope={known:false,present:null,area_m2:null,pct:null,features:[],affected_pnus:[],rows:[],geometry_basis:'NONE'};sharedConservationAnalysis.publicForest={known:false,present:null,area_m2:null,pct:null,features:[],affected_pnus:[],rows:[],geometry_basis:'NONE'};sharedConservationAnalysis.source={geometry_basis:'mixed'};resetRegulatoryConstraintAnalysis();
+  sharedConservationAnalysis.loaded=false;sharedConservationAnalysis.loading=false;sharedConservationAnalysis.status='unavailable';sharedConservationAnalysis.errors=[];sharedConservationAnalysis.geometry_signature='';sharedConservationAnalysis.urbanPark={known:false,present:null,area_m2:null,pct:null,features:[]};sharedConservationAnalysis.greenbelt={known:false,present:null,area_m2:null,pct:null,features:[]};sharedConservationAnalysis.biotope={known:false,present:null,area_m2:null,pct:null,features:[],affected_pnus:[],rows:[],geometry_basis:'NONE'};sharedConservationAnalysis.publicForest={known:false,present:null,area_m2:null,pct:null,features:[],affected_pnus:[],rows:[],geometry_basis:'NONE'};sharedConservationAnalysis.source={geometry_basis:'mixed'};resetRegulatoryConstraintAnalysis();
   activationArterialAnalysis.loaded=false;activationArterialAnalysis.loading=false;activationArterialAnalysis.status='unavailable';activationArterialAnalysis.roads=[];activationArterialAnalysis.commercialZones=[];activationArterialAnalysis.siteOverlapFeatures=[];activationArterialAnalysis.blockFeature=null;activationArterialAnalysis.stationBufferFeature=null;activationArterialAnalysis.siteOverlapM2=null;activationArterialAnalysis.siteOverlapPct=null;activationArterialAnalysis.blockOverlapM2=null;activationArterialAnalysis.siteIncludes=null;activationArterialAnalysis.blockIncludes=null;activationArterialAnalysis.routeStatus='REVIEW';activationArterialAnalysis.routeConditional=false;activationArterialAnalysis.path='';activationArterialAnalysis.metadata={};activationArterialAnalysis.errors=[];activationArterialAnalysis.warnings=[];
   const renewalSelect=document.getElementById('renewal_area_type');if(renewalSelect)renewalSelect.value='auto';
   const promotionSelect=document.getElementById('renewal_promotion_status');if(promotionSelect)promotionSelect.value='auto';
