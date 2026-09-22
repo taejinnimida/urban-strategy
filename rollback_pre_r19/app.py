@@ -318,83 +318,60 @@ def _last_vworld_diagnostic() -> Dict[str, Any]:
     return dict(getattr(_VWORLD_DIAGNOSTIC_LOCAL, "last", {}) or {})
 
 
-# Bound all VWorld consumers, including ledger and roads, to one transport budget.
-_VWORLD_SLOTS = threading.BoundedSemaphore(2)
-_VWORLD_FAILURE_LOCK = threading.Lock()
-_VWORLD_FAILURES: Dict[str, Dict[str, Any]] = {}
-
-
-class VWorldTransportError(RuntimeError):
-    pass
-
-
 def _vworld_get(url: str, params: Dict[str, Any], timeout: int = 20, proxy_timeout: Optional[int] = None, referer_domain: Optional[str] = None):
-    """One direct attempt and one fallback; safe diagnostics, bounded concurrency and cooldown.
+    """VWorld direct call first, then VWorld's own proxy on transport/5xx failure.
 
-    This does not claim to repair an upstream outage. Failed responses are never facts.
-    No URL query, raw exception, or credential is logged or returned.
+    The proxy path is used by VWorld's published utilization examples.
+    API keys remain server-side because this function runs only in FastAPI.
+    Returns (response, route) where route is "direct" or "vworld_proxy".
     """
-    started = time.monotonic()
-    budget = min(24.0, max(2.0, float(timeout) + float(proxy_timeout if proxy_timeout is not None else timeout)))
-    endpoint = urlparse(url).netloc + urlparse(url).path
-    domain = _normalize_vworld_domain(str(params.get("domain") or "")) or _normalize_vworld_domain(referer_domain or "") or _vworld_domain()
-    diagnostic = {"route": "", "endpoint": endpoint, "domain_sent": domain, "direct_status": None,
-                  "proxy_status": None, "direct_error": "", "proxy_error": ""}
-    def record():
-        diagnostic["elapsed_ms"] = round((time.monotonic() - started) * 1000)
-        _set_vworld_diagnostic(**diagnostic)
-    def check_cooldown():
-        with _VWORLD_FAILURE_LOCK:
-            state = _VWORLD_FAILURES.get(endpoint, {})
-            remaining = float(state.get("until", 0)) - time.monotonic()
-        if remaining > 0:
-            diagnostic.update(route="cooldown", retry_after_seconds=math.ceil(remaining))
-            record()
-            raise VWorldTransportError(f"VWORLD_COOLDOWN · 연결 실패 누적 · {math.ceil(remaining)}초 후 재확인 · 미확인 유지")
-    check_cooldown()
-    if not _VWORLD_SLOTS.acquire(timeout=min(5.0, budget)):
-        diagnostic.update(route="queue", direct_error="QUEUE_BUSY")
-        record()
-        raise VWorldTransportError("VWORLD_QUEUE_BUSY · 외부 조회 대기 초과 · 미확인 유지")
+    domain_sent = _normalize_vworld_domain(str(params.get("domain") or "")) or _normalize_vworld_domain(referer_domain or "") or _vworld_domain()
+    direct_error = None
+    _set_vworld_diagnostic(route="", domain_sent=domain_sent, direct_status=None, direct_error="", proxy_status=None, proxy_error="")
     try:
-        check_cooldown()
-        for route in ("direct", "vworld_proxy"):
-            remaining = budget - (time.monotonic() - started)
-            if remaining <= 1:
-                diagnostic["proxy_error"] = "TOTAL_BUDGET_EXCEEDED"
-                break
-            diagnostic["route"] = route
-            prefix = "direct" if route == "direct" else "proxy"
-            connect = min(3.0, remaining / 3)
-            read = max(0.1, min(float(timeout if route == "direct" else (proxy_timeout or timeout)), remaining - connect))
-            try:
-                if route == "direct":
-                    resp = requests.get(url, params=params, headers=_vworld_headers(referer_domain or domain), timeout=(connect, read))
-                else:
-                    inner_url = requests.Request("GET", url, params=params).prepare().url
-                    resp = requests.get(VWORLD_PROXY_URL + quote(inner_url, safe=""), headers=_vworld_headers(referer_domain or domain), timeout=(connect, read))
-                diagnostic[prefix + "_status"] = resp.status_code
-                content_type = str(resp.headers.get("content-type") or "").lower()
-                html_response = "text/html" in content_type or resp.content.lstrip()[:15].lower().startswith((b"<!doctype html", b"<html"))
-                if resp.status_code < 500 and not html_response:
-                    with _VWORLD_FAILURE_LOCK:
-                        _VWORLD_FAILURES.pop(endpoint, None)
-                    record()
-                    return resp, route
-                diagnostic[prefix + "_error"] = f"HTTP_{resp.status_code}" if resp.status_code >= 500 else "NON_DATA_HTML"
-                resp.close()
-            except requests.RequestException as exc:
-                diagnostic[prefix + "_error"] = type(exc).__name__
-        with _VWORLD_FAILURE_LOCK:
-            state = _VWORLD_FAILURES.setdefault(endpoint, {"count": 0, "until": 0})
-            state["count"] += 1
-            if state["count"] >= 3:
-                state["until"] = time.monotonic() + 30
-        record()
-        logger.warning("VWorld transport failed endpoint=%s direct=%s proxy=%s elapsed_ms=%s", endpoint, diagnostic["direct_error"], diagnostic["proxy_error"], diagnostic["elapsed_ms"])
-        raise VWorldTransportError(f"VWORLD_UPSTREAM_UNAVAILABLE · direct={diagnostic['direct_error']} · proxy={diagnostic['proxy_error']} · 외부자료 미확보")
-    finally:
-        _VWORLD_SLOTS.release()
+        resp = requests.get(url, params=params, headers=_vworld_headers(referer_domain or domain_sent), timeout=timeout)
+        if resp.status_code < 500:
+            _set_vworld_diagnostic(route="direct", domain_sent=domain_sent, direct_status=resp.status_code, direct_error="", proxy_status=None, proxy_error="")
+            return resp, "direct"
+        direct_error = f"HTTP {resp.status_code}"
+        _set_vworld_diagnostic(route="direct", domain_sent=domain_sent, direct_status=resp.status_code, direct_error=direct_error, proxy_status=None, proxy_error="")
+        logger.warning("VWorld direct call failed with %s; trying official proxy", direct_error)
+    except requests.RequestException as exc:
+        direct_error = repr(exc)
+        _set_vworld_diagnostic(route="direct", domain_sent=domain_sent, direct_status=None, direct_error=direct_error, proxy_status=None, proxy_error="")
+        logger.warning("VWorld direct connection failed (%s); trying official proxy", direct_error)
+
+    # Build the exact inner VWorld URL, then ask VWorld's own proxy to fetch it.
+    inner_url = requests.Request("GET", url, params=params).prepare().url
+    proxy_url = VWORLD_PROXY_URL + quote(inner_url, safe="")
+    try:
+        resp = requests.get(
+            proxy_url,
+            headers={
+                "Referer": _vworld_referer(referer_domain or domain_sent),
+                "User-Agent": "urban-strategy/0.4.2",
+                "Accept": "application/json, text/xml;q=0.9, */*;q=0.8",
+            },
+            timeout=(proxy_timeout if proxy_timeout is not None else timeout + 10),
+        )
+        _set_vworld_diagnostic(route="vworld_proxy", domain_sent=domain_sent, direct_status=None, direct_error=direct_error or "", proxy_status=resp.status_code, proxy_error="")
+        logger.info(
+            "VWorld proxy fallback route status=%s (direct_error=%s)",
+            resp.status_code,
+            direct_error,
+        )
+        return resp, "vworld_proxy"
+    except requests.RequestException as exc:
+        proxy_error = repr(exc)
+        _set_vworld_diagnostic(route="vworld_proxy", domain_sent=domain_sent, direct_status=None, direct_error=direct_error or "", proxy_status=None, proxy_error=proxy_error)
+        logger.error(
+            "VWorld direct and proxy both failed direct=%s proxy=%r",
+            direct_error,
+            exc,
+        )
+        raise RuntimeError(
+            f"VWorld 직접연결과 공식 프록시 연결이 모두 실패했습니다. direct={direct_error}; proxy={exc}"
+        ) from exc
 
 
 def vworld_ready() -> bool:
@@ -2891,11 +2868,8 @@ def analyze_industrial_park_intersections(geometry: Dict[str, Any]) -> Dict[str,
     }
 
 
-def analyze_development_intersections(geometry: Dict[str, Any], include_industrial: bool = True) -> Dict[str, Any]:
-    """도시개발·공공주택지구·기타 법정 사업구역을 서버에서 실제 중첩한다.
-
-    include_industrial=False이면 번들 UQ181 중첩만 즉시 계산하고 VWorld LT_C_DAMDAN은 호출하지 않는다.
-    """
+def analyze_development_intersections(geometry: Dict[str, Any]) -> Dict[str, Any]:
+    """도시개발·공공주택지구·기타 법정 사업구역을 서버에서 실제 중첩한다."""
     try:
         site_wgs = _polygonal_only(shape(geometry))
     except Exception as exc:
@@ -2948,38 +2922,29 @@ def analyze_development_intersections(geometry: Dict[str, Any], include_industri
 
     overlaps.sort(key=lambda f: (-float(f["properties"].get("overlap_area_m2") or 0), str(f["properties"].get("name") or "")))
     industrial_parks, industrial_park_context, industrial_park_metadata = [], [], {
-        "available": False,
-        "fallback_available": False,
-        "fallback_authoritative": False,
-        "source": "VWorld 2D Data API",
-        "source_layer": VWORLD_LAYER_INDUSTRIAL_PARK,
-        "source_title": "국토교통부 산업단지 단지경계",
-        "source_type": "VWORLD_LIVE",
-        "error": "후속조회 대기" if not include_industrial else "미조회",
-        "note": "UQ181 로컬 개발사업 현황을 먼저 표시하고 산업단지 전용경계는 별도 보강조회한다." if not include_industrial else "",
+        "available": False, "source_layer": VWORLD_LAYER_INDUSTRIAL_PARK, "error": "미조회"
     }
-    if include_industrial:
-        try:
-            industrial_result = analyze_industrial_park_intersections(geometry)
-            industrial_parks = industrial_result.get("overlaps") or []
-            industrial_park_context = industrial_result.get("context_features") or []
-            industrial_park_metadata = industrial_result.get("metadata") or {}
-        except Exception as exc:
-            # 산업단지 전용경계는 LT_C_DAMDAN을 권위자료로 사용한다.
-            # UQ181에는 현재 배포자료상 UQ1400/UQ1300 산업단지 계열이 없으므로
-            # API 실패를 "비중첩 확정"으로 대체하지 않는다.
-            industrial_park_metadata = {
-                "available": False,
-                "fallback_available": False,
-                "fallback_authoritative": False,
-                "source": "VWorld 2D Data API",
-                "source_layer": VWORLD_LAYER_INDUSTRIAL_PARK,
-                "source_title": "국토교통부 산업단지 단지경계",
-                "source_type": "VWORLD_LIVE",
-                "error": str(exc),
-                "note": "산업단지 전용경계 조회 실패 · 적용제외 여부는 REVIEW 유지",
-            }
-            logger.warning("industrial park boundary analysis unavailable: %s", exc)
+    try:
+        industrial_result = analyze_industrial_park_intersections(geometry)
+        industrial_parks = industrial_result.get("overlaps") or []
+        industrial_park_context = industrial_result.get("context_features") or []
+        industrial_park_metadata = industrial_result.get("metadata") or {}
+    except Exception as exc:
+        # 산업단지 전용경계는 LT_C_DAMDAN을 권위자료로 사용한다.
+        # UQ181에는 현재 배포자료상 UQ1400/UQ1300 산업단지 계열이 없으므로
+        # API 실패를 "비중첩 확정"으로 대체하지 않는다.
+        industrial_park_metadata = {
+            "available": False,
+            "fallback_available": False,
+            "fallback_authoritative": False,
+            "source": "VWorld 2D Data API",
+            "source_layer": VWORLD_LAYER_INDUSTRIAL_PARK,
+            "source_title": "국토교통부 산업단지 단지경계",
+            "source_type": "VWORLD_LIVE",
+            "error": str(exc),
+            "note": "산업단지 전용경계 조회 실패 · 적용제외 여부는 REVIEW 유지",
+        }
+        logger.warning("industrial park boundary analysis unavailable: %s", exc)
     return {
         "status": "matched" if overlaps else "none",
         "site_area_m2": round(site_area, 2),
@@ -7984,12 +7949,8 @@ def street_block(inp: StreetBlockInput):
 
 
 @app.get("/api/vworld/test")
-def vworld_test(layer: str = "LT_C_UQ111", lon: float = 126.978, lat: float = 37.566):
-    """Single-layer connection diagnostic; no credentials or raw response body."""
-    if layer not in {"LT_C_UQ111", VWORLD_LAYER_PARCEL, "TL_SPRD_MANAGE"}:
-        raise HTTPException(status_code=422, detail="진단 지원 레이어가 아닙니다.")
-    if not (-180 <= lon <= 180 and -90 <= lat <= 90):
-        raise HTTPException(status_code=422, detail="유효한 경위도가 필요합니다.")
+def vworld_test():
+    """VWorld 연결 진단. API 키 값은 반환하지 않습니다."""
     if not vworld_ready():
         raise HTTPException(status_code=503, detail="VWORLD_API_KEY가 설정되지 않았습니다.")
     params = {
@@ -8004,8 +7965,8 @@ def vworld_test(layer: str = "LT_C_UQ111", lon: float = 126.978, lat: float = 37
         "geometry": "false",
         "attribute": "true",
         "crs": "EPSG:4326",
-        "data": layer,
-        "geomfilter": f"POINT({lon},{lat})",
+        "data": VWORLD_LAYER_PARCEL,
+        "geomfilter": "POINT(126.978,37.566)",
     }
     try:
         resp, route = _vworld_get(VWORLD_DATA_URL, params=params, timeout=15)
@@ -8024,12 +7985,10 @@ def vworld_test(layer: str = "LT_C_UQ111", lon: float = 126.978, lat: float = 37
                 fc = (((payload.get("response") or {}).get("result") or {}).get("featureCollection") or {})
                 result["feature_count"] = len(fc.get("features") or [])
         except Exception:
-            result["response_format"] = "NON_JSON"
-        result["transport"] = _last_vworld_diagnostic()
-        result["layer"] = layer
+            result["body_preview"] = resp.text[:500]
         return result
     except Exception as exc:
-        raise HTTPException(status_code=502, detail={"message": "VWorld 단일 조회 실패 · 미확인", "transport": _last_vworld_diagnostic()}) from exc
+        raise HTTPException(status_code=502, detail=f"VWorld 테스트 실패: {exc}") from exc
 
 @app.post("/api/parcels/analyze")
 def parcel_analyze(inp: GeometryInput):
@@ -8372,18 +8331,7 @@ LANDSLIDE_RISK_META_PATH = _data_path("landslide_risk_2026_seoul_10m_meta.json")
 LANDSLIDE_RISK_SOURCE_ZIP = _data_path("source_landslide_risk_2026_seoul_11.zip")
 
 
-def _analyze_local_polygon_zip(
-    geometry: Dict[str, Any], *, path: str, source_label: str, default_epsg: int = 5186,
-    include_codes: Optional[List[str]] = None, code_field: str = "MNUM",
-    group_field: Optional[str] = None, scope_note: Optional[str] = None,
-    detail: Optional[str] = None,
-) -> Dict[str, Any]:
-    """Bundled official SHP ZIP intersection analyzer.
-
-    include_codes filters records by exact/prefix code (e.g. UJB100); group_field additionally
-    reports non-overlapping-by-value area distribution for the selected site. This is used only
-    as FACT geometry and never as an automatic scheme PASS/FAIL switch.
-    """
+def _analyze_local_polygon_zip(geometry: Dict[str, Any], *, path: str, source_label: str, default_epsg: int = 5186) -> Dict[str, Any]:
     site = shape(geometry)
     if site.geom_type not in {"Polygon", "MultiPolygon"} or site.is_empty:
         raise ValueError("유효한 Polygon 또는 MultiPolygon 구역계가 필요합니다.")
@@ -8394,17 +8342,13 @@ def _analyze_local_polygon_zip(
     if not os.path.isfile(path) or not zipfile.is_zipfile(path):
         raise RuntimeError(f"번들 SHP ZIP을 찾지 못했습니다: {os.path.basename(path)}")
 
-    code_filters = [str(v).strip().upper() for v in (include_codes or []) if str(v).strip()]
     context_features: List[Dict[str, Any]] = []
     overlap_features: List[Dict[str, Any]] = []
     overlap_geoms = []
-    grouped_geoms: Dict[str, List[Any]] = {}
     source_files: List[str] = []
     candidate_count = 0
     blank_attribute_counts = {"NTFDATE": 0, "ALIAS": 0, "REMARK": 0}
     total_records = 0
-    matched_source_records = 0
-    record_errors = 0
     with zipfile.ZipFile(path) as zf:
         names = zf.namelist()
         stems = _zip_shapefile_stems(zf)
@@ -8429,19 +8373,12 @@ def _analyze_local_polygon_zip(
                 encoding='cp949', encodingErrors='replace'
             )
             fields = [f[0] for f in reader.fields[1:]]
-            if code_filters and code_field not in fields:
-                raise RuntimeError(f"SHP 필수 속성 누락: {code_field}")
             total_records += len(reader)
             source_files.append(os.path.basename(shp))
             for sr in reader.iterShapeRecords(bbox=list(site_src.bounds)):
                 try:
                     candidate_count += 1
                     props = {k: _json_property(v) for k, v in zip(fields, list(sr.record))}
-                    if code_filters:
-                        raw_code = str(props.get(code_field) or '').strip().upper()
-                        if not any(raw_code == c or raw_code.startswith(c) or c in raw_code for c in code_filters):
-                            continue
-                    matched_source_records += 1
                     for key in blank_attribute_counts:
                         if key in props and not str(props.get(key) or '').strip():
                             blank_attribute_counts[key] += 1
@@ -8460,35 +8397,21 @@ def _analyze_local_polygon_zip(
                     context_features.append({'type': 'Feature', 'geometry': mapping(gwgs), 'properties': props})
                     overlap_features.append({'type': 'Feature', 'geometry': mapping(inter), 'properties': props})
                     overlap_geoms.append(inter)
-                    if group_field:
-                        key = str(props.get(group_field) if props.get(group_field) is not None else '미기재').strip() or '미기재'
-                        grouped_geoms.setdefault(key, []).append(inter)
                 except Exception:
-                    record_errors += 1
                     continue
-    if not source_files or total_records == 0:
-        raise RuntimeError("번들 SHP에 검증 가능한 레코드가 없습니다.")
-    if record_errors:
-        raise RuntimeError(f"번들 SHP 후보 {record_errors}건 처리 실패 · 비중첩 확정 금지")
     to_metric = Transformer.from_crs(4326, 5174, always_xy=True).transform
     site_area = float(geometry_transform(to_metric, site).area)
     union = unary_union(overlap_geoms) if overlap_geoms else None
     area = float(geometry_transform(to_metric, union).area) if union is not None and not union.is_empty else 0.0
-    distribution = []
-    for value, geoms in sorted(grouped_geoms.items(), key=lambda kv: kv[0]):
-        gu = unary_union(geoms)
-        ga = float(geometry_transform(to_metric, gu).area) if gu is not None and not gu.is_empty else 0.0
-        distribution.append({'value': value, 'area_m2': ga, 'pct_of_site': (ga / site_area * 100.0) if site_area > 0 else None})
     return {
         'status': 'matched' if overlap_features else 'none', 'known': True, 'present': bool(overlap_features),
         'overlap_area_m2': area, 'overlap_pct': (area / site_area * 100.0) if site_area > 0 else None,
         'feature_count': len(context_features), 'features': context_features, 'overlap_features': overlap_features,
         'bbox_candidate_count': candidate_count, 'source': source_label, 'source_type': 'BUNDLED_OFFICIAL_SHP',
         'source_files': source_files, 'bundle_file': os.path.basename(path), 'source_record_count': total_records,
-        'matched_source_records': matched_source_records, 'blank_attribute_counts': blank_attribute_counts,
-        'distribution': distribution,
-        'detail': detail or '사용자 제공 공식 공간원자료와 대상지의 실제 도형 중첩을 계산한 FACT입니다.',
-        'scope_note': scope_note or '이 결과는 번들된 공식 공간원자료의 범위·기준시점에 한정하며 최신 결정조서·고시는 별도 확인합니다.',
+        'blank_attribute_counts': blank_attribute_counts,
+        'detail': '제공 원자료의 명칭·고시일·비고 필드가 공란일 수 있으므로 결정조서의 명칭·고시일은 별도 확인해야 합니다.',
+        'scope_note': '이 결과는 사용자 제공 2026-09 LSMD_CONT_UP201 서울 파일과의 중첩 FACT이며, 파일 외 지정현황까지 없다고 단정하지 않습니다.',
     }
 
 
@@ -8804,281 +8727,3 @@ def building_hub_floor_batch(inp: BuildingHubBatchInput):
 @app.post("/api/redevelopment/house-density")
 def house_density(detail: Dict[str, Any]):
     return calculate_house_density(detail)
-
-
-# Restored routes required by the deployed UI (GitHub baseline).
-DEVELOPMENT_RESTRICTION_ZONE_ZIP = _data_path("source_development_restriction_zone_seoul_202609.zip")
-WATER_SOURCE_PROTECTION_ZONE_ZIP = _data_path("source_water_source_protection_zone_seoul_202609.zip")
-WILDLIFE_PROTECTION_ZONE_ZIP = _data_path("source_wildlife_protection_zone_seoul_202609.zip")
-RIVER_ZONE_ZIP = _data_path("source_river_zone_seoul_202609.zip")
-SMALL_RIVER_ZONE_ZIP = _data_path("source_small_river_zone_seoul_202609.zip")
-RAILROAD_PROTECTION_ZONE_ZIP = _data_path("source_railroad_protection_zone_seoul_202609.zip")
-AIRPORT_OBSTACLE_SURFACE_ZIP = _data_path("source_airport_obstacle_surface_seoul_202609.zip")
-AIRPORT_NOISE_ZONE_ZIP = _data_path("source_airport_noise_zone_seoul_202609.zip")
-HANRIVER_LANDFILL_RESTRICTION_ZIP = _data_path("source_hanriver_landfill_restriction_seoul_202609.zip")
-ECOLOGICAL_NATURE_MAP_ZIP = _data_path("source_ecological_nature_map_seoul_flat.zip")
-LANDSCAPE_MANAGEMENT_ZONE_ZIP = _data_path("source_landscape_management_zone_seoul_202609.zip")
-CULTURE_DISTRICT_ZIP = _data_path("source_culture_district_seoul_202609.zip")
-
-ECVAM_API_CONFIRM_URL = "https://ecvam.neins.go.kr/apiConfirm.do"
-ECVAM_WMS_URL = "https://ecvam.neins.go.kr/apicall.do"
-ECVAM_LOG_URL = "https://ecvam.neins.go.kr/common/insertApiCallLog.ajax"
-ECVAM_ALLOWED_WMS_LAYERS = {
-    "nem_law_01": "생태·경관보전지역",
-    "nem_law_02": "시도생태·경관보전지역",
-    "nem_law_10": "공원자연보존지구",
-    "nem_law_11": "공원자연환경지구",
-    "nem_law_12": "공원마을지구",
-    "nem_law_13": "공원문화유산지구",
-}
-_ECVAM_API_CHECK = {"key_hash": "", "checked_at": 0.0, "ok": False, "error": ""}
-_ECVAM_API_CHECK_LOCK = threading.Lock()
-
-
-def _ecvam_key() -> str:
-    # R17 표준 환경변수. 과거 소문자 ecvam fallback은 의도적으로 두지 않는다.
-    return (os.getenv("ECVAM_API_KEY") or "").strip()
-
-
-def _ecvam_configured() -> bool:
-    return bool(_ecvam_key())
-
-
-def _ensure_ecvam_api_ready(force: bool = False) -> Dict[str, Any]:
-    """Validate the configured ECVAM key without exposing it to the browser.
-
-    ECVAM's current API bootstrap script defines ecvamLayerCreate() and points
-    TileWMS requests at /apicall.do.  We validate the key server-side and cache
-    only a SHA-256 fingerprint; the raw key never leaves the server response.
-    """
-    key = _ecvam_key()
-    if not key:
-        raise HTTPException(status_code=503, detail="ECVAM_API_KEY가 설정되지 않았습니다.")
-    key_hash = hashlib.sha256(key.encode("utf-8")).hexdigest()
-    now = time.time()
-    with _ECVAM_API_CHECK_LOCK:
-        if (not force and _ECVAM_API_CHECK.get("key_hash") == key_hash
-                and now - float(_ECVAM_API_CHECK.get("checked_at") or 0) < 900):
-            if _ECVAM_API_CHECK.get("ok"):
-                return {"ok": True, "cached": True}
-            raise HTTPException(status_code=502, detail=str(_ECVAM_API_CHECK.get("error") or "ECVAM API 인증 확인 실패"))
-    try:
-        r = requests.get(
-            ECVAM_API_CONFIRM_URL, params={"APIKEY": key}, timeout=10,
-            headers={"User-Agent": "urban-strategy/2.5.0 ECVAM-WMS", "Referer": _vworld_referer()},
-        )
-        text = r.text or ""
-        ok = r.status_code == 200 and "ecvamLayerCreate" in text and all(layer in text for layer in ECVAM_ALLOWED_WMS_LAYERS)
-        error = "" if ok else f"ECVAM API bootstrap HTTP {r.status_code} 또는 레이어 정의 미확인"
-    except requests.RequestException as exc:
-        ok = False
-        error = f"ECVAM API 인증 요청 실패: {type(exc).__name__}"
-    with _ECVAM_API_CHECK_LOCK:
-        _ECVAM_API_CHECK.update({"key_hash": key_hash, "checked_at": now, "ok": ok, "error": error})
-    if not ok:
-        raise HTTPException(status_code=502, detail=error)
-    return {"ok": True, "cached": False}
-
-
-
-
-
-@app.get("/api/reference/ecvam-status")
-def ecvam_status(probe: bool = False):
-    """Safe ECVAM readiness metadata; never returns the API key."""
-    out = {
-        "configured": _ecvam_configured(),
-        "source": "국토환경성평가지도 OpenAPI WMS",
-        "mode": "MAP_ONLY",
-        "layers": [{"id": k, "label": v} for k, v in ECVAM_ALLOWED_WMS_LAYERS.items()],
-        "quantitative_overlap": False,
-        "note": "WMS 도면 교차확인용입니다. 벡터 원도형이 아니므로 중첩면적·중첩률·해당/비해당 자동판정에 사용하지 않습니다.",
-    }
-    if probe and out["configured"]:
-        try:
-            out["probe"] = _ensure_ecvam_api_ready(force=True)
-        except HTTPException as exc:
-            out["probe"] = {"ok": False, "error": str(exc.detail)}
-    return out
-
-
-@app.get("/api/reference/ecvam-wms-map")
-def ecvam_wms_map(
-    min_lon: float,
-    min_lat: float,
-    max_lon: float,
-    max_lat: float,
-    layers: str = "nem_law_01,nem_law_02,nem_law_10,nem_law_11,nem_law_12,nem_law_13",
-    width: int = 760,
-    height: int = 520,
-):
-    """Server-side display proxy for selected ECVAM WMS layers.
-
-    R17 exposes ecological-landscape conservation layers plus four national-park
-    zoning layers for site review.  The API key stays server-side.  Returned pixels are a map
-    cross-check only; no geometric overlap or PASS/FAIL inference is made.
-    """
-    if not (-180 <= min_lon < max_lon <= 180 and -90 <= min_lat < max_lat <= 90):
-        raise HTTPException(status_code=400, detail="invalid WGS84 bbox")
-    requested = [x.strip() for x in str(layers or "").split(",") if x.strip()]
-    if not requested or any(x not in ECVAM_ALLOWED_WMS_LAYERS for x in requested):
-        raise HTTPException(status_code=400, detail="허용되지 않은 ECVAM WMS 레이어입니다.")
-    # preserve caller order while removing duplicates
-    requested = list(dict.fromkeys(requested))
-    width = max(320, min(int(width), 1200))
-    height = max(220, min(int(height), 900))
-    _ensure_ecvam_api_ready()
-    try:
-        tf = Transformer.from_crs(4326, 3857, always_xy=True)
-        pts = [
-            tf.transform(min_lon, min_lat), tf.transform(min_lon, max_lat),
-            tf.transform(max_lon, min_lat), tf.transform(max_lon, max_lat),
-        ]
-        xs = [x for x, _ in pts]; ys = [y for _, y in pts]
-        params = {
-            "SERVICE": "WMS", "VERSION": "1.1.0", "REQUEST": "GetMap",
-            "LAYERS": ",".join(requested), "STYLES": "", "SRS": "EPSG:3857",
-            "BBOX": f"{min(xs):.3f},{min(ys):.3f},{max(xs):.3f},{max(ys):.3f}",
-            "WIDTH": str(width), "HEIGHT": str(height),
-            "FORMAT": "image/png", "TRANSPARENT": "TRUE",
-        }
-        r = requests.get(
-            ECVAM_WMS_URL, params=params, timeout=15,
-            headers={
-                "User-Agent": "urban-strategy/2.5.0 ECVAM-WMS-display",
-                "Accept": "image/png,image/*;q=0.8,*/*;q=0.5",
-                "Referer": _vworld_referer(),
-            },
-        )
-        content_type = str(r.headers.get("content-type") or "").lower()
-        if r.status_code != 200 or not r.content:
-            raise HTTPException(status_code=502, detail=f"ECVAM WMS HTTP {r.status_code}")
-        if "image" not in content_type and not r.content.startswith(b"\x89PNG"):
-            preview = (r.text or "").replace("\n", " ")[:140]
-            raise HTTPException(status_code=502, detail=f"ECVAM WMS non-image response: {preview}")
-        # Official bootstrap logs each layer call separately; mirror that on a best-effort basis.
-        try:
-            requests.get(
-                ECVAM_LOG_URL,
-                params={"APIKEY": _ecvam_key(), "DOMAIN": _vworld_domain(), "LAYERS": ",".join(requested), "callback": "ecvamLog"},
-                timeout=3, headers={"User-Agent": "urban-strategy/2.5.0 ECVAM-WMS-log"},
-            )
-        except Exception:
-            pass
-        return Response(content=r.content, media_type="image/png", headers={"Cache-Control": "public, max-age=900"})
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logging.warning("ECVAM WMS proxy failed: %s", exc)
-        raise HTTPException(status_code=502, detail="ECVAM WMS unavailable") from exc
-
-
-@app.post("/api/spatial/development-local-intersections")
-def development_local_intersections(inp: GeometryInput):
-    """서울 UQ181 로컬 개발사업구역만 즉시 중첩한다. 외부 VWorld 산업단지 조회는 수행하지 않는다."""
-    try:
-        return analyze_development_intersections(inp.geometry, include_industrial=False)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except Exception as exc:
-        logging.exception("local development intersection failed")
-        raise HTTPException(status_code=500, detail=f"로컬 개발사업구역 중첩분석 오류: {exc}") from exc
-    finally:
-        _release_heavy_analysis_cache("development")
-
-
-@app.post("/api/spatial/industrial-park-intersections")
-def industrial_park_intersections(inp: GeometryInput):
-    """산업단지 전용경계(LT_C_DAMDAN)만 별도 보강 조회한다."""
-    try:
-        return analyze_industrial_park_intersections(inp.geometry)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except Exception as exc:
-        logging.exception("industrial park intersection failed")
-        raise HTTPException(status_code=503, detail=f"산업단지 전용경계 조회 오류: {str(exc)[:240]}") from exc
-
-
-def analyze_local_disaster_reference_intersections(geometry: Dict[str, Any]) -> Dict[str, Any]:
-    """외부망과 무관한 번들 재해자료만 즉시 분석합니다."""
-    out={};errors=[]
-    try:
-        out['natural_disaster_risk_district'] = _analyze_local_polygon_zip(
-            geometry, path=NATURAL_DISASTER_RISK_DISTRICT_ZIP,
-            source_label='LSMD_CONT_UP201 서울 202609 자연재해위험개선지구 원도형(사용자 제공)', default_epsg=5186
-        )
-    except Exception as exc:
-        out['natural_disaster_risk_district']={'status':'error','known':False,'present':False,'overlap_area_m2':None,'overlap_pct':None,'features':[],'overlap_features':[],'source':'LSMD_CONT_UP201 서울 202609 자연재해위험개선지구 원도형(사용자 제공)','source_type':'BUNDLED_OFFICIAL_SHP','error':str(exc)[:300]}
-        errors.append({'source':'natural_disaster_risk_district','error':str(exc)[:300]})
-    try:
-        out['landslide_risk_map'] = _analyze_landslide_risk_raster(geometry)
-    except Exception as exc:
-        out['landslide_risk_map']={'status':'error','known':False,'present':False,'overlap_area_m2':None,'overlap_pct':None,'features':[],'overlap_features':[],'distribution':[],'source':'산림청 산사태위험지도 2026 산불추가 · 서울 10m 원자료(사용자 제공)','source_type':'BUNDLED_OFFICIAL_RASTER','error':str(exc)[:300]}
-        errors.append({'source':'landslide_risk_map','error':str(exc)[:300]})
-    return {'status':'available' if not errors else ('partial' if len(errors)<2 else 'error'),**out,'errors':errors,
-            'note':'외부 API를 기다리지 않고 자연재해위험개선지구와 산사태위험지도 번들 원자료만 분석한다.'}
-
-
-@app.post("/api/spatial/local-disaster-reference-intersections")
-def local_disaster_reference_intersections(inp: GeometryInput):
-    try:
-        return analyze_local_disaster_reference_intersections(inp.geometry)
-    except ValueError as exc:
-        raise HTTPException(status_code=422,detail=str(exc)) from exc
-    except Exception as exc:
-        logging.exception('local disaster reference analysis failed')
-        raise HTTPException(status_code=500,detail=f"로컬 재해 공간자료 분석 실패: {str(exc)[:240]}") from exc
-
-
-def analyze_bundled_regulatory_references(geometry: Dict[str, Any]) -> Dict[str, Any]:
-    """R16 evidence-backed regulatory layers supplied as official Seoul/national SHP data.
-
-    Unsupported placeholders are intentionally absent. Every returned layer has a bundled
-    geometry source, so a non-overlap can be stated only as 'no overlap in bundled source'.
-    """
-    specs = [
-        ('development_restriction', DEVELOPMENT_RESTRICTION_ZONE_ZIP, '개발제한구역 LSMD_CONT_UD801 서울(사용자 제공)', 5186, ['UDV100'], 'MNUM', None),
-        ('ecological_nature_grade1', ECOLOGICAL_NATURE_MAP_ZIP, '환경부 생태자연도 서울 원도형(사용자 제공) · 1등급', 5186, ['1'], '생태자연도', None),
-        ('wildlife_protection', WILDLIFE_PROTECTION_ZONE_ZIP, '야생생물 보호구역 LSMD_CONT_UM221 서울(사용자 제공)', 5186, ['UMS210','UMS220'], 'MNUM', None),
-        ('water_source_protection', WATER_SOURCE_PROTECTION_ZONE_ZIP, '상수원보호구역 LSMD_CONT_UM710 서울(사용자 제공)', 5186, ['UMI100'], 'MNUM', None),
-        ('river_zone', RIVER_ZONE_ZIP, '하천구역 LSMD_CONT_UJ201 서울(사용자 제공)', 5186, ['UJB100'], 'MNUM', None),
-        ('small_river_zone', SMALL_RIVER_ZONE_ZIP, '소하천구역 LSMD_CONT_UJ301 서울(사용자 제공)', 5186, ['UJC100'], 'MNUM', None),
-        ('hanriver_landfill_restriction', HANRIVER_LANDFILL_RESTRICTION_ZIP, '한강수계 폐기물매립시설 설치제한지역 LSMD_CONT_UM730 서울(사용자 제공)', 5174, ['UMK600'], 'MNUM', None),
-        ('landscape_management', LANDSCAPE_MANAGEMENT_ZONE_ZIP, '서울시 중점경관관리구역 LSMD_CONT_ZQ001(사용자 제공)', 5186, None, 'MNUM', None),
-        ('culture_district', CULTURE_DISTRICT_ZIP, '문화지구 LSMD_CONT_UO801 서울(사용자 제공)', 5174, ['UOH100'], 'MNUM', None),
-        ('railroad_protection', RAILROAD_PROTECTION_ZONE_ZIP, '철도보호지구 LSMD_CONT_UI310 서울(사용자 제공)', 5186, ['UIK100'], 'MNUM', None),
-        ('airport_obstacle', AIRPORT_OBSTACLE_SURFACE_ZIP, '공항 장애물제한표면 LSMD_CONT_UI701 서울(사용자 제공)', 5186, ['UIG510','UIG520','UIG530','UIG540','UIG550','UIG560','UIG570','UIG600'], 'MNUM', None),
-        ('airport_noise', AIRPORT_NOISE_ZONE_ZIP, '공항 소음대책지역 LSMD_CONT_UI702 서울(사용자 제공)', 5174, ['UIN100','UIN200','UIN300'], 'MNUM', None),
-        ('flood_management', RIVER_ZONE_ZIP, '홍수관리구역 LSMD_CONT_UJ201 서울(사용자 제공)', 5186, ['UJB400'], 'MNUM', None),
-    ]
-    out: Dict[str, Any] = {}
-    errors: List[Dict[str, str]] = []
-    for key, path, label, epsg, codes, code_field, group_field in specs:
-        try:
-            out[key] = _analyze_local_polygon_zip(
-                geometry, path=path, source_label=label, default_epsg=epsg,
-                include_codes=codes, code_field=code_field, group_field=group_field,
-                scope_note='사용자 확보 공식 공간원자료와의 중첩 결과입니다. 최신 고시·결정조서와 원자료 기준시점은 최종 인허가 검토에서 재확인합니다.',
-            )
-        except Exception as exc:
-            out[key] = {
-                'status':'error','known':False,'present':False,'overlap_area_m2':None,'overlap_pct':None,
-                'features':[],'overlap_features':[],'source':label,'source_type':'BUNDLED_OFFICIAL_SHP','error':str(exc)[:300]
-            }
-            errors.append({'source':key,'error':str(exc)[:300]})
-    return {
-        'status':'available' if not errors else ('partial' if len(errors)<len(specs) else 'error'),
-        **out, 'errors':errors,
-        'note':'R16은 번들 원도형이 확보된 규제만 반환한다. 군사시설보호, 산사태취약지역 지정도, 급경사지 붕괴위험지역 등 원도형 미확보 항목은 이 API와 UI에서 제외한다.'
-    }
-
-
-@app.post("/api/spatial/regulatory-reference-intersections")
-def regulatory_reference_intersections(inp: GeometryInput):
-    try:
-        return analyze_bundled_regulatory_references(inp.geometry)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except Exception as exc:
-        logging.exception('bundled regulatory reference analysis failed')
-        raise HTTPException(status_code=502, detail=f"규제 공간자료 분석 실패: {str(exc)[:240]}") from exc

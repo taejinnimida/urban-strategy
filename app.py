@@ -275,6 +275,29 @@ def _vworld_key() -> str:
     return (os.getenv("VWORLD_API_KEY") or "").strip()
 
 
+def _require_vworld_key() -> str:
+    """Fail fast at public VWorld-backed API entry points when the server key is missing."""
+    key = _vworld_key()
+    if not key:
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "VWorld API 키(VWORLD_API_KEY) 환경변수 미설정. "
+                "Render Dashboard의 Environment 섹션에서 설정하세요."
+            ),
+        )
+    return key
+
+
+def _vworld_slot_count() -> int:
+    """Shared VWorld concurrency. Default 2; operator may raise to at most 3."""
+    try:
+        value = int((os.getenv("VWORLD_SLOTS") or "2").strip())
+    except (TypeError, ValueError):
+        value = 2
+    return max(1, min(value, 3))
+
+
 def _normalize_vworld_domain(raw: str) -> str:
     raw = str(raw or "").strip().rstrip("/")
     if not raw:
@@ -318,8 +341,8 @@ def _last_vworld_diagnostic() -> Dict[str, Any]:
     return dict(getattr(_VWORLD_DIAGNOSTIC_LOCAL, "last", {}) or {})
 
 
-# Bound all VWorld consumers, including ledger and roads, to one transport budget.
-_VWORLD_SLOTS = threading.BoundedSemaphore(2)
+# Bound all VWorld consumers, including ledger and roads, to one shared concurrency limit.
+_VWORLD_SLOTS = threading.BoundedSemaphore(_vworld_slot_count())
 _VWORLD_FAILURE_LOCK = threading.Lock()
 _VWORLD_FAILURES: Dict[str, Dict[str, Any]] = {}
 
@@ -328,51 +351,91 @@ class VWorldTransportError(RuntimeError):
     pass
 
 
-def _vworld_get(url: str, params: Dict[str, Any], timeout: int = 20, proxy_timeout: Optional[int] = None, referer_domain: Optional[str] = None):
-    """One direct attempt and one fallback; safe diagnostics, bounded concurrency and cooldown.
+def _vworld_timeout_tuple(value: Any, *, connect_default: float) -> tuple[float, float]:
+    """Normalize timeout while preserving legacy numeric stage budgets.
 
-    This does not claim to repair an upstream outage. Failed responses are never facts.
-    No URL query, raw exception, or credential is logged or returned.
+    A 2-tuple is treated as requests' (connect, read) timeout. A numeric value is
+    treated as the total budget for that one route, matching the pre-R20 callers
+    that split small land-ledger budgets between direct and proxy stages.
+    """
+    if isinstance(value, (tuple, list)) and len(value) == 2:
+        connect = max(0.1, float(value[0]))
+        read = max(0.1, float(value[1]))
+        return connect, read
+    total = max(0.2, float(value))
+    connect = max(0.1, min(float(connect_default), total / 3.0))
+    read = max(0.1, total - connect)
+    return connect, read
+
+
+def _vworld_get(
+    url: str,
+    params: Dict[str, Any],
+    timeout: Any = (4.0, 21.0),
+    proxy_timeout: Optional[Any] = None,
+    referer_domain: Optional[str] = None,
+    force_retry: bool = False,
+):
+    """One direct attempt and one fallback with independent route timeouts.
+
+    Direct/proxy no longer share the former 24-second total budget. This lets a
+    slow direct attempt fall back to the proxy with its full configured timeout.
+    Failed responses are never facts; cooldown remains unless force_retry=True.
     """
     started = time.monotonic()
-    budget = min(24.0, max(2.0, float(timeout) + float(proxy_timeout if proxy_timeout is not None else timeout)))
     endpoint = urlparse(url).netloc + urlparse(url).path
     domain = _normalize_vworld_domain(str(params.get("domain") or "")) or _normalize_vworld_domain(referer_domain or "") or _vworld_domain()
-    diagnostic = {"route": "", "endpoint": endpoint, "domain_sent": domain, "direct_status": None,
-                  "proxy_status": None, "direct_error": "", "proxy_error": ""}
+    direct_timeout = _vworld_timeout_tuple(timeout, connect_default=4.0)
+    proxy_timeout_value = proxy_timeout if proxy_timeout is not None else timeout
+    proxy_timeout_tuple = _vworld_timeout_tuple(proxy_timeout_value, connect_default=5.0)
+    diagnostic = {
+        "route": "", "endpoint": endpoint, "domain_sent": domain,
+        "direct_status": None, "proxy_status": None,
+        "direct_error": "", "proxy_error": "",
+        "direct_timeout": direct_timeout, "proxy_timeout": proxy_timeout_tuple,
+        "force_retry": bool(force_retry),
+    }
+
     def record():
         diagnostic["elapsed_ms"] = round((time.monotonic() - started) * 1000)
         _set_vworld_diagnostic(**diagnostic)
+
     def check_cooldown():
+        if force_retry:
+            return
         with _VWORLD_FAILURE_LOCK:
             state = _VWORLD_FAILURES.get(endpoint, {})
             remaining = float(state.get("until", 0)) - time.monotonic()
         if remaining > 0:
             diagnostic.update(route="cooldown", retry_after_seconds=math.ceil(remaining))
             record()
-            raise VWorldTransportError(f"VWORLD_COOLDOWN · 연결 실패 누적 · {math.ceil(remaining)}초 후 재확인 · 미확인 유지")
+            raise VWorldTransportError(
+                f"VWORLD_COOLDOWN · 연결 실패 누적 · {math.ceil(remaining)}초 후 재확인 · 미확인 유지"
+            )
+
     check_cooldown()
-    if not _VWORLD_SLOTS.acquire(timeout=min(5.0, budget)):
+    if not _VWORLD_SLOTS.acquire(timeout=5.0):
         diagnostic.update(route="queue", direct_error="QUEUE_BUSY")
         record()
         raise VWorldTransportError("VWORLD_QUEUE_BUSY · 외부 조회 대기 초과 · 미확인 유지")
     try:
         check_cooldown()
-        for route in ("direct", "vworld_proxy"):
-            remaining = budget - (time.monotonic() - started)
-            if remaining <= 1:
-                diagnostic["proxy_error"] = "TOTAL_BUDGET_EXCEEDED"
-                break
+        for route, route_timeout in (("direct", direct_timeout), ("vworld_proxy", proxy_timeout_tuple)):
             diagnostic["route"] = route
             prefix = "direct" if route == "direct" else "proxy"
-            connect = min(3.0, remaining / 3)
-            read = max(0.1, min(float(timeout if route == "direct" else (proxy_timeout or timeout)), remaining - connect))
             try:
                 if route == "direct":
-                    resp = requests.get(url, params=params, headers=_vworld_headers(referer_domain or domain), timeout=(connect, read))
+                    resp = requests.get(
+                        url, params=params, headers=_vworld_headers(referer_domain or domain),
+                        timeout=route_timeout,
+                    )
                 else:
                     inner_url = requests.Request("GET", url, params=params).prepare().url
-                    resp = requests.get(VWORLD_PROXY_URL + quote(inner_url, safe=""), headers=_vworld_headers(referer_domain or domain), timeout=(connect, read))
+                    resp = requests.get(
+                        VWORLD_PROXY_URL + quote(inner_url, safe=""),
+                        headers=_vworld_headers(referer_domain or domain),
+                        timeout=route_timeout,
+                    )
                 diagnostic[prefix + "_status"] = resp.status_code
                 content_type = str(resp.headers.get("content-type") or "").lower()
                 html_response = "text/html" in content_type or resp.content.lstrip()[:15].lower().startswith((b"<!doctype html", b"<html"))
@@ -385,14 +448,21 @@ def _vworld_get(url: str, params: Dict[str, Any], timeout: int = 20, proxy_timeo
                 resp.close()
             except requests.RequestException as exc:
                 diagnostic[prefix + "_error"] = type(exc).__name__
+
         with _VWORLD_FAILURE_LOCK:
             state = _VWORLD_FAILURES.setdefault(endpoint, {"count": 0, "until": 0})
             state["count"] += 1
             if state["count"] >= 3:
                 state["until"] = time.monotonic() + 30
         record()
-        logger.warning("VWorld transport failed endpoint=%s direct=%s proxy=%s elapsed_ms=%s", endpoint, diagnostic["direct_error"], diagnostic["proxy_error"], diagnostic["elapsed_ms"])
-        raise VWorldTransportError(f"VWORLD_UPSTREAM_UNAVAILABLE · direct={diagnostic['direct_error']} · proxy={diagnostic['proxy_error']} · 외부자료 미확보")
+        logger.warning(
+            "VWorld transport failed endpoint=%s direct=%s proxy=%s elapsed_ms=%s",
+            endpoint, diagnostic["direct_error"], diagnostic["proxy_error"], diagnostic["elapsed_ms"],
+        )
+        raise VWorldTransportError(
+            f"VWORLD_UPSTREAM_UNAVAILABLE · direct={diagnostic['direct_error']} · "
+            f"proxy={diagnostic['proxy_error']} · 외부자료 미확보"
+        )
     finally:
         _VWORLD_SLOTS.release()
 
@@ -6451,6 +6521,7 @@ class GeometryInput(BaseModel):
 class PlanningLayersInput(BaseModel):
     geometry: Dict[str, Any]
     layer_ids: List[str] = Field(..., min_length=1, max_length=5)
+    force_retry: bool = False
     # 브라우저 origin을 함께 보내 서버 호출의 VWorld domain/referer를 동일하게 맞춘다.
     # 서버는 실제 요청 Host와 일치하는 origin만 허용한다.
     client_origin: Optional[str] = None
@@ -6469,6 +6540,7 @@ def spatial_zoning(inp: GeometryInput):
     브라우저의 VWorld JSONP 직접조회 대신 서버 direct→official proxy fallback과
     최근 정상 FACT 캐시를 사용한다. 0건은 NONE으로 확정하지 않는다.
     """
+    _require_vworld_key()
     try:
         return analyze_zoning_features(inp.geometry)
     except ValueError as exc:
@@ -6492,7 +6564,7 @@ PLANNING_LAYER_IDS = frozenset({
     "LT_C_UPISUQ157", "LT_C_UPISUQ158", "LT_C_UPISUQ159", "LT_C_UPISUQ161",
     "LT_C_UPISUQ171",
 })
-_PLANNING_VWORLD_SEMAPHORE = threading.BoundedSemaphore(2)
+_PLANNING_VWORLD_SEMAPHORE = threading.BoundedSemaphore(_vworld_slot_count())
 _PLANNING_LAYER_CACHE: Dict[str, Dict[str, Any]] = {}
 _PLANNING_LAYER_CACHE_LOCK = threading.Lock()
 _PLANNING_LAYER_CACHE_TTL_SEC = 10 * 60
@@ -6526,6 +6598,10 @@ def _validated_planning_client_origin(raw: Optional[str], request: Request) -> s
 
 def _planning_request_domain() -> str:
     return _normalize_vworld_domain(getattr(_PLANNING_REQUEST_LOCAL, "domain", "") or "") or _vworld_domain()
+
+
+def _planning_request_force_retry() -> bool:
+    return bool(getattr(_PLANNING_REQUEST_LOCAL, "force_retry", False))
 
 
 class PlanningLayerFetchError(RuntimeError):
@@ -6602,10 +6678,28 @@ def _fetch_planning_layer_once(layer_id: str, geometry: Dict[str, Any]) -> tuple
         }
         try:
             with _PLANNING_VWORLD_SEMAPHORE:
-                resp, route = _vworld_get(VWORLD_DATA_URL, params=params, timeout=20, proxy_timeout=30, referer_domain=planning_domain)
+                resp, route = _vworld_get(
+                    VWORLD_DATA_URL,
+                    params=params,
+                    timeout=(4.0, 21.0),
+                    proxy_timeout=(5.0, 25.0),
+                    referer_domain=planning_domain,
+                    force_retry=_planning_request_force_retry(),
+                )
         except Exception as exc:
             diag = _last_vworld_diagnostic()
-            raise PlanningLayerFetchError(str(exc), retryable=True, route=str(diag.get("route") or ""), direct_error=str(diag.get("direct_error") or ""), proxy_status=diag.get("proxy_status"), domain_sent=str(diag.get("domain_sent") or planning_domain)) from exc
+            # direct + official proxy are already the two transport attempts for this
+            # layer request. Do not multiply a full 25s + 30s transport failure by
+            # the outer three-attempt loop; let the explicit user retry bypass cooldown.
+            transport_failed = isinstance(exc, VWorldTransportError)
+            raise PlanningLayerFetchError(
+                str(exc),
+                retryable=not transport_failed,
+                route=str(diag.get("route") or ""),
+                direct_error=str(diag.get("direct_error") or ""),
+                proxy_status=diag.get("proxy_status"),
+                domain_sent=str(diag.get("domain_sent") or planning_domain),
+            ) from exc
         routes.append(route)
         diag = _last_vworld_diagnostic()
         error_kwargs = {"route": route, "direct_error": str(diag.get("direct_error") or ""), "proxy_status": diag.get("proxy_status"), "domain_sent": str(diag.get("domain_sent") or planning_domain)}
@@ -6711,6 +6805,7 @@ def _planning_layer_result(layer_id: str, geometry: Dict[str, Any]) -> Dict[str,
 
 @app.post("/api/spatial/planning-layers")
 def spatial_planning_layers(inp: PlanningLayersInput, request: Request):
+    _require_vworld_key()
     layer_ids = list(dict.fromkeys(str(x or "").strip() for x in inp.layer_ids))
     invalid = [x for x in layer_ids if x not in PLANNING_LAYER_IDS]
     if invalid:
@@ -6719,6 +6814,7 @@ def spatial_planning_layers(inp: PlanningLayersInput, request: Request):
 
     def work(layer_id: str) -> Dict[str, Any]:
         _PLANNING_REQUEST_LOCAL.domain = client_domain
+        _PLANNING_REQUEST_LOCAL.force_retry = bool(inp.force_retry)
         try:
             result = _planning_layer_result(layer_id, inp.geometry)
             if result.get("cache_hit") or not result.get("domain_sent"):
@@ -6726,10 +6822,11 @@ def spatial_planning_layers(inp: PlanningLayersInput, request: Request):
             return result
         finally:
             _PLANNING_REQUEST_LOCAL.domain = ""
+            _PLANNING_REQUEST_LOCAL.force_retry = False
 
     results: List[Dict[str, Any]] = []
-    # 요청 안에서도 최대 2개, 프로세스 전체에서는 위 전역 세마포어로 최대 2개다.
-    with ThreadPoolExecutor(max_workers=min(2, len(layer_ids))) as pool:
+    # 요청 내부/계획레이어/전체 VWorld transport가 동일한 VWORLD_SLOTS(기본 2, 최대 3)를 따른다.
+    with ThreadPoolExecutor(max_workers=min(_vworld_slot_count(), len(layer_ids))) as pool:
         futures = {pool.submit(work, layer_id): layer_id for layer_id in layer_ids}
         by_id = {}
         for future in as_completed(futures):

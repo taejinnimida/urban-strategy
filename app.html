@@ -7044,11 +7044,11 @@ async function fetchPlanningSpec(spec,geometry){
 function planningGeometrySignature(geometry){
   try{return JSON.stringify(geometry||null);}catch(e){return String(boundaryReferenceMetrics?.area_m2||'none');}
 }
-async function fetchPlanningBatch(specs,geometry){
+async function fetchPlanningBatch(specs,geometry,options={}){
   if(!Array.isArray(specs)||!specs.length)return [];
   if(specs.length>5)throw new Error('도시관리계획 묶음은 최대 5개 레이어입니다.');
   const data=await fetchBackendJson('/api/spatial/planning-layers',{
-    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry,layer_ids:specs.map(x=>x.id),client_origin:window.location.origin})
+    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry,layer_ids:specs.map(x=>x.id),client_origin:window.location.origin,force_retry:options.forceRetry===true})
   });
   const byId=new Map((data?.results||[]).map(x=>[x.layer_id,x]));
   return specs.map(spec=>{
@@ -7638,7 +7638,7 @@ async function analyzePlanningGIS(options={}){
     if(!specs.length){updatePlanningCompleteness();}
     for(let i=0;i<specs.length;i+=5){
       const batch=specs.slice(i,i+5);
-      const rows=await fetchPlanningBatch(batch,activeGeometry);
+      const rows=await fetchPlanningBatch(batch,activeGeometry,{forceRetry:retryOnly});
       if(token!==planningAnalysis.requestToken)return {cancelled:true,queried:planningAnalysis.queried||0,ok:0,error_count:0};
       if(retryOnly){
         for(const spec of batch){

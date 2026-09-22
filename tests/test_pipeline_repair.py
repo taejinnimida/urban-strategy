@@ -119,3 +119,95 @@ def test_single_zoning_probe_safe_diagnostic():
         assert r.status_code==502
         assert r.json()['detail']['transport']['direct_status']==502
         assert 'secret' not in r.text
+
+
+def test_planning_layers_missing_key_fails_fast():
+    payload = {'geometry': SITE, 'layer_ids': ['LT_C_UQ111']}
+    with patch.object(app, '_vworld_key', return_value=''):
+        r = TestClient(app.app).post('/api/spatial/planning-layers', json=payload)
+    assert r.status_code == 502
+    detail = r.json().get('detail', '')
+    assert 'VWORLD_API_KEY' in detail
+    assert 'Environment' in detail
+
+
+def test_force_retry_bypasses_cooldown():
+    endpoint = app.urlparse(app.VWORLD_DATA_URL).netloc + app.urlparse(app.VWORLD_DATA_URL).path
+    app._VWORLD_FAILURES[endpoint] = {'count': 3, 'until': app.time.monotonic() + 30}
+    with patch.object(app.requests, 'get', return_value=response()) as get:
+        with pytest.raises(app.VWorldTransportError, match='COOLDOWN'):
+            app._vworld_get(app.VWORLD_DATA_URL, {'key': 'secret'})
+        assert get.call_count == 0
+        _, route = app._vworld_get(app.VWORLD_DATA_URL, {'key': 'secret'}, force_retry=True)
+        assert route == 'direct'
+        assert get.call_count == 1
+    assert endpoint not in app._VWORLD_FAILURES
+
+
+def test_direct_and_proxy_keep_independent_timeout_tuples():
+    with patch.object(app.requests, 'get', side_effect=[requests.ConnectTimeout('direct timeout'), response()]) as get:
+        _, route = app._vworld_get(
+            app.VWORLD_DATA_URL,
+            {'key': 'secret'},
+            timeout=(4.0, 21.0),
+            proxy_timeout=(5.0, 25.0),
+            force_retry=True,
+        )
+    assert route == 'vworld_proxy'
+    assert get.call_count == 2
+    assert get.call_args_list[0].kwargs['timeout'] == (4.0, 21.0)
+    assert get.call_args_list[1].kwargs['timeout'] == (5.0, 25.0)
+
+
+def test_vworld_slot_count_defaults_and_clamps():
+    with patch.dict(app.os.environ, {}, clear=False):
+        app.os.environ.pop('VWORLD_SLOTS', None)
+        assert app._vworld_slot_count() == 2
+    with patch.dict(app.os.environ, {'VWORLD_SLOTS': '3'}, clear=False):
+        assert app._vworld_slot_count() == 3
+    with patch.dict(app.os.environ, {'VWORLD_SLOTS': '99'}, clear=False):
+        assert app._vworld_slot_count() == 3
+    with patch.dict(app.os.environ, {'VWORLD_SLOTS': 'bad'}, clear=False):
+        assert app._vworld_slot_count() == 2
+
+
+def test_retry_button_path_sends_force_retry():
+    html = Path('app.html').read_text(encoding='utf-8')
+    assert "force_retry:options.forceRetry===true" in html
+    assert "fetchPlanningBatch(batch,activeGeometry,{forceRetry:retryOnly})" in html
+    assert "retryFailedPlanningLayers(){return analyzePlanningGIS({retryFailedOnly:true});}" in html
+
+
+def test_zoning_missing_key_fails_fast():
+    with patch.object(app, '_vworld_key', return_value=''):
+        r = TestClient(app.app).post('/api/spatial/zoning', json={'geometry': SITE})
+    assert r.status_code == 502
+    assert 'VWORLD_API_KEY' in r.json().get('detail', '')
+
+
+def test_planning_force_retry_reaches_worker_thread():
+    seen = []
+    def fake_result(layer_id, geometry):
+        seen.append(app._planning_request_force_retry())
+        return {
+            'layer_id': layer_id, 'status': 'SUCCESS_EMPTY', 'feature_count': 0,
+            'features': [], 'error': '', 'attempts': 1, 'route': 'direct',
+            'direct_error': '', 'proxy_status': None, 'domain_sent': '',
+            'elapsed_ms': 0, 'cache_hit': False,
+        }
+    with patch.object(app, '_vworld_key', return_value='secret'), patch.object(app, '_planning_layer_result', side_effect=fake_result):
+        r = TestClient(app.app).post('/api/spatial/planning-layers', json={
+            'geometry': SITE, 'layer_ids': ['LT_C_UQ111'], 'force_retry': True,
+        })
+    assert r.status_code == 200
+    assert seen == [True]
+
+
+def test_planning_transport_failure_is_not_multiplied_by_outer_retry_loop():
+    with patch.object(app, '_fetch_planning_layer_once', side_effect=app.PlanningLayerFetchError(
+        'VWORLD_UPSTREAM_UNAVAILABLE', retryable=False, route='vworld_proxy'
+    )) as fetch:
+        result = app._planning_layer_result('LT_C_UQ111', SITE)
+    assert result['status'] == 'ERROR'
+    assert result['attempts'] == 1
+    assert fetch.call_count == 1
