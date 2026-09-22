@@ -275,6 +275,16 @@ def _vworld_key() -> str:
     return (os.getenv("VWORLD_API_KEY") or "").strip()
 
 
+def _vworld_client_key() -> str:
+    """Browser-side VWorld key. Optional dedicated key, otherwise reuse server key.
+
+    The browser key is necessarily visible to the browser. Operators may set
+    VWORLD_CLIENT_KEY to a domain-restricted VWorld key; existing deployments
+    remain compatible because VWORLD_API_KEY is used when it is absent.
+    """
+    return (os.getenv("VWORLD_CLIENT_KEY") or _vworld_key() or "").strip()
+
+
 def _require_vworld_key() -> str:
     """Fail fast at public VWorld-backed API entry points when the server key is missing."""
     key = _vworld_key()
@@ -345,10 +355,45 @@ def _last_vworld_diagnostic() -> Dict[str, Any]:
 _VWORLD_SLOTS = threading.BoundedSemaphore(_vworld_slot_count())
 _VWORLD_FAILURE_LOCK = threading.Lock()
 _VWORLD_FAILURES: Dict[str, Dict[str, Any]] = {}
+# R22: one dual-route transport failure opens a short server-wide VWorld circuit.
+# This prevents a 40~50 parcel site from repeating the same dead upstream call.
+_VWORLD_GLOBAL_CIRCUIT: Dict[str, Any] = {
+    "until": 0.0, "reason": "", "endpoint": "", "opened_at": 0.0,
+}
+VWORLD_GLOBAL_CIRCUIT_SEC = max(5, min(int(os.getenv("VWORLD_GLOBAL_CIRCUIT_SEC", "30")), 120))
 
 
 class VWorldTransportError(RuntimeError):
     pass
+
+
+def _vworld_circuit_snapshot() -> Dict[str, Any]:
+    now = time.monotonic()
+    with _VWORLD_FAILURE_LOCK:
+        state = dict(_VWORLD_GLOBAL_CIRCUIT)
+    remaining = max(0.0, float(state.get("until") or 0.0) - now)
+    return {
+        "open": remaining > 0,
+        "retry_after_seconds": math.ceil(remaining) if remaining > 0 else 0,
+        "reason": str(state.get("reason") or ""),
+        "endpoint": str(state.get("endpoint") or ""),
+    }
+
+
+def _open_vworld_circuit(endpoint: str, reason: str) -> None:
+    now = time.monotonic()
+    with _VWORLD_FAILURE_LOCK:
+        _VWORLD_GLOBAL_CIRCUIT.update({
+            "until": now + float(VWORLD_GLOBAL_CIRCUIT_SEC),
+            "reason": str(reason or "VWORLD_UPSTREAM_UNAVAILABLE")[:240],
+            "endpoint": str(endpoint or ""),
+            "opened_at": now,
+        })
+
+
+def _clear_vworld_circuit() -> None:
+    with _VWORLD_FAILURE_LOCK:
+        _VWORLD_GLOBAL_CIRCUIT.update({"until": 0.0, "reason": "", "endpoint": "", "opened_at": 0.0})
 
 
 def _vworld_timeout_tuple(value: Any, *, connect_default: float) -> tuple[float, float]:
@@ -403,6 +448,18 @@ def _vworld_get(
     def check_cooldown():
         if force_retry:
             return
+        global_state = _vworld_circuit_snapshot()
+        if global_state.get("open"):
+            remaining = int(global_state.get("retry_after_seconds") or 0)
+            diagnostic.update(
+                route="global_circuit", retry_after_seconds=remaining,
+                circuit_endpoint=global_state.get("endpoint"),
+                circuit_reason=global_state.get("reason"),
+            )
+            record()
+            raise VWorldTransportError(
+                f"VWORLD_CIRCUIT_OPEN · 외부연결 장애 확인 · {remaining}초 후 재확인 · 미확인 유지"
+            )
         with _VWORLD_FAILURE_LOCK:
             state = _VWORLD_FAILURES.get(endpoint, {})
             remaining = float(state.get("until", 0)) - time.monotonic()
@@ -442,6 +499,7 @@ def _vworld_get(
                 if resp.status_code < 500 and not html_response:
                     with _VWORLD_FAILURE_LOCK:
                         _VWORLD_FAILURES.pop(endpoint, None)
+                    _clear_vworld_circuit()
                     record()
                     return resp, route
                 diagnostic[prefix + "_error"] = f"HTTP_{resp.status_code}" if resp.status_code >= 500 else "NON_DATA_HTML"
@@ -454,6 +512,12 @@ def _vworld_get(
             state["count"] += 1
             if state["count"] >= 3:
                 state["until"] = time.monotonic() + 30
+        _open_vworld_circuit(
+            endpoint,
+            f"direct={diagnostic['direct_error']} · proxy={diagnostic['proxy_error']}",
+        )
+        diagnostic["global_circuit_opened"] = True
+        diagnostic["global_circuit_seconds"] = VWORLD_GLOBAL_CIRCUIT_SEC
         record()
         logger.warning(
             "VWorld transport failed endpoint=%s direct=%s proxy=%s elapsed_ms=%s",
@@ -1830,7 +1894,13 @@ def _land_ledger_cache_get(pnu: str) -> Optional[Dict[str, Any]]:
 
 def _land_ledger_cache_put(pnu: str, payload: Dict[str, Any]) -> None:
     record = payload.get("record")
-    ttl = LAND_LEDGER_CACHE_TTL_POSITIVE_SEC if isinstance(record, dict) else LAND_LEDGER_CACHE_TTL_NEGATIVE_SEC
+    if isinstance(record, dict):
+        ttl = LAND_LEDGER_CACHE_TTL_POSITIVE_SEC
+    elif payload.get("external_upstream_error"):
+        # Do not preserve a VWorld outage as a five-minute negative fact.
+        ttl = min(30, LAND_LEDGER_CACHE_TTL_NEGATIVE_SEC)
+    else:
+        ttl = LAND_LEDGER_CACHE_TTL_NEGATIVE_SEC
     cached = dict(payload)
     cached["record"] = dict(record) if isinstance(record, dict) else None
     cached["cache_hit"] = False
@@ -1857,6 +1927,15 @@ def _resolve_land_ledger_uncached(pnu: str) -> Dict[str, Any]:
         full_sources.append(("data_go_ladfrl", _server_land_ledger_legacy_data_go))
 
     attempts: List[Dict[str, Any]] = []
+    circuit_before = _vworld_circuit_snapshot()
+    if circuit_before.get("open"):
+        full_sources = [(name, fn) for name, fn in full_sources if not name.startswith("vworld_")]
+        if _vworld_key():
+            attempts.append({
+                "source": "vworld_ladfrl", "ok": False, "skipped": "VWORLD_CIRCUIT_OPEN",
+                "retry_after_seconds": circuit_before.get("retry_after_seconds", 0),
+                "completed_ms": round((time.perf_counter()-started)*1000.0, 1),
+            })
     if full_sources:
         futures = {
             LAND_LEDGER_SOURCE_EXECUTOR.submit(fn, pnu, 6): name
@@ -1882,17 +1961,30 @@ def _resolve_land_ledger_uncached(pnu: str) -> Dict[str, Any]:
                     "attempts": attempts,
                     "elapsed_ms": round((time.perf_counter()-started)*1000.0, 1),
                     "cache_hit": False,
+                    "external_upstream_error": bool(_vworld_circuit_snapshot().get("open")),
+                    "vworld_circuit": _vworld_circuit_snapshot(),
                 }
 
     # Full ledger is preferred over characteristics.  Characteristics is only a
     # fallback for area/category fields and therefore never races ahead of a
     # still-possible full ledger result.
-    char_record = _server_land_characteristics_vworld(pnu, 6)
-    attempts.append({
-        "source": "vworld_land_characteristics",
-        "ok": bool(char_record),
-        "completed_ms": round((time.perf_counter()-started)*1000.0, 1),
-    })
+    circuit_after_full = _vworld_circuit_snapshot()
+    if _vworld_key() and not circuit_after_full.get("open"):
+        char_record = _server_land_characteristics_vworld(pnu, 6)
+        attempts.append({
+            "source": "vworld_land_characteristics",
+            "ok": bool(char_record),
+            "completed_ms": round((time.perf_counter()-started)*1000.0, 1),
+        })
+    else:
+        char_record = None
+        if _vworld_key():
+            attempts.append({
+                "source": "vworld_land_characteristics", "ok": False, "skipped": "VWORLD_CIRCUIT_OPEN",
+                "retry_after_seconds": circuit_after_full.get("retry_after_seconds", 0),
+                "completed_ms": round((time.perf_counter()-started)*1000.0, 1),
+            })
+    final_circuit = _vworld_circuit_snapshot()
     return {
         "record": char_record,
         "dataset": "토지특성정보" if char_record is not None else "토지임야정보(속성정보)",
@@ -1901,6 +1993,8 @@ def _resolve_land_ledger_uncached(pnu: str) -> Dict[str, Any]:
         "attempts": attempts,
         "elapsed_ms": round((time.perf_counter()-started)*1000.0, 1),
         "cache_hit": False,
+        "external_upstream_error": bool(final_circuit.get("open")),
+        "vworld_circuit": final_circuit,
     }
 
 
@@ -3980,7 +4074,11 @@ def analyze_biotope_intersections(geometry: Dict[str, Any]) -> Dict[str, Any]:
     if not layers.get("available"):
         raise FileNotFoundError(str(layers.get("reason") or "비오톱1등급 원본 미설치"))
     site = shape(geometry)
-    if site.geom_type not in {"Polygon", "MultiPolygon"} or site.is_empty or not site.is_valid:
+    if site.geom_type not in {"Polygon", "MultiPolygon"} or site.is_empty:
+        raise ValueError("유효한 Polygon 또는 MultiPolygon 구역계가 필요합니다.")
+    if not site.is_valid:
+        site = site.buffer(0)
+    if site.is_empty or not site.is_valid or site.geom_type not in {"Polygon", "MultiPolygon"}:
         raise ValueError("유효한 Polygon 또는 MultiPolygon 구역계가 필요합니다.")
     tree = layers.get("tree")
     rows = layers.get("rows") or []
@@ -4159,7 +4257,11 @@ def analyze_forest_classification_intersections(geometry: Dict[str, Any]) -> Dic
     if not layers.get("available"):
         raise FileNotFoundError(str(layers.get("reason") or "서울 산지구분도 원본 미설치"))
     site = shape(geometry)
-    if site.geom_type not in {"Polygon", "MultiPolygon"} or site.is_empty or not site.is_valid:
+    if site.geom_type not in {"Polygon", "MultiPolygon"} or site.is_empty:
+        raise ValueError("유효한 Polygon 또는 MultiPolygon 구역계가 필요합니다.")
+    if not site.is_valid:
+        site = site.buffer(0)
+    if site.is_empty or not site.is_valid or site.geom_type not in {"Polygon", "MultiPolygon"}:
         raise ValueError("유효한 Polygon 또는 MultiPolygon 구역계가 필요합니다.")
     public_result = _forest_class_intersection(site, layers, "public_interest_forest")
     forestry_result = _forest_class_intersection(site, layers, "forestry_forest")
@@ -7245,7 +7347,7 @@ def admin_dashboard(request: Request, _: bool = Depends(_admin_auth)):
 def home():
     # VWorld 공식 웹 샘플처럼 브라우저에서 Data API를 직접 호출한다.
     # 키는 GitHub 소스에는 없고 Render 환경변수에서 런타임에 주입된다.
-    html = _index_html().replace("__VWORLD_CLIENT_KEY__", _vworld_key())
+    html = _index_html().replace("__VWORLD_CLIENT_KEY__", _vworld_client_key())
     return HTMLResponse(
         content=html,
         headers={
@@ -7636,6 +7738,9 @@ def health():
         "engine": "site_fact_store_v2.5.0_r11",
         "map": "leaflet-draw",
         "vworld_configured": vworld_ready(),
+        "vworld_client_configured": bool(_vworld_client_key()),
+        "vworld_client_key_source": "VWORLD_CLIENT_KEY" if (os.getenv("VWORLD_CLIENT_KEY") or "").strip() else ("VWORLD_API_KEY" if _vworld_key() else None),
+        "planning_browser_fallback_patch_marker": "R23_SERVER_FIRST_BROWSER_FALLBACK_20260923",
         "build_marker": APP_BUILD_MARKER,
         "pipeline_patch_marker": "R18_PIPELINE_STABILIZATION_20260910",
         "regulatory_disaster_vworld_patch_marker": "R15_DISASTER_BUNDLES_VWORLD_DOMAIN_DIAGNOSTICS_20260921",
@@ -7647,6 +7752,8 @@ def health():
         "analytics_storage": _analytics_storage_mode(),
         "admin_configured": bool(os.getenv("ADMIN_PASSWORD", "")),
         "vworld_domain": _vworld_domain() if vworld_ready() else None,
+        "vworld_circuit": _vworld_circuit_snapshot(),
+        "external_circuit_patch_marker": "R22_VWORLD_GLOBAL_CIRCUIT_20260922",
         "parcel_auto": "browser_direct_ready" if vworld_ready() else "needs_VWORLD_API_KEY",
         "building_spatial_auto": "LT_C_SPBD_browser_direct_ready" if vworld_ready() else "needs_VWORLD_API_KEY",
         "building_hub": "ready" if building_hub_ready() else "needs_BUILDING_HUB_API_KEY",
@@ -7668,7 +7775,7 @@ def health():
         "location_map": "boundary-only main map; parcel/building diagrams rendered in compact side mini maps",
         "reconstruction_gate": "requires apartment-complex evidence or explicit reconstruction target confirmation",
         "site_status_card": "neutral raw land/building facts + visible regime-specific aging facts + scheme-specific supplemental facts",
-        "planning_gis": "VWorld zoning/district/facility/district-unit-plan polygon intersection engine",
+        "planning_gis": "VWorld zoning/district/facility/district-unit-plan polygon intersection engine; server first, browser JSONP fallback on server/upstream failure",
         "vworld_planning_domain_policy": "browser origin accepted only when request Host matches; fallback VWORLD_DOMAIN/RENDER_EXTERNAL_HOSTNAME",
         "disaster_bundled_landslide_raster": os.path.isfile(LANDSLIDE_RISK_RLE_PATH) and os.path.isfile(LANDSLIDE_RISK_META_PATH),
         "disaster_bundled_risk_district": os.path.isfile(NATURAL_DISASTER_RISK_DISTRICT_ZIP),
@@ -8172,6 +8279,8 @@ def land_ledger_one(inp: LandLedgerOneInput):
         "selected_source": resolved.get("selected_source"),
         "elapsed_ms": resolved.get("elapsed_ms"),
         "attempts": resolved.get("attempts") or [],
+        "external_upstream_error": bool(resolved.get("external_upstream_error")),
+        "vworld_circuit": resolved.get("vworld_circuit") or _vworld_circuit_snapshot(),
         "source": {
             "provider": "국토교통부",
             "dataset": dataset,
@@ -9091,6 +9200,12 @@ def industrial_park_intersections(inp: GeometryInput):
         return analyze_industrial_park_intersections(inp.geometry)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except VWorldTransportError as exc:
+        logging.warning("industrial park upstream unavailable: %s", exc)
+        raise HTTPException(
+            status_code=503,
+            detail=f"EXTERNAL_UPSTREAM_ERROR · VWorld LT_C_DAMDAN · {str(exc)[:220]}",
+        ) from exc
     except Exception as exc:
         logging.exception("industrial park intersection failed")
         raise HTTPException(status_code=503, detail=f"산업단지 전용경계 조회 오류: {str(exc)[:240]}") from exc

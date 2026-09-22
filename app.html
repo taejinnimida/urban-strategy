@@ -7053,7 +7053,7 @@ function planningIntersectionArea(zoneFeature,f){
 async function fetchPlanningSpec(spec,geometry){
   try{
     const rows=await fetchPlanningBatch([spec],geometry);
-    return rows[0]||{spec,features:[],error:'서버 응답에 레이어 결과 없음',status:'ERROR'};
+    return rows[0]||{spec,features:[],error:'도시관리계획 레이어 결과 없음',status:'ERROR'};
   }catch(e){
     return {spec,features:[],error:String(e.message||e),errorCode:e?.code||'',status:'ERROR',attempts:1,route:'',elapsed_ms:0};
   }
@@ -7062,17 +7062,68 @@ async function fetchPlanningSpec(spec,geometry){
 function planningGeometrySignature(geometry){
   try{return JSON.stringify(geometry||null);}catch(e){return String(boundaryReferenceMetrics?.area_m2||'none');}
 }
+function planningClientKeyReady(){
+  return !!VWORLD_CLIENT_KEY&&!String(VWORLD_CLIENT_KEY).startsWith('__');
+}
+function planningServerFailureAllowsBrowserFallback(value){
+  if(!planningClientKeyReady())return false;
+  const status=Number(value?.http_status||0);
+  // 요청형식/구역계 오류는 브라우저에서 반복해도 동일하므로 fallback하지 않는다.
+  if(status===400||status===404||status===422)return false;
+  const text=String(value?.error||value?.message||value?.detail||value?.direct_error||value||'');
+  if(/유효한 Polygon|유효하지 않은 구역계|허용되지 않은 도시관리계획 레이어|묶음은 최대/.test(text))return false;
+  // 서버 자체 오류, VWorld upstream/circuit/호출제한, 또는 서버 통신 오류는 브라우저 직접조회로 우회한다.
+  return !status||status===401||status===403||status===429||status>=500||/VWORLD_|VWorld|Connection|Timeout|timeout|HTTP[_ ]?5\d\d|proxy|upstream|circuit|호출제한|연결/.test(text);
+}
+async function fetchPlanningBrowserFallback(spec,geometry,serverMeta={}){
+  const started=(typeof performance!=='undefined'&&performance.now)?performance.now():Date.now();
+  const serverError=String(serverMeta?.error||serverMeta?.message||'서버 VWorld 조회 실패');
+  try{
+    const features=await fetchSpatialFeaturesBrowser(spec.id,geometry,['unq_mnno','UNQ_MNNO','objt_id','OBJT_ID','fid','FID','gid','GID']);
+    const elapsed=((typeof performance!=='undefined'&&performance.now)?performance.now():Date.now())-started;
+    return {
+      spec,features,error:null,errorCode:'',status:features.length?'SUCCESS_DATA':'SUCCESS_EMPTY',
+      attempts:Number(serverMeta?.attempts||1)+1,route:'browser_direct_fallback',
+      direct_error:serverMeta?.direct_error||'',proxy_status:serverMeta?.proxy_status??null,domain_sent:VWORLD_CLIENT_DOMAIN,
+      elapsed_ms:Number(serverMeta?.elapsed_ms||0)+Math.max(0,Math.round(elapsed)),cache_hit:false,
+      fallback_used:true,server_error:serverError
+    };
+  }catch(e){
+    const elapsed=((typeof performance!=='undefined'&&performance.now)?performance.now():Date.now())-started;
+    const browserError=String(e?.message||e||'브라우저 VWorld 조회 실패');
+    return {
+      spec,features:[],error:`서버 조회 실패: ${serverError} · 브라우저 fallback 실패: ${browserError}`,errorCode:'PLANNING_BROWSER_FALLBACK_FAILED',status:'ERROR',
+      attempts:Number(serverMeta?.attempts||1)+1,route:'server_then_browser_failed',
+      direct_error:serverMeta?.direct_error||'',proxy_status:serverMeta?.proxy_status??null,domain_sent:VWORLD_CLIENT_DOMAIN,
+      elapsed_ms:Number(serverMeta?.elapsed_ms||0)+Math.max(0,Math.round(elapsed)),cache_hit:false,
+      fallback_used:true,server_error:serverError,browser_error:browserError
+    };
+  }
+}
 async function fetchPlanningBatch(specs,geometry,options={}){
   if(!Array.isArray(specs)||!specs.length)return [];
   if(specs.length>5)throw new Error('도시관리계획 묶음은 최대 5개 레이어입니다.');
-  const data=await fetchBackendJson('/api/spatial/planning-layers',{
-    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry,layer_ids:specs.map(x=>x.id),client_origin:window.location.origin,force_retry:options.forceRetry===true})
-  });
+  let data=null;
+  try{
+    data=await fetchBackendJson('/api/spatial/planning-layers',{
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry,layer_ids:specs.map(x=>x.id),client_origin:window.location.origin,force_retry:options.forceRetry===true})
+    });
+  }catch(e){
+    if(!planningServerFailureAllowsBrowserFallback(e))throw e;
+    const fallbackRows=await mapLimit(specs,2,spec=>fetchPlanningBrowserFallback(spec,geometry,{error:String(e?.message||e),attempts:1,route:'server_endpoint_error'}));
+    return fallbackRows.map((row,i)=>row||{spec:specs[i],features:[],error:'브라우저 fallback 결과 없음',errorCode:'PLANNING_BROWSER_FALLBACK_EMPTY',status:'ERROR',attempts:2,route:'server_then_browser_failed',elapsed_ms:0});
+  }
   const byId=new Map((data?.results||[]).map(x=>[x.layer_id,x]));
-  return specs.map(spec=>{
+  const rows=specs.map(spec=>{
     const row=byId.get(spec.id)||{status:'ERROR',feature_count:0,features:[],error:'레이어 결과 누락',attempts:1,route:'',elapsed_ms:0};
     return {spec,features:Array.isArray(row.features)?row.features:[],error:row.status==='ERROR'?(row.error||'조회 실패'):null,errorCode:row.status==='ERROR'?'PLANNING_LAYER_ERROR':'',status:row.status||'ERROR',attempts:Number(row.attempts||1),route:row.route||'',direct_error:row.direct_error||'',proxy_status:row.proxy_status??null,domain_sent:row.domain_sent||data?.client_domain||'',elapsed_ms:Number(row.elapsed_ms||0),cache_hit:!!row.cache_hit};
   });
+  const fallbackIndexes=[];
+  for(let i=0;i<rows.length;i++){if(rows[i]?.status==='ERROR'&&planningServerFailureAllowsBrowserFallback(rows[i]))fallbackIndexes.push(i);}
+  if(!fallbackIndexes.length)return rows;
+  const fallbackRows=await mapLimit(fallbackIndexes,2,idx=>fetchPlanningBrowserFallback(specs[idx],geometry,rows[idx]));
+  for(let i=0;i<fallbackIndexes.length;i++){const idx=fallbackIndexes[i];if(fallbackRows[i])rows[idx]=fallbackRows[i];}
+  return rows;
 }
 function updatePlanningCompleteness(){
   const ids=PLANNING_LAYER_SPECS.map(x=>x.id),status=planningAnalysis.layerStatus||{};
@@ -7096,7 +7147,7 @@ function planningLayerDisplayStatus(layerId){
 function recordPlanningLayerResults(results){
   for(const row of results||[]){
     const id=row?.spec?.id;if(!id)continue;
-    const next={status:row.status||'ERROR',count:Number(row.features?.length||0),error:row.error||'',attempts:Number(row.attempts||1),route:row.route||'',direct_error:row.direct_error||'',proxy_status:row.proxy_status??null,domain_sent:row.domain_sent||'',elapsed_ms:Number(row.elapsed_ms||0),cache_hit:!!row.cache_hit};
+    const next={status:row.status||'ERROR',count:Number(row.features?.length||0),error:row.error||'',attempts:Number(row.attempts||1),route:row.route||'',direct_error:row.direct_error||'',proxy_status:row.proxy_status??null,domain_sent:row.domain_sent||'',elapsed_ms:Number(row.elapsed_ms||0),cache_hit:!!row.cache_hit,fallback_used:row.fallback_used===true,server_error:row.server_error||'',browser_error:row.browser_error||''};
     const prev=planningAnalysis.layerStatus?.[id];
     if(next.status==='ERROR'&&['SUCCESS_DATA','SUCCESS_EMPTY'].includes(prev?.status))continue;
     planningAnalysis.layerStatus[id]=next;
@@ -7613,7 +7664,7 @@ async function analyzePlanningGIS(options={}){
   const btn=document.getElementById('planningReloadBtn');
 
   if(conn){conn.textContent='도시계획GIS 조회 중';conn.className='conn planned';}
-  if(status)status.textContent='도시관리계획 23개 레이어를 서버 중계로 순차 조회합니다.';
+  if(status)status.textContent='도시관리계획 23개 레이어를 서버 우선 조회하고, 서버 장애 시 브라우저 VWorld로 보완합니다.';
   if(live)live.textContent='도시계획시설 조회 중...';
   if(btn)btn.disabled=true;
 
@@ -7689,9 +7740,10 @@ async function analyzePlanningGIS(options={}){
     const zoningKnown=!zoningLayerError&&zones.length>0&&!!(zones[0]?.name||planningAnalysis.primaryZoning);
     planningAnalysis.loaded=true;planningAnalysis.loading=false;renderPlanningGIS();renderDistrictUnitPlanCurrent();
     if(conn){conn.textContent=planningAnalysis.planningComplete?'도시계획GIS AUTO':'도시계획GIS 일부 미확보';conn.className=planningAnalysis.planningComplete?'conn auto':'conn planned';}
-    if(live)live.textContent=planningAnalysis.planningComplete?'23개 필수 레이어 조회 완료':`미확보 ${[...planningAnalysis.failedLayerIds,...planningAnalysis.notRunLayerIds].join(', ')}`;
+    const browserFallbackCount=Object.values(planningAnalysis.layerStatus||{}).filter(x=>x?.fallback_used===true&&['SUCCESS_DATA','SUCCESS_EMPTY'].includes(x?.status)).length;
+    if(live)live.textContent=planningAnalysis.planningComplete?`23개 필수 레이어 조회 완료${browserFallbackCount?` · 브라우저 보완 ${browserFallbackCount}개`:''}`:`미확보 ${[...planningAnalysis.failedLayerIds,...planningAnalysis.notRunLayerIds].join(', ')}${browserFallbackCount?` · 브라우저 보완 ${browserFallbackCount}개`:''}`;
     runSchemeChecksWhenCoreReady();
-    return {queried:planningAnalysis.requiredLayerCount,ok:planningAnalysis.completedLayerCount,error_count:planningAnalysis.failedLayerIds.length,not_run_count:planningAnalysis.notRunLayerIds.length,planning_complete:planningAnalysis.planningComplete,success_data:planningAnalysis.successDataLayerCount,success_empty:planningAnalysis.successEmptyLayerCount,failed_layer_ids:[...planningAnalysis.failedLayerIds],zoning_count:zones.length,zoning_known:zoningKnown,zoning_primary:planningAnalysis.primaryZoning||''};
+    return {queried:planningAnalysis.requiredLayerCount,ok:planningAnalysis.completedLayerCount,error_count:planningAnalysis.failedLayerIds.length,not_run_count:planningAnalysis.notRunLayerIds.length,planning_complete:planningAnalysis.planningComplete,success_data:planningAnalysis.successDataLayerCount,success_empty:planningAnalysis.successEmptyLayerCount,browser_fallback_count:browserFallbackCount,failed_layer_ids:[...planningAnalysis.failedLayerIds],zoning_count:zones.length,zoning_known:zoningKnown,zoning_primary:planningAnalysis.primaryZoning||''};
   }catch(e){
     if(token!==planningAnalysis.requestToken)return {cancelled:true,error:String(e.message||e)};
     planningAnalysis.loading=false;
@@ -8960,7 +9012,7 @@ async function runAllAutoAnalyses(options={}){
   analysisGeometry=activeGeometry?JSON.parse(JSON.stringify(activeGeometry)):null;
 
   // 토지·건축 기본 FACT는 서로 다른 자료원이므로 앞단에서 확보한다.
-  results.push(await safeAnalysisStep('토지대장',analyzeLandLedger,180000,{classify:v=>({status:v?.complete?'fulfilled':v?.official_area_count>0?'partial':'rejected',detail:`공식면적 ${v?.official_area_count||0}/${v?.requested_pnu_count||0}필지 · 미확인 ${v?.missing_official_area_count||0}필지`})}));
+  results.push(await safeAnalysisStep('토지대장',analyzeLandLedger,180000,{classify:v=>({status:v?.complete?'fulfilled':v?.official_area_count>0?'partial':'rejected',detail:`공식면적 ${v?.official_area_count||0}/${v?.requested_pnu_count||0}필지 · 미확인 ${v?.missing_official_area_count||0}필지${v?.external_upstream_error?' · VWorld 외부서비스 장애':''}`})}));
   results.push(await safeAnalysisStep('건축물 공간',analyzeBuildings,180000,{classify:v=>({status:['SUCCESS_DATA','SUCCESS_EMPTY'].includes(v?.status)?'fulfilled':'rejected',detail:v?.status==='SUCCESS_EMPTY'?'정상조회 · 건축물 없음':`공간건물 ${v?.feature_count||0}동`})}));
 
   // 사업판정에 필요한 용도지역만 우선 확정한다. 나머지 22개 도시관리계획 레이어는 보강 FACT이며 전체 판정 Gate가 아니다.
@@ -9104,7 +9156,7 @@ async function runSiteReview(){
         const errorKind=String(step?.error_kind||'').toUpperCase();
         // 429는 즉시 재호출할수록 제한시간이 늘어날 수 있으므로 13번 마지막 재분석 대상에서 제외한다.
         const noRetryDataStates=['NO_DATA','UNKNOWN','NOT_IMPLEMENTED'];
-        if(/HTTP 404|VWORLD_COOLDOWN|VWORLD_QUEUE_BUSY/.test(String(step?.reason||step?.detail||'')))return false;
+        if(/HTTP 404|VWORLD_COOLDOWN|VWORLD_QUEUE_BUSY|VWORLD_CIRCUIT_OPEN|EXTERNAL_UPSTREAM_ERROR/.test(String(step?.reason||step?.detail||'')))return false;
         return errorKind!=='RATE_LIMIT'&&dataState!=='RATE_LIMIT'&&!noRetryDataStates.includes(dataState);
       });
       const retryLabels=[...new Set(retryableFailed.map(x=>x.label).filter(label=>analysisStepRegistry.has(label)))];
@@ -17830,9 +17882,14 @@ async function fetchLandLedgerStatus(pnu){
   try{
     const d=await fetchBackendJson('/api/land/ledger-one',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pnu:String(pnu)})});
     const area=validPositiveNumber(d?.record?.lndpclAr);
-    if(d?.record&&area!=null)return {pnu:String(pnu),status:'SUCCESS_DATA',record:{...d.record,lndpclAr:area},error:'',route:d.selected_source||'server_proxy',elapsed_ms:Date.now()-started};
+    if(d?.record&&area!=null)return {pnu:String(pnu),status:'SUCCESS_DATA',record:{...d.record,lndpclAr:area},error:'',route:d.selected_source||'server_proxy',elapsed_ms:Date.now()-started,external_upstream_error:!!d?.external_upstream_error};
+    if(d?.external_upstream_error){
+      const retry=Number(d?.vworld_circuit?.retry_after_seconds||0);
+      errors.push(`VWorld 외부서비스 장애${retry>0?` · ${retry}초 후 재확인`:''}`);
+      if(d?.vworld_ready===true)return {pnu:String(pnu),status:'ERROR',record:null,error:errors.join(' / '),route:'server_proxy',elapsed_ms:Date.now()-started,external_upstream_error:true};
+    }
     errors.push(d?.record?'공식면적 lndpclAr 미확인':'정상응답이나 공식 토지대장 레코드 없음');
-    if(d?.vworld_ready===true)return {pnu:String(pnu),status:'ERROR',record:null,error:errors.join(' / '),route:'server_proxy',elapsed_ms:Date.now()-started};
+    if(d?.vworld_ready===true)return {pnu:String(pnu),status:'ERROR',record:null,error:errors.join(' / '),route:'server_proxy',elapsed_ms:Date.now()-started,external_upstream_error:false};
   }catch(e){errors.push(`서버 프록시 오류: ${String(e.message||e)}`);if(e?.code==='RATE_LIMIT'||e?.http_status===429)return {pnu:String(pnu),status:'ERROR',record:null,error:errors.join(' / '),route:'server_proxy',elapsed_ms:Date.now()-started};}
   try{
     const rec=await fetchLandLedgerBrowser(pnu),area=validPositiveNumber(rec?.lndpclAr);
@@ -17985,9 +18042,11 @@ async function analyzeLandLedger(){
   renderParcelStatusModal();
   const byPnu={};for(const row of results){if(row?.pnu)byPnu[row.pnu]=row;}
   const successful=results.filter(x=>x?.status==='SUCCESS_DATA').map(x=>x.pnu),failedPnus=results.filter(x=>x?.status!=='SUCCESS_DATA').map(x=>x?.pnu).filter(Boolean);
-  landLedgerQueryState={loaded:true,complete:successful.length===pnus.length,geometry_signature:geometrySignature,queried_pnus:pnus.length,requested_pnus:[...pnus],successful_pnus:successful,empty_pnus:[],failed_pnus:failedPnus,by_pnu:byPnu,error_count:failedPnus.length,errors:results.filter(x=>x?.status!=='SUCCESS_DATA').map(x=>({pnu:x?.pnu,error:x?.error||'공식면적 미확인'})),official_area_count:official,missing_official_area_count:pnus.length-official,geometry_fallback_count:geometryFallback,preliminary_small_count:preliminarySmall};
+  const externalUpstreamError=results.some(x=>x?.external_upstream_error===true);
+  landLedgerQueryState={loaded:true,complete:successful.length===pnus.length,geometry_signature:geometrySignature,queried_pnus:pnus.length,requested_pnus:[...pnus],successful_pnus:successful,empty_pnus:[],failed_pnus:failedPnus,by_pnu:byPnu,error_count:failedPnus.length,errors:results.filter(x=>x?.status!=='SUCCESS_DATA').map(x=>({pnu:x?.pnu,error:x?.error||'공식면적 미확인'})),official_area_count:official,missing_official_area_count:pnus.length-official,geometry_fallback_count:geometryFallback,preliminary_small_count:preliminarySmall,external_upstream_error:externalUpstreamError};
+  if(externalUpstreamError)summary.innerHTML+=' · <b>VWorld 외부서비스 장애로 반복호출 차단</b>';
   runSchemeChecksWhenCoreReady();
-  return {requested_pnu_count:pnus.length,official_area_count:official,missing_official_area_count:pnus.length-official,error_count:failedPnus.length,complete:landLedgerQueryState.complete,small_parcel_count:landLedgerQueryState.complete?small:null,preliminary_small_count:preliminarySmall};
+  return {requested_pnu_count:pnus.length,official_area_count:official,missing_official_area_count:pnus.length-official,error_count:failedPnus.length,complete:landLedgerQueryState.complete,small_parcel_count:landLedgerQueryState.complete?small:null,preliminary_small_count:preliminarySmall,external_upstream_error:externalUpstreamError};
 }
 
 
