@@ -8118,6 +8118,41 @@ async function updateMeasurementOnly(){
   document.getElementById('mHa').textContent=fmt(a/10000,3)+' ha';
   document.getElementById('mPerimeter').textContent=fmt(per)+' m';
 }
+const R24_BOUNDARY_DXF_PATCH_MARKER='R24_BOUNDARY_TOPOLOGY_DXF_20260923';
+const SELECTED_PARCEL_TOPOLOGY_TOLERANCE_M=0.5;
+function boundaryComponentCount(feature){
+  const g=feature?.geometry;
+  if(!g)return 0;
+  if(g.type==='MultiPolygon')return (g.coordinates||[]).length;
+  return g.type==='Polygon'?1:0;
+}
+function healTinySelectedParcelGaps(feature,toleranceM=SELECTED_PARCEL_TOPOLOGY_TOLERANCE_M){
+  const originalCount=boundaryComponentCount(feature);
+  if(originalCount<=1)return {feature,healed:false,originalCount,componentCount:originalCount,areaDeltaM2:0};
+  try{
+    // VWorld/연속지적 폴리곤 사이의 수 cm~수십 cm 위상오차만 닫는다.
+    // 실제 도로·미선택 필지 같은 의미 있는 이격은 0.5m 허용오차로 연결되지 않는다.
+    const radius=Math.max(0.05,Number(toleranceM||0)/2+0.01);
+    const expanded=turf.buffer(feature,radius,{units:'meters',steps:8});
+    if(!expanded)return {feature,healed:false,originalCount,componentCount:originalCount,areaDeltaM2:0};
+    const expandedCount=boundaryComponentCount(expanded);
+    if(expandedCount>=originalCount)return {feature,healed:false,originalCount,componentCount:originalCount,areaDeltaM2:0};
+    const closed=turf.buffer(expanded,-radius,{units:'meters',steps:8});
+    if(!closed||!['Polygon','MultiPolygon'].includes(closed.geometry?.type))return {feature,healed:false,originalCount,componentCount:originalCount,areaDeltaM2:0};
+    const componentCount=boundaryComponentCount(closed);
+    if(componentCount>=originalCount)return {feature,healed:false,originalCount,componentCount:originalCount,areaDeltaM2:0};
+    const before=turf.area(feature),after=turf.area(closed),areaDeltaM2=Math.abs(after-before);
+    // 위상치유가 구역형상을 과도하게 바꾸는 경우 자동 적용하지 않는다.
+    const maxAreaDelta=Math.max(25,before*0.01);
+    if(!Number.isFinite(areaDeltaM2)||areaDeltaM2>maxAreaDelta){
+      return {feature,healed:false,originalCount,componentCount:originalCount,areaDeltaM2:Number.isFinite(areaDeltaM2)?areaDeltaM2:null,rejected:true};
+    }
+    return {feature:closed,healed:true,originalCount,componentCount,areaDeltaM2};
+  }catch(e){
+    console.warn('[parcel-topology] tiny-gap heal failed',e);
+    return {feature,healed:false,originalCount,componentCount:originalCount,areaDeltaM2:null,error:String(e?.message||e)};
+  }
+}
 async function applySelectedParcelsAsBoundary(){
   const fs=[...selectedParcelPnus].map(k=>parcelFeatureMap.get(k)).filter(Boolean);
   if(!fs.length){alert('포함할 필지를 하나 이상 선택하세요.');return;}
@@ -8128,7 +8163,7 @@ async function applySelectedParcelsAsBoundary(){
       const u=turf.union(merged,next);
       if(u)merged=u;
     }catch(e){
-      // 서로 떨어진 필지는 MultiPolygon으로 결합
+      // union이 위상오차로 실패해도 선택필지 원도형은 잃지 않는다.
       const coords=[];
       const pushGeom=g=>{
         if(g.type==='Polygon')coords.push(g.coordinates);
@@ -8138,9 +8173,11 @@ async function applySelectedParcelsAsBoundary(){
       merged=turf.multiPolygon(coords);
     }
   }
-  const componentCount=merged?.geometry?.type==='MultiPolygon'?(merged.geometry.coordinates||[]).length:1;
+  const topologyHeal=healTinySelectedParcelGaps(merged);
+  if(topologyHeal.healed)merged=topologyHeal.feature;
+  const componentCount=boundaryComponentCount(merged);
   if(componentCount>1){
-    const proceed=window.confirm(`선택필지가 ${componentCount}개의 분리된 구역으로 구성됩니다. 하나의 연속된 사업구역인지 확인하세요. 그래도 구역계로 확정할까요?`);
+    const proceed=window.confirm(`선택필지가 ${componentCount}개의 분리된 구역으로 구성됩니다. 0.5m 이내 지적 위상오차 자동보정 후에도 연결되지 않았습니다. 하나의 연속된 사업구역인지 확인하세요. 그래도 구역계로 확정할까요?`);
     if(!proceed)return;
   }
   pushBoundaryEditHistory('선택필지 구역계 확정');
@@ -8156,9 +8193,10 @@ async function applySelectedParcelsAsBoundary(){
   clearBoundaryAnalysisForNewGeometry({keepParcelSelection:true});
   await updateMeasurementOnly();
   recalcSelectedParcelStats();
-  document.getElementById('result').innerHTML='<div class="empty">선택필지로 구역계를 설정했습니다. ‘검토하기’를 누르면 연속지적·건축물·도시계획·도로 Fact를 수집합니다.</div>';
+  const topologyNote=topologyHeal.healed?` · 지적 위상오차 ${SELECTED_PARCEL_TOPOLOGY_TOLERANCE_M}m 이내 자동보정(${topologyHeal.originalCount}→${topologyHeal.componentCount}구역)` : '';
+  document.getElementById('result').innerHTML=`<div class="empty">선택필지로 구역계를 설정했습니다${topologyNote}. ‘검토하기’를 누르면 연속지적·건축물·도시계획·도로 Fact를 수집합니다.</div>`;
   const legacyRun=document.getElementById('runBtn');if(legacyRun)legacyRun.disabled=false;
-  setSiteReviewStatus('구역계 설정 완료(필지선택) · ‘검토하기’를 눌러 공식 공간분석을 실행하세요.','ready');
+  setSiteReviewStatus(`구역계 설정 완료(필지선택)${topologyNote} · ‘검토하기’를 눌러 공식 공간분석을 실행하세요.`,'ready');
   renderBoundaryParcelSelectionSummary();
   safeSchemeUiStep('compact-ready-parcels',()=>updateCompactInfoRail(),null);
   safeSchemeUiStep('mini-ready-parcels',()=>refreshCompactMiniMaps(),null);
@@ -15022,25 +15060,29 @@ function dxfProject5186(lon,lat){
 function dxfTextValue(v){
   return String(v??'').replace(/[\\\r\n]/g,' ').replace(/[^\x20-\x7E]/g,ch=>`\\U+${ch.charCodeAt(0).toString(16).toUpperCase().padStart(4,'0')}`);
 }
-function dxfAddPolyline(out,coords,layer,closed=true){
+function dxfAddPolyline(out,coords,layer,closed=true,nextHandle=null){
   const pts=(coords||[]).map(c=>dxfProject5186(c[0],c[1]));
   if(pts.length<2)return;
   const same=closed&&pts.length>2&&Math.abs(pts[0][0]-pts[pts.length-1][0])<.001&&Math.abs(pts[0][1]-pts[pts.length-1][1])<.001;
   const arr=same?pts.slice(0,-1):pts;
-  out.push('0','LWPOLYLINE','100','AcDbEntity','8',layer,'100','AcDbPolyline','90',String(arr.length),'70',closed?'1':'0');
+  out.push('0','LWPOLYLINE');
+  if(nextHandle)out.push('5',nextHandle());
+  out.push('100','AcDbEntity','8',layer,'100','AcDbPolyline','90',String(arr.length),'70',closed?'1':'0');
   for(const [x,y] of arr)out.push('10',x.toFixed(3),'20',y.toFixed(3));
 }
-function dxfAddGeometry(out,geometry,layer){
+function dxfAddGeometry(out,geometry,layer,nextHandle=null){
   if(!geometry)return;
-  if(geometry.type==='Polygon')for(const ring of geometry.coordinates||[])dxfAddPolyline(out,ring,layer,true);
-  else if(geometry.type==='MultiPolygon')for(const poly of geometry.coordinates||[])for(const ring of poly||[])dxfAddPolyline(out,ring,layer,true);
-  else if(geometry.type==='LineString')dxfAddPolyline(out,geometry.coordinates||[],layer,false);
-  else if(geometry.type==='MultiLineString')for(const line of geometry.coordinates||[])dxfAddPolyline(out,line,layer,false);
+  if(geometry.type==='Polygon')for(const ring of geometry.coordinates||[])dxfAddPolyline(out,ring,layer,true,nextHandle);
+  else if(geometry.type==='MultiPolygon')for(const poly of geometry.coordinates||[])for(const ring of poly||[])dxfAddPolyline(out,ring,layer,true,nextHandle);
+  else if(geometry.type==='LineString')dxfAddPolyline(out,geometry.coordinates||[],layer,false,nextHandle);
+  else if(geometry.type==='MultiLineString')for(const line of geometry.coordinates||[])dxfAddPolyline(out,line,layer,false,nextHandle);
 }
-function dxfAddText(out,coord,text,layer,height=1.4){
+function dxfAddText(out,coord,text,layer,height=1.4,nextHandle=null){
   if(!coord||text==null||String(text).trim()==='')return;
   const [x,y]=dxfProject5186(coord[0],coord[1]);
-  out.push('0','TEXT','100','AcDbEntity','8',layer,'100','AcDbText','10',x.toFixed(3),'20',y.toFixed(3),'30','0','40',String(height),'1',dxfTextValue(text),'7','Standard','11',x.toFixed(3),'21',y.toFixed(3),'31','0','100','AcDbText');
+  out.push('0','TEXT');
+  if(nextHandle)out.push('5',nextHandle());
+  out.push('100','AcDbEntity','8',layer,'100','AcDbText','10',x.toFixed(3),'20',y.toFixed(3),'30','0','40',String(height),'1',dxfTextValue(text),'50','0','7','Standard','11',x.toFixed(3),'21',y.toFixed(3),'31','0','100','AcDbText');
 }
 function dxfLabelPoint(feature){
   try{return turf.pointOnFeature(turf.feature(feature.geometry,feature.properties||{})).geometry.coordinates;}catch(e){try{return turf.centroid(turf.feature(feature.geometry)).geometry.coordinates;}catch(_e){return null;}}
@@ -15054,20 +15096,46 @@ function buildingCadLabel(feature){
   return [name,use,(floors!==undefined&&floors!==null&&String(floors)!=='')?`지상${floors}층`:null].filter(Boolean).join(' / ');
 }
 function buildReviewBaseDxf(scopeGeometry,parcels,buildings){
-  const out=['0','SECTION','2','HEADER','9','$ACADVER','1','AC1015','9','$INSUNITS','70','6','0','ENDSEC'];
+  // AutoCAD 2000 ASCII DXF. TABLE/record subclass와 handle을 포함해 AutoCAD가 복구 없이 읽을 수 있는 최소 정식 구조로 작성한다.
+  let handleSeq=0x20;
+  const nextHandle=()=>String((handleSeq++).toString(16).toUpperCase());
+  const out=[
+    '0','SECTION','2','HEADER',
+    '9','$ACADVER','1','AC1015',
+    '9','$INSUNITS','70','6',
+    '9','$MEASUREMENT','70','1',
+    '9','$HANDSEED','5','FFFF',
+    '0','ENDSEC'
+  ];
   const layers=[['SITE_BOUNDARY',1],['PARCEL_LINE',7],['PARCEL_TEXT',3],['BUILDING_LINE',5],['BUILDING_TEXT',2]];
-  out.push('0','SECTION','2','TABLES','0','TABLE','2','LAYER','70',String(layers.length));
-  for(const [name,color] of layers)out.push('0','LAYER','2',name,'70','0','62',String(color),'6','CONTINUOUS');
-  out.push('0','ENDTAB','0','ENDSEC','0','SECTION','2','ENTITIES');
-  dxfAddGeometry(out,scopeGeometry,'SITE_BOUNDARY');
+  out.push('0','SECTION','2','TABLES');
+  // CONTINUOUS linetype table
+  out.push('0','TABLE','2','LTYPE','5','2','100','AcDbSymbolTable','70','1');
+  out.push('0','LTYPE','5','10','100','AcDbSymbolTableRecord','100','AcDbLinetypeTableRecord','2','CONTINUOUS','70','0','3','Solid line','72','65','73','0','40','0.0');
+  out.push('0','ENDTAB');
+  // Layer table
+  out.push('0','TABLE','2','LAYER','5','3','100','AcDbSymbolTable','70',String(layers.length));
+  for(let i=0;i<layers.length;i++){
+    const [name,color]=layers[i],handle=(0x11+i).toString(16).toUpperCase();
+    out.push('0','LAYER','5',handle,'100','AcDbSymbolTableRecord','100','AcDbLayerTableRecord','2',name,'70','0','62',String(color),'6','CONTINUOUS');
+  }
+  out.push('0','ENDTAB');
+  // Standard text style table
+  out.push('0','TABLE','2','STYLE','5','4','100','AcDbSymbolTable','70','1');
+  out.push('0','STYLE','5','16','100','AcDbSymbolTableRecord','100','AcDbTextStyleTableRecord','2','Standard','70','0','40','0','41','1','50','0','71','0','42','2.5','3','txt','4','');
+  out.push('0','ENDTAB','0','ENDSEC');
+  // Empty BLOCKS section keeps the file structure conventional for desktop CAD readers.
+  out.push('0','SECTION','2','BLOCKS','0','ENDSEC');
+  out.push('0','SECTION','2','ENTITIES');
+  dxfAddGeometry(out,scopeGeometry,'SITE_BOUNDARY',nextHandle);
   for(const f of parcels||[]){
-    dxfAddGeometry(out,f.geometry,'PARCEL_LINE');
+    dxfAddGeometry(out,f.geometry,'PARCEL_LINE',nextHandle);
     const p=f.properties||{},label=p.jibun||p.jibun_nm||p.jibun_addr||p.pnu||'';
-    dxfAddText(out,dxfLabelPoint(f),label,'PARCEL_TEXT',1.4);
+    dxfAddText(out,dxfLabelPoint(f),label,'PARCEL_TEXT',1.4,nextHandle);
   }
   for(const f of buildings||[]){
-    dxfAddGeometry(out,f.geometry,'BUILDING_LINE');
-    dxfAddText(out,dxfLabelPoint(f),buildingCadLabel(f),'BUILDING_TEXT',1.1);
+    dxfAddGeometry(out,f.geometry,'BUILDING_LINE',nextHandle);
+    dxfAddText(out,dxfLabelPoint(f),buildingCadLabel(f),'BUILDING_TEXT',1.1,nextHandle);
   }
   out.push('0','ENDSEC','0','EOF');
   return out.join('\r\n')+'\r\n';
