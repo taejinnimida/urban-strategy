@@ -10961,7 +10961,7 @@ function normalizedLandCategory(v){
 }
 function isPublicLandOwnership(v){
   const s=String(v||'').replace(/\s+/g,'').trim();
-  return /국유|공유|시유|구유|도유|국공유|공공/.test(s);
+  return /국유|공유|시유|구유|군유|도유|국공유|공공/.test(s);
 }
 
 function parcelAnalysisAreaAndCategory(f){
@@ -18092,7 +18092,7 @@ async function fetchLandLedgerBrowser(pnu,options={}){
   // 3) 브라우저 직접조회가 실패한 경우에만 Render proxy를 최후 fallback으로 사용한다.
   try{
     const d=await fetchBackendJson('/api/land/ledger-one',{
-      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pnu:String(pnu)})
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pnu:String(pnu),browser_live_attempted:true})
     });
     if(d.record)return {...d.record,_route:d.selected_source?`server_fallback_after_browser:${d.selected_source}`:'server_fallback_after_browser'};
   }catch(e){if(e?.code==='RATE_LIMIT'||e?.http_status===429)throw e;}
@@ -18109,9 +18109,9 @@ async function fetchLandLedgerStatus(pnu){
   }catch(e){errors.push(`브라우저 VWorld 오류: ${String(e.message||e)}`);}
 
   try{
-    const d=await fetchBackendJson('/api/land/ledger-one',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pnu:String(pnu)})});
+    const d=await fetchBackendJson('/api/land/ledger-one',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pnu:String(pnu),browser_live_attempted:true})});
     const area=validPositiveNumber(d?.record?.lndpclAr);
-    if(d?.record&&area!=null)return {pnu:String(pnu),status:'SUCCESS_DATA',record:{...d.record,lndpclAr:area},error:'',route:d.selected_source?`server_fallback_after_browser:${d.selected_source}`:'server_fallback_after_browser',elapsed_ms:Date.now()-started,external_upstream_error:!!d?.external_upstream_error};
+    if(d?.record&&area!=null)return {pnu:String(pnu),status:'SUCCESS_DATA',record:{...d.record,lndpclAr:area},error:'',route:d.selected_source?`server_fallback_after_browser:${d.selected_source}`:'server_fallback_after_browser',elapsed_ms:Date.now()-started,external_upstream_error:!!d?.external_upstream_error,local_snapshot_used:!!d?.local_snapshot_used};
     if(d?.external_upstream_error){
       const retry=Number(d?.vworld_circuit?.retry_after_seconds||0);
       errors.push(`Render VWorld fallback 장애${retry>0?` · ${retry}초 후 서버 재확인`:''}`);
@@ -18267,8 +18267,10 @@ async function analyzeLandLedger(){
   const byPnu={};for(const row of results){if(row?.pnu)byPnu[row.pnu]=row;}
   const successful=results.filter(x=>x?.status==='SUCCESS_DATA').map(x=>x.pnu),failedPnus=results.filter(x=>x?.status!=='SUCCESS_DATA').map(x=>x?.pnu).filter(Boolean);
   const externalUpstreamError=results.some(x=>x?.external_upstream_error===true);
-  landLedgerQueryState={loaded:true,complete:successful.length===pnus.length,geometry_signature:geometrySignature,queried_pnus:pnus.length,requested_pnus:[...pnus],successful_pnus:successful,empty_pnus:[],failed_pnus:failedPnus,by_pnu:byPnu,error_count:failedPnus.length,errors:results.filter(x=>x?.status!=='SUCCESS_DATA').map(x=>({pnu:x?.pnu,error:x?.error||'공식면적 미확인'})),official_area_count:official,missing_official_area_count:pnus.length-official,geometry_fallback_count:geometryFallback,preliminary_small_count:preliminarySmall,external_upstream_error:externalUpstreamError};
-  if(externalUpstreamError)summary.innerHTML+=' · <b>VWorld 외부서비스 장애로 반복호출 차단</b>';
+  const localSnapshotCount=results.filter(x=>x?.local_snapshot_used===true||String(x?.route||'').includes('local_AL_D003_snapshot')).length;
+  landLedgerQueryState={loaded:true,complete:successful.length===pnus.length,geometry_signature:geometrySignature,queried_pnus:pnus.length,requested_pnus:[...pnus],successful_pnus:successful,empty_pnus:[],failed_pnus:failedPnus,by_pnu:byPnu,error_count:failedPnus.length,errors:results.filter(x=>x?.status!=='SUCCESS_DATA').map(x=>({pnu:x?.pnu,error:x?.error||'공식면적 미확인'})),official_area_count:official,missing_official_area_count:pnus.length-official,geometry_fallback_count:geometryFallback,preliminary_small_count:preliminarySmall,external_upstream_error:externalUpstreamError,local_snapshot_count:localSnapshotCount};
+  if(localSnapshotCount)summary.innerHTML+=` · VWorld 실시간 미확보 <b>${localSnapshotCount}필지</b> → 보유 토지임야정보 보완`;
+  if(externalUpstreamError&&!localSnapshotCount)summary.innerHTML+=' · <b>VWorld 외부서비스 장애로 반복호출 차단</b>';
   runSchemeChecksWhenCoreReady();
   return {requested_pnu_count:pnus.length,official_area_count:official,missing_official_area_count:pnus.length-official,error_count:failedPnus.length,complete:landLedgerQueryState.complete,small_parcel_count:landLedgerQueryState.complete?small:null,preliminary_small_count:preliminarySmall,external_upstream_error:externalUpstreamError};
 }

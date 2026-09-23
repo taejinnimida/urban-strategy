@@ -18,6 +18,8 @@ import time
 import uuid
 import sys
 import struct
+import sqlite3
+import shutil
 from array import array
 from collections import deque
 import xml.etree.ElementTree as ET
@@ -1613,6 +1615,120 @@ LAND_LEDGER_CACHE: Dict[str, Dict[str, Any]] = {}
 # 브라우저가 PNU 5개를 동시에 보내도 외부 소스 fan-out이 과도하게 커지지 않도록 제한한다.
 LAND_LEDGER_SOURCE_EXECUTOR = ThreadPoolExecutor(max_workers=8, thread_name_prefix="land-ledger-source")
 
+# R28: Seoul AL_D003 bundled snapshot.  The repository carries a compressed
+# SQLite index (not the 114MB CSV).  It is extracted lazily to /tmp and queried
+# by PNU only when live VWorld NED did not produce a usable record.
+LAND_LEDGER_LOCAL_ARCHIVE_ENV = "LAND_LEDGER_LOCAL_ARCHIVE"
+LAND_LEDGER_LOCAL_DB_ENV = "LAND_LEDGER_LOCAL_DB"
+LAND_LEDGER_LOCAL_EXTRACT_LOCK = threading.Lock()
+
+
+def _land_ledger_local_direct_db_path() -> Optional[str]:
+    env = (os.getenv(LAND_LEDGER_LOCAL_DB_ENV) or "").strip()
+    candidates: List[Path] = []
+    if env:
+        candidates.append(Path(env))
+    candidates.extend(sorted(Path(STRUCTURED_DATA_DIR).glob("land_ledger_seoul_*.sqlite"), reverse=True))
+    candidates.extend(sorted(Path(BASE_DIR).glob("land_ledger_seoul_*.sqlite"), reverse=True))
+    for path in candidates:
+        try:
+            if path.is_file() and path.stat().st_size > 1024:
+                return str(path)
+        except Exception:
+            continue
+    return None
+
+
+def _land_ledger_local_archive_path() -> Optional[str]:
+    env = (os.getenv(LAND_LEDGER_LOCAL_ARCHIVE_ENV) or "").strip()
+    candidates: List[Path] = []
+    if env:
+        candidates.append(Path(env))
+    candidates.extend(sorted(Path(STRUCTURED_DATA_DIR).glob("land_ledger_seoul_*.sqlite.zip"), reverse=True))
+    candidates.extend(sorted(Path(BASE_DIR).glob("land_ledger_seoul_*.sqlite.zip"), reverse=True))
+    for path in candidates:
+        try:
+            if path.is_file() and path.stat().st_size > 1024:
+                return str(path)
+        except Exception:
+            continue
+    return None
+
+
+def _ensure_land_ledger_local_db() -> Optional[str]:
+    direct = _land_ledger_local_direct_db_path()
+    if direct:
+        return direct
+    archive = _land_ledger_local_archive_path()
+    if not archive:
+        return None
+    with LAND_LEDGER_LOCAL_EXTRACT_LOCK:
+        try:
+            with zipfile.ZipFile(archive) as zf:
+                members = [m for m in zf.namelist() if m.lower().endswith(".sqlite") and not m.endswith("/")]
+                if not members:
+                    logger.warning("bundled land-ledger archive has no sqlite member: %s", archive)
+                    return None
+                member = members[0]
+                target = os.path.join("/tmp", os.path.basename(member))
+                if os.path.isfile(target) and os.path.getsize(target) > 1024:
+                    return target
+                tmp = target + ".tmp"
+                with zf.open(member) as src, open(tmp, "wb") as dst:
+                    shutil.copyfileobj(src, dst, length=1024 * 1024)
+                os.replace(tmp, target)
+                return target
+        except Exception as exc:
+            logger.exception("bundled land-ledger sqlite extraction failed: %s", exc)
+            return None
+
+
+@lru_cache(maxsize=4096)
+def _local_land_ledger_lookup(pnu: str) -> Optional[Dict[str, Any]]:
+    pnu = str(pnu or "").strip()
+    if len(pnu) != 19 or not pnu.isdigit():
+        return None
+    db_path = _ensure_land_ledger_local_db()
+    if not db_path:
+        return None
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=2.0)
+        try:
+            row = conn.execute(
+                "SELECT pnu,ldCodeNm,mnnmSlno,regstrSeCodeNm,lndcgrCodeNm,lndpclAr,"
+                "posesnSeCodeNm,cnrsPsnCo,ladFrtlScNm,lastUpdtDt FROM land_ledger WHERE pnu=?",
+                (pnu,),
+            ).fetchone()
+        finally:
+            conn.close()
+        if not row:
+            return None
+        return {
+            "pnu": row[0], "ldCodeNm": row[1] or "", "mnnmSlno": row[2] or "",
+            "regstrSeCodeNm": row[3] or "", "lndcgrCodeNm": row[4] or "",
+            "lndpclAr": float(row[5]) if row[5] is not None else None,
+            "posesnSeCodeNm": row[6] or "", "cnrsPsnCo": int(row[7] or 0),
+            "ladFrtlScNm": row[8] or "", "lastUpdtDt": row[9] or "",
+            "_route": "bundled_AL_D003_local_snapshot",
+            "_source_type": "LOCAL_SNAPSHOT",
+            "_source_date": row[9] or "",
+        }
+    except Exception as exc:
+        logger.info("bundled land-ledger lookup failed pnu=%s err=%s", pnu, exc)
+        return None
+
+
+def _land_ledger_local_snapshot_status() -> Dict[str, Any]:
+    direct = _land_ledger_local_direct_db_path()
+    archive = _land_ledger_local_archive_path()
+    path = direct or archive
+    return {
+        "configured": bool(path),
+        "file": os.path.basename(path) if path else None,
+        "mode": "sqlite" if direct else ("sqlite_zip_lazy_extract" if archive else None),
+        "data_date": "2026-09-04" if path and "20260904" in os.path.basename(path) else None,
+    }
+
 
 def _parse_land_ledger_xml(text: str) -> Optional[Dict[str, Any]]:
     root = ET.fromstring(text)
@@ -1985,11 +2101,30 @@ def _resolve_land_ledger_uncached(pnu: str) -> Dict[str, Any]:
                 "completed_ms": round((time.perf_counter()-started)*1000.0, 1),
             })
     final_circuit = _vworld_circuit_snapshot()
+    if char_record is not None:
+        return {
+            "record": char_record,
+            "dataset": "토지특성정보",
+            "operation": "getLandCharacteristics",
+            "selected_source": "vworld_land_characteristics",
+            "attempts": attempts,
+            "elapsed_ms": round((time.perf_counter()-started)*1000.0, 1),
+            "cache_hit": False,
+            "external_upstream_error": bool(final_circuit.get("open")),
+            "vworld_circuit": final_circuit,
+        }
+
+    # R28: live sources exhausted -> bundled Seoul AL_D003 snapshot.
+    local_record = _local_land_ledger_lookup(pnu)
+    attempts.append({
+        "source": "local_AL_D003_snapshot", "ok": bool(local_record),
+        "completed_ms": round((time.perf_counter()-started)*1000.0, 1),
+    })
     return {
-        "record": char_record,
-        "dataset": "토지특성정보" if char_record is not None else "토지임야정보(속성정보)",
-        "operation": "getLandCharacteristics" if char_record is not None else "ladfrlList",
-        "selected_source": "vworld_land_characteristics" if char_record is not None else None,
+        "record": local_record,
+        "dataset": "토지임야정보(속성정보) 보유자료" if local_record is not None else "토지임야정보(속성정보)",
+        "operation": "PNU_LOCAL_LOOKUP" if local_record is not None else "ladfrlList",
+        "selected_source": "local_AL_D003_snapshot" if local_record is not None else None,
         "attempts": attempts,
         "elapsed_ms": round((time.perf_counter()-started)*1000.0, 1),
         "cache_hit": False,
@@ -6987,6 +7122,9 @@ class BuildingHubBatchInput(BaseModel):
 
 class LandLedgerOneInput(BaseModel):
     pnu: str
+    # Browser VWorld NED was already attempted by the client.  When true,
+    # use the bundled AL_D003 snapshot before spending another Render->VWorld call.
+    browser_live_attempted: bool = False
 
 
 class PnuListInput(BaseModel):
@@ -7750,6 +7888,7 @@ def health():
         "vworld_client_key_source": "VWORLD_CLIENT_KEY" if (os.getenv("VWORLD_CLIENT_KEY") or "").strip() else ("VWORLD_API_KEY" if _vworld_key() else None),
         "planning_browser_fallback_patch_marker": "R23_SERVER_FIRST_BROWSER_FALLBACK_20260923",
         "local_first_fact_status_patch_marker": "R25_LOCAL_FIRST_FACT_STATUS_20260923",
+        "land_ledger_local_fallback_patch_marker": "R28_VWORLD_THEN_AL_D003_20260923",
         "build_marker": APP_BUILD_MARKER,
         "pipeline_patch_marker": "R18_PIPELINE_STABILIZATION_20260910",
         "regulatory_disaster_vworld_patch_marker": "R15_DISASTER_BUNDLES_VWORLD_DOMAIN_DIAGNOSTICS_20260921",
@@ -7766,8 +7905,9 @@ def health():
         "parcel_auto": "browser_direct_ready" if vworld_ready() else "needs_VWORLD_API_KEY",
         "building_spatial_auto": "LT_C_SPBD_browser_direct_ready" if vworld_ready() else "needs_VWORLD_API_KEY",
         "building_hub": "ready" if building_hub_ready() else "needs_BUILDING_HUB_API_KEY",
-        "land_ledger": "server-first ladfrlList/getLandCharacteristics + browser JSONP fallback; geometry provisional only when official area unavailable",
+        "land_ledger": "browser VWorld NED live first; bundled Seoul AL_D003 local snapshot fallback; existing server VWorld remains last fallback",
         "land_ledger_browser_fallback": True,
+        "land_ledger_local_snapshot": _land_ledger_local_snapshot_status(),
         "road_access": "bundled TL_SPRD_MANAGE + ROAD_BT first; VWorld browser fallback; missing Fact remains REVIEW",
         "road_bundled_configured": bool(_road_zip_path()),
         "reference_data": reference_data,
@@ -8275,11 +8415,28 @@ def land_ledger_one(inp: LandLedgerOneInput):
     if len(pnu) != 19 or not pnu.isdigit():
         raise HTTPException(status_code=422, detail="PNU는 19자리 숫자여야 합니다.")
 
-    # R15: race the two equivalent full-ledger routes, then use land
-    # characteristics only as a lower-priority fallback.  Positive and negative
-    # results are short-TTL cached so a repeated site review does not redo the
-    # same network failures.
-    resolved = _resolve_land_ledger(pnu)
+    # Browser-first client already tried live VWorld NED.  In that case do not
+    # spend another Render->VWorld round before using the bundled AL_D003 snapshot.
+    # Other callers keep the historical live-server-first resolver, whose final
+    # fallback is also the same local snapshot.
+    if inp.browser_live_attempted:
+        local_record = _local_land_ledger_lookup(pnu)
+        if local_record is not None:
+            resolved = {
+                "record": local_record,
+                "dataset": "토지임야정보(속성정보) 보유자료",
+                "operation": "PNU_LOCAL_LOOKUP",
+                "selected_source": "local_AL_D003_snapshot",
+                "attempts": [{"source": "local_AL_D003_snapshot", "ok": True, "completed_ms": 0.0}],
+                "elapsed_ms": 0.0,
+                "cache_hit": False,
+                "external_upstream_error": bool(_vworld_circuit_snapshot().get("open")),
+                "vworld_circuit": _vworld_circuit_snapshot(),
+            }
+        else:
+            resolved = _resolve_land_ledger(pnu)
+    else:
+        resolved = _resolve_land_ledger(pnu)
     record = resolved.get("record")
     dataset = str(resolved.get("dataset") or "토지임야정보(속성정보)")
     operation = str(resolved.get("operation") or "ladfrlList")
@@ -8290,6 +8447,8 @@ def land_ledger_one(inp: LandLedgerOneInput):
         "vworld_ready": bool(_vworld_key()),
         "cache_hit": bool(resolved.get("cache_hit")),
         "selected_source": resolved.get("selected_source"),
+        "local_snapshot_used": resolved.get("selected_source") == "local_AL_D003_snapshot",
+        "local_snapshot_date": (record or {}).get("_source_date") if isinstance(record, dict) else None,
         "elapsed_ms": resolved.get("elapsed_ms"),
         "attempts": resolved.get("attempts") or [],
         "external_upstream_error": bool(resolved.get("external_upstream_error")),
