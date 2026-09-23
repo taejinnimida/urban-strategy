@@ -17971,21 +17971,73 @@ function parseLandLedgerXml(xmlText){
 
 function parseLandLedgerJson(data){
   if(!data)return null;
-  const fields=data.fields||data.response?.fields||{};
-  const err=fields.error||data.error;
-  if(err)throw new Error('VWorld 토지대장 오류: '+String(err));
-  let rows=fields.ladfrlVOList||data.ladfrlVOList||[];
-  if(!Array.isArray(rows))rows=[rows];
+  // VWorld NED JSONP wraps the payload by operation name, e.g.
+  // { ladfrlList: { ... } }.  Keep compatibility with older/direct shapes too.
+  const roots=[data?.ladfrlList,data?.response?.ladfrlList,data?.response,data].filter(Boolean);
+  let rows=[];
+  for(const root of roots){
+    const fields=root?.fields||{};
+    const err=fields?.error||root?.error;
+    if(err)throw new Error('VWorld 토지대장 오류: '+String(err));
+    const candidates=[
+      fields?.ladfrlVOList,fields?.field,
+      root?.ladfrlVOList,root?.field,
+      root?.result?.ladfrlVOList,root?.result?.field
+    ];
+    for(let candidate of candidates){
+      if(candidate==null)continue;
+      if(!Array.isArray(candidate))candidate=[candidate];
+      const valid=candidate.filter(r=>r&&typeof r==='object'&&(r.pnu!=null||r.lndpclAr!=null));
+      if(valid.length){rows=valid;break;}
+    }
+    if(rows.length)break;
+    if(root&&typeof root==='object'&&(root.pnu!=null||root.lndpclAr!=null)){rows=[root];break;}
+  }
   if(!rows.length)return null;
   const vals=rows.map(r=>({
     pnu:String(r.pnu||''), ldCodeNm:String(r.ldCodeNm||''), mnnmSlno:String(r.mnnmSlno||''),
-    regstrSeCodeNm:String(r.regstrSeCodeNm||''), lndcgrCodeNm:String(r.lndcgrCodeNm||''),
+    regstrSeCodeNm:String(r.regstrSeCodeNm||''), lndcgrCodeNm:String(r.lndcgrCodeNm||r.lndcgrCode||''),
     lndpclAr:Number(r.lndpclAr)||null, posesnSeCodeNm:String(r.posesnSeCodeNm||''),
     cnrsPsnCo:Number(r.cnrsPsnCo)||0, ladFrtlScNm:String(r.ladFrtlScNm||''),
     lastUpdtDt:String(r.lastUpdtDt||'')
-  }));
+  })).filter(r=>r.lndpclAr!=null||r.pnu);
   vals.sort((a,b)=>String(b.lastUpdtDt||'').localeCompare(String(a.lastUpdtDt||'')));
-  return vals[0];
+  return vals[0]||null;
+}
+
+function parseLandCharacteristicsJson(data,pnu='',fallbackYear=''){
+  if(!data)return null;
+  const roots=[data?.getLandCharacteristics,data?.response?.getLandCharacteristics,data?.response,data].filter(Boolean);
+  for(const root of roots){
+    const fields=root?.fields||{};
+    const err=fields?.error||root?.error;
+    if(err)throw new Error('VWorld 토지특성 오류: '+String(err));
+    const candidates=[fields?.field,fields?.landCharacteristics,root?.field,root?.landCharacteristics,root?.result?.field];
+    for(let candidate of candidates){
+      if(candidate==null)continue;
+      if(!Array.isArray(candidate))candidate=[candidate];
+      for(const x of candidate){
+        if(!x||typeof x!=='object')continue;
+        const a=Number(x.lndpclAr);
+        if(Number.isFinite(a)&&a>0)return {
+          pnu:String(x.pnu||pnu||''),lndpclAr:a,
+          lndcgrCodeNm:String(x.lndcgrCodeNm||x.lndcgrCode||''),
+          stdrYear:String(x.stdrYear||fallbackYear||''),stdrMt:String(x.stdrMt||''),
+          lastUpdtDt:String(x.lastUpdtDt||''),_route:'getLandCharacteristics_jsonp_browser_primary'
+        };
+      }
+    }
+    if(root&&typeof root==='object'){
+      const a=Number(root.lndpclAr);
+      if(Number.isFinite(a)&&a>0)return {
+        pnu:String(root.pnu||pnu||''),lndpclAr:a,
+        lndcgrCodeNm:String(root.lndcgrCodeNm||root.lndcgrCode||''),
+        stdrYear:String(root.stdrYear||fallbackYear||''),stdrMt:String(root.stdrMt||''),
+        lastUpdtDt:String(root.lastUpdtDt||''),_route:'getLandCharacteristics_jsonp_browser_primary'
+      };
+    }
+  }
+  return null;
 }
 
 
@@ -18003,18 +18055,10 @@ async function fetchLandCharacteristicsBrowser(pnu,options={}){
     for(let y=now;y>=now-5;y--){
       try{
         const data=await vworldJsonp(base,{key:VWORLD_CLIENT_KEY,domain:VWORLD_CLIENT_DOMAIN,pnu:String(pnu),format:'json',stdrYear:String(y)},8000);
-        const f=data?.response?.fields?.field||data?.fields?.field;
-        const arr=Array.isArray(f)?f:(f?[f]:[]);
-        for(const x of arr){
-          const a=Number(x.lndpclAr);
-          if(Number.isFinite(a)&&a>0)return {
-            pnu:String(pnu),lndpclAr:a,
-            lndcgrCodeNm:String(x.lndcgrCodeNm||x.lndcgrCode||''),
-            stdrYear:String(x.stdrYear||y),stdrMt:String(x.stdrMt||''),
-            lastUpdtDt:String(x.lastUpdtDt||''),_route:'getLandCharacteristics_jsonp_browser_primary'
-          };
-        }
-      }catch(e){}
+        const rec=parseLandCharacteristicsJson(data,pnu,y);
+        if(rec){console.info(`[토지특성 브라우저] ${pnu} ${rec.stdrYear||y} JSONP 성공`);return rec;}
+        console.warn(`[토지특성 브라우저] ${pnu} ${y} 응답 수신 · 공식면적 파싱 실패`,data);
+      }catch(e){console.warn(`[토지특성 브라우저] ${pnu} ${y} JSONP 실패`,e);}
     }
   }
   if(!allowServerFallback)return null;
@@ -18035,8 +18079,9 @@ async function fetchLandLedgerBrowser(pnu,options={}){
       const base='https://api.vworld.kr/ned/data/ladfrlList';
       const data=await vworldJsonp(base,{key:VWORLD_CLIENT_KEY,domain:VWORLD_CLIENT_DOMAIN,pnu:String(pnu),format:'json'},8000);
       const parsed=parseLandLedgerJson(data);
-      if(parsed)return {...parsed,_route:'ladfrlList_jsonp_browser_primary'};
-    }catch(e){}
+      if(parsed){console.info(`[토지대장 브라우저] ${pnu} JSONP 성공 · 공식면적 ${parsed.lndpclAr??'미확인'}㎡`);return {...parsed,_route:'ladfrlList_jsonp_browser_primary'};}
+      console.warn(`[토지대장 브라우저] ${pnu} 응답 수신 · 레코드 파싱 실패`,data);
+    }catch(e){console.warn(`[토지대장 브라우저] ${pnu} JSONP 실패`,e);}
   }
 
   // 2) 같은 브라우저에서 토지특성정보를 보조경로로 조회한다.
