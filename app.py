@@ -23,7 +23,7 @@ from collections import deque
 import xml.etree.ElementTree as ET
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
-from urllib.parse import quote, unquote, urlparse
+from urllib.parse import quote, unquote, urlparse, urljoin, parse_qsl, urlunparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import lru_cache
 from pathlib import Path
@@ -6283,12 +6283,34 @@ def _row_wgs84_point(row: Dict[str, Any]) -> Optional[tuple[float, float]]:
 
 @lru_cache(maxsize=512)
 def _representative_parcel_cached(lon_key: Optional[float], lat_key: Optional[float], address: str) -> Dict[str, Any]:
-    """Resolve one representative parcel and cache the result for repeated analyses.
+    """Resolve one representative parcel with LOCAL-FIRST semantics.
 
-    Source chain: VWorld coordinate -> VWorld address -> bundled 2020-12
-    cadastral snapshot -> unresolved/REVIEW. The snapshot never overrides a live
-    VWorld result.
+    Source chain (R25): bundled 2020-12 medical representative parcel snapshot
+    -> VWorld coordinate -> VWorld address -> unresolved/REVIEW.
+
+    The bundled snapshot is deliberately used first so a Render/VWorld outage
+    cannot erase an already-packaged medical FACT.  The client may separately
+    attempt a browser-side VWorld refresh for unresolved facilities; this server
+    function never downgrades a resolved local parcel because an external API is
+    unavailable.
     """
+    offline_result = None
+    if lon_key is not None and lat_key is not None:
+        try:
+            offline_result = _safe_medical_offline_parcel_at_point(float(lon_key), float(lat_key))
+        except Exception as exc:
+            offline_result = {
+                "status": "error", "feature": None, "pnu": None, "reason": str(exc),
+                "source_type": "OFFLINE_CADASTRAL_SNAPSHOT_202012",
+            }
+        if offline_result.get("status") == "resolved" and offline_result.get("feature"):
+            return {
+                **offline_result,
+                "basis": "offline_cadastral_snapshot_202012",
+                "boundary_note": "오프라인 연속지적도 스냅샷(기준일 2020-12), 최신 분할·합병 미반영 가능",
+                "external_refresh_recommended": True,
+            }
+
     point_result = None
     addr_result = None
     if lon_key is not None and lat_key is not None:
@@ -6305,21 +6327,6 @@ def _representative_parcel_cached(lon_key: Optional[float], lat_key: Optional[fl
             addr_result = {"status": "error", "feature": None, "pnu": None, "reason": str(exc)}
         if addr_result.get("status") == "resolved" and addr_result.get("feature"):
             return {**addr_result, "basis": "official_address", "source_type": "VWORLD_LIVE_CADASTRAL"}
-
-    # VWorld 좌표조회와 주소조회가 모두 해결되지 않았을 때만 폴백한다.
-    if lon_key is not None and lat_key is not None:
-        try:
-            offline_result = _safe_medical_offline_parcel_at_point(float(lon_key), float(lat_key))
-        except Exception as exc:
-            offline_result = {"status": "error", "feature": None, "pnu": None, "reason": str(exc), "source_type": "OFFLINE_CADASTRAL_SNAPSHOT_202012"}
-        if offline_result.get("status") == "resolved" and offline_result.get("feature"):
-            return {
-                **offline_result,
-                "basis": "offline_cadastral_snapshot_202012",
-                "boundary_note": "오프라인 연속지적도 스냅샷(기준일 2020-12), 최신 분할·합병 미반영 가능",
-            }
-    else:
-        offline_result = None
 
     if addr_result is not None:
         result = dict(addr_result)
@@ -6395,7 +6402,8 @@ def _safe_medical_reference(geometry: Dict[str, Any]) -> Dict[str, Any]:
         "health_center_source": "서울시 공식 25개 보건소 whitelist + TbHospitalInfo 현행 좌표",
         "municipal_hospital_source": "서울시 공식 서울시립병원 whitelist + TbHospitalInfo 현행 좌표",
         "official_rule": "안심주택 의료시설 중심지역: 종합병원·서울시 관리 시립병원·보건소",
-        "screening_method": "시설 point 1.5km 선스크리닝 → 후보만 대표PNU/연속지적 조회 → 필지경계 350m",
+        "screening_method": "시설 point 1.5km 선스크리닝 → 보유 2020-12 대표필지 스냅샷 우선 → 미확정 후보만 VWorld → 필지경계 350m",
+        "parcel_resolution_order": "OFFLINE_CADASTRAL_SNAPSHOT_202012 -> VWORLD_SERVER -> VWORLD_BROWSER_FALLBACK(client)",
         "credential_env": key_env or None,
         "reference_version": ref.get("version"),
     }
@@ -7741,6 +7749,7 @@ def health():
         "vworld_client_configured": bool(_vworld_client_key()),
         "vworld_client_key_source": "VWORLD_CLIENT_KEY" if (os.getenv("VWORLD_CLIENT_KEY") or "").strip() else ("VWORLD_API_KEY" if _vworld_key() else None),
         "planning_browser_fallback_patch_marker": "R23_SERVER_FIRST_BROWSER_FALLBACK_20260923",
+        "local_first_fact_status_patch_marker": "R25_LOCAL_FIRST_FACT_STATUS_20260923",
         "build_marker": APP_BUILD_MARKER,
         "pipeline_patch_marker": "R18_PIPELINE_STABILIZATION_20260910",
         "regulatory_disaster_vworld_patch_marker": "R15_DISASTER_BUNDLES_VWORLD_DOMAIN_DIAGNOSTICS_20260921",
@@ -7757,7 +7766,8 @@ def health():
         "parcel_auto": "browser_direct_ready" if vworld_ready() else "needs_VWORLD_API_KEY",
         "building_spatial_auto": "LT_C_SPBD_browser_direct_ready" if vworld_ready() else "needs_VWORLD_API_KEY",
         "building_hub": "ready" if building_hub_ready() else "needs_BUILDING_HUB_API_KEY",
-        "land_ledger": "ladfrlList + getLandCharacteristics + geometry provisional",
+        "land_ledger": "server-first ladfrlList/getLandCharacteristics + browser JSONP fallback; geometry provisional only when official area unavailable",
+        "land_ledger_browser_fallback": True,
         "road_access": "bundled TL_SPRD_MANAGE + ROAD_BT first; VWorld browser fallback; missing Fact remains REVIEW",
         "road_bundled_configured": bool(_road_zip_path()),
         "reference_data": reference_data,
@@ -7782,7 +7792,10 @@ def health():
         "renewal_gis": "server-side UQ181/UQ120 intersection; legal-priority; promotion separate; full matched boundaries returned for status map",
         "development_gis": "VWorld district-unit plan + bundled Seoul UQ181 legal projects + VWorld LT_C_DAMDAN industrial-park boundaries",
         "safe_housing_location_paths": "station / arterial-road-side / medical-facility-center evaluated separately; OR combined",
-        "safe_medical_reference": "packaged official TbHospitalInfo monthly snapshot + official Seoul municipal hospitals/25 district health centers; nearby representative parcels resolved concurrently; 350m buffer",
+        "safe_medical_reference": "packaged official TbHospitalInfo monthly snapshot + official Seoul municipal hospitals/25 district health centers; offline 2020-12 representative parcel first; unresolved candidates can use browser VWorld fallback; 350m buffer",
+        "safe_medical_local_first": True,
+        "flood_reference_sources": {"expected_dataset_page": SEOUL_FLOOD_EXPECTED_DATASET_PAGE, "trace_dataset_page": SEOUL_FLOOD_TRACE_2025_DATASET_PAGE, "expected_direct_url_configured": bool(SEOUL_FLOOD_EXPECTED_URL), "trace_direct_url_configured": bool(SEOUL_FLOOD_TRACE_2025_URL)},
+        "ecvam_reference": {"configured": _ecvam_configured(), "bootstrap_url": ECVAM_API_CONFIRM_URL, "endpoint_policy": "official apiConfirm bootstrap -> discovered WMS endpoint; compatibility fallback only"},
         "safe_medical_key_env": _seoul_open_data_key_info()[1] or None,
         "road_width_gis": "VWorld TL_SPRD_MANAGE ROAD_BT is the sole road-width Fact source",
         "street_block_gis": "SGIS 2025 basic-unit seed + shared TL_SPRD_MANAGE ROAD_BT geometry with scheme-specific street-block rules: smallscale 6m existing roads + all urban-planning facility roads + statutory facilities, activation/station-complex 4m + nonbuildable facilities, growth-potential all roads + defined facilities; ESTIMATE until authoritative official block data is connected",
@@ -8466,17 +8479,29 @@ def land_use_restrictions(inp: PnuListInput):
 # - 서비스 장애/파일구조 변경 시 ERROR로 돌려 UNKNOWN을 유지하며 비해당으로 오판하지 않는다.
 # - 침수예상도는 위험예측 FACT, 침수흔적도는 과거 발생이력 FACT로 서로 구분한다.
 # -----------------------------------------------------------------------------
-SEOUL_FLOOD_EXPECTED_URL = "https://datafile.seoul.go.kr/bigfile/iot/inf/nio_download.do?infId=OA-21172&infSeq=3&seq=2&seqNo=&useCache=false"
-SEOUL_FLOOD_TRACE_2025_URL = "https://datafile.seoul.go.kr/bigfile/iot/inf/nio_download.do?infId=OA-15636&infSeq=1&seq=102&seqNo=&useCache=false"
+# R25: 서울 열린데이터광장의 bigfile 직접-download URL은 seq 값이 바뀌는
+# 비영구 링크다.  2026-09-23 재검증 결과 데이터셋 페이지와 파일 자체는
+# 공개 중이지만 기존 nio_download 고정 URL은 HTML/오류 응답을 반환했다.
+# 운영 중에는 검증된 직접 URL을 환경변수로만 주입하고, 코드에는 안정적인
+# 공식 데이터셋 landing page를 provenance로 보존한다.
+SEOUL_FLOOD_EXPECTED_DATASET_PAGE = "https://data.seoul.go.kr/dataList/OA-21172/A/1/datasetView.do"
+SEOUL_FLOOD_TRACE_2025_DATASET_PAGE = "https://data.seoul.go.kr/dataList/OA-15636/F/1/datasetView.do"
+SEOUL_FLOOD_EXPECTED_URL = (os.getenv("SEOUL_FLOOD_EXPECTED_URL") or "").strip()
+SEOUL_FLOOD_TRACE_2025_URL = (os.getenv("SEOUL_FLOOD_TRACE_2025_URL") or "").strip()
 _DISASTER_DOWNLOAD_LOCK = threading.Lock()
 
 
-def _download_official_zip(url: str, cache_name: str) -> str:
+def _download_official_zip(url: str, cache_name: str, *, source_page: str = "") -> str:
     cache_dir = os.path.join("/tmp", "urban_strategy_disaster")
     os.makedirs(cache_dir, exist_ok=True)
     path = os.path.join(cache_dir, cache_name)
     if os.path.isfile(path) and os.path.getsize(path) > 100 and zipfile.is_zipfile(path):
         return path
+    if not str(url or "").strip():
+        raise RuntimeError(
+            "공식 데이터셋은 공개 중이나 직접 다운로드 URL이 동적입니다. "
+            f"검증된 직접 URL을 환경변수로 설정하세요{(' · '+source_page) if source_page else ''}"
+        )
     with _DISASTER_DOWNLOAD_LOCK:
         if os.path.isfile(path) and os.path.getsize(path) > 100 and zipfile.is_zipfile(path):
             return path
@@ -8487,7 +8512,10 @@ def _download_official_zip(url: str, cache_name: str) -> str:
             with open(tmp, "wb") as fp:
                 fp.write(resp.content)
             if not zipfile.is_zipfile(tmp):
-                raise RuntimeError(f"공식 ZIP 응답 형식 오류 · content-type={resp.headers.get('content-type','')}")
+                raise RuntimeError(
+                    f"공식 ZIP 응답 형식 오류 · content-type={resp.headers.get('content-type','')} "
+                    "· 직접 다운로드 URL 갱신 필요"
+                )
             os.replace(tmp, path)
         finally:
             if os.path.isfile(tmp):
@@ -8508,7 +8536,7 @@ def _zip_shapefile_stems(zf: zipfile.ZipFile) -> List[str]:
     return stems
 
 
-def _analyze_remote_polygon_zip(geometry: Dict[str, Any], *, url: str, cache_name: str, source_label: str, default_epsg: int = 5186) -> Dict[str, Any]:
+def _analyze_remote_polygon_zip(geometry: Dict[str, Any], *, url: str, cache_name: str, source_label: str, default_epsg: int = 5186, source_page: str = "") -> Dict[str, Any]:
     site=shape(geometry)
     if site.geom_type not in {"Polygon","MultiPolygon"} or site.is_empty:
         raise ValueError("유효한 Polygon 또는 MultiPolygon 구역계가 필요합니다.")
@@ -8516,7 +8544,7 @@ def _analyze_remote_polygon_zip(geometry: Dict[str, Any], *, url: str, cache_nam
         site=site.buffer(0)
     if site.is_empty or not site.is_valid:
         raise ValueError("유효하지 않은 구역계입니다.")
-    path=_download_official_zip(url, cache_name)
+    path=_download_official_zip(url, cache_name, source_page=source_page)
     context_features=[];overlap_features=[];overlap_geoms=[];source_files=[];candidate_count=0
     with zipfile.ZipFile(path) as zf:
         names=zf.namelist();stems=_zip_shapefile_stems(zf)
@@ -8564,7 +8592,7 @@ def _analyze_remote_polygon_zip(geometry: Dict[str, Any], *, url: str, cache_nam
         'overlap_area_m2':area,'overlap_pct':(area/site_area*100.0) if site_area>0 else None,
         'feature_count':len(context_features),'features':context_features,'overlap_features':overlap_features,
         'bbox_candidate_count':candidate_count,'source':source_label,'source_type':'OFFICIAL_REMOTE_SHP',
-        'source_files':source_files,'cache_file':os.path.basename(path),
+        'source_files':source_files,'cache_file':os.path.basename(path),'source_page':source_page,
     }
 
 
@@ -8816,15 +8844,15 @@ def _analyze_landslide_risk_raster(geometry: Dict[str, Any]) -> Dict[str, Any]:
 
 def analyze_disaster_reference_intersections(geometry: Dict[str, Any]) -> Dict[str, Any]:
     specs=[
-        ('flood_expected',SEOUL_FLOOD_EXPECTED_URL,'seoul_flood_expected.zip','서울특별시 풍수해 침수예상도 · 서울 열린데이터광장 OA-21172'),
-        ('flood_trace_2025',SEOUL_FLOOD_TRACE_2025_URL,'seoul_flood_trace_2025.zip','서울특별시 2025년 침수흔적도 · 서울 열린데이터광장 OA-15636'),
+        ('flood_expected',SEOUL_FLOOD_EXPECTED_URL,'seoul_flood_expected.zip','서울특별시 풍수해 침수예상도 · 서울 열린데이터광장 OA-21172',SEOUL_FLOOD_EXPECTED_DATASET_PAGE),
+        ('flood_trace_2025',SEOUL_FLOOD_TRACE_2025_URL,'seoul_flood_trace_2025.zip','서울특별시 2025년 침수흔적도 · 서울 열린데이터광장 OA-15636',SEOUL_FLOOD_TRACE_2025_DATASET_PAGE),
     ]
     out={};errors=[]
-    for key,url,cache_name,label in specs:
-        try: out[key]=_analyze_remote_polygon_zip(geometry,url=url,cache_name=cache_name,source_label=label,default_epsg=5186)
+    for key,url,cache_name,label,source_page in specs:
+        try: out[key]=_analyze_remote_polygon_zip(geometry,url=url,cache_name=cache_name,source_label=label,default_epsg=5186,source_page=source_page)
         except Exception as exc:
-            out[key]={'status':'error','known':False,'present':False,'overlap_area_m2':None,'overlap_pct':None,'features':[],'overlap_features':[],'source':label,'source_type':'OFFICIAL_REMOTE_SHP','error':str(exc)[:300]}
-            errors.append({'source':key,'error':str(exc)[:300]})
+            out[key]={'status':'external_source_unavailable','known':False,'present':False,'overlap_area_m2':None,'overlap_pct':None,'features':[],'overlap_features':[],'source':label,'source_type':'OFFICIAL_REMOTE_SHP','source_page':source_page,'error':str(exc)[:300]}
+            errors.append({'source':key,'error':str(exc)[:300],'source_page':source_page})
 
     try:
         out['natural_disaster_risk_district'] = _analyze_local_polygon_zip(
@@ -9037,8 +9065,47 @@ ECVAM_ALLOWED_WMS_LAYERS = {
     "nem_law_12": "공원마을지구",
     "nem_law_13": "공원문화유산지구",
 }
-_ECVAM_API_CHECK = {"key_hash": "", "checked_at": 0.0, "ok": False, "error": ""}
+_ECVAM_API_CHECK = {"key_hash": "", "checked_at": 0.0, "ok": False, "error": "", "wms_url": "", "endpoint_source": ""}
 _ECVAM_API_CHECK_LOCK = threading.Lock()
+
+
+def _redact_ecvam_text(value: Any) -> str:
+    text = str(value or "")
+    key = _ecvam_key()
+    if key:
+        text = text.replace(key, "***")
+    return re.sub(r"(?i)(APIKEY=)[^&\s\"']+", r"\1***", text)
+
+
+def _ecvam_wms_url_from_bootstrap(text: str) -> tuple[str, str]:
+    """Discover the WMS request target from the official apiConfirm bootstrap."""
+    normalized = str(text or "").replace("\\/", "/").replace("&amp;", "&")
+    matches = re.findall(r"[\"']([^\"']*apicall\.do[^\"']*)[\"']", normalized, flags=re.I)
+    for raw in matches:
+        candidate = raw.strip()
+        if not candidate:
+            continue
+        if candidate.startswith("/"):
+            candidate = urljoin("https://ecvam.neins.go.kr/", candidate)
+        elif not re.match(r"^https?://", candidate, flags=re.I):
+            candidate = urljoin("https://ecvam.neins.go.kr/", candidate)
+        try:
+            parsed = urlparse(candidate)
+            if parsed.hostname and parsed.hostname.lower() == "ecvam.neins.go.kr" and parsed.path.lower().endswith("/apicall.do"):
+                return candidate, "bootstrap"
+        except Exception:
+            continue
+    return ECVAM_WMS_URL, "compatibility_fallback"
+
+
+def _ecvam_request_target(ready: Dict[str, Any]) -> tuple[str, Dict[str, str]]:
+    raw = str(ready.get("_wms_url") or ECVAM_WMS_URL)
+    parsed = urlparse(raw)
+    base_params = {str(k): str(v) for k, v in parse_qsl(parsed.query, keep_blank_values=True)}
+    base_url = urlunparse((parsed.scheme or "https", parsed.netloc or "ecvam.neins.go.kr", parsed.path or "/apicall.do", "", "", ""))
+    base_params.setdefault("APIKEY", _ecvam_key())
+    base_params.setdefault("DOMAIN", _vworld_domain())
+    return base_url, base_params
 
 
 def _ecvam_key() -> str:
@@ -9051,12 +9118,7 @@ def _ecvam_configured() -> bool:
 
 
 def _ensure_ecvam_api_ready(force: bool = False) -> Dict[str, Any]:
-    """Validate the configured ECVAM key without exposing it to the browser.
-
-    ECVAM's current API bootstrap script defines ecvamLayerCreate() and points
-    TileWMS requests at /apicall.do.  We validate the key server-side and cache
-    only a SHA-256 fingerprint; the raw key never leaves the server response.
-    """
+    """Validate the official ECVAM bootstrap and discover its WMS endpoint."""
     key = _ecvam_key()
     if not key:
         raise HTTPException(status_code=503, detail="ECVAM_API_KEY가 설정되지 않았습니다.")
@@ -9066,25 +9128,38 @@ def _ensure_ecvam_api_ready(force: bool = False) -> Dict[str, Any]:
         if (not force and _ECVAM_API_CHECK.get("key_hash") == key_hash
                 and now - float(_ECVAM_API_CHECK.get("checked_at") or 0) < 900):
             if _ECVAM_API_CHECK.get("ok"):
-                return {"ok": True, "cached": True}
+                return {
+                    "ok": True, "cached": True,
+                    "endpoint_source": _ECVAM_API_CHECK.get("endpoint_source") or "unknown",
+                    "_wms_url": _ECVAM_API_CHECK.get("wms_url") or ECVAM_WMS_URL,
+                }
             raise HTTPException(status_code=502, detail=str(_ECVAM_API_CHECK.get("error") or "ECVAM API 인증 확인 실패"))
+    wms_url = ECVAM_WMS_URL
+    endpoint_source = "compatibility_fallback"
     try:
         r = requests.get(
             ECVAM_API_CONFIRM_URL, params={"APIKEY": key}, timeout=10,
             headers={"User-Agent": "urban-strategy/2.5.0 ECVAM-WMS", "Referer": _vworld_referer()},
         )
         text = r.text or ""
-        ok = r.status_code == 200 and "ecvamLayerCreate" in text and all(layer in text for layer in ECVAM_ALLOWED_WMS_LAYERS)
+        bootstrap_ok = r.status_code == 200 and "ecvamLayerCreate" in text
+        layer_ok = all(layer in text for layer in ECVAM_ALLOWED_WMS_LAYERS)
+        if bootstrap_ok:
+            wms_url, endpoint_source = _ecvam_wms_url_from_bootstrap(text)
+        ok = bootstrap_ok and layer_ok
         error = "" if ok else f"ECVAM API bootstrap HTTP {r.status_code} 또는 레이어 정의 미확인"
     except requests.RequestException as exc:
         ok = False
         error = f"ECVAM API 인증 요청 실패: {type(exc).__name__}"
+    error = _redact_ecvam_text(error)
     with _ECVAM_API_CHECK_LOCK:
-        _ECVAM_API_CHECK.update({"key_hash": key_hash, "checked_at": now, "ok": ok, "error": error})
+        _ECVAM_API_CHECK.update({
+            "key_hash": key_hash, "checked_at": now, "ok": ok, "error": error,
+            "wms_url": wms_url if ok else "", "endpoint_source": endpoint_source if ok else "",
+        })
     if not ok:
         raise HTTPException(status_code=502, detail=error)
-    return {"ok": True, "cached": False}
-
+    return {"ok": True, "cached": False, "endpoint_source": endpoint_source, "_wms_url": wms_url}
 
 
 
@@ -9100,11 +9175,35 @@ def ecvam_status(probe: bool = False):
         "quantitative_overlap": False,
         "note": "WMS 도면 교차확인용입니다. 벡터 원도형이 아니므로 중첩면적·중첩률·해당/비해당 자동판정에 사용하지 않습니다.",
     }
+    out["official_bootstrap_url"] = ECVAM_API_CONFIRM_URL
+    out["official_api_guide"] = "https://ecvam.neins.go.kr/api/apiGuide.do"
     if probe and out["configured"]:
         try:
-            out["probe"] = _ensure_ecvam_api_ready(force=True)
+            ready = _ensure_ecvam_api_ready(force=True)
+            probe_out = {"ok": True, "bootstrap": "OK", "endpoint_source": ready.get("endpoint_source")}
+            try:
+                target, base_params = _ecvam_request_target(ready)
+                tf = Transformer.from_crs(4326, 3857, always_xy=True)
+                x1, y1 = tf.transform(126.95, 37.50); x2, y2 = tf.transform(127.05, 37.60)
+                params = {**base_params,
+                    "SERVICE":"WMS", "VERSION":"1.1.0", "REQUEST":"GetMap", "LAYERS":"nem_law_01",
+                    "STYLES":"", "SRS":"EPSG:3857", "BBOX":f"{min(x1,x2):.3f},{min(y1,y2):.3f},{max(x1,x2):.3f},{max(y1,y2):.3f}",
+                    "WIDTH":"64", "HEIGHT":"64", "FORMAT":"image/png", "TRANSPARENT":"TRUE",
+                }
+                rr = requests.get(target, params=params, timeout=10, headers={
+                    "User-Agent":"urban-strategy/2.5.0 ECVAM-WMS-probe", "Accept":"image/png,image/*;q=0.8,*/*;q=0.5", "Referer":_vworld_referer(),
+                })
+                ctype = str(rr.headers.get("content-type") or "").lower()
+                probe_out["wms"] = {"ok": rr.status_code == 200 and bool(rr.content) and ("image" in ctype or rr.content.startswith(b"\x89PNG")), "http_status": rr.status_code, "content_type": ctype[:80]}
+                if not probe_out["wms"]["ok"]:
+                    probe_out["wms"]["error"] = _redact_ecvam_text((rr.text or "").replace("\n"," ")[:180])
+            except Exception as exc:
+                probe_out["wms"] = {"ok": False, "error": _redact_ecvam_text(f"{type(exc).__name__}: {exc}")}
+            # Overall probe means the bootstrap AND one real GetMap request worked.
+            probe_out["ok"] = bool(probe_out.get("wms", {}).get("ok"))
+            out["probe"] = probe_out
         except HTTPException as exc:
-            out["probe"] = {"ok": False, "error": str(exc.detail)}
+            out["probe"] = {"ok": False, "bootstrap": "ERROR", "error": _redact_ecvam_text(str(exc.detail))}
     return out
 
 
@@ -9133,15 +9232,16 @@ def ecvam_wms_map(
     requested = list(dict.fromkeys(requested))
     width = max(320, min(int(width), 1200))
     height = max(220, min(int(height), 900))
-    _ensure_ecvam_api_ready()
+    ready = _ensure_ecvam_api_ready()
     try:
+        target_url, base_params = _ecvam_request_target(ready)
         tf = Transformer.from_crs(4326, 3857, always_xy=True)
         pts = [
             tf.transform(min_lon, min_lat), tf.transform(min_lon, max_lat),
             tf.transform(max_lon, min_lat), tf.transform(max_lon, max_lat),
         ]
         xs = [x for x, _ in pts]; ys = [y for _, y in pts]
-        params = {
+        params = {**base_params,
             "SERVICE": "WMS", "VERSION": "1.1.0", "REQUEST": "GetMap",
             "LAYERS": ",".join(requested), "STYLES": "", "SRS": "EPSG:3857",
             "BBOX": f"{min(xs):.3f},{min(ys):.3f},{max(xs):.3f},{max(ys):.3f}",
@@ -9149,7 +9249,7 @@ def ecvam_wms_map(
             "FORMAT": "image/png", "TRANSPARENT": "TRUE",
         }
         r = requests.get(
-            ECVAM_WMS_URL, params=params, timeout=15,
+            target_url, params=params, timeout=15,
             headers={
                 "User-Agent": "urban-strategy/2.5.0 ECVAM-WMS-display",
                 "Accept": "image/png,image/*;q=0.8,*/*;q=0.5",
@@ -9161,7 +9261,7 @@ def ecvam_wms_map(
             raise HTTPException(status_code=502, detail=f"ECVAM WMS HTTP {r.status_code}")
         if "image" not in content_type and not r.content.startswith(b"\x89PNG"):
             preview = (r.text or "").replace("\n", " ")[:140]
-            raise HTTPException(status_code=502, detail=f"ECVAM WMS non-image response: {preview}")
+            raise HTTPException(status_code=502, detail=f"ECVAM WMS non-image response: {_redact_ecvam_text(preview)}")
         # Official bootstrap logs each layer call separately; mirror that on a best-effort basis.
         try:
             requests.get(

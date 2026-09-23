@@ -1628,7 +1628,7 @@ body.service-layout-ready>.shell{display:none!important}
 @media(max-width:720px){.main-map-layer-details>summary{min-height:44px;font-size:9px}.main-map-layer-panel{width:min(292px,82vw)}.main-map-layer-row{grid-template-columns:86px minmax(78px,1fr) 32px}}
 
 /* 2026-09-21 규제지역 3종 독립 분석 */
-.regulatory-summary-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;padding:8px}.regulatory-summary-grid>div{border:1px solid #eaecf0;border-radius:7px;background:#fff;padding:7px}.regulatory-summary-grid span{display:block;font-size:8px;color:#667085}.regulatory-summary-grid b{display:block;margin-top:2px;font-size:11px;color:#101828}.regulatory-result-list{display:grid;gap:5px;padding:0 8px 8px}.regulatory-row{display:grid;grid-template-columns:minmax(150px,.9fr) minmax(110px,.55fr) minmax(150px,.8fr) minmax(220px,1.35fr);gap:6px;align-items:start;border:1px solid #eaecf0;border-radius:7px;padding:7px;background:#fff;font-size:8.5px}.regulatory-row b{font-size:9px}.regulatory-row small{display:block;color:#667085;line-height:1.4}.regulatory-status{font-weight:900}.regulatory-status.STRONG{color:#b42318}.regulatory-status.CONDITIONAL{color:#b54708}.regulatory-status.PLANNING{color:#344054}.regulatory-status.NATURE{color:#067647}.regulatory-status.HERITAGE{color:#6938ef}.regulatory-status.WATER{color:#175cd3}.regulatory-status.DISASTER{color:#c4320a}.regulatory-status.UNKNOWN{color:#667085}.regulatory-empty{padding:8px;border:1px dashed #d0d5dd;border-radius:7px;color:#667085;background:#fcfcfd}.regulatory-source{display:block;margin-top:2px;color:#667085}.regulatory-group-panel .regulatory-summary-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.regulatory-group-panel .spatial-mini-map{height:255px}@media(max-width:720px){.regulatory-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.regulatory-row{grid-template-columns:1fr}.regulatory-group-panel .spatial-mini-map{height:210px}}
+.regulatory-summary-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;padding:8px}.regulatory-summary-grid>div{border:1px solid #eaecf0;border-radius:7px;background:#fff;padding:7px}.regulatory-summary-grid span{display:block;font-size:8px;color:#667085}.regulatory-summary-grid b{display:block;margin-top:2px;font-size:11px;color:#101828}.regulatory-result-list{display:grid;gap:5px;padding:0 8px 8px}.regulatory-row{display:grid;grid-template-columns:minmax(150px,.9fr) minmax(110px,.55fr) minmax(150px,.8fr) minmax(220px,1.35fr);gap:6px;align-items:start;border:1px solid #eaecf0;border-radius:7px;padding:7px;background:#fff;font-size:8.5px}.regulatory-row b{font-size:9px}.regulatory-row small{display:block;color:#667085;line-height:1.4}.regulatory-status{font-weight:900}.regulatory-status.STRONG{color:#b42318}.regulatory-status.CONDITIONAL{color:#b54708}.regulatory-status.PLANNING{color:#344054}.regulatory-status.NATURE{color:#067647}.regulatory-status.HERITAGE{color:#6938ef}.regulatory-status.WATER{color:#175cd3}.regulatory-status.DISASTER{color:#c4320a}.regulatory-status.UNKNOWN{color:#667085}.regulatory-status.CONFIRMED{color:#027a48}.regulatory-empty{padding:8px;border:1px dashed #d0d5dd;border-radius:7px;color:#667085;background:#fcfcfd}.regulatory-source{display:block;margin-top:2px;color:#667085}.regulatory-group-panel .regulatory-summary-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.regulatory-group-panel .spatial-mini-map{height:255px}@media(max-width:720px){.regulatory-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.regulatory-row{grid-template-columns:1fr}.regulatory-group-panel .spatial-mini-map{height:210px}}
 
 /* R14: 사이트분석 화면용 4칸 그리드. R13까지는 아래 규칙이 인쇄보고서 문자열에만 있었다. */
 .site-detail-layout .spatial-module-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
@@ -5052,10 +5052,11 @@ function renderSafeMedicalSpatialStatus(){
   const warningText=(safeMedicalAnalysis.warnings||[]).filter(Boolean).join(' / ');
   const envName=safeMedicalAnalysis.metadata?.credential_env||'';
   if(apiInfo){
-    if(safeMedicalAnalysis.loading)apiInfo.textContent='의료시설 테이블 거리 스크리닝 + 가까운 후보 대표지번 조회 중';
-    else if(errorText)apiInfo.textContent=`API 확인필요 · ${errorText}${warningText?' · '+warningText:''}`;
-    else if(evidence.known)apiInfo.textContent=`API 연결 · ${envName||'인증키'} · 인근 1.5km 종합병원 ${Number(counts.general_hospital||0)} · 시립병원 ${Number(counts.municipal_hospital||0)} · 보건소 ${Number(counts.public_health_center||0)} · 부지경계 확정 ${Number(counts.boundary_confirmed||0)} · 350m 확정 ${Number(counts.boundary_confirmed_350||0)}${warningText?' · '+warningText:''}`;
-    else apiInfo.textContent='서울 열린데이터광장 API 미조회';
+    const bf=safeMedicalAnalysis.metadata?.browser_parcel_fallback||{};
+    if(safeMedicalAnalysis.loading)apiInfo.textContent='보유 의료시설 스냅샷 + 오프라인 대표필지 우선 분석 중';
+    else if(errorText)apiInfo.textContent=`보유자료 분석 후 외부보강 확인필요 · ${errorText}${warningText?' · '+warningText:''}`;
+    else if(evidence.known)apiInfo.textContent=`보유 TbHospitalInfo · 인근 1.5km 종합병원 ${Number(counts.general_hospital||0)} · 시립병원 ${Number(counts.municipal_hospital||0)} · 보건소 ${Number(counts.public_health_center||0)} · 부지경계 확정 ${Number(counts.boundary_confirmed||0)} · 350m 확정 ${Number(counts.boundary_confirmed_350||0)}${Number(bf.resolved||0)?` · 브라우저 최신지적 보완 ${Number(bf.resolved)}건`:''}${warningText?' · '+warningText:''}`;
+    else apiInfo.textContent='보유 의료시설 자료 미조회';
   }
   const combinedSafeLoading=safeMedicalAnalysis.loading||safeDowntownExclusionAnalysis.loading,combinedSafeReview=!!errorText||!!safeDowntownExclusionAnalysis.error||!downtownEvidence.known;
   set('spSafeMedicalState',combinedSafeLoading?'조회 중':combinedSafeReview?'의료·도심보호 일부 확인필요':within.length?'350m + 도심보호 Fact 확정':confirmed.length?'부지경계 + 도심보호 확인':'경계 REVIEW');
@@ -5097,7 +5098,8 @@ function regulatoryRelationText(item){
 function regulatoryCategoryLabel(cat){return {STRONG:'강한 제한',CONDITIONAL:'조건부 제한',NATURE:'자연환경',HERITAGE:'문화유산',WATER:'수계',DISASTER:'자연재해',PLANNING:'계획제한'}[cat]||'추가검토';}
 function regulatoryItem(id,label,category,opts={}){
   const known=opts.known===true,present=opts.present===true,dataStatus=opts.data_status||(known?'CONFIRMED':'UNKNOWN');
-  return {id,label,category,group:opts.group||'',severity:category,data_status:dataStatus,known,present,relation:opts.relation||(present?(opts.area_m2!=null?'OVERLAP':'PARCEL'):(known?'NONE':'UNKNOWN')),overlap_area_m2:Number.isFinite(Number(opts.area_m2))?Number(opts.area_m2):null,overlap_pct:Number.isFinite(Number(opts.pct))?Number(opts.pct):null,distance_m:Number.isFinite(Number(opts.distance_m))?Number(opts.distance_m):null,features:[...(opts.features||[])],source:opts.source||'',source_type:opts.source_type||'',impact_note:opts.impact_note||'개발·계획 조건에 영향을 줄 수 있어 세부 기준 확인 필요',followup:opts.followup||'관계 법령·결정도서·관계기관 협의사항 추가 확인',detail:opts.detail||'',rows:[...(opts.rows||[])]};
+  const overlap=[...(opts.overlap_features||opts.features||[])],context=[...(opts.context_features||[])];
+  return {id,label,category,group:opts.group||'',severity:category,data_status:dataStatus,known,present,relation:opts.relation||(present?(opts.area_m2!=null?'OVERLAP':'PARCEL'):(known?'NONE':'UNKNOWN')),overlap_area_m2:Number.isFinite(Number(opts.area_m2))?Number(opts.area_m2):null,overlap_pct:Number.isFinite(Number(opts.pct))?Number(opts.pct):null,distance_m:Number.isFinite(Number(opts.distance_m))?Number(opts.distance_m):null,features:[...(opts.features||overlap)],context_features:context,overlap_features:overlap,source:opts.source||'',source_type:opts.source_type||'',impact_note:opts.impact_note||'개발·계획 조건에 영향을 줄 수 있어 세부 기준 확인 필요',followup:opts.followup||'관계 법령·결정도서·관계기관 협의사항 추가 확인',detail:opts.detail||'',rows:[...(opts.rows||[])]};
 }
 function regulatoryPlanningFact(layerId){
   const known=planningAnalysis.loaded&&!(planningAnalysis.errors||[]).some(x=>x.id===layerId),site=activeGeometry?turf.feature(activeGeometry):null;
@@ -5124,11 +5126,15 @@ function regulatoryNedFact(ned,key){
 function regulatoryParcelFeatures(fact,category,label){
   const fs=affectedParcelFeatures(fact?.affected_pnus,fact?.rows,category);for(const f of fs){f.properties=Object.assign({},f.properties||{},{_regulatory_category:category,_regulatory_label:label,_regulatory_relation:'해당·저촉 필지'});}return fs;
 }
-function tagRegulatoryFeatures(features,item){
-  return (features||[]).map(f=>{const c=cloneFeature(f);c.properties=Object.assign({},c.properties||{},{_regulatory_id:item.id,_regulatory_category:item.category,_regulatory_label:item.label,_regulatory_relation:regulatoryRelationText(item)});return c;});
+function tagRegulatoryFeatures(features,item,displayRole='overlap'){
+  return (features||[]).map(f=>{const c=cloneFeature(f);c.properties=Object.assign({},c.properties||{},{_regulatory_id:item.id,_regulatory_category:item.category,_regulatory_label:item.label,_regulatory_relation:regulatoryRelationText(item),_display_role:displayRole});return c;});
 }
 function regulatoryConstraintMapFeatures(){
-  const out=[];for(const item of regulatoryConstraintAnalysis.items||[]){if(!item.present)continue;out.push(...tagRegulatoryFeatures(item.features,item));}return out;
+  const out=[];for(const item of regulatoryConstraintAnalysis.items||[]){if(!item.present)continue;out.push(...tagRegulatoryFeatures(item.context_features,item,'source_zone'));out.push(...tagRegulatoryFeatures(item.overlap_features?.length?item.overlap_features:item.features,item,'overlap'));}return out;
+}
+function isLocalRegulatorySource(item){
+  const t=String(item?.source_type||'').toUpperCase();
+  return t.startsWith('BUNDLED_')||t.startsWith('OFFLINE_')||t.startsWith('USER_CURATED_')||t==='LOCAL_REFERENCE';
 }
 function mergeRegulatoryNedResults(previous,current,allPnus){
   if(!previous||!Array.isArray(previous.successful_pnus))return current;
@@ -5186,9 +5192,9 @@ async function analyzeRegulatoryConstraints(options=null){
   a.ned=ned;a.disaster=disaster;a.bundled=bundled;a.ecvam=ecvam;a.school={known:false,absolute:null,relative:null,error:''};
 
   const exact=(id)=>regulatoryPlanningFact(id),items=[],add=(item)=>items.push(item),nedItem=(id,label,key,cat,group,impact,follow)=>{const f=regulatoryNedFact(ned,key);add(regulatoryItem(id,label,cat,{group,known:f.known,present:f.present,features:regulatoryParcelFeatures(f,cat,label),rows:f.rows,source:'VWorld NED 토지이용계획정보',source_type:'PARCEL_ATTRIBUTE_POSITIVE_ONLY',impact_note:impact,followup:follow}));};
-  const bundledItem=(id,label,key,cat,group,impact,follow)=>{const f=bundled?.[key]||{},detail=[f.error||'',f.detail||'',f.scope_note||''].filter(Boolean).join(' · ');add(regulatoryItem(id,label,cat,{group,known:f.known===true,present:f.present===true,area_m2:f.overlap_area_m2,pct:f.overlap_pct,features:f.overlap_features||f.features||[],rows:f.distribution||f.rows||[],source:f.source||'',source_type:f.source_type||'BUNDLED_OFFICIAL_SHP',data_status:f.known===true?'CONFIRMED':(f.status==='error'?'ERROR':'UNKNOWN'),detail,impact_note:impact,followup:follow}));};
+  const bundledItem=(id,label,key,cat,group,impact,follow)=>{const f=bundled?.[key]||{},detail=[f.error||'',f.detail||'',f.scope_note||''].filter(Boolean).join(' · ');add(regulatoryItem(id,label,cat,{group,known:f.known===true,present:f.present===true,area_m2:f.overlap_area_m2,pct:f.overlap_pct,features:f.overlap_features||f.features||[],context_features:f.features||[],overlap_features:f.overlap_features||[],rows:f.distribution||f.rows||[],source:f.source||'',source_type:f.source_type||'BUNDLED_OFFICIAL_SHP',data_status:f.known===true?'CONFIRMED':(f.status==='error'?'ERROR':'UNKNOWN'),detail,impact_note:impact,followup:follow}));};
   const ecvamMapOnlyItem=(id,label,layer,impact,follow)=>{const configured=ecvam?.configured===true,detail=`ECVAM WMS ${layer} · ${configured?'API KEY 설정 확인':'ECVAM_API_KEY 미설정'} · WMS 도면 전용(벡터 중첩면적 미산정)`;add(regulatoryItem(id,label,'NATURE',{group:'natural',known:false,present:false,source:'국토환경성평가지도 OpenAPI WMS',source_type:'OFFICIAL_WMS_MAP_ONLY',data_status:configured?'MAP_ONLY':'ERROR',detail,impact_note:impact,followup:follow}));};
-  const disasterItem=(id,label,key,impact,follow)=>{const f=disaster?.[key]||{},rasterMeta=key==='landslide_risk_map'?`유효등급 ${f.valid_coverage_pct==null?'-':Number(f.valid_coverage_pct).toFixed(1)+'%'} · NoData ${f.nodata_pct==null?'-':Number(f.nodata_pct).toFixed(1)+'%'} · 격자 ${Number(f.resolution_m||10)}m`:'';const detail=[f.error||'',rasterMeta,f.detail||'',f.scope_note||''].filter(Boolean).join(' · ');add(regulatoryItem(id,label,'DISASTER',{group:'disaster',known:f.known===true,present:f.present===true,area_m2:f.overlap_area_m2,pct:f.overlap_pct,features:f.overlap_features||f.features||[],rows:f.distribution||f.rows||[],source:f.source||'',source_type:f.source_type||'OFFICIAL_REMOTE_SHP',data_status:f.known===true?'CONFIRMED':(f.status==='error'?'ERROR':'UNKNOWN'),detail,impact_note:impact,followup:follow}));};
+  const disasterItem=(id,label,key,impact,follow)=>{const f=disaster?.[key]||{},rasterMeta=key==='landslide_risk_map'?`유효등급 ${f.valid_coverage_pct==null?'-':Number(f.valid_coverage_pct).toFixed(1)+'%'} · NoData ${f.nodata_pct==null?'-':Number(f.nodata_pct).toFixed(1)+'%'} · 격자 ${Number(f.resolution_m||10)}m`:'';const detail=[f.error||'',rasterMeta,f.detail||'',f.scope_note||''].filter(Boolean).join(' · ');add(regulatoryItem(id,label,'DISASTER',{group:'disaster',known:f.known===true,present:f.present===true,area_m2:f.overlap_area_m2,pct:f.overlap_pct,features:f.overlap_features||f.features||[],context_features:f.features||[],overlap_features:f.overlap_features||[],rows:f.distribution||f.rows||[],source:f.source||'',source_type:f.source_type||'OFFICIAL_REMOTE_SHP',data_status:f.known===true?'CONFIRMED':(f.status==='error'?'ERROR':'UNKNOWN'),detail,impact_note:impact,followup:follow}));};
 
   // 문화유산 카드는 기존 국가유산 공간자료에 VWorld NED 양성 필지정보만 보조한다.
   if(!localOnly)nedItem('heritage_environment','역사문화환경 보존지역·영향권','heritage_environment','HERITAGE','heritage','문화유산 인접 영향으로 높이·경관·현상변경 검토 가능','국가유산공간정보·개별 문화유산 현상변경 허용기준 및 영향권 확인');
@@ -5221,7 +5227,13 @@ async function analyzeRegulatoryConstraints(options=null){
 
   a.items=items;a.loaded=true;a.loading=false;a.generated_at=new Date().toISOString();a.local_only=localOnly;
   const confirmed=items.filter(x=>x.present),mapOnly=items.filter(x=>x.data_status==='MAP_ONLY'),unknown=items.filter(x=>!x.known&&x.data_status!=='ERROR'&&x.data_status!=='MAP_ONLY'),failed=items.filter(x=>x.data_status==='ERROR');
-  a.status=(a.errors.length||failed.length)?'partial':'available';if(!confirmed.length&&!mapOnly.length&&unknown.length===items.length)a.status='unavailable';
+  const localItems=items.filter(isLocalRegulatorySource),externalItems=items.filter(x=>!isLocalRegulatorySource(x));
+  const localFailed=localItems.filter(x=>x.data_status==='ERROR'||(!x.known&&x.data_status!=='MAP_ONLY'));
+  const localKnown=localItems.filter(x=>x.known).length,externalAvailable=externalItems.filter(x=>x.known||x.data_status==='MAP_ONLY').length;
+  a.local_status=localItems.length?(localFailed.length?(localKnown?'partial':'error'):'available'):'not_applicable';
+  a.external_status=externalItems.length?(externalAvailable===externalItems.length?'available':externalAvailable?'partial':'unavailable'):'not_applicable';
+  a.status=localItems.length?(localFailed.length?'partial':'available'):((failed.length||unknown.length)?'partial':'available');
+  if(!items.length)a.status='unavailable';
   Object.assign(regulatoryConstraintAnalysis,a);
   renderRegulatoryConstraintSpatialStatus();renderHeritageSpatialStatus();refreshMainMapReviewData();return regulatoryConstraintAnalysis;
 }
@@ -5233,9 +5245,12 @@ function renderRegulatoryGroup(group,box,stateId,confirmedId,unknownId,listId){
   const list=document.getElementById(listId);
   if(!activeGeometry){set(stateId,'구역 설정 전');set(confirmedId,'-');set(unknownId,'-');if(list)list.innerHTML='<div class="regulatory-empty">구역 설정 후 규제정보를 분석합니다.</div>';return;}
   box.boundary.addData({type:'Feature',geometry:activeGeometry,properties:{}});
-  const a=regulatoryConstraintAnalysis,items=(a.items||[]).filter(x=>x.group===group),confirmed=items.filter(x=>x.present),mapOnly=items.filter(x=>x.data_status==='MAP_ONLY'),unknown=items.filter(x=>!x.known&&x.data_status!=='MAP_ONLY'),mapFs=[];for(const item of confirmed)mapFs.push(...tagRegulatoryFeatures(item.features,item));if(mapFs.length)box.layer.addData({type:'FeatureCollection',features:mapFs});
-  set(confirmedId,`${confirmed.length}건`);set(unknownId,`${unknown.length}건`);set(stateId,a.loading?'규제자료 분석 중':!a.loaded?'분석 전':confirmed.length?`추가검토 ${confirmed.length}건 · 미확인 ${unknown.length}건${mapOnly.length?` · WMS ${mapOnly.length}종`:''}`:`중첩 확인 없음 · 미확인 ${unknown.length}건${mapOnly.length?` · WMS ${mapOnly.length}종`:''}`);
-  if(list){const visible=[...confirmed,...unknown,...mapOnly];if(!visible.length)list.innerHTML='<div class="regulatory-empty">현재 확보된 공식자료 기준 해당 규제 중첩 없음</div>';else list.innerHTML=visible.map(x=>{let metric=x.data_status==='MAP_ONLY'?'WMS 도면확인 · 정량 중첩 미산정':x.overlap_area_m2!=null?`${Math.round(x.overlap_area_m2).toLocaleString('ko-KR')}㎡${x.overlap_pct!=null?` · ${Number(x.overlap_pct).toFixed(1)}%`:''}`:x.present?'해당/저촉 확인':'정량값 미확보';if(x.id==='landslide_risk_map'&&Array.isArray(x.rows)&&x.rows.length){const grades=x.rows.filter(r=>Number(r.area_m2)>0).map(r=>`${Number(r.grade)}등급 ${Math.round(Number(r.area_m2||0)).toLocaleString('ko-KR')}㎡${r.pct_of_site==null?'':`(${Number(r.pct_of_site).toFixed(1)}%)`}`);if(grades.length)metric=grades.join(' · ');}const state=x.present?regulatoryRelationText(x):(x.data_status==='MAP_ONLY'?'도면확인':x.data_status==='ERROR'?'자료조회 오류':'미확인 · 추후 보완 필요');const cls=x.present?x.category:(x.data_status==='MAP_ONLY'?x.category:'UNKNOWN');return `<div class="regulatory-row"><div><b>${escHtml(x.label)}</b><small class="regulatory-source">${escHtml(regulatoryCategoryLabel(x.category))} · ${escHtml(x.source||'자료원 미연결')}</small></div><div><span class="regulatory-status ${cls}">${escHtml(state)}</span><small>${escHtml(metric)}</small></div><div><b>영향</b><small>${escHtml(x.impact_note)}</small></div><div><b>추가확인</b><small>${escHtml(x.followup)}${x.detail?` · ${escHtml(x.detail)}`:''}</small></div></div>`;}).join('');}
+  const a=regulatoryConstraintAnalysis,items=(a.items||[]).filter(x=>x.group===group),confirmed=items.filter(x=>x.present),knownNegative=items.filter(x=>x.known&&!x.present&&x.data_status!=='MAP_ONLY'),mapOnly=items.filter(x=>x.data_status==='MAP_ONLY'),unknown=items.filter(x=>!x.known&&x.data_status!=='MAP_ONLY'),mapFs=[];
+  for(const item of confirmed){mapFs.push(...tagRegulatoryFeatures(item.context_features,item,'source_zone'));mapFs.push(...tagRegulatoryFeatures(item.overlap_features?.length?item.overlap_features:item.features,item,'overlap'));}
+  if(mapFs.length)box.layer.addData({type:'FeatureCollection',features:mapFs});
+  const local=items.filter(isLocalRegulatorySource),localKnown=local.filter(x=>x.known).length,external=items.filter(x=>!isLocalRegulatorySource(x)),externalAvailable=external.filter(x=>x.known||x.data_status==='MAP_ONLY').length;
+  set(confirmedId,`${confirmed.length}건`);set(unknownId,`${unknown.length}건`);set(stateId,a.loading?'규제자료 분석 중':!a.loaded?'분석 전':`보유자료 ${localKnown}/${local.length} 확인 · 중첩 ${confirmed.length}건${external.length?` · 외부보강 ${externalAvailable}/${external.length}`:''}${unknown.length?` · 외부/미확인 ${unknown.length}`:''}`);
+  if(list){const visible=[...confirmed,...knownNegative,...unknown,...mapOnly];if(!visible.length)list.innerHTML='<div class="regulatory-empty">현재 확보된 공식자료 기준 해당 규제 중첩 없음</div>';else list.innerHTML=visible.map(x=>{let metric=x.data_status==='MAP_ONLY'?'WMS 도면확인 · 정량 중첩 미산정':x.overlap_area_m2!=null?`${Math.round(x.overlap_area_m2).toLocaleString('ko-KR')}㎡${x.overlap_pct!=null?` · ${Number(x.overlap_pct).toFixed(1)}%`:''}`:x.known&&!x.present?'공식자료 확인완료 · 중첩 없음':x.present?'해당/저촉 확인':'정량값 미확보';if(x.id==='landslide_risk_map'&&Array.isArray(x.rows)&&x.rows.length){const grades=x.rows.filter(r=>Number(r.area_m2)>0).map(r=>`${Number(r.grade)}등급 ${Math.round(Number(r.area_m2||0)).toLocaleString('ko-KR')}㎡${r.pct_of_site==null?'':`(${Number(r.pct_of_site).toFixed(1)}%)`}`);if(grades.length)metric=grades.join(' · ');}const state=x.present?regulatoryRelationText(x):(x.known?'확인완료 · 중첩 없음':x.data_status==='MAP_ONLY'?'도면확인':x.data_status==='ERROR'?'자료조회 오류':'미확인 · 추후 보완 필요');const cls=x.present?x.category:(x.known?'CONFIRMED':x.data_status==='MAP_ONLY'?x.category:'UNKNOWN');const tier=isLocalRegulatorySource(x)?'보유자료':'외부보강';return `<div class="regulatory-row"><div><b>${escHtml(x.label)}</b><small class="regulatory-source">${escHtml(tier)} · ${escHtml(regulatoryCategoryLabel(x.category))} · ${escHtml(x.source||'자료원 미연결')}</small></div><div><span class="regulatory-status ${cls}">${escHtml(state)}</span><small>${escHtml(metric)}</small></div><div><b>영향</b><small>${escHtml(x.impact_note)}</small></div><div><b>추가확인</b><small>${escHtml(x.followup)}${x.detail?` · ${escHtml(x.detail)}`:''}</small></div></div>`;}).join('');}
   if(group==='natural')refreshEcvamNaturalWmsOverlay();
   fitCompactMiniMap(box.map,box.boundary,box.layer);
 }
@@ -6493,8 +6508,8 @@ function refreshCompactMiniMaps(){
   renderSafeMedicalSpatialStatus();
   setTimeout(()=>invalidateAllSpatialMaps(false),0);
 }
-function regulatoryMiniStyle(f){const p=f.properties||{},grade=Number(p._landslide_grade);if(Number.isFinite(grade)&&grade>=1&&grade<=5){const clr={1:'#ff0000',2:'#ffc900',3:'#b6ff8e',4:'#30c2ff',5:'#0000ff'}[grade];return {weight:.8,color:clr,fillColor:clr,fillOpacity:.42};}const cat=p._regulatory_category||'CONDITIONAL',spec={STRONG:['#7a271a','#f97066'],CONDITIONAL:['#b54708','#fec84b'],NATURE:['#067647','#75e0a7'],HERITAGE:['#6938ef','#bdb4fe'],WATER:['#175cd3','#84adff'],PLANNING:['#344054','#98a2b3'],DISASTER:['#b42318','#fecdca']}[cat]||['#344054','#98a2b3'];return {weight:2,color:spec[0],fillColor:spec[1],fillOpacity:.24,dashArray:cat==='PLANNING'?'5,3':null};}
-function makeRegulationMini(id){const mp=L.map(id,{zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,doubleClickZoom:false,boxZoom:false,keyboard:false,touchZoom:false}).setView([37.5665,126.9780],15);return {map:mp,boundary:L.geoJSON(null,{style:{weight:2.4,color:'#101828',fillOpacity:0,dashArray:'4,3'}}).addTo(mp),layer:L.geoJSON(null,{style:regulatoryMiniStyle,onEachFeature:(f,l)=>{const p=f.properties||{};l.bindTooltip(`${escHtml(p._regulatory_label||'규제정보')}${p._landslide_grade?` · ${Number(p._landslide_grade)}등급`:''} · ${escHtml(p._regulatory_relation||'중첩')}`);}}).addTo(mp)};}
+function regulatoryMiniStyle(f){const p=f.properties||{},role=p._display_role||'overlap',grade=Number(p._landslide_grade);if(Number.isFinite(grade)&&grade>=1&&grade<=5){const clr={1:'#ff0000',2:'#ffc900',3:'#b6ff8e',4:'#30c2ff',5:'#0000ff'}[grade];return role==='source_zone'?{weight:1,color:clr,fillColor:clr,fillOpacity:.08,dashArray:'5,4'}:{weight:1.4,color:clr,fillColor:clr,fillOpacity:.5};}const cat=p._regulatory_category||'CONDITIONAL',spec={STRONG:['#7a271a','#f97066'],CONDITIONAL:['#b54708','#fec84b'],NATURE:['#067647','#75e0a7'],HERITAGE:['#6938ef','#bdb4fe'],WATER:['#175cd3','#84adff'],PLANNING:['#344054','#98a2b3'],DISASTER:['#b42318','#fecdca']}[cat]||['#344054','#98a2b3'];return role==='source_zone'?{weight:1.2,color:spec[0],fillColor:spec[1],fillOpacity:.07,dashArray:'6,4'}:{weight:2.4,color:spec[0],fillColor:spec[1],fillOpacity:.32,dashArray:cat==='PLANNING'?'5,3':null};}
+function makeRegulationMini(id){const mp=L.map(id,{zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,doubleClickZoom:false,boxZoom:false,keyboard:false,touchZoom:false}).setView([37.5665,126.9780],15);return {map:mp,boundary:L.geoJSON(null,{style:{weight:2.4,color:'#101828',fillOpacity:0,dashArray:'4,3'}}).addTo(mp),layer:L.geoJSON(null,{style:regulatoryMiniStyle,onEachFeature:(f,l)=>{const p=f.properties||{},role=p._display_role==='source_zone'?'원도형':'실제 중첩';l.bindTooltip(`${escHtml(p._regulatory_label||'규제정보')}${p._landslide_grade?` · ${Number(p._landslide_grade)}등급`:''} · ${role}`);}}).addTo(mp)};}
 const ccNaturalRegulation=makeRegulationMini('ccNaturalRegulationMiniMap');
 const ccTransportSecurityRegulation=makeRegulationMini('ccTransportSecurityRegulationMiniMap');
 const ccDisasterRegulation=makeRegulationMini('ccDisasterRegulationMiniMap');
@@ -6856,12 +6871,61 @@ async function analyzeIndustrialParkSupplement(){
     return {available:false,count:0,error:String(e.message||e)};
   }
 }
+function safeMedicalLineParts(feature){
+  try{const x=turf.polygonToLine(feature);return x?.type==='FeatureCollection'?(x.features||[]):(x?[x]:[]);}catch(e){return [];}
+}
+function safeMedicalBoundaryDistanceBrowser(site,parcel){
+  try{if(turf.booleanIntersects(site,parcel))return 0;}catch(e){}
+  const a=safeMedicalLineParts(site),b=safeMedicalLineParts(parcel);let best=Infinity;
+  const scan=(from,to)=>{for(const line of from){for(const c of (line.geometry?.coordinates||[])){if(!Array.isArray(c)||!Number.isFinite(Number(c[0]))||!Number.isFinite(Number(c[1])))continue;const pt=turf.point(c);for(const target of to){try{const np=turf.nearestPointOnLine(target,pt,{units:'kilometers'});const d=Number(np.properties?.dist);if(Number.isFinite(d))best=Math.min(best,d*1000);}catch(e){}}}}};
+  scan(a,b);scan(b,a);return Number.isFinite(best)?best:null;
+}
+function safeMedicalBoundaryMetricsBrowser(parcelGeometry){
+  const site=turf.feature(activeGeometry),parcel=turf.feature(parcelGeometry),buffer=turf.buffer(parcel,350,{units:'meters'}),siteArea=Math.max(1,turf.area(site));
+  let inter=null;try{inter=turf.intersect(site,buffer);}catch(e){}
+  const overlap=inter?Math.max(0,turf.area(inter)):0,coverage=Math.min(100,overlap/siteArea*100),distance=safeMedicalBoundaryDistanceBrowser(site,parcel);
+  return {distance_boundary_m:distance,within_350:coverage>0,coverage_350_pct:coverage,overlap_350_area_m2:overlap,buffer_350_geometry:buffer.geometry};
+}
+async function resolveSafeMedicalParcelBrowser(item){
+  if(!VWORLD_CLIENT_KEY||!activeGeometry||!item?.geometry?.coordinates)return null;
+  const point=turf.feature(item.geometry),probe=turf.buffer(point,6,{units:'meters'}),candidates=await fetchParcelCandidatesBrowser(probe.geometry);
+  if(!candidates.length)return null;
+  let best=null;
+  for(const f of candidates){
+    let contains=false;try{contains=turf.booleanPointInPolygon(point,turf.feature(f.geometry));}catch(e){}
+    let interArea=0;try{const x=turf.intersect(probe,turf.feature(f.geometry));if(x)interArea=turf.area(x);}catch(e){}
+    const score=(contains?1e9:0)+interArea;
+    if(!best||score>best.score)best={f,score};
+  }
+  if(!best?.f?.geometry)return null;
+  const metrics=safeMedicalBoundaryMetricsBrowser(best.f.geometry),pnu=String(best.f.properties?.pnu||'');
+  return {...item,...metrics,facility_boundary_geometry:best.f.geometry,primary_pnu:pnu,related_pnus:pnu?[pnu]:[],parcel_count:1,boundary_status:'CONFIRMED',boundary_basis:'VWORLD_BROWSER_CADASTRAL_FALLBACK',boundary_basis_label:'VWorld 브라우저 연속지적 보완',parcel_candidate_basis:'browser_official_point',source_type:'VWORLD_BROWSER_CADASTRAL',boundary_note:'보유 의료시설 좌표 기준 · 오프라인 대표필지 미확정 후 브라우저 VWorld 연속지적으로 보완',auto_pass_eligible:true};
+}
+function recomputeSafeMedicalAnalysisSummary(){
+  const items=safeMedicalAnalysis.items||[],confirmed=items.filter(x=>x.boundary_status==='CONFIRMED'&&x.facility_boundary_geometry),within=confirmed.filter(x=>Number.isFinite(Number(x.coverage_350_pct))&&Number(x.coverage_350_pct)>=50),review=items.filter(x=>x.boundary_status!=='CONFIRMED');
+  safeMedicalAnalysis.nearbyCounts={...(safeMedicalAnalysis.nearbyCounts||{}),general_hospital:items.filter(x=>x.category==='general_hospital').length,municipal_hospital:items.filter(x=>x.category==='municipal_hospital').length,public_health_center:items.filter(x=>x.category==='public_health_center').length,boundary_confirmed:confirmed.length,boundary_confirmed_350:within.length,boundary_review:review.length,negative_complete:review.length===0&&safeMedicalAnalysis.errors.length===0};
+  safeMedicalAnalysis.status=within.length?'resolved':confirmed.length?'resolved':items.length?'reference':safeMedicalAnalysis.status;
+  safeMedicalAnalysis.message=within.length?`대표필지 경계 기준 350m 이내 인정 의료시설 ${within.length}건 확인`:confirmed.length?'대표필지는 확인됐으나 350m 이내 인정 의료시설은 확인되지 않았습니다.':safeMedicalAnalysis.message;
+}
+async function enhanceSafeMedicalWithBrowserFallback(){
+  const unresolved=(safeMedicalAnalysis.items||[]).filter(x=>x.boundary_status!=='CONFIRMED'&&x.geometry?.coordinates);
+  if(!unresolved.length||!VWORLD_CLIENT_KEY){recomputeSafeMedicalAnalysisSummary();return;}
+  let resolved=0,failed=0;
+  const updates=await mapLimit(unresolved,2,async item=>{try{const x=await resolveSafeMedicalParcelBrowser(item);if(x){resolved++;return x;}failed++;return item;}catch(e){failed++;return item;}});
+  const updateMap=new Map(updates.map(x=>[`${x.category||''}|${x.name||''}|${x.institution_id||''}`,x]));
+  safeMedicalAnalysis.items=(safeMedicalAnalysis.items||[]).map(x=>updateMap.get(`${x.category||''}|${x.name||''}|${x.institution_id||''}`)||x);
+  safeMedicalAnalysis.metadata={...(safeMedicalAnalysis.metadata||{}),browser_parcel_fallback:{attempted:unresolved.length,resolved,failed,route:'VWorld browser JSONP LP_PA_CBND_BUBUN'}};
+  if(failed)safeMedicalAnalysis.warnings=[...(safeMedicalAnalysis.warnings||[]),`대표필지 브라우저 보완 ${resolved}/${unresolved.length}건 · 미확인 ${failed}건`];
+  recomputeSafeMedicalAnalysisSummary();
+}
+
 async function analyzeSafeMedicalReference(){
   if(!activeGeometry)return [];
   safeMedicalAnalysis.loading=true;safeMedicalAnalysis.loaded=false;safeMedicalAnalysis.items=[];safeMedicalAnalysis.errors=[];safeMedicalAnalysis.warnings=[];safeMedicalAnalysis.sourceStats={};safeMedicalAnalysis.nearbyCounts={};safeMedicalAnalysis.message='';
   try{
     const data=await fetchBackendJson('/api/reference/safe-medical-nearby',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry:activeGeometry})});
     safeMedicalAnalysis.status=data.status||'unavailable';safeMedicalAnalysis.items=data.items||[];safeMedicalAnalysis.metadata=data.metadata||{};safeMedicalAnalysis.errors=data.errors||[];safeMedicalAnalysis.warnings=data.warnings||[];safeMedicalAnalysis.sourceStats=data.source_stats||{};safeMedicalAnalysis.nearbyCounts=data.nearby_counts||{};safeMedicalAnalysis.message=data.message||'';safeMedicalAnalysis.loaded=true;
+    await enhanceSafeMedicalWithBrowserFallback();
   }catch(e){safeMedicalAnalysis.status='error';safeMedicalAnalysis.errors=[String(e.message||e)];safeMedicalAnalysis.warnings=[];safeMedicalAnalysis.sourceStats={};safeMedicalAnalysis.nearbyCounts={};safeMedicalAnalysis.message='의료시설 공식 위치자료 조회 실패';}
   finally{safeMedicalAnalysis.loading=false;renderSafeMedicalSpatialStatus();}
   return safeMedicalAnalysis.items;
@@ -8804,14 +8868,14 @@ const ANALYSIS_STEP_TIMEOUT_MS=180000;
 const ANALYSIS_PROGRESS_ORDER=['도형면적','제도별 가로구역','연속지적','역세권 경계','토지대장','건축물 공간','도시계획 GIS','용도지역 핵심 FACT','보전환경 로컬','상생주택 보전환경','구릉지 지형 FACT','정비사업 GIS','개발사업 GIS','의료시설','안심주택 도심배제','학교 절대보호구역','규제 원도형·재해 로컬','규제 원도형·문화재 보강','건축HUB','도로·접도','노선형 상업지역','주변 공간현황','사업판정'];
 // 내부 작업명은 실행·진단용으로 유지하고, 화면에는 사이트 분석 카드명과 같은 이름만 표시한다.
 const ANALYSIS_PROGRESS_DISPLAY=[
-  {label:'토지',sources:['도형면적','연속지적','토지대장']},
+  {label:'토지',sources:['도형면적','연속지적','토지대장'],factGroup:'land'},
   {label:'용도지역',sources:['용도지역 핵심 FACT']},
   {label:'용도지구',sources:['도시계획 GIS'],planningKinds:['district']},
   {label:'도시계획시설',sources:['도시계획 GIS'],planningKinds:['facility']},
   {label:'정비구역 현황',sources:['정비사업 GIS']},
   {label:'도시계획(개발)구역',sources:['도시계획 GIS','개발사업 GIS']},
   {label:'문화재관련 현황',sources:['도시계획 GIS'],planningKinds:['heritage']},
-  {label:'자연환경분석',sources:['보전환경 로컬','상생주택 보전환경']},
+  {label:'자연환경분석',sources:['보전환경 로컬','상생주택 보전환경'],factGroup:'sharedConservation'},
   {label:'구릉지 분석',sources:['구릉지 지형 FACT']},
   {label:'건축물',sources:['건축물 공간','건축HUB']},
   {label:'노후도',sources:['건축HUB']},
@@ -8847,12 +8911,31 @@ function planningKindProgress(kinds,base){
   return {...base,status,detail:`${done}/${specs.length} 완료${errors?` · 실패 ${errors}`:''}${notRun?` · 미실행 ${notRun}`:''}`};
 }
 function regulatoryGroupProgress(group,base){
-  if(base.status==='waiting'||base.status==='running'||base.status==='rejected')return base;
-  const a=regulatoryConstraintAnalysis,items=(a.items||[]).filter(x=>x.group===group),unknown=items.filter(x=>!x.known).length,errors=items.filter(x=>x.data_status==='ERROR').length;
-  // R18: NED는 문화유산 보조 양성정보 전용이므로 자연환경·교통·재해 3패널의 완료상태를 좌우하지 않는다.
-  const disasterFailed=group==='disaster'&&a.disaster?.status==='error';
-  const status=(disasterFailed||errors)?'partial':'fulfilled';
-  return {...base,status,detail:`확인 ${(items||[]).filter(x=>x.present).length}건 · 미확인 ${unknown}건${errors?` · 조회오류 ${errors}`:''}`};
+  if(base.status==='waiting'||base.status==='running')return base;
+  const items=(regulatoryConstraintAnalysis.items||[]).filter(x=>x.group===group);
+  if(!items.length)return base;
+  const local=items.filter(isLocalRegulatorySource),external=items.filter(x=>!isLocalRegulatorySource(x));
+  const localKnown=local.filter(x=>x.known).length,localFailed=local.filter(x=>x.data_status==='ERROR'||(!x.known&&x.data_status!=='MAP_ONLY')).length;
+  const externalAvailable=external.filter(x=>x.known||x.data_status==='MAP_ONLY').length,externalMissing=external.length-externalAvailable;
+  const overlaps=items.filter(x=>x.present).length;
+  const status=local.length?(localFailed?(localKnown?'partial':'rejected'):'fulfilled'):(externalAvailable?((externalMissing)?'partial':'fulfilled'):base.status);
+  return {...base,status,detail:`보유자료 ${localKnown}/${local.length} 확인 · 중첩 ${overlaps}건${external.length?` · 외부보강 ${externalAvailable}/${external.length}${externalMissing?` · 미확인 ${externalMissing}`:''}`:''}`};
+}
+function sharedConservationProgress(base){
+  if(base.status==='waiting'||base.status==='running')return base;
+  const a=sharedConservationAnalysis||{},facts=[a.urbanPark,a.greenbelt,a.biotope,a.publicForest],known=facts.filter(x=>x?.known===true).length,present=facts.filter(x=>x?.known===true&&x?.present===true).length;
+  const status=known===4?'fulfilled':known>0?'partial':'rejected';
+  const externalNotes=(a.errors||[]).length;
+  return {...base,status,detail:`최종 FACT ${known}/4 확인 · 중첩 ${present}건${externalNotes?` · 후속보강 기록 ${externalNotes}건`:''}`};
+}
+function landFactProgress(base){
+  if(base.status==='waiting'||base.status==='running')return base;
+  const st=landLedgerQueryState||{},req=Number(st.queried_pnus||st.requested_pnus?.length||0),ok=Number(st.official_area_count||0),failed=st.failed_pnus||[];
+  if(!req)return base;
+  const rows=Object.values(st.by_pnu||{}),browser=rows.filter(x=>String(x?.route||'').includes('jsonp')||String(x?.record?._route||'').includes('jsonp')).length;
+  const status=ok===req?'fulfilled':ok>0?'partial':'rejected';
+  const failedText=failed.length?` · 미확인 ${failed.slice(0,3).join(', ')}${failed.length>3?` 외 ${failed.length-3}`:''}`:'';
+  return {...base,status,detail:`토지대장 공식면적 ${ok}/${req}필지${browser?` · 브라우저 보완 ${browser}필지`:''}${failedText}`};
 }
 function analysisDisplayStep(item){
   const states=item.sources.map(src=>analysisProgressState.steps.get(src)||{status:'waiting',elapsed_ms:null,detail:''});
@@ -8868,6 +8951,8 @@ function analysisDisplayStep(item){
   let result={status,elapsed_ms,detail:details.join(' · ')};
   if(item.planningKinds)result=planningKindProgress(item.planningKinds,result);
   if(item.regulatoryGroup)result=regulatoryGroupProgress(item.regulatoryGroup,result);
+  if(item.factGroup==='sharedConservation')result=sharedConservationProgress(result);
+  if(item.factGroup==='land')result=landFactProgress(result);
   return result;
 }
 function renderAnalysisProgress(){
@@ -9023,7 +9108,7 @@ async function runLocalAutoAnalyses(options={}){
   if(runId!==currentAnalysisRunId)return results;
   if(!options.skipDevelopment)results.push(await safeAnalysisStep('개발사업 GIS',async()=>{await analyzeDevelopmentZones({localOnly:true});renderIndependentSpatialStatusMaps();return developmentAnalysis;},120000,{classify:v=>({status:v?.loaded?'fulfilled':'rejected',detail:v?.error||`보유자료 중첩 ${v?.overlaps?.length||0}건`})}));
   if(runId!==currentAnalysisRunId)return results;
-  if(!options.skipLocalRegulatory)results.push(await safeAnalysisStep('규제 원도형·재해 로컬',()=>analyzeRegulatoryConstraints({localOnly:true}),120000,{classify:v=>({status:v?.loaded?(v?.errors?.length?'partial':'fulfilled'):'rejected',detail:`보유자료 확인 ${(v?.items||[]).filter(x=>x.known).length}종 · 오류 ${v?.errors?.length||0}건`})}));
+  if(!options.skipLocalRegulatory)results.push(await safeAnalysisStep('규제 원도형·재해 로컬',()=>analyzeRegulatoryConstraints({localOnly:true}),120000,{classify:v=>{const local=(v?.items||[]).filter(isLocalRegulatorySource),known=local.filter(x=>x.known).length,missing=local.length-known;return {status:v?.loaded?(missing?(known?'partial':'rejected'):'fulfilled'):'rejected',detail:`보유자료 최종 FACT ${known}/${local.length} 확인${missing?` · 미확인 ${missing}`:''}`};}}));
   if(runId!==currentAnalysisRunId)return results;
   results.push(await safeAnalysisStep('구릉지 지형 FACT',analyzeHillZones,180000,{classify:v=>{const ready=v?.loaded&&v?.metadata?.available===true;if(!ready)return {status:'rejected',detail:v?.error||'지형참조 미연결'};const st=v?.status==='partial'?'partial':'fulfilled';return {status:st,detail:`대표표고 ${v?.elevation?.representative_m==null?'-':Number(v.elevation.representative_m).toFixed(1)+'m'} · 평균경사 ${v?.slope?.mean_degree==null?'-':Number(v.slope.mean_degree).toFixed(1)+'°'} · 40m+10° ${Math.round(Number(v?.overlap_area_m2||0)).toLocaleString('ko-KR')}㎡ (${Number(v?.overlap_pct||0).toFixed(1)}%)`};}}));
   if(runId!==currentAnalysisRunId)return results;
@@ -9031,7 +9116,7 @@ async function runLocalAutoAnalyses(options={}){
   if(runId!==currentAnalysisRunId)return results;
   results.push(await safeAnalysisStep('학교 절대보호구역',analyzeSchoolAbsoluteProtection,240000,{classify:v=>({status:v?.loaded&&v?.known?'fulfilled':'rejected',detail:v?.loaded&&v?.known?`UOA110 중첩 ${Number(v.zoneCount||0)}건 · ${Math.round(Number(v.overlapAreaM2||0)).toLocaleString('ko-KR')}㎡`:(v?.error||'공식 SHP 미확보')})}));
   if(runId!==currentAnalysisRunId)return results;
-  results.push(await safeAnalysisStep('보전환경 로컬',()=>analyzeSharedConservation({localOnly:true}),120000,{classify:v=>({status:v?.errors?.length||![v?.biotope?.known,v?.publicForest?.known,v?.greenbelt?.known].every(Boolean)?'partial':'fulfilled',detail:`비오톱·공익용산지·개발제한구역 보유자료 분석 · 오류 ${v?.errors?.length||0}건`})}));
+  results.push(await safeAnalysisStep('보전환경 로컬',()=>analyzeSharedConservation({localOnly:true}),120000,{classify:v=>{const facts=[v?.urbanPark,v?.greenbelt,v?.biotope,v?.publicForest],known=facts.filter(x=>x?.known===true).length;return {status:known===4?'fulfilled':known>0?'partial':'rejected',detail:`보유자료 최종 FACT ${known}/4 확인`};}}));
   return results;
 }
 
@@ -9108,8 +9193,8 @@ async function runAllAutoAnalyses(options={}){
   const planningStep=await planningPromise;if(planningStep)results.push(planningStep);
   // 산업단지 전용경계도 VWorld 보강자료이므로 22개 도시계획 조회 이후 별도로 확인한다.
   results.push(await safeAnalysisStep('산업단지 전용경계',analyzeIndustrialParkSupplement,90000,{classify:v=>({status:v?.available?'fulfilled':'partial',detail:v?.available?`중첩 ${v?.count||0}건`:(v?.error||'전용경계 미확보 · REVIEW')})}));
-  results.push(await safeAnalysisStep('상생주택 보전환경',analyzeSharedConservation,300000,{classify:v=>{const known=[v?.urbanPark?.known,v?.greenbelt?.known,v?.biotope?.known,v?.publicForest?.known].filter(Boolean).length;return {status:known===4?(v?.errors?.length?'partial':'fulfilled'):(known>0?'partial':'rejected'),detail:`${known}/4 기준 확인${v?.biotope?.area_m2!=null?` · 비오톱 ${Math.round(v.biotope.area_m2).toLocaleString('ko-KR')}㎡`:v?.biotope?.affected_pnus?.length?` · 비오톱 ${v.biotope.affected_pnus.length}필지`:''}${v?.publicForest?.area_m2!=null?` · 공익용산지 ${Math.round(v.publicForest.area_m2).toLocaleString('ko-KR')}㎡`:v?.publicForest?.affected_pnus?.length?` · 공익용산지 ${v.publicForest.affected_pnus.length}필지`:''}`};}}));
-  results.push(await safeAnalysisStep('규제 원도형·문화재 보강',analyzeRegulatoryConstraints,300000,{classify:v=>{const confirmed=(v?.items||[]).filter(x=>x.present).length,unknown=(v?.items||[]).filter(x=>!x.known).length;return {status:v?.loaded?(v?.errors?.length?'partial':'fulfilled'):'rejected',detail:`확인 ${confirmed}건 · 미확인 ${unknown}건${v?.errors?.length?` · 자료오류 ${v.errors.length}`:''}`};}}));
+  results.push(await safeAnalysisStep('상생주택 보전환경',analyzeSharedConservation,300000,{classify:v=>{const known=[v?.urbanPark?.known,v?.greenbelt?.known,v?.biotope?.known,v?.publicForest?.known].filter(Boolean).length;return {status:known===4?'fulfilled':(known>0?'partial':'rejected'),detail:`최종 FACT ${known}/4 확인${v?.biotope?.area_m2!=null?` · 비오톱 ${Math.round(v.biotope.area_m2).toLocaleString('ko-KR')}㎡`:v?.biotope?.affected_pnus?.length?` · 비오톱 ${v.biotope.affected_pnus.length}필지`:''}${v?.publicForest?.area_m2!=null?` · 공익용산지 ${Math.round(v.publicForest.area_m2).toLocaleString('ko-KR')}㎡`:v?.publicForest?.affected_pnus?.length?` · 공익용산지 ${v.publicForest.affected_pnus.length}필지`:''}`};}}));
+  results.push(await safeAnalysisStep('규제 원도형·문화재 보강',analyzeRegulatoryConstraints,300000,{classify:v=>{const items=v?.items||[],local=items.filter(isLocalRegulatorySource),localKnown=local.filter(x=>x.known).length,external=items.filter(x=>!isLocalRegulatorySource(x)),externalAvail=external.filter(x=>x.known||x.data_status==='MAP_ONLY').length;return {status:v?.loaded?(localKnown===local.length?'fulfilled':localKnown?'partial':'rejected'):'rejected',detail:`보유자료 ${localKnown}/${local.length} 확인 · 외부보강 ${externalAvail}/${external.length}`};}}));
   results.push(await safeAnalysisStep('주변 공간현황',refreshMiniContextFeatures,120000));
   try{renderPlanningGIS();renderPlanningFacilitySpatialStatus();renderDowntownCharacteristicSpatialStatus();renderSharedConservationSpatialStatus();renderHillSpatialStatus();renderIndependentSpatialStatusMaps();renderSafeMedicalSpatialStatus();renderSchoolAbsoluteProtectionSpatialStatus();renderRegulatoryConstraintSpatialStatus();}catch(e){console.warn('[site-review] 독립 GIS 최종렌더',e);}
 
@@ -16851,7 +16936,7 @@ function reportHtmlDocument(r){
 .site-analysis-diagnostic .spatial-mini-map{height:205px}
 .site-analysis-hidden{display:none!important}
 #siteDetail_schemeSpecific{grid-column:1/-1}
-.regulatory-summary-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;padding:8px}.regulatory-summary-grid>div{border:1px solid #eaecf0;border-radius:7px;background:#fff;padding:7px}.regulatory-summary-grid span{display:block;font-size:8px;color:#667085}.regulatory-summary-grid b{display:block;margin-top:2px;font-size:11px;color:#101828}.regulatory-result-list{display:grid;gap:5px;padding:0 8px 8px}.regulatory-row{display:grid;grid-template-columns:minmax(150px,.9fr) minmax(110px,.55fr) minmax(150px,.8fr) minmax(220px,1.35fr);gap:6px;align-items:start;border:1px solid #eaecf0;border-radius:7px;padding:7px;background:#fff;font-size:8.5px}.regulatory-row b{font-size:9px}.regulatory-row small{color:#667085;line-height:1.4}.regulatory-status{font-weight:900}.regulatory-status.STRONG{color:#b42318}.regulatory-status.CONDITIONAL{color:#b54708}.regulatory-status.PLANNING{color:#344054}.regulatory-status.NATURE{color:#067647}.regulatory-status.HERITAGE{color:#6938ef}.regulatory-status.WATER{color:#175cd3}.regulatory-status.DISASTER{color:#b42318}.regulatory-status.UNKNOWN{color:#667085}.regulatory-empty{padding:8px;border:1px dashed #d0d5dd;border-radius:7px;color:#667085;background:#fcfcfd}.regulatory-source{display:block;margin-top:2px;color:#667085}.regulatory-group-panel .spatial-mini-map{height:255px}@media(max-width:720px){.regulatory-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.regulatory-row{grid-template-columns:1fr}.regulatory-group-panel .spatial-mini-map{height:210px}}
+.regulatory-summary-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;padding:8px}.regulatory-summary-grid>div{border:1px solid #eaecf0;border-radius:7px;background:#fff;padding:7px}.regulatory-summary-grid span{display:block;font-size:8px;color:#667085}.regulatory-summary-grid b{display:block;margin-top:2px;font-size:11px;color:#101828}.regulatory-result-list{display:grid;gap:5px;padding:0 8px 8px}.regulatory-row{display:grid;grid-template-columns:minmax(150px,.9fr) minmax(110px,.55fr) minmax(150px,.8fr) minmax(220px,1.35fr);gap:6px;align-items:start;border:1px solid #eaecf0;border-radius:7px;padding:7px;background:#fff;font-size:8.5px}.regulatory-row b{font-size:9px}.regulatory-row small{color:#667085;line-height:1.4}.regulatory-status{font-weight:900}.regulatory-status.STRONG{color:#b42318}.regulatory-status.CONDITIONAL{color:#b54708}.regulatory-status.PLANNING{color:#344054}.regulatory-status.NATURE{color:#067647}.regulatory-status.HERITAGE{color:#6938ef}.regulatory-status.WATER{color:#175cd3}.regulatory-status.DISASTER{color:#b42318}.regulatory-status.UNKNOWN{color:#667085}.regulatory-status.CONFIRMED{color:#027a48}.regulatory-empty{padding:8px;border:1px dashed #d0d5dd;border-radius:7px;color:#667085;background:#fcfcfd}.regulatory-source{display:block;margin-top:2px;color:#667085}.regulatory-group-panel .spatial-mini-map{height:255px}@media(max-width:720px){.regulatory-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.regulatory-row{grid-template-columns:1fr}.regulatory-group-panel .spatial-mini-map{height:210px}}
 
 @media(min-width:1181px){
   .renewal-workspace-grid{grid-template-columns:minmax(0,1.5fr) minmax(340px,.62fr)!important;align-items:start!important}
@@ -17913,32 +17998,34 @@ async function fetchLandCharacteristicsBrowser(pnu){
   }
   return null;
 }
-async function fetchLandLedgerBrowser(pnu){
-  // R9: server proxy first.  Do not browser-fetch VWorld ladfrlList: that
-  // endpoint is CORS-blocked on the deployed Render origin and previously
-  // produced dozens of red console errors plus needless retries.
-  try{
-    const d=await fetchBackendJson('/api/land/ledger-one',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({pnu:String(pnu)})
-    });
-    if(d.record)return d.record;
-    // If the server had a configured VWorld key and still found no record,
-    // do not repeat the same official calls in the browser.
-    if(d.vworld_ready===true)return null;
-  }catch(e){if(e?.code==='RATE_LIMIT'||e?.http_status===429)throw e;}
+async function fetchLandLedgerBrowser(pnu,options={}){
+  // R25: server-first + browser JSONP fallback.  A configured server key does
+  // not mean the server transport succeeded: Render -> VWorld can fail while
+  // the user's browser -> VWorld path remains healthy.
+  if(!options.skipServer){
+    try{
+      const d=await fetchBackendJson('/api/land/ledger-one',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({pnu:String(pnu)})
+      });
+      if(d.record)return d.record;
+      // A normal authoritative empty response should not be duplicated.  Only
+      // transport/circuit failures are allowed to fall through to browser JSONP.
+      if(d.vworld_ready===true && d.external_upstream_error!==true)return null;
+    }catch(e){if(e?.code==='RATE_LIMIT'||e?.http_status===429)throw e;}
+  }
 
-  // Preserve one non-CORS fallback only when the server proxy is unavailable
-  // or has no configured VWorld key.
-  try{
-    const base='https://api.vworld.kr/ned/data/ladfrlList';
-    const data=await vworldJsonp(base,{
-      key:VWORLD_CLIENT_KEY,domain:VWORLD_CLIENT_DOMAIN,pnu:String(pnu),format:'json'
-    },8000);
-    const parsed=parseLandLedgerJson(data);
-    if(parsed)return {...parsed,_route:'vworld_jsonp'};
-  }catch(e){}
+  if(VWORLD_CLIENT_KEY){
+    try{
+      const base='https://api.vworld.kr/ned/data/ladfrlList';
+      const data=await vworldJsonp(base,{
+        key:VWORLD_CLIENT_KEY,domain:VWORLD_CLIENT_DOMAIN,pnu:String(pnu),format:'json'
+      },8000);
+      const parsed=parseLandLedgerJson(data);
+      if(parsed)return {...parsed,_route:'vworld_jsonp_browser_fallback'};
+    }catch(e){}
+  }
 
   const ch=await fetchLandCharacteristicsBrowser(pnu);
   if(ch)return ch;
@@ -17946,22 +18033,26 @@ async function fetchLandLedgerBrowser(pnu){
 }
 
 async function fetchLandLedgerStatus(pnu){
-  const started=Date.now(),errors=[];
+  const started=Date.now(),errors=[];let serverUpstreamError=false,serverAttempted=false;
   try{
+    serverAttempted=true;
     const d=await fetchBackendJson('/api/land/ledger-one',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pnu:String(pnu)})});
     const area=validPositiveNumber(d?.record?.lndpclAr);
     if(d?.record&&area!=null)return {pnu:String(pnu),status:'SUCCESS_DATA',record:{...d.record,lndpclAr:area},error:'',route:d.selected_source||'server_proxy',elapsed_ms:Date.now()-started,external_upstream_error:!!d?.external_upstream_error};
     if(d?.external_upstream_error){
+      serverUpstreamError=true;
       const retry=Number(d?.vworld_circuit?.retry_after_seconds||0);
-      errors.push(`VWorld 외부서비스 장애${retry>0?` · ${retry}초 후 재확인`:''}`);
-      if(d?.vworld_ready===true)return {pnu:String(pnu),status:'ERROR',record:null,error:errors.join(' / '),route:'server_proxy',elapsed_ms:Date.now()-started,external_upstream_error:true};
+      errors.push(`서버 VWorld 장애${retry>0?` · ${retry}초 후 서버 재확인`:''} · 브라우저 직접조회 시도`);
+      // Do NOT return here.  R23 proved that browser -> VWorld can succeed even
+      // when Render -> VWorld is unavailable, so continue to JSONP fallback.
+    }else{
+      errors.push(d?.record?'공식면적 lndpclAr 미확인':'정상응답이나 공식 토지대장 레코드 없음');
+      if(d?.vworld_ready===true)return {pnu:String(pnu),status:'ERROR',record:null,error:errors.join(' / '),route:'server_proxy',elapsed_ms:Date.now()-started,external_upstream_error:false};
     }
-    errors.push(d?.record?'공식면적 lndpclAr 미확인':'정상응답이나 공식 토지대장 레코드 없음');
-    if(d?.vworld_ready===true)return {pnu:String(pnu),status:'ERROR',record:null,error:errors.join(' / '),route:'server_proxy',elapsed_ms:Date.now()-started,external_upstream_error:false};
   }catch(e){errors.push(`서버 프록시 오류: ${String(e.message||e)}`);if(e?.code==='RATE_LIMIT'||e?.http_status===429)return {pnu:String(pnu),status:'ERROR',record:null,error:errors.join(' / '),route:'server_proxy',elapsed_ms:Date.now()-started};}
   try{
-    const rec=await fetchLandLedgerBrowser(pnu),area=validPositiveNumber(rec?.lndpclAr);
-    if(rec&&area!=null)return {pnu:String(pnu),status:'SUCCESS_DATA',record:{...rec,lndpclAr:area},error:'',route:rec._route||'fallback',elapsed_ms:Date.now()-started};
+    const rec=await fetchLandLedgerBrowser(pnu,{skipServer:serverAttempted}),area=validPositiveNumber(rec?.lndpclAr);
+    if(rec&&area!=null)return {pnu:String(pnu),status:'SUCCESS_DATA',record:{...rec,lndpclAr:area},error:'',route:rec._route||'fallback',elapsed_ms:Date.now()-started,external_upstream_error:serverUpstreamError};
     errors.push(rec?'fallback 공식면적 미확인':'JSONP/토지특성 fallback 레코드 없음');
   }catch(e){errors.push(`fallback 오류: ${String(e.message||e)}`);}
   return {pnu:String(pnu),status:'ERROR',record:null,error:errors.join(' / '),route:'fallback',elapsed_ms:Date.now()-started};
