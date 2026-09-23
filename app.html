@@ -17377,7 +17377,7 @@ function evaluatePublicComplexRoutes(store,facts){
 }
 function selectPublicComplexPopupRoute(route){
   activePublicComplexRoute=route;
-  try{renderPublicComplexDetailPopup();}catch(e){console.error('[public-complex-popup-route]',e);renderSchemePopupFallback('public_complex',e);}
+  try{renderPublicComplexDetailPopup();r29ApplyPopup3PlanStandards('public_complex');}catch(e){console.error('[public-complex-popup-route]',e);renderSchemePopupFallback('public_complex',e);}
 }
 function updatePublicComplexRouteButtons(){
   const root=document.getElementById('ccSchemeIcons');if(!root)return;
@@ -19457,7 +19457,7 @@ function renderUrbanRedevelopmentDetailPopup(){
 
 function selectSmallscalePopupRoute(route){
   activeSmallscaleRoute=route;
-  try{renderSmallscaleSchemeDetailPopup();}catch(e){console.error('[smallscale-popup-route]',e);renderSchemePopupFallback('smallscale',e);}
+  try{renderSmallscaleSchemeDetailPopup();r29ApplyPopup3PlanStandards('smallscale');}catch(e){console.error('[smallscale-popup-route]',e);renderSchemePopupFallback('smallscale',e);}
 }
 function popupSmallscaleFarProfile(key,current,target){
   // 2025.05.19 운영기준 제4장 4-1의 직접 수치표는 소규모재건축·소규모재개발만 적용.
@@ -20214,6 +20214,165 @@ function renderRemainingSchemeDetailPopup(name){
 }
 
 
+
+// ============================================================
+// R29 POPUP-3 PLAN-DENSITY DISPLAY PATCH · 2026-09-23
+// 사용자 확정 범위: 기존 사업판정·POPUP 1·2 유지, 각 사업별 POPUP 3 계획기준만
+// 「주택정비제도_밀도_및_공공기여_정비플랫폼_최종_산식완성」 기준으로 표시한다.
+// 계산엔진/규모검토는 이번 단계에서 실행하지 않는다.
+// ============================================================
+const R29_POPUP3_PLAN_MARKER='R29_POPUP3_HWPX_PLAN_DENSITY_20260923';
+window.R29_POPUP3_PLAN_MARKER=R29_POPUP3_PLAN_MARKER;
+
+function r29PlanTable(headers,rows){
+  return `<table class="activation-table"><thead><tr>${headers.map(x=>`<th>${escHtml(x)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map((x,i)=>`<${i===0?'th':'td'}>${x&&x.__html?x.__html:escHtml(x??'-')}</${i===0?'th':'td'}>`).join('')}</tr>`).join('')}</tbody></table>`;
+}
+function r29Html(html){return {__html:String(html||'')};}
+function r29Note(text,sourceHtml=''){
+  return `<div class="scheme-modal-note" style="margin-top:7px"><b>초기 계획밀도 검토</b> ${escHtml(text)}${sourceHtml?`<br>${sourceHtml}`:''}</div>`;
+}
+function r29CurrentZone(){return (latestSiteFactStore?.common?.zoning||commonSchemeData()?.zoning||'').trim();}
+function r29TargetZone(){const c=latestSiteFactStore?.common||commonSchemeData();return ((c?.targetZoning||'').trim());}
+function r29Source(scheme,sourceId,locator){return schemeSheetSourceFor(scheme,'계획기준',sourceId,locator);}
+function r29HighlightZone(z,current){return z===current?r29Html(`<b style="color:#9a6700">${escHtml(z)} · 대상지</b>`):z;}
+
+function r29RedevelopmentPopup3(){
+  const current=r29CurrentZone(),src=r29Source('redevelopment','RENEWAL_PLAN','주택정비형 재개발사업 · 용적률/용도지역 변경/공공기여');
+  const keep=[
+    ['제1종일반주거','150%','150%','200%','200%'],['제2종일반주거(7층)','170%','190%','250%','250%'],['제2종일반주거','190%','210%','250%','250%'],['제3종일반주거','210%','230%','250%','300%'],['준주거','300%','320%','400%','500%'],['준공업','210%','230%','250%','400%']
+  ].map(r=>[r29HighlightZone(r[0],current),...r.slice(1)]);
+  const change=[
+    ['1종 → 2종','150%','170%','200%','250%','10% 이상'],['1종 → 3종','150%','170%','250%','300%','20% 이상'],['2종(7층) → 2종','190%','210%','250%','250%','-'],['2종(7층)·2종 → 3종','190%','210%','250%','300%','10% 이상'],['3종 → 준주거','210%','230%','400%','500%','10% 이상']
+  ];
+  const pc=[['1종 → 2종(7층)','10% 이상'],['1종 → 2종','10% 이상'],['1종 → 3종','20% 이상'],['1종 → 준주거','30% 이상'],['2종(7층) → 3종','10% 이상'],['2종(7층) → 준주거','20% 이상'],['2종 → 3종','10% 이상'],['2종 → 준주거','20% 이상'],['3종 → 준주거','10% 이상']];
+  return `<h4>3. 계획기준(계획밀도) · 주택정비형 재개발</h4>
+    <h5>3.1 용도지역 변경 없음</h5>${r29PlanTable(['용도지역','기준','허용','상한','법적상한'],keep)}
+    <h5>3.2 용도지역 변경</h5>${r29PlanTable(['변경경로','기준','허용','상한','법적상한','공공기여'],change)}
+    <h5>3.3 종상향 공공기여 기준</h5>${r29PlanTable(['변경경로','공공기여율'],pc)}
+    <h5>3.4 상한·특례</h5>${r29PlanTable(['항목','적용기준'],[
+      ['상한용적률 산식','(기준)허용용적률 × {1 + 1.3×가중치×α토지 + (0.7 또는 1.0)×α건축물 + 0.7×α현금}'],
+      ['현황용적률 인정','제1·2종일반주거지역에서 조례용적률 초과 기존건축물 대지면적 비율에 따라 기준용적률 상향 · 1종 최대 200%, 2종 최대 250%'],
+      ['사업성 보정계수','서울시 평균 공시지가 ÷ 대상구역 평균 공시지가 · 1.0~2.0'],
+      ['법적상한','도시정비법 제54조 경로 · 초과용적률 중 50% 해당면적 국민주택규모 주택 공급의무'],
+      ['역세권 등 특례','도시정비법 제66조제2항 경로 · 법적상한의 120% 또는 용도지역 변경 후 법적상한까지 검토'],
+      ['공공기여 완화','높이제한 등으로 종상향 용적률을 충분히 확보하지 못하는 경우 추가용적률 비례 완화'],
+      ['입체공원','시설 조성비 환산분 및 구분지상권 설정분을 상한 인센티브로 인정']
+    ])}${r29Note('준공업지역은 공장비율 10% 미만 지역에 한해 주택정비형 재개발 적용 가능. 숫자가 없는 종상향 경로의 용적률은 임의 생성하지 않고 공공기여 기준만 표시한다.',src)}`;
+}
+
+function r29ReconstructionPopup3(){
+  const current=r29CurrentZone(),src=r29Source('reconstruction','RENEWAL_PLAN','주택재건축사업 · 용적률/종상향 공공기여/특례');
+  const keep=[
+    ['제1종일반주거','150%','150%','200%','200%'],['제2종일반주거(7층)','170%','190%','250%','250%'],['제2종일반주거','190%','210%','250%','250%'],['제3종일반주거','210%','230%','250%','300%'],['준주거','300%','320%','400%','500%'],['준공업','210%','230%','250%','400%'],['상업지역','400%','420%','800%','별도 법령·조례']
+  ].map(r=>[r29HighlightZone(r[0],current),...r.slice(1)]);
+  const change=[['1종 → 2종','150%','170%','200%','250%','10% 이상'],['1종 → 3종','150%','170%','250%','300%','20% 이상'],['2종(7층) → 2종','190%','210%','250%','250%','-'],['2종(7층)·2종 → 3종','190%','210%','250%','300%','10% 이상'],['3종 → 준주거','210%','230%','400%','500%','10% 이상']];
+  const pc=[['1종 → 2종(7층)','10% 이상'],['1종 → 2종','10% 이상'],['1종 → 3종','20% 이상'],['1종 → 준주거','30% 이상'],['2종(7층) → 3종','10% 이상'],['2종(7층) → 준주거','20% 이상'],['2종 → 3종','10% 이상'],['2종 → 준주거','20% 이상'],['3종 → 준주거','10% 이상']];
+  return `<h4>3. 계획기준(계획밀도) · 주택재건축</h4>
+    <h5>3.1 용도지역 변경 없음</h5>${r29PlanTable(['용도지역','기준','허용','상한','법적상한'],keep)}
+    <h5>3.2 용도지역 변경</h5>${r29PlanTable(['변경경로','기준','허용','상한','법적상한','공공기여'],change)}
+    <h5>3.3 종상향 공공기여</h5>${r29PlanTable(['변경경로','공공기여율'],pc)}
+    <h5>3.4 상한·특례</h5>${r29PlanTable(['항목','적용기준'],[
+      ['상한용적률 산식','산식상 허용용적률 × {1 + 1.3×가중치×α토지 + k×α건축물 + 0.7×α현금}'],
+      ['건축물 계수 k','공공임대주택·전략육성용도 등 인정시설 1.0 / 그 밖의 시설 0.7'],
+      ['사업성 보정계수','공시지가 보정계수 + α(단지규모) + β(세대수밀도) · 세부값은 별도 방침'],
+      ['과밀단지 현황용적률','현황용적률이 기본계획 허용용적률보다 높은 기존단지는 기부채납 없이 허용용적률을 현황용적률까지 인정 가능'],
+      ['법적상한·역세권 특례','도시정비법 제54조 법적상한 및 제66조 역세권 등 법적상한×120% 특례 검토'],
+      ['CAP 원칙','상한 산정 후 법적상한 및 별도 특례 적용 여부를 판정하여 한도 적용']
+    ])}${r29Note('상업지역 기존 공동주택 재건축은 기본계획에서 기준 400 / 허용 420 / 상한 800을 별도로 설정한다.',src)}`;
+}
+
+function r29ResidentialEnvironmentPopup3(){
+  const current=r29CurrentZone(),src=r29Source('residential_environment','RENEWAL_PLAN','주거환경개선사업 · 시행방법별 밀도계획');
+  const keep=[['제1종일반주거','150%','150%','200%'],['제2종일반주거(7층)','200%','200%','250%'],['제2종일반주거','200%','200%','250%'],['제3종일반주거','250%','250%','300%']].map(r=>[r29HighlightZone(r[0],current),...r.slice(1)]);
+  return `<h4>3. 계획기준(계획밀도) · 주거환경개선사업</h4>
+    <h5>3.1 소규모정비형</h5>${r29PlanTable(['용도지역','기준용적률','허용용적률','상한용적률'],keep)}
+    <h5>3.2 시행방법별 적용</h5>${r29PlanTable(['구분','계산·적용방식'],[
+      ['소규모정비형','서울시 도시계획조례 용적률을 직접 적용(LOOKUP)하고 관련법 특례가 있으면 별도 적용'],
+      ['수용 후 주택건설','해당 시행방식의 정비계획·관계 법령에서 정한 용적률 적용'],
+      ['환지','해당 시행방식의 정비계획·관계 법령에서 정한 용적률 적용'],
+      ['관리처분','해당 시행방식의 정비계획·관계 법령에서 정한 용적률 적용'],
+      ['공통 상한 산식','별도 공통 산식 없음 · 임의 산식 생성 금지']
+    ])}${r29Note('주거환경개선사업은 모든 시행방식에 공통 적용되는 독립 상한용적률 산식이 확인되지 않으므로 직접값·조건 방식으로 표시한다.',src)}`;
+}
+
+function r29SmallscalePopup3(){
+  const key=activeSmallscaleRoute||'block',current=r29CurrentZone(),src=r29Source('smallscale','SMALL_HOUSING','소규모주택정비사업 · 용적률/공공기여');
+  if(key==='autonomous')return `<h4>3. 계획기준(계획밀도) · 자율주택정비사업</h4>${r29PlanTable(['용도지역','조례용적률','법적상한'],[['제2종일반주거','200%','250%'],['제3종일반주거','250%','300%']])}${r29Note('별도 공통 상한 산식 없이 용도지역별 조례용적률·법적상한을 직접 적용하고 관련 특례는 조건부로 검토한다.',src)}`;
+  if(key==='block')return `<h4>3. 계획기준(계획밀도) · 가로주택정비사업</h4>${r29PlanTable(['용도지역','기준','임대주택 10%','임대주택 20%(공공·공공지원)'],[['제2종일반주거','200%','225%','250%'],['제3종일반주거','200%','275%','300%']])}${r29PlanTable(['계산항목','산식'],[['임대비율 10~20%','적용용적률 = V10 + {(r-10)/(20-10)}×(V20-V10)'],['구간 밖','외삽하지 않고 기준/상한값 적용']])}${r29Note('임대주택 확보비율에 따라 10~20% 구간을 직선보간한다.',src)}`;
+  if(key==='redevelopment')return `<h4>3. 계획기준(계획밀도) · 소규모재개발</h4>${r29PlanTable(['용도지역 변경','기준용적률','상한용적률'],[
+      ['1종 → 2종','150%','250%'],['1종 → 3종','150%','300%'],['2종(7층) → 3종','200%','300%'],['2종(7층) → 준주거','200%','500%'],['3종 → 준주거','250%','500%']
+    ])}${r29Note('변경 전·후 용도지역별 기준·상한을 직접 조회하고 변경 후 법적상한을 CAP으로 적용한다. 연속 산식은 임의 생성하지 않는다.',src)}`;
+  if(key==='reconstruction')return `<h4>3. 계획기준(계획밀도) · 소규모재건축</h4>${r29PlanTable(['용도지역 변경','기준','허용','상한','법적상한','공공기여'],[
+      ['1종 → 2종','150%','170%','200%','250%','10%'],['2종(7층) → 2종','190%','200%','250%','250%','-'],['2종(7층) → 3종','190%','200%','250%','300%','10%'],['2종 → 3종','190%','200%','250%','300%','10%'],['2종 → 준주거','200%','220%','400%','500%(임대확보시)','20%'],['3종 → 준주거','250%','270%','400%','500%(임대확보시)','15%']
+    ])}${r29Note('공공기여는 순부담 원칙. 1단계 10% 이상, 2단계 이상은 15% 이상 충족 필요.',src)}`;
+  return `<h4>3. 계획기준(계획밀도) · 모아타운/모아주택</h4>${r29PlanTable(['용도지역 변경','기준','상한','법적상한'],[['3종 → 준주거','250%','400%','500%']])}${r29PlanTable(['항목','적용'],[['적용대상','역세권: 승강장 350m 이내 / 간선도로: 간선도로변 직각 50m 이내'],['상한 공공기여','(적용 상한용적률 - 기준용적률) × 50% 상당을 임대주택 기부채납'],['법적상한','정비기반시설·공동이용시설 설치 및 매입형 임대주택 계획 등 조건 충족 시 500%까지']])}${r29Note('모아타운·모아주택은 별도 법정사업이 아니라 실제 소규모주택정비사업에 관리계획·통합심의 조건을 중첩하는 경로로 표시한다.',src)}`;
+}
+
+function r29UrbanRedevelopmentPopup3(){
+  const current=r29CurrentZone(),src=r29Source('urban_redevelopment','URBAN_RENEWAL_PLAN','도시정비형 재개발사업 · 용적률/공공기여');
+  const base=[['일반상업','600%','880%','공공시설 등 산정(α)'],['준주거','300%','440%','공공시설 등 산정(α)'],['준공업—분할개발 산업부지','400%','400%','800%'],['준공업—분할개발 공동주택','230%','250%','400%']].map(r=>[r29HighlightZone(r[0],current),...r.slice(1)]);
+  return `<h4>3. 계획기준(계획밀도) · 도시정비형 재개발</h4>
+    <h5>3.1 기본 용적률 체계</h5>${r29PlanTable(['구분','기준','허용','상한'],base)}
+    <h5>3.2 준공업 산업복합건축물</h5>${r29PlanTable(['공장비율(2008.01 기준)','산업시설 비율','용적률'],[['10~20%','10% 이상','265% 이하'],['20~30%','20% 이상','280% 이하'],['30~40%','30% 이상','295% 이하'],['40~50%','40% 이상','310% 이하'],['50% 이상','50% 이상','325% 이하']])}
+    <h5>3.3 용도지역 변경 시점별</h5>${r29PlanTable(['구분','기준','허용','상한'],[['2000.7.1 이전 · 준주거','300% 이하','440% 이하','법적용적률의 2배 이하'],['2000.7.1 이전 · 근린상업','500% 이하','660% 이하','법적용적률의 2배 이하'],['2000.7.1 이전 · 일반상업','600% 이하','880% 이하','법적용적률의 2배 이하'],['일반주거 → 준주거','300% 이하','360% 이하','400% 이하'],['일반주거 → 근린상업','300% 이하','500% 이하','600% 이하'],['일반주거 → 일반상업','300% 이하','630% 이하','800% 이하'],['준주거 → 일반상업','400% 이하','660% 이하','-']])}
+    <h5>3.4 공공기여·상한 산식</h5>${r29PlanTable(['항목','산식·적용'],[['상한용적률','허용(기준)용적률 × {1 + 1.3×가중치×α토지 + 1.2×α건축물 + 1.0×α현금}'],['주거 주용도 예외','용도지역 변경 등을 수반하는 도시정비형 재개발에서 주거 주용도 개발 시 건축물·현금 계수는 주택정비형 재개발 기준 적용']])}${r29Note('공공시설등 제공량이 아직 계획변수이므로 이번 단계에서는 산식과 적용기준만 표시하고 대상지 최대밀도 계산은 실행하지 않는다.',src)}`;
+}
+
+function r29PublicComplexPopup3(){
+  const typ=activePublicComplexRoute||schemeResults.public_complex?.selected_type||'commercial',src=r29Source('public_complex','PUBLIC_COMPLEX_GUIDE','도심공공주택복합사업 · 용적률/공공주택/계획기준 특례');
+  if(typ==='industrial')return `<h4>3. 계획기준(계획밀도) · 주거산업융합지구</h4>${r29PlanTable(['항목','기준'],[['용도지역','준공업지역 유지가 원칙'],['법적상한','준공업 400%'],['용적률 특례','법적상한 400%까지'],['공공임대주택','전체 주택 호수의 10% 이상'],['공공분양(지분적립형·이익공유형)','전체 주택 호수의 10% 이상'],['그 밖의 공공분양','전체 주택 호수의 60% 이상'],['공원·녹지','10만㎡ 미만은 확보의무 면제 / 이상은 세대당 2㎡ 또는 지구면적 5% 중 큰 면적'],['공공시설','복합지구 면적의 15% 이내로 기반시설 또는 설치비용 등 제공']])}${r29Note('주거산업융합지구는 준공업지역 400% 체계를 직접 적용한다.',src)}`;
+  if(typ==='housing')return `<h4>3. 계획기준(계획밀도) · 주택공급활성화지구</h4>${r29PlanTable(['적용 용도지역','법적상한','특례'],[['1종일반','200%','법적상한×120%'],['2종(7층)','250%','법적상한×120%'],['2종','250%','법적상한×120%'],['3종','300%','법적상한×120%'],['상향된 일반주거','변경 후 법적상한','법적상한까지'],['준주거','500%','법적상한까지']])}${r29PlanTable(['항목','기준'],[['공공분양(지분적립형·이익공유형)','전체 주택 호수의 10% 이상'],['그 밖의 공공분양','전체 주택 호수의 60% 이상'],['공원·녹지','10만㎡ 미만은 확보의무 면제 / 이상은 세대당 2㎡ 또는 지구면적 5% 중 큰 면적'],['공공시설','복합지구 면적의 15% 이내로 기반시설 또는 설치비용 등 제공']])}${r29Note('상향된 일반주거와 준주거는 변경 후 법적상한을 적용한다.',src)}`;
+  return `<h4>3. 계획기준(계획밀도) · 주거상업고밀지구</h4>${r29PlanTable(['적용 용도지역','법적상한','용적률 특례'],[['1종일반','200%','법적상한×120%'],['2종(7층)','250%','법적상한×120%'],['2종','250%','법적상한×120%'],['3종','300%','법적상한×120%'],['준주거(상향 포함)','500%','700%(500×140%)'],['상업지역','1,300%','법적상한까지']])}${r29PlanTable(['항목','기준'],[['공공임대주택','전체 주택 호수의 15% 이상'],['공공분양(지분적립형·이익공유형)','전체 주택 호수의 10% 이상'],['그 밖의 공공분양','전체 주택 호수의 60% 이상'],['공원·녹지','10만㎡ 미만은 확보의무 면제 / 이상은 세대당 2㎡ 또는 지구면적 5% 중 큰 면적'],['주차장','설치기준의 1/2 범위에서 완화 적용'],['공공시설','복합지구 면적의 15% 이내로 기반시설 또는 설치비용 등 제공']])}${r29Note('공공주택 의무공급과 공공시설 계획기준을 용적률 특례와 별도로 표시한다.',src)}`;
+}
+
+function r29InnovationPopup3(name){
+  const growth=name==='innovation_growth',src=r29Source(name,growth?'INNOVATION_GROWTH_OP':'INNOVATION','도심복합개발사업 · 용적률/공공기여/규제특례');
+  if(!growth)return `<h4>3. 계획기준(계획밀도) · 도심복합개발 주거중심형</h4>${r29PlanTable(['현 용도지역','조례용적률','법적상한','규제특례'],[['2종일반(7층 포함)','200%','250%','최대 300%(×120%)'],['3종일반','250%','300%','최대 360%(×120%)'],['준주거','400%','500%','최대 700%(×140%)'],['준공업','400%','400%','최대 400%']])}${r29PlanTable(['항목','기준'],[['국민주택규모 주택 의무공급','(복합개발계획 용적률 - 서울시 도시계획조례 제48조 용적률) × 50%'],['용도지역 변경 공공기여','도시관리계획 변경에 따른 토지가치 상승분 범위에서 산정 · 단일 용적률 산식 없음'],['규제특례 공공기여','규제특례에 따른 토지가치 상승분 범위에서 기반시설·공공시설·생활인프라·국민주택규모 주택 또는 비용납부']])}${r29Note('주거중심형은 특례상한 배수와 국민주택규모 주택 의무공급은 정량식으로 표시하고, 토지가치 상승분 기반 공공기여는 임의 용적률 산식으로 치환하지 않는다.',src)}`;
+  return `<h4>3. 계획기준(계획밀도) · 도심복합개발 성장거점형</h4>${r29PlanTable(['변경 전 → 변경 후','기준(허용)','상한','법적상한 특례','변경 공공기여 기준용적률'],[['2종 → 준주거','200','400','700','100%p'],['3종 → 준주거','250','400','700','75%p'],['2종 → 근린상업','200','600(서울도심 500)','900','200%p(도심150)'],['3종 → 근린상업','250','600(500)','900','175%p(125)'],['준주거 → 근린상업','400','600(500)','900','100%p(50)'],['2종 → 일반상업','200','800(600)','1,300','300%p(200)'],['3종 → 일반상업','250','800(600)','1,300','275%p(175)'],['준주거 → 일반상업','400','800(600)','1,300','200%p(100)'],['근린상업 → 일반상업','600(500)','800(600)','1,300','100%p(50)'],['2종 → 중심상업','200','1,000(800)','1,500','400%p(300)'],['3종 → 중심상업','250','1,000(800)','1,500','375%p(275)'],['준주거 → 중심상업','400','1,000(800)','1,500','300%p(200)'],['근린상업 → 중심상업','600(500)','1,000(800)','1,500','200%p(150)'],['일반상업 → 중심상업','800(600)','1,000(800)','1,500','100%p(100)']])}${r29PlanTable(['항목','산식·기준'],[['용도지역 변경 공공기여','(상한용적률 - 기준용적률) × 50%를 부지면적으로 환산'],['법적상한 특례—주택','(적용용적률 - 상한용적률) × 50%'],['법적상한 특례—비주택','(적용용적률 - 상한용적률) × 30%'],['적용용적률 CAP','MIN(계획용적률, 해당 용도지역 법적상한 특례 한도)'],['용도지역 유지','준주거 400→700 / 근린상업 600(도심500)→900 / 일반상업 800(600)→1,300 / 중심상업 1,000(800)→1,500']])}${r29Note('기준→상한 공공기여와 상한→법적상한 규제특례 공공기여를 서로 다른 산식으로 표시한다.',src)}`;
+}
+
+function r29PriorNegotiationPopup3(){
+  const src=r29Source('prior_negotiation','PRIOR_NEGOTIATION','도시계획변경 사전협상 · 용적률/공공기여');
+  return `<h4>3. 계획기준(계획밀도) · 도시계획변경 사전협상</h4>
+    <h5>3.1 용도지역 변경</h5>${r29PlanTable(['종전 → 변경','기준','허용','상한'],[['자연녹지 → 1종일반','50% 이하','90% 이하','150% 이하'],['자연녹지 → 2종일반','50% 이하','110% 이하','200% 이하'],['1종일반 → 일반상업','150% 이하','410% 이하','800% 이하'],['2종일반 → 일반상업','200% 이하','440% 이하','800% 이하'],['3종일반 → 일반상업','250% 이하','470% 이하','800% 이하'],['준주거 → 일반상업','400% 이하','560% 이하','800% 이하']])}
+    <h5>3.2 도시계획시설 변경</h5>${r29PlanTable(['용도지역','기준','허용','상한'],[['1종일반','100% 이하','120% 이하','150% 이하'],['2종일반','130% 이하','160% 이하','200% 이하'],['3종일반','160% 이하','200% 이하','250% 이하'],['준주거','260% 이하','320% 이하','400% 이하'],['일반상업','530% 이하','640% 이하','800% 이하']])}
+    <h5>3.3 건축혁신디자인·완화</h5>${r29PlanTable(['항목','기준'],[['1종 → 3종','기준150 / 허용190 / 상한250 / 디자인 최대310%'],['1종 → 준주거','기준250 / 허용400 / 디자인 최대500%'],['1종 → 상업','기준410 / 허용800 / 디자인 최대910%'],['3종 → 준주거','기준250 / 허용310 / 상한400 / 디자인 최대500%'],['3종 → 상업','기준470 / 허용800 / 디자인 최대910%'],['준주거 → 상업','기준400 / 허용560 / 상한800 / 디자인 최대910%'],['탄소제로','최대 60%p 범위 상한 인센티브'],['관광숙박','최대 240%p 범위 상한 인센티브'],['공개공지','최대 80%p 범위 상한 인센티브']])}
+    <h5>3.4 공공기여</h5>${r29PlanTable(['변경내용','공공기여율'],[['준주거 → 일반상업','30% 내외'],['3종일반 → 일반상업','40% 내외'],['2종일반 → 일반상업','45% 내외'],['1종일반 → 일반상업','48% 내외'],['도시계획시설 폐지·복합화 / 일반주거→일반상업','35% 내외'],['도시계획시설 폐지·복합화 / 일반주거→준주거','25% 내외'],['도시계획시설 폐지·복합화 / 용도지역 변경 없음','20% 내외']])}${r29Note('협상안의 실제 공공기여 방식·이행은 후속 협상에서 확정한다. 이번 팝업은 기준표만 표시한다.',src)}`;
+}
+
+function r29GeneralHousingPopup3(){
+  const current=r29CurrentZone(),src=r29Source('general_housing','HOUSING_ACT','주택건설사업—개발사업형 지구단위계획 · 밀도/공공기여');
+  const keep=[['제1종일반주거','150%','150%','200%'],['제2종(7층)','170%','190%','250%'],['제2종일반주거','190%','200%','250%'],['제3종일반주거','210%','230%','250%']].map(r=>[r29HighlightZone(r[0],current),...r.slice(1)]);
+  return `<h4>3. 계획기준(계획밀도) · 주택건설사업—개발사업형 지구단위계획</h4>
+    <h5>3.1 용도지역 변경 없음</h5>${r29PlanTable(['용도지역','기준','허용','상한'],keep)}
+    <h5>3.2 용도지역 상향</h5>${r29PlanTable(['변경경로','기준','허용','상한'],[['1종 → 용도지역 상향','150%','170%','200%'],['2종(7층) → 2종·3종','190%','200%','250%'],['2종 → 3종','190%','200%','250%']])}
+    <h5>3.3 종상향 공공기여</h5>${r29PlanTable(['변경경로','공공기여'],[['1종 → 2종(7층)','10% 이상'],['1종 → 2종','15% 이상'],['1종 → 3종','20% 이상'],['1종 → 준주거','30% 이상'],['2종(7층) → 3종','10% 이상'],['2종(7층) → 준주거','20% 이상'],['2종 → 3종','10% 이상'],['2종 → 준주거','20% 이상'],['3종 → 준주거','15% 이상']])}
+    <h5>3.4 상한 산정</h5>${r29PlanTable(['항목','계산·적용'],[['상한용적률','허용용적률 또는 기준용적률 × {1 + 1.3×가중치×α토지 + 1.0×α건축물 + 1.0×α현금}'],['건축물 계수 예외','권역생활서비스시설 또는 정책필요시설을 위원회가 인정하면 1.2 적용 가능'],['상한 적용','산식값과 해당 용도지역·관계법령상 적용 가능한 상한 중 작은 값'],['법적상한/추가완화','별도 특례 적용가능 여부를 먼저 판정한 뒤 법정한도까지 계산']])}${r29Note('지구단위계획 수립대상·예외는 POPUP 2의 사업요건에서 판단하고, POPUP 3에서는 계획밀도·공공기여 기준만 표시한다.',src)}`;
+}
+
+function r29Popup3Html(name){
+  if(name==='redevelopment')return r29RedevelopmentPopup3();
+  if(name==='reconstruction')return r29ReconstructionPopup3();
+  if(name==='residential_environment')return r29ResidentialEnvironmentPopup3();
+  if(name==='smallscale')return r29SmallscalePopup3();
+  if(name==='urban_redevelopment')return r29UrbanRedevelopmentPopup3();
+  if(name==='public_complex')return r29PublicComplexPopup3();
+  if(name==='innovation_growth'||name==='innovation_housing')return r29InnovationPopup3(name);
+  if(name==='prior_negotiation')return r29PriorNegotiationPopup3();
+  if(name==='general_housing')return r29GeneralHousingPopup3();
+  // 역세권활성화·성장잠재권은 R28에 이미 최종표와 동일한 상세 계획기준 렌더러가 있으므로 유지한다.
+  return '';
+}
+function r29ApplyPopup3PlanStandards(name){
+  const html=r29Popup3Html(name);if(!html)return;
+  const body=document.getElementById('schemeDetailPopupBody');if(!body)return;
+  const sections=[...body.querySelectorAll('section.activation-section')];
+  const section=sections.find(x=>/^3\./.test((x.querySelector('h4')?.textContent||'').trim()));
+  if(!section)return;
+  section.innerHTML=html;
+  section.dataset.r29Popup3='true';
+}
+
 function baseReviewDisclaimerHtml(name){
   const extra=name==='activation'?'<br>노선형 상업지역은 정비사업플랫폼 내부 판정모형용 참조도형을 사용한 결과이며 서울시 공식 법정도형이 아닙니다. 최종 검토 시 결정도서를 별도 확인해야 합니다.':'';
   const safeExtra=name==='safe'?'<br>의료시설 중심지역은 공식 좌표·주소로 확인한 대표지번 1필지의 경계를 기준으로 산정했으며 실제 의료시설 전체 대지와 다를 수 있습니다.':'';
@@ -20233,17 +20392,17 @@ function appendBaseReviewDisclaimer(name){
   if(!body.querySelector('.base-review-disclaimer'))body.insertAdjacentHTML('beforeend',baseReviewDisclaimerHtml(name));
 }
 function renderSchemeDetailPopup(name){
-  if(name==='smallscale'){renderSmallscaleSchemeDetailPopup();appendBaseReviewDisclaimer(name);return;}
-  if(['redevelopment','reconstruction','residential_environment','general_housing','prior_negotiation'].includes(name)){renderRemainingSchemeDetailPopup(name);appendBaseReviewDisclaimer(name);return;}
-  if(name==='activation'){renderActivationDetailPopup();appendBaseReviewDisclaimer(name);return;}
-  if(name==='growth_potential'){renderGrowthPotentialDetailPopup();appendBaseReviewDisclaimer(name);return;}
+  if(name==='smallscale'){renderSmallscaleSchemeDetailPopup();r29ApplyPopup3PlanStandards(name);appendBaseReviewDisclaimer(name);return;}
+  if(['redevelopment','reconstruction','residential_environment','general_housing','prior_negotiation'].includes(name)){renderRemainingSchemeDetailPopup(name);r29ApplyPopup3PlanStandards(name);appendBaseReviewDisclaimer(name);return;}
+  if(name==='activation'){renderActivationDetailPopup();r29ApplyPopup3PlanStandards(name);appendBaseReviewDisclaimer(name);return;}
+  if(name==='growth_potential'){renderGrowthPotentialDetailPopup();r29ApplyPopup3PlanStandards(name);appendBaseReviewDisclaimer(name);return;}
   if(name==='safe'){renderSafeHousingDetailPopup();appendBaseReviewDisclaimer(name);return;}
   if(name==='shared_housing'){renderSharedHousingDetailPopup();appendBaseReviewDisclaimer(name);return;}
   if(name==='station_complex'){renderStationComplexDetailPopup();appendBaseReviewDisclaimer(name);return;}
   if(name==='longterm'){renderLongtermDetailPopup();appendBaseReviewDisclaimer(name);return;}
-  if(name==='public_complex'){renderPublicComplexDetailPopup();appendBaseReviewDisclaimer(name);return;}
-  if(name==='innovation_growth'||name==='innovation_housing'){renderInnovationDetailPopup(name);appendBaseReviewDisclaimer(name);return;}
-  if(name==='urban_redevelopment'){renderUrbanRedevelopmentDetailPopup();appendBaseReviewDisclaimer(name);return;}
+  if(name==='public_complex'){renderPublicComplexDetailPopup();r29ApplyPopup3PlanStandards(name);appendBaseReviewDisclaimer(name);return;}
+  if(name==='innovation_growth'||name==='innovation_housing'){renderInnovationDetailPopup(name);r29ApplyPopup3PlanStandards(name);appendBaseReviewDisclaimer(name);return;}
+  if(name==='urban_redevelopment'){renderUrbanRedevelopmentDetailPopup();r29ApplyPopup3PlanStandards(name);appendBaseReviewDisclaimer(name);return;}
   const title=document.getElementById('schemeDetailPopupTitle');
   const body=document.getElementById('schemeDetailPopupBody');
   if(!body)return;
