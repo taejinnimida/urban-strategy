@@ -11144,7 +11144,7 @@ function siteOfficialLandPriceFact(){
     land_category:'대',weighted_method:'면적가중평균',intersecting_parcels:Number(a.intersecting_parcels||0),
     eligible_parcels:Number(a.eligible_parcels||0),resolved_parcels:Number(a.resolved_parcels||0),
     eligible_area_m2:eligible,resolved_area_m2:resolved,coverage_pct:Number.isFinite(coverage)?coverage:null,
-    boundary_partial_parcels:Number(a.boundary_partial_parcels||0),source:'국토교통부 VWorld 개별공시지가 · 토지임야대장 지목/공식면적'
+    boundary_partial_parcels:Number(a.boundary_partial_parcels||0),source:'국토교통부 VWorld 개별공시지가 → 보유 공식자료 동일연도 fallback · 토지임야대장 지목/공식면적'
   };
 }
 function reconstructionCoefficientSiteAreaFact(){
@@ -11205,7 +11205,7 @@ let renewalFeasibilityAnalysis={
   redevelopment_price_level_pct:null,reconstruction_price_level_pct:null,
   intersecting_parcels:0,boundary_partial_parcels:0,eligible_parcels:0,resolved_parcels:0,
   eligible_area_m2:0,resolved_area_m2:0,unknown_category_parcels:0,missing_area_parcels:0,
-  rows:[],errors:[],source:'국토교통부 VWorld 개별공시지가 + 서울시 정비사업 사업별 평균공시지가 공식값'
+  rows:[],errors:[],source:'국토교통부 VWorld 개별공시지가 → 보유 공식자료 동일연도 fallback + 서울시 정비사업 사업별 평균공시지가 공식값'
 };
 function renewalFeasibilityBaseline(){
   const targetYear=(new Date()).getFullYear()-1;
@@ -11220,7 +11220,7 @@ function renewalFeasibilityBaseline(){
   return {targetYear,year:commonYear,redevelopment,reconstruction,current:commonYear===targetYear};
 }
 function resetRenewalFeasibilityAnalysis(){
-  renewalFeasibilityAnalysis={loaded:false,loading:false,status:'unavailable',year:null,redevelopment_seoul_avg_price:null,reconstruction_seoul_avg_price:null,seoul_avg_price:null,target_avg_price:null,redevelopment_land_price_ratio:null,reconstruction_land_price_ratio:null,raw_coefficient:null,coefficient:null,price_level_pct:null,redevelopment_price_level_pct:null,reconstruction_price_level_pct:null,intersecting_parcels:0,boundary_partial_parcels:0,eligible_parcels:0,resolved_parcels:0,eligible_area_m2:0,resolved_area_m2:0,unknown_category_parcels:0,missing_area_parcels:0,rows:[],errors:[],source:'국토교통부 VWorld 개별공시지가 + 서울시 정비사업 사업별 평균공시지가 공식값'};
+  renewalFeasibilityAnalysis={loaded:false,loading:false,status:'unavailable',year:null,redevelopment_seoul_avg_price:null,reconstruction_seoul_avg_price:null,seoul_avg_price:null,target_avg_price:null,redevelopment_land_price_ratio:null,reconstruction_land_price_ratio:null,raw_coefficient:null,coefficient:null,price_level_pct:null,redevelopment_price_level_pct:null,reconstruction_price_level_pct:null,intersecting_parcels:0,boundary_partial_parcels:0,eligible_parcels:0,resolved_parcels:0,eligible_area_m2:0,resolved_area_m2:0,unknown_category_parcels:0,missing_area_parcels:0,rows:[],errors:[],source:'국토교통부 VWorld 개별공시지가 → 보유 공식자료 동일연도 fallback + 서울시 정비사업 사업별 평균공시지가 공식값'};
   try{renderRenewalFeasibilityStatus();}catch(e){}
 }
 function renewalFeasibilitySpatialFacts(){
@@ -11421,7 +11421,7 @@ function renderRenewalFeasibilityStatus(){
     if(a.unknown_category_parcels)issues.push(`지목 미확인 ${a.unknown_category_parcels}필지`);
     if(a.missing_area_parcels)issues.push(`공식면적 미확인 ${a.missing_area_parcels}필지`);
     if(a.errors?.length)issues.push(`자료 미확보 ${a.errors.length}건`);
-    note.innerHTML=`<b>FACT</b> · 사업방식과 무관하게 사용자 사업구역과 교차하는 필지 중 지목 ‘대’만 동일연도 개별공시지가로 면적가중평균하며, 이 값은 토지정보에 저장합니다. 경계필지는 공식 필지면적×구역내 중첩비율을 초기검토 면적으로 사용합니다. <b>RULE</b> · 재개발은 서울시 재개발 평균공시지가 기준 1.00~2.00, 재건축은 재건축 평균공시지가 보정계수+α+β(최종 1.00~2.00), 자율·가로·소규모재개발은 서울시 재개발 평균공시지가 기준 1.00~1.50을 적용합니다. 재건축 β는 별도 가용용적률 FACT가 연결되면 자동산정하도록 산식을 준비했습니다. <b>현재 범위</b> · 사업성 보정계수까지만 구축하며 사업별 허용용적률·밀도계산에는 아직 연결하지 않습니다.${issues.length?` <b>확인필요</b> · ${escHtml(issues.join(' · '))}`:''}`;
+    note.innerHTML=`<b>FACT</b> · 사업방식과 무관하게 사용자 사업구역과 교차하는 필지 중 지목 ‘대’만 동일연도 개별공시지가로 면적가중평균합니다. VWorld 실시간 조회를 먼저 사용하고, 실패할 때에만 같은 기준연도의 보유 공식자료를 사용합니다. 서로 다른 연도 값은 대체하지 않습니다. 경계필지는 공식 필지면적×구역내 중첩비율을 초기검토 면적으로 사용합니다. <b>RULE</b> · 재개발은 서울시 재개발 평균공시지가 기준 1.00~2.00, 재건축은 재건축 평균공시지가 보정계수+α+β(최종 1.00~2.00), 자율·가로·소규모재개발은 서울시 재개발 평균공시지가 기준 1.00~1.50을 적용합니다. 재건축 β는 별도 가용용적률 FACT가 연결되면 자동산정하도록 산식을 준비했습니다. <b>현재 범위</b> · 사업성 보정계수까지만 구축하며 사업별 허용용적률·밀도계산에는 아직 연결하지 않습니다.${issues.length?` <b>확인필요</b> · ${escHtml(issues.join(' · '))}`:''}`;
   }
 }
 async function analyzeRenewalBusinessFeasibility(){
@@ -11475,8 +11475,10 @@ async function analyzeRenewalBusinessFeasibility(){
     const rec=priceByPnu.get(item.pnu),price=Number(rec?.price_per_m2);
     if(Number.isFinite(price)&&price>0){
       sumValue+=price*item.area;sumArea+=item.area;resolved++;
-      const props=item.feature.properties||{};props.official_land_price={year:base.year,price_per_m2:price,source:'VWorld getIndvdLandPriceAttr',announcement_date:rec?.announcement_date||'',last_update:rec?.last_update||''};item.feature.properties=props;
-      rows.push({pnu:item.pnu,official_area_m2:item.official_area_m2,overlap_ratio:item.overlap_ratio,weighted_area_m2:item.area,price_per_m2:price,year:base.year});
+      const sourceType=rec?._source_type==='LOCAL_SNAPSHOT'?'LOCAL_SNAPSHOT':'VWORLD_LIVE';
+      const sourceLabel=sourceType==='LOCAL_SNAPSHOT'?'보유 서울시 개별공시지가':'VWorld getIndvdLandPriceAttr';
+      const props=item.feature.properties||{};props.official_land_price={year:base.year,price_per_m2:price,source:sourceLabel,source_type:sourceType,route:rec?._route||'',announcement_date:rec?.announcement_date||'',last_update:rec?.last_update||''};item.feature.properties=props;
+      rows.push({pnu:item.pnu,official_area_m2:item.official_area_m2,overlap_ratio:item.overlap_ratio,weighted_area_m2:item.area,price_per_m2:price,year:base.year,source_type:sourceType,route:rec?._route||''});
     }
   }
   const avg=sumArea>0?sumValue/sumArea:null;

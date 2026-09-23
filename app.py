@@ -1992,6 +1992,193 @@ def _server_individual_land_price_vworld(pnu: str, year: int, timeout: int = 8) 
         return None
 
 
+
+# R32: bundled Seoul individual official land-price snapshot.
+# Live VWorld remains the first source.  The local DB is consulted only when
+# the live request did not return the exact requested reference year.
+LAND_PRICE_LOCAL_ARCHIVE_ENV = "LAND_PRICE_LOCAL_ARCHIVE"
+LAND_PRICE_LOCAL_DB_ENV = "LAND_PRICE_LOCAL_DB"
+LAND_PRICE_LOCAL_EXTRACT_LOCK = threading.Lock()
+
+
+def _land_price_path_year(path: Path) -> Optional[int]:
+    m = re.search(r"(?:^|_)(20\d{2})(?:\.|_|$)", path.name)
+    return int(m.group(1)) if m else None
+
+
+def _land_price_local_direct_db_path(year: Optional[int] = None) -> Optional[str]:
+    env = (os.getenv(LAND_PRICE_LOCAL_DB_ENV) or "").strip()
+    candidates: List[Path] = []
+    if env:
+        candidates.append(Path(env))
+    candidates.extend(sorted(Path(STRUCTURED_DATA_DIR).glob("land_price_seoul_*.sqlite"), reverse=True))
+    candidates.extend(sorted(Path(BASE_DIR).glob("land_price_seoul_*.sqlite"), reverse=True))
+    valid: List[Path] = []
+    for path in candidates:
+        try:
+            if path.is_file() and path.stat().st_size > 1024:
+                valid.append(path)
+        except Exception:
+            continue
+    if year is not None:
+        matched = [p for p in valid if _land_price_path_year(p) == int(year)]
+        if matched:
+            return str(matched[0])
+        # Environment path may be a multi-year DB without a year in its filename.
+        if env:
+            ep = Path(env)
+            if ep in valid and _land_price_path_year(ep) is None:
+                return str(ep)
+        return None
+    return str(valid[0]) if valid else None
+
+
+def _land_price_local_archive_path(year: Optional[int] = None) -> Optional[str]:
+    env = (os.getenv(LAND_PRICE_LOCAL_ARCHIVE_ENV) or "").strip()
+    candidates: List[Path] = []
+    if env:
+        candidates.append(Path(env))
+    candidates.extend(sorted(Path(STRUCTURED_DATA_DIR).glob("land_price_seoul_*.sqlite.zip"), reverse=True))
+    candidates.extend(sorted(Path(BASE_DIR).glob("land_price_seoul_*.sqlite.zip"), reverse=True))
+    valid: List[Path] = []
+    for path in candidates:
+        try:
+            if path.is_file() and path.stat().st_size > 1024:
+                valid.append(path)
+        except Exception:
+            continue
+    if year is not None:
+        matched = [p for p in valid if _land_price_path_year(Path(p.name[:-4])) == int(year)]
+        if matched:
+            return str(matched[0])
+        if env:
+            ep = Path(env)
+            if ep in valid and _land_price_path_year(Path(ep.name[:-4] if ep.name.lower().endswith('.zip') else ep.name)) is None:
+                return str(ep)
+        return None
+    return str(valid[0]) if valid else None
+
+
+def _ensure_land_price_local_db(year: Optional[int] = None) -> Optional[str]:
+    direct = _land_price_local_direct_db_path(year)
+    if direct:
+        return direct
+    archive = _land_price_local_archive_path(year)
+    if not archive:
+        return None
+    with LAND_PRICE_LOCAL_EXTRACT_LOCK:
+        try:
+            with zipfile.ZipFile(archive) as zf:
+                members = [m for m in zf.namelist() if m.lower().endswith(".sqlite") and not m.endswith("/")]
+                if not members:
+                    logger.warning("bundled land-price archive has no sqlite member: %s", archive)
+                    return None
+                member = members[0]
+                target = os.path.join("/tmp", os.path.basename(member))
+                if os.path.isfile(target) and os.path.getsize(target) > 1024:
+                    return target
+                tmp = target + ".tmp"
+                with zf.open(member) as src, open(tmp, "wb") as dst:
+                    shutil.copyfileobj(src, dst, length=1024 * 1024)
+                os.replace(tmp, target)
+                return target
+        except Exception as exc:
+            logger.exception("bundled land-price sqlite extraction failed: %s", exc)
+            return None
+
+
+@lru_cache(maxsize=8192)
+def _local_individual_land_price_lookup(pnu: str, year: int) -> Optional[Dict[str, Any]]:
+    pnu = str(pnu or "").strip()
+    try:
+        requested_year = int(year)
+    except Exception:
+        return None
+    if len(pnu) != 19 or not pnu.isdigit():
+        return None
+    db_path = _ensure_land_price_local_db(requested_year)
+    if not db_path:
+        return None
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=2.0)
+        try:
+            row = conn.execute(
+                "SELECT pnu, price_per_m2, year, base_date FROM land_price WHERE pnu=? AND year=?",
+                (pnu, requested_year),
+            ).fetchone()
+        finally:
+            conn.close()
+        if not row:
+            return None
+        price = float(row[1]) if row[1] is not None else None
+        if price is None or not math.isfinite(price) or price <= 0:
+            return None
+        return {
+            "pnu": row[0],
+            "year": int(row[2]),
+            "month": "01",
+            "price_per_m2": price,
+            "announcement_date": row[3] or "",
+            "standard_land": "",
+            "last_update": row[3] or "",
+            "legal_dong": "",
+            "jibun": "",
+            "_route": "bundled_land_price_local_snapshot",
+            "_source_type": "LOCAL_SNAPSHOT",
+            "_source_date": row[3] or "",
+        }
+    except Exception as exc:
+        logger.info("bundled land-price lookup failed pnu=%s year=%s err=%s", pnu, requested_year, exc)
+        return None
+
+
+def _land_price_local_snapshot_status() -> Dict[str, Any]:
+    paths: List[Path] = []
+    env_db = (os.getenv(LAND_PRICE_LOCAL_DB_ENV) or "").strip()
+    env_zip = (os.getenv(LAND_PRICE_LOCAL_ARCHIVE_ENV) or "").strip()
+    if env_db:
+        paths.append(Path(env_db))
+    if env_zip:
+        paths.append(Path(env_zip))
+    paths.extend(sorted(Path(STRUCTURED_DATA_DIR).glob("land_price_seoul_*.sqlite")))
+    paths.extend(sorted(Path(STRUCTURED_DATA_DIR).glob("land_price_seoul_*.sqlite.zip")))
+    paths.extend(sorted(Path(BASE_DIR).glob("land_price_seoul_*.sqlite")))
+    paths.extend(sorted(Path(BASE_DIR).glob("land_price_seoul_*.sqlite.zip")))
+    seen = set(); files = []; years = set()
+    for path in paths:
+        try:
+            key = str(path.resolve())
+            if key in seen or not path.is_file() or path.stat().st_size <= 1024:
+                continue
+            seen.add(key)
+        except Exception:
+            continue
+        files.append(path.name)
+        name = path.name[:-4] if path.name.lower().endswith('.zip') else path.name
+        y = _land_price_path_year(Path(name))
+        if y is not None:
+            years.add(y)
+    return {
+        "configured": bool(files),
+        "files": files,
+        "years": sorted(years),
+        "mode": "multi_snapshot_exact_year",
+        "fallback_policy": "exact_requested_year_only",
+    }
+
+
+def _resolve_individual_land_price(pnu: str, year: int, timeout: int = 8) -> Optional[Dict[str, Any]]:
+    # User-approved ordering: VWorld live first, bundled official snapshot second.
+    live = _server_individual_land_price_vworld(pnu, int(year), timeout) if _vworld_key() else None
+    if live:
+        live.setdefault("_source_type", "VWORLD_LIVE")
+        return live
+    local = _local_individual_land_price_lookup(pnu, int(year))
+    if local:
+        local["_live_attempted"] = bool(_vworld_key())
+        return local
+    return None
+
 def _land_ledger_cache_get(pnu: str) -> Optional[Dict[str, Any]]:
     now = time.monotonic()
     with LAND_LEDGER_CACHE_LOCK:
@@ -7537,7 +7724,7 @@ def reference_station_entrances():
 # R22 station-line runtime hotfix.  This block is intentionally backend-only:
 # the existing multi-station frontend already consumes /api/reference/station-lines.
 STATION_RUNTIME_BUILD_MARKER = "R22_STATION_HOTFIX_20260901_0915"
-APP_BUILD_MARKER = "R31_SAFE_MEDICAL_PERFORMANCE_MERGED_20260903"
+APP_BUILD_MARKER = "R32_VWORLD_THEN_LOCAL_LAND_PRICE_20260923"
 _STATION_LINE_CACHE_LOCK = threading.Lock()
 _STATION_LINE_CACHE: Dict[str, Any] = {
     "expires_at": 0.0,
@@ -7908,6 +8095,9 @@ def health():
         "land_ledger": "browser VWorld NED live first; bundled Seoul AL_D003 local snapshot fallback; existing server VWorld remains last fallback",
         "land_ledger_browser_fallback": True,
         "land_ledger_local_snapshot": _land_ledger_local_snapshot_status(),
+        "land_price_local_fallback_patch_marker": "R32_VWORLD_THEN_LOCAL_OFFICIAL_LAND_PRICE_20260923",
+        "official_land_price": "VWorld NED live first; bundled Seoul official land-price snapshot exact-year fallback; year mismatch remains REVIEW",
+        "land_price_local_snapshot": _land_price_local_snapshot_status(),
         "road_access": "bundled TL_SPRD_MANAGE + ROAD_BT first; VWorld browser fallback; missing Fact remains REVIEW",
         "road_bundled_configured": bool(_road_zip_path()),
         "reference_data": reference_data,
@@ -8490,13 +8680,11 @@ def land_characteristics_one(inp: LandLedgerOneInput):
 def land_official_price_batch(inp: LandPriceBatchInput):
     """Selected-parcel official land price FACT for renewal-business feasibility.
 
-    The client filters the redevelopment denominator population to land-category
-    '대'. This endpoint only returns the requested year's official unit price and
-    never substitutes another year or an estimated market value.
+    Source order is intentionally fixed: live VWorld NED first, then the
+    bundled Seoul official-land-price snapshot for the *same requested year*.
+    A different year is never substituted because the business-feasibility
+    coefficient requires numerator and denominator to share the reference year.
     """
-    if not _vworld_key():
-        raise HTTPException(status_code=503, detail="VWORLD_API_KEY가 설정되지 않았습니다.")
-
     pnus: List[str] = []
     seen = set()
     for raw in inp.pnus:
@@ -8513,7 +8701,7 @@ def land_official_price_batch(inp: LandPriceBatchInput):
     max_workers = min(2, len(pnus))
     with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="land-price") as pool:
         future_map = {
-            pool.submit(_server_individual_land_price_vworld, pnu, int(inp.year), 8): pnu
+            pool.submit(_resolve_individual_land_price, pnu, int(inp.year), 8): pnu
             for pnu in pnus
         }
         for fut in as_completed(future_map):
@@ -8526,20 +8714,29 @@ def land_official_price_batch(inp: LandPriceBatchInput):
             if rec:
                 rows.append(rec)
             elif not any(e.get("pnu") == pnu for e in errors):
-                errors.append({"pnu": pnu, "error": "해당 기준연도 개별공시지가 미확보"})
+                errors.append({
+                    "pnu": pnu,
+                    "error": f"{int(inp.year)}년 개별공시지가 미확보 (VWorld 실시간 + 보유자료 동일연도 조회)",
+                })
 
     rows.sort(key=lambda r: str(r.get("pnu") or ""))
+    live_count = sum(1 for r in rows if r.get("_source_type") == "VWORLD_LIVE")
+    local_count = sum(1 for r in rows if r.get("_source_type") == "LOCAL_SNAPSHOT")
     return {
         "year": int(inp.year),
         "requested": len(pnus),
         "resolved": len(rows),
+        "resolved_live": live_count,
+        "resolved_local": local_count,
         "rows": rows,
         "errors": errors,
         "source": {
-            "provider": "국토교통부 / VWorld NED",
+            "provider": "국토교통부 / VWorld NED + 보유 공식자료",
             "dataset": "개별공시지가정보",
-            "operation": "getIndvdLandPriceAttr",
-            "field": "pblntfPclnd",
+            "operation": "getIndvdLandPriceAttr -> exact-year local fallback",
+            "field": "pblntfPclnd / price_per_m2",
+            "vworld_first": True,
+            "local_snapshot": _land_price_local_snapshot_status(),
         },
     }
 
