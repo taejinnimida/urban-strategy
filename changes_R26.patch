@@ -1,0 +1,219 @@
+--- /mnt/data/r25repo/app.html	2026-09-23 02:13:35.674788492 +0000
++++ /mnt/data/r26final/app.html	2026-09-23 02:13:53.462659473 +0000
+@@ -6855,20 +6855,51 @@
+     return [];
+   }finally{developmentAnalysis.loading=false;}
+ }
++async function analyzeIndustrialParkBrowser(geometry){
++  const features=await fetchSpatialFeaturesBrowser('LT_C_DAMDAN',geometry,['dan_id','DAN_ID','dan_cd','DAN_CD','objt_id','OBJT_ID','fid','FID']);
++  const site=turf.feature(geometry),siteArea=Math.max(0,turf.area(site));
++  const overlaps=[],context=[];
++  for(const f of features){
++    if(!f?.geometry)continue;
++    let inter=null;try{inter=turf.intersect(site,turf.feature(f.geometry,f.properties||{}));}catch(e){continue;}
++    if(!inter)continue;
++    const overlapArea=Math.max(0,turf.area(inter));if(overlapArea<0.5)continue;
++    const raw=f.properties||{},low={};for(const [k,v] of Object.entries(raw))low[String(k).toLowerCase()]=v;
++    const name=String(low.dan_name||low.dan_nm||low.name||'산업단지').trim();
++    const danId=String(low.dan_id||low.dan_cd||'').trim(),danType=String(low.dan_type||low.type||'').trim();
++    const typeLabel=({'1':'국가산업단지','2':'일반산업단지','3':'도시첨단산업단지','4':'농공단지'})[danType]||'산업단지';
++    let sourceArea=0;try{sourceArea=Math.max(0,turf.area(turf.feature(f.geometry)));}catch(e){}
++    const props={source:'vworld_browser_industrial_park',source_title:'VWorld 산업단지 경계(LT_C_DAMDAN)',source_layer:'LT_C_DAMDAN',development_kind:'industrial_park',dan_id:danId,dan_type:danType,type_label:typeLabel,name,
++      overlap_area_m2:Number(overlapArea.toFixed(2)),site_overlap_pct:siteArea>0?Number((overlapArea/siteArea*100).toFixed(4)):null,zone_overlap_pct:sourceArea>0?Number((overlapArea/sourceArea*100).toFixed(4)):null,
++      _overlap_area:Number(overlapArea.toFixed(2)),_overlap_pct:siteArea>0?Number((overlapArea/siteArea*100).toFixed(4)):null};
++    overlaps.push({type:'Feature',geometry:inter.geometry,properties:props});
++    context.push({type:'Feature',geometry:f.geometry,properties:{...props,_display_role:'source_zone'}});
++  }
++  overlaps.sort((a,b)=>Number(b.properties?.overlap_area_m2||0)-Number(a.properties?.overlap_area_m2||0));
++  return {status:overlaps.length?'matched':'none',overlaps,context_features:context,metadata:{available:true,source:'VWorld 2D Data API · browser direct',source_layer:'LT_C_DAMDAN',source_title:'국토교통부 산업단지 단지경계',source_type:'VWORLD_BROWSER_DIRECT',note:'Browser-first 산업단지 전용경계. 브라우저 실패 시에만 Render fallback'}};
++}
+ async function analyzeIndustrialParkSupplement(){
+   if(!activeGeometry)return {available:false,error:'구역계 없음'};
++  let browserError='';
++  if(planningClientKeyReady()){
++    try{
++      const data=await analyzeIndustrialParkBrowser(activeGeometry);
++      developmentAnalysis.industrialParks=data.overlaps||[];developmentAnalysis.industrialParkContextFeatures=data.context_features||[];developmentAnalysis.industrialParkMetadata=data.metadata||{};
++      renderIndependentSpatialStatusMaps();
++      return {available:true,count:developmentAnalysis.industrialParks.length,error:'',route:'browser_direct_primary'};
++    }catch(e){browserError=String(e?.message||e);}
++  }
+   try{
+     const data=await fetchBackendJson('/api/spatial/industrial-park-intersections',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry:activeGeometry})});
+-    developmentAnalysis.industrialParks=data.overlaps||[];
+-    developmentAnalysis.industrialParkContextFeatures=data.context_features||[];
+-    developmentAnalysis.industrialParkMetadata=data.metadata||{};
++    developmentAnalysis.industrialParks=data.overlaps||[];developmentAnalysis.industrialParkContextFeatures=data.context_features||[];
++    developmentAnalysis.industrialParkMetadata={...(data.metadata||{}),route:'server_fallback_after_browser',browser_error:browserError};
+     renderIndependentSpatialStatusMaps();
+-    return {available:developmentAnalysis.industrialParkMetadata?.available===true,count:developmentAnalysis.industrialParks.length,error:''};
++    return {available:developmentAnalysis.industrialParkMetadata?.available===true,count:developmentAnalysis.industrialParks.length,error:'',route:'server_fallback_after_browser'};
+   }catch(e){
+     developmentAnalysis.industrialParks=[];developmentAnalysis.industrialParkContextFeatures=[];
+-    developmentAnalysis.industrialParkMetadata={available:false,source_type:'VWORLD_LIVE',source_layer:'LT_C_DAMDAN',error:String(e.message||e),note:'산업단지 전용경계 보강조회 실패 · REVIEW 유지'};
++    developmentAnalysis.industrialParkMetadata={available:false,source_type:'VWORLD_LIVE',source_layer:'LT_C_DAMDAN',error:[browserError?`브라우저: ${browserError}`:'',`Render fallback: ${String(e.message||e)}`].filter(Boolean).join(' · '),note:'산업단지 전용경계 외부보강 조회 실패 · REVIEW 유지'};
+     renderIndependentSpatialStatusMaps();
+-    return {available:false,count:0,error:String(e.message||e)};
++    return {available:false,count:0,error:developmentAnalysis.industrialParkMetadata.error,route:'browser_then_server_failed'};
+   }
+ }
+ function safeMedicalLineParts(feature){
+@@ -17962,100 +17993,89 @@
+   const doc=new DOMParser().parseFromString(xmlText,'application/xml');if(doc.querySelector('parsererror'))return null;const fields=[...doc.querySelectorAll('field')];if(!fields.length)return null;
+   const vals=fields.map(row=>{const g=n=>row.querySelector(n)?.textContent?.trim()||'';return {pnu:g('pnu'),lndpclAr:Number(g('lndpclAr'))||null,lndcgrCodeNm:g('lndcgrCodeNm')||g('lndcgrCode'),stdrYear:g('stdrYear'),stdrMt:g('stdrMt'),lastUpdtDt:g('lastUpdtDt'),_route:'getLandCharacteristics'};}).filter(x=>x.lndpclAr!=null);vals.sort((a,b)=>String(b.stdrYear||'').localeCompare(String(a.stdrYear||'')));return vals[0]||null;
+ }
+-async function fetchLandCharacteristicsBrowser(pnu){
+-  // R9: VWorld NED is server-proxy first. Browser CORS fetch is intentionally
+-  // forbidden because api.vworld.kr does not return Access-Control-Allow-Origin
+-  // for this Render origin and generated one failed request per parcel/year.
++async function fetchLandCharacteristicsBrowser(pnu,options={}){
++  // R26: 공개 VWorld NED는 Browser-first. JSONP는 fetch/CORS 제약을 받지 않는다.
++  // 브라우저 직접조회가 모두 실패한 경우에만 기존 Render proxy를 최후 보강경로로 사용한다.
++  const allowServerFallback=options.allowServerFallback!==false;
++  const base='https://api.vworld.kr/ned/data/getLandCharacteristics';
++  const now=new Date().getFullYear();
++  if(VWORLD_CLIENT_KEY){
++    for(let y=now;y>=now-5;y--){
++      try{
++        const data=await vworldJsonp(base,{key:VWORLD_CLIENT_KEY,domain:VWORLD_CLIENT_DOMAIN,pnu:String(pnu),format:'json',stdrYear:String(y)},8000);
++        const f=data?.response?.fields?.field||data?.fields?.field;
++        const arr=Array.isArray(f)?f:(f?[f]:[]);
++        for(const x of arr){
++          const a=Number(x.lndpclAr);
++          if(Number.isFinite(a)&&a>0)return {
++            pnu:String(pnu),lndpclAr:a,
++            lndcgrCodeNm:String(x.lndcgrCodeNm||x.lndcgrCode||''),
++            stdrYear:String(x.stdrYear||y),stdrMt:String(x.stdrMt||''),
++            lastUpdtDt:String(x.lastUpdtDt||''),_route:'getLandCharacteristics_jsonp_browser_primary'
++          };
++        }
++      }catch(e){}
++    }
++  }
++  if(!allowServerFallback)return null;
+   try{
+     const d=await fetchBackendJson('/api/land/characteristics-one',{
+-      method:'POST',
+-      headers:{'Content-Type':'application/json'},
+-      body:JSON.stringify({pnu:String(pnu)})
++      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pnu:String(pnu)})
+     });
+-    if(d.record)return d.record;
+-    if(d.vworld_ready===true)return null;
++    if(d.record)return {...d.record,_route:d.record?._route||'server_characteristics_fallback_after_browser'};
+   }catch(e){if(e?.code==='RATE_LIMIT'||e?.http_status===429)throw e;}
+-
+-  // Last-resort browser fallback: JSONP does not use fetch/CORS.  This path is
+-  // only reached when the server proxy has no usable record.
+-  const base='https://api.vworld.kr/ned/data/getLandCharacteristics';
+-  const now=new Date().getFullYear();
+-  for(let y=now;y>=now-5;y--){
+-    try{
+-      const data=await vworldJsonp(base,{key:VWORLD_CLIENT_KEY,domain:VWORLD_CLIENT_DOMAIN,pnu:String(pnu),format:'json',stdrYear:String(y)},8000);
+-      const f=data?.response?.fields?.field||data?.fields?.field;
+-      const arr=Array.isArray(f)?f:(f?[f]:[]);
+-      for(const x of arr){
+-        const a=Number(x.lndpclAr);
+-        if(Number.isFinite(a)&&a>0)return {
+-          pnu:String(pnu),lndpclAr:a,
+-          lndcgrCodeNm:String(x.lndcgrCodeNm||x.lndcgrCode||''),
+-          stdrYear:String(x.stdrYear||y),stdrMt:String(x.stdrMt||''),
+-          lastUpdtDt:String(x.lastUpdtDt||''),_route:'getLandCharacteristics_jsonp'
+-        };
+-      }
+-    }catch(e){}
+-  }
+   return null;
+ }
+ async function fetchLandLedgerBrowser(pnu,options={}){
+-  // R25: server-first + browser JSONP fallback.  A configured server key does
+-  // not mean the server transport succeeded: Render -> VWorld can fail while
+-  // the user's browser -> VWorld path remains healthy.
+-  if(!options.skipServer){
+-    try{
+-      const d=await fetchBackendJson('/api/land/ledger-one',{
+-        method:'POST',
+-        headers:{'Content-Type':'application/json'},
+-        body:JSON.stringify({pnu:String(pnu)})
+-      });
+-      if(d.record)return d.record;
+-      // A normal authoritative empty response should not be duplicated.  Only
+-      // transport/circuit failures are allowed to fall through to browser JSONP.
+-      if(d.vworld_ready===true && d.external_upstream_error!==true)return null;
+-    }catch(e){if(e?.code==='RATE_LIMIT'||e?.http_status===429)throw e;}
+-  }
++  const allowServerFallback=options.allowServerFallback!==false&&options.skipServer!==true;
+ 
++  // 1) 브라우저 VWorld 토지임야정보를 먼저 시도한다.
+   if(VWORLD_CLIENT_KEY){
+     try{
+       const base='https://api.vworld.kr/ned/data/ladfrlList';
+-      const data=await vworldJsonp(base,{
+-        key:VWORLD_CLIENT_KEY,domain:VWORLD_CLIENT_DOMAIN,pnu:String(pnu),format:'json'
+-      },8000);
++      const data=await vworldJsonp(base,{key:VWORLD_CLIENT_KEY,domain:VWORLD_CLIENT_DOMAIN,pnu:String(pnu),format:'json'},8000);
+       const parsed=parseLandLedgerJson(data);
+-      if(parsed)return {...parsed,_route:'vworld_jsonp_browser_fallback'};
++      if(parsed)return {...parsed,_route:'ladfrlList_jsonp_browser_primary'};
+     }catch(e){}
+   }
+ 
+-  const ch=await fetchLandCharacteristicsBrowser(pnu);
++  // 2) 같은 브라우저에서 토지특성정보를 보조경로로 조회한다.
++  const ch=await fetchLandCharacteristicsBrowser(pnu,{allowServerFallback:false});
+   if(ch)return ch;
++  if(!allowServerFallback)return null;
++
++  // 3) 브라우저 직접조회가 실패한 경우에만 Render proxy를 최후 fallback으로 사용한다.
++  try{
++    const d=await fetchBackendJson('/api/land/ledger-one',{
++      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pnu:String(pnu)})
++    });
++    if(d.record)return {...d.record,_route:d.selected_source?`server_fallback_after_browser:${d.selected_source}`:'server_fallback_after_browser'};
++  }catch(e){if(e?.code==='RATE_LIMIT'||e?.http_status===429)throw e;}
+   return null;
+ }
+ 
+ async function fetchLandLedgerStatus(pnu){
+-  const started=Date.now(),errors=[];let serverUpstreamError=false,serverAttempted=false;
++  const started=Date.now(),errors=[];
++  // R26: 브라우저에서 두 NED 경로를 먼저 확인한다. Render VWorld transport는 최후 fallback이다.
++  try{
++    const rec=await fetchLandLedgerBrowser(pnu,{allowServerFallback:false}),area=validPositiveNumber(rec?.lndpclAr);
++    if(rec&&area!=null)return {pnu:String(pnu),status:'SUCCESS_DATA',record:{...rec,lndpclAr:area},error:'',route:rec._route||'browser_primary',elapsed_ms:Date.now()-started,external_upstream_error:false};
++    errors.push(rec?'브라우저 VWorld 공식면적 미확인':'브라우저 VWorld 토지대장/토지특성 레코드 없음');
++  }catch(e){errors.push(`브라우저 VWorld 오류: ${String(e.message||e)}`);}
++
+   try{
+-    serverAttempted=true;
+     const d=await fetchBackendJson('/api/land/ledger-one',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pnu:String(pnu)})});
+     const area=validPositiveNumber(d?.record?.lndpclAr);
+-    if(d?.record&&area!=null)return {pnu:String(pnu),status:'SUCCESS_DATA',record:{...d.record,lndpclAr:area},error:'',route:d.selected_source||'server_proxy',elapsed_ms:Date.now()-started,external_upstream_error:!!d?.external_upstream_error};
++    if(d?.record&&area!=null)return {pnu:String(pnu),status:'SUCCESS_DATA',record:{...d.record,lndpclAr:area},error:'',route:d.selected_source?`server_fallback_after_browser:${d.selected_source}`:'server_fallback_after_browser',elapsed_ms:Date.now()-started,external_upstream_error:!!d?.external_upstream_error};
+     if(d?.external_upstream_error){
+-      serverUpstreamError=true;
+       const retry=Number(d?.vworld_circuit?.retry_after_seconds||0);
+-      errors.push(`서버 VWorld 장애${retry>0?` · ${retry}초 후 서버 재확인`:''} · 브라우저 직접조회 시도`);
+-      // Do NOT return here.  R23 proved that browser -> VWorld can succeed even
+-      // when Render -> VWorld is unavailable, so continue to JSONP fallback.
+-    }else{
+-      errors.push(d?.record?'공식면적 lndpclAr 미확인':'정상응답이나 공식 토지대장 레코드 없음');
+-      if(d?.vworld_ready===true)return {pnu:String(pnu),status:'ERROR',record:null,error:errors.join(' / '),route:'server_proxy',elapsed_ms:Date.now()-started,external_upstream_error:false};
+-    }
+-  }catch(e){errors.push(`서버 프록시 오류: ${String(e.message||e)}`);if(e?.code==='RATE_LIMIT'||e?.http_status===429)return {pnu:String(pnu),status:'ERROR',record:null,error:errors.join(' / '),route:'server_proxy',elapsed_ms:Date.now()-started};}
+-  try{
+-    const rec=await fetchLandLedgerBrowser(pnu,{skipServer:serverAttempted}),area=validPositiveNumber(rec?.lndpclAr);
+-    if(rec&&area!=null)return {pnu:String(pnu),status:'SUCCESS_DATA',record:{...rec,lndpclAr:area},error:'',route:rec._route||'fallback',elapsed_ms:Date.now()-started,external_upstream_error:serverUpstreamError};
+-    errors.push(rec?'fallback 공식면적 미확인':'JSONP/토지특성 fallback 레코드 없음');
+-  }catch(e){errors.push(`fallback 오류: ${String(e.message||e)}`);}
+-  return {pnu:String(pnu),status:'ERROR',record:null,error:errors.join(' / '),route:'fallback',elapsed_ms:Date.now()-started};
++      errors.push(`Render VWorld fallback 장애${retry>0?` · ${retry}초 후 서버 재확인`:''}`);
++    }else errors.push(d?.record?'Render fallback 공식면적 lndpclAr 미확인':'Render fallback 토지대장 레코드 없음');
++  }catch(e){
++    errors.push(`Render fallback 오류: ${String(e.message||e)}`);
++    if(e?.code==='RATE_LIMIT'||e?.http_status===429)return {pnu:String(pnu),status:'ERROR',record:null,error:errors.join(' / '),route:'browser_then_server_failed',elapsed_ms:Date.now()-started};
++  }
++  return {pnu:String(pnu),status:'ERROR',record:null,error:errors.join(' / '),route:'browser_then_server_failed',elapsed_ms:Date.now()-started};
+ }
+ 
+ function parcelGeometryArea(f){
