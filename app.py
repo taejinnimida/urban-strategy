@@ -7724,7 +7724,7 @@ def reference_station_entrances():
 # R22 station-line runtime hotfix.  This block is intentionally backend-only:
 # the existing multi-station frontend already consumes /api/reference/station-lines.
 STATION_RUNTIME_BUILD_MARKER = "R22_STATION_HOTFIX_20260901_0915"
-APP_BUILD_MARKER = "R32_VWORLD_THEN_LOCAL_LAND_PRICE_20260923"
+APP_BUILD_MARKER = "R33_CURRENT_YEAR_SITE_PRICE_2025_SEOUL_AVG_20260928"
 _STATION_LINE_CACHE_LOCK = threading.Lock()
 _STATION_LINE_CACHE: Dict[str, Any] = {
     "expires_at": 0.0,
@@ -8119,12 +8119,12 @@ def health():
         "vworld_planning_domain_policy": "browser origin accepted only when request Host matches; fallback VWORLD_DOMAIN/RENDER_EXTERNAL_HOSTNAME",
         "disaster_bundled_landslide_raster": os.path.isfile(LANDSLIDE_RISK_RLE_PATH) and os.path.isfile(LANDSLIDE_RISK_META_PATH),
         "disaster_bundled_risk_district": os.path.isfile(NATURAL_DISASTER_RISK_DISTRICT_ZIP),
+        "disaster_bundled_flood_trace_2025": os.path.isfile(FLOOD_TRACE_2025_ZIP),
         "renewal_gis": "server-side UQ181/UQ120 intersection; legal-priority; promotion separate; full matched boundaries returned for status map",
         "development_gis": "VWorld district-unit plan + bundled Seoul UQ181 legal projects + VWorld LT_C_DAMDAN industrial-park boundaries",
         "safe_housing_location_paths": "station / arterial-road-side / medical-facility-center evaluated separately; OR combined",
         "safe_medical_reference": "packaged official TbHospitalInfo monthly snapshot + official Seoul municipal hospitals/25 district health centers; offline 2020-12 representative parcel first; unresolved candidates can use browser VWorld fallback; 350m buffer",
         "safe_medical_local_first": True,
-        "flood_reference_sources": {"expected_dataset_page": SEOUL_FLOOD_EXPECTED_DATASET_PAGE, "trace_dataset_page": SEOUL_FLOOD_TRACE_2025_DATASET_PAGE, "expected_direct_url_configured": bool(SEOUL_FLOOD_EXPECTED_URL), "trace_direct_url_configured": bool(SEOUL_FLOOD_TRACE_2025_URL)},
         "ecvam_reference": {"configured": _ecvam_configured(), "bootstrap_url": ECVAM_API_CONFIRM_URL, "endpoint_policy": "official apiConfirm bootstrap -> discovered WMS endpoint; compatibility fallback only"},
         "safe_medical_key_env": _seoul_open_data_key_info()[1] or None,
         "road_width_gis": "VWorld TL_SPRD_MANAGE ROAD_BT is the sole road-width Fact source",
@@ -8830,55 +8830,9 @@ def land_use_restrictions(inp: PnuListInput):
 
 
 # -----------------------------------------------------------------------------
-# R12: 재해규제 독립분석용 서울시 공식 침수공간자료
-# - 서울 열린데이터광장 공개 ZIP을 최초 요청 시 /tmp에 캐시한다.
-# - 서비스 장애/파일구조 변경 시 ERROR로 돌려 UNKNOWN을 유지하며 비해당으로 오판하지 않는다.
-# - 침수예상도는 위험예측 FACT, 침수흔적도는 과거 발생이력 FACT로 서로 구분한다.
+# R34: 재해규제 LOCAL-FIRST 공식 공간자료
+# - 현재 확보한 보유 원자료만 분석하며 외부 동적 다운로드에 의존하지 않는다.
 # -----------------------------------------------------------------------------
-# R25: 서울 열린데이터광장의 bigfile 직접-download URL은 seq 값이 바뀌는
-# 비영구 링크다.  2026-09-23 재검증 결과 데이터셋 페이지와 파일 자체는
-# 공개 중이지만 기존 nio_download 고정 URL은 HTML/오류 응답을 반환했다.
-# 운영 중에는 검증된 직접 URL을 환경변수로만 주입하고, 코드에는 안정적인
-# 공식 데이터셋 landing page를 provenance로 보존한다.
-SEOUL_FLOOD_EXPECTED_DATASET_PAGE = "https://data.seoul.go.kr/dataList/OA-21172/A/1/datasetView.do"
-SEOUL_FLOOD_TRACE_2025_DATASET_PAGE = "https://data.seoul.go.kr/dataList/OA-15636/F/1/datasetView.do"
-SEOUL_FLOOD_EXPECTED_URL = (os.getenv("SEOUL_FLOOD_EXPECTED_URL") or "").strip()
-SEOUL_FLOOD_TRACE_2025_URL = (os.getenv("SEOUL_FLOOD_TRACE_2025_URL") or "").strip()
-_DISASTER_DOWNLOAD_LOCK = threading.Lock()
-
-
-def _download_official_zip(url: str, cache_name: str, *, source_page: str = "") -> str:
-    cache_dir = os.path.join("/tmp", "urban_strategy_disaster")
-    os.makedirs(cache_dir, exist_ok=True)
-    path = os.path.join(cache_dir, cache_name)
-    if os.path.isfile(path) and os.path.getsize(path) > 100 and zipfile.is_zipfile(path):
-        return path
-    if not str(url or "").strip():
-        raise RuntimeError(
-            "공식 데이터셋은 공개 중이나 직접 다운로드 URL이 동적입니다. "
-            f"검증된 직접 URL을 환경변수로 설정하세요{(' · '+source_page) if source_page else ''}"
-        )
-    with _DISASTER_DOWNLOAD_LOCK:
-        if os.path.isfile(path) and os.path.getsize(path) > 100 and zipfile.is_zipfile(path):
-            return path
-        tmp = path + ".part"
-        try:
-            resp = requests.get(url, timeout=45, headers={"User-Agent": "urban-strategy/2.5 official-public-data"})
-            resp.raise_for_status()
-            with open(tmp, "wb") as fp:
-                fp.write(resp.content)
-            if not zipfile.is_zipfile(tmp):
-                raise RuntimeError(
-                    f"공식 ZIP 응답 형식 오류 · content-type={resp.headers.get('content-type','')} "
-                    "· 직접 다운로드 URL 갱신 필요"
-                )
-            os.replace(tmp, path)
-        finally:
-            if os.path.isfile(tmp):
-                try: os.remove(tmp)
-                except OSError: pass
-    return path
-
 
 def _zip_shapefile_stems(zf: zipfile.ZipFile) -> List[str]:
     names = zf.namelist()
@@ -8892,64 +8846,6 @@ def _zip_shapefile_stems(zf: zipfile.ZipFile) -> List[str]:
     return stems
 
 
-def _analyze_remote_polygon_zip(geometry: Dict[str, Any], *, url: str, cache_name: str, source_label: str, default_epsg: int = 5186, source_page: str = "") -> Dict[str, Any]:
-    site=shape(geometry)
-    if site.geom_type not in {"Polygon","MultiPolygon"} or site.is_empty:
-        raise ValueError("유효한 Polygon 또는 MultiPolygon 구역계가 필요합니다.")
-    if not site.is_valid:
-        site=site.buffer(0)
-    if site.is_empty or not site.is_valid:
-        raise ValueError("유효하지 않은 구역계입니다.")
-    path=_download_official_zip(url, cache_name, source_page=source_page)
-    context_features=[];overlap_features=[];overlap_geoms=[];source_files=[];candidate_count=0
-    with zipfile.ZipFile(path) as zf:
-        names=zf.namelist();stems=_zip_shapefile_stems(zf)
-        if not stems:
-            raise RuntimeError("공식 ZIP에서 SHP/SHX/DBF 세트를 찾지 못했습니다.")
-        for stem in stems:
-            shp=next(n for n in names if os.path.splitext(n)[0]==stem and n.lower().endswith('.shp'))
-            shx=next(n for n in names if os.path.splitext(n)[0]==stem and n.lower().endswith('.shx'))
-            dbf=next(n for n in names if os.path.splitext(n)[0]==stem and n.lower().endswith('.dbf'))
-            prj=next((n for n in names if os.path.splitext(n)[0]==stem and n.lower().endswith('.prj')),None)
-            source_crs=CRS.from_epsg(default_epsg)
-            if prj:
-                try: source_crs=CRS.from_wkt(zf.read(prj).decode('utf-8',errors='ignore'))
-                except Exception: pass
-            to_source=Transformer.from_crs(4326,source_crs,always_xy=True).transform
-            to_wgs=Transformer.from_crs(source_crs,4326,always_xy=True).transform
-            site_src=geometry_transform(to_source,site)
-            reader=shapefile.Reader(shp=io.BytesIO(zf.read(shp)),shx=io.BytesIO(zf.read(shx)),dbf=io.BytesIO(zf.read(dbf)),encoding='cp949',encodingErrors='replace')
-            fields=[f[0] for f in reader.fields[1:]]
-            source_files.append(os.path.basename(shp))
-            for sr in reader.iterShapeRecords(bbox=list(site_src.bounds)):
-                try:
-                    candidate_count+=1
-                    props={k:_json_property(v) for k,v in zip(fields,list(sr.record))}
-                    gsrc=shape(sr.shape.__geo_interface__)
-                    if gsrc.is_empty: continue
-                    if not gsrc.is_valid: gsrc=gsrc.buffer(0)
-                    if gsrc.is_empty or not gsrc.intersects(site_src): continue
-                    gwgs=geometry_transform(to_wgs,gsrc)
-                    if gwgs.is_empty or not gwgs.intersects(site): continue
-                    inter=_polygonal_only(site.intersection(gwgs))
-                    if inter is None or inter.is_empty: continue
-                    props['_source_file']=os.path.basename(shp)
-                    context_features.append({'type':'Feature','geometry':mapping(gwgs),'properties':props})
-                    overlap_features.append({'type':'Feature','geometry':mapping(inter),'properties':props})
-                    overlap_geoms.append(inter)
-                except Exception:
-                    continue
-    to_metric=Transformer.from_crs(4326,5174,always_xy=True).transform
-    site_area=float(geometry_transform(to_metric,site).area)
-    union=unary_union(overlap_geoms) if overlap_geoms else None
-    area=float(geometry_transform(to_metric,union).area) if union is not None and not union.is_empty else 0.0
-    return {
-        'status':'matched' if overlap_features else 'none','known':True,'present':bool(overlap_features),
-        'overlap_area_m2':area,'overlap_pct':(area/site_area*100.0) if site_area>0 else None,
-        'feature_count':len(context_features),'features':context_features,'overlap_features':overlap_features,
-        'bbox_candidate_count':candidate_count,'source':source_label,'source_type':'OFFICIAL_REMOTE_SHP',
-        'source_files':source_files,'cache_file':os.path.basename(path),'source_page':source_page,
-    }
 
 
 # R15: 사용자 제공 공식 재해 원자료 번들
@@ -8957,6 +8853,7 @@ def _analyze_remote_polygon_zip(geometry: Dict[str, Any], *, url: str, cache_nam
 # - 산사태위험지도: 2026 산불추가 서울 10m TIFF를 무손실 row-RLE로 변환한 파생자료
 #   (원본 11.zip도 함께 보존). 값 127은 '위험 없음'이 아니라 NoData이다.
 NATURAL_DISASTER_RISK_DISTRICT_ZIP = _data_path("source_natural_disaster_risk_district_seoul_202609.zip")
+FLOOD_TRACE_2025_ZIP = _data_path("source_flood_trace_2025_seoul.zip")
 LANDSLIDE_RISK_RLE_PATH = _data_path("landslide_risk_2026_seoul_10m_rle.zlib")
 LANDSLIDE_RISK_META_PATH = _data_path("landslide_risk_2026_seoul_10m_meta.json")
 LANDSLIDE_RISK_SOURCE_ZIP = _data_path("source_landslide_risk_2026_seoul_11.zip")
@@ -9199,16 +9096,8 @@ def _analyze_landslide_risk_raster(geometry: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def analyze_disaster_reference_intersections(geometry: Dict[str, Any]) -> Dict[str, Any]:
-    specs=[
-        ('flood_expected',SEOUL_FLOOD_EXPECTED_URL,'seoul_flood_expected.zip','서울특별시 풍수해 침수예상도 · 서울 열린데이터광장 OA-21172',SEOUL_FLOOD_EXPECTED_DATASET_PAGE),
-        ('flood_trace_2025',SEOUL_FLOOD_TRACE_2025_URL,'seoul_flood_trace_2025.zip','서울특별시 2025년 침수흔적도 · 서울 열린데이터광장 OA-15636',SEOUL_FLOOD_TRACE_2025_DATASET_PAGE),
-    ]
+    """현재 확보된 보유 재해 원자료만 분석합니다."""
     out={};errors=[]
-    for key,url,cache_name,label,source_page in specs:
-        try: out[key]=_analyze_remote_polygon_zip(geometry,url=url,cache_name=cache_name,source_label=label,default_epsg=5186,source_page=source_page)
-        except Exception as exc:
-            out[key]={'status':'external_source_unavailable','known':False,'present':False,'overlap_area_m2':None,'overlap_pct':None,'features':[],'overlap_features':[],'source':label,'source_type':'OFFICIAL_REMOTE_SHP','source_page':source_page,'error':str(exc)[:300]}
-            errors.append({'source':key,'error':str(exc)[:300],'source_page':source_page})
 
     try:
         out['natural_disaster_risk_district'] = _analyze_local_polygon_zip(
@@ -9220,14 +9109,25 @@ def analyze_disaster_reference_intersections(geometry: Dict[str, Any]) -> Dict[s
         errors.append({'source':'natural_disaster_risk_district','error':str(exc)[:300]})
 
     try:
+        out['flood_trace_2025'] = _analyze_local_polygon_zip(
+            geometry, path=FLOOD_TRACE_2025_ZIP,
+            source_label='서울특별시 2025년 침수흔적도 원도형(사용자 제공)', default_epsg=5179,
+            group_field='TYPE',
+            detail='2025년 침수흔적도 원도형과 대상지의 실제 중첩을 계산한 과거 침수이력 FACT입니다.'
+        )
+    except Exception as exc:
+        out['flood_trace_2025']={'status':'error','known':False,'present':False,'overlap_area_m2':None,'overlap_pct':None,'features':[],'overlap_features':[],'source':'서울특별시 2025년 침수흔적도 원도형(사용자 제공)','source_type':'BUNDLED_OFFICIAL_SHP','error':str(exc)[:300]}
+        errors.append({'source':'flood_trace_2025','error':str(exc)[:300]})
+
+    try:
         out['landslide_risk_map'] = _analyze_landslide_risk_raster(geometry)
     except Exception as exc:
         out['landslide_risk_map']={'status':'error','known':False,'present':False,'overlap_area_m2':None,'overlap_pct':None,'features':[],'overlap_features':[],'distribution':[],'source':'산림청 산사태위험지도 2026 산불추가 · 서울 10m 원자료(사용자 제공)','source_type':'BUNDLED_OFFICIAL_RASTER','error':str(exc)[:300]}
         errors.append({'source':'landslide_risk_map','error':str(exc)[:300]})
 
-    source_count=len(specs)+2
+    source_count=3
     return {'status':'available' if not errors else ('partial' if len(errors)<source_count else 'error'),**out,'errors':errors,
-            'note':'침수예상도=위험예측, 침수흔적도=과거 발생이력, 자연재해위험개선지구=제공 LSMD 원도형, 산사태위험지도=10m 1~5등급 분포 FACT로 분리한다. 산사태 값 127은 위험 없음이 아니라 NoData이다.'}
+            'note':'자연재해위험개선지구·2025 침수흔적도·산사태위험지도는 보유 원자료로 분석한다. 산사태 값 127은 위험 없음이 아니라 NoData이다.'}
 
 
 @app.post("/api/spatial/disaster-reference-intersections")
@@ -9679,12 +9579,22 @@ def analyze_local_disaster_reference_intersections(geometry: Dict[str, Any]) -> 
         out['natural_disaster_risk_district']={'status':'error','known':False,'present':False,'overlap_area_m2':None,'overlap_pct':None,'features':[],'overlap_features':[],'source':'LSMD_CONT_UP201 서울 202609 자연재해위험개선지구 원도형(사용자 제공)','source_type':'BUNDLED_OFFICIAL_SHP','error':str(exc)[:300]}
         errors.append({'source':'natural_disaster_risk_district','error':str(exc)[:300]})
     try:
+        out['flood_trace_2025'] = _analyze_local_polygon_zip(
+            geometry, path=FLOOD_TRACE_2025_ZIP,
+            source_label='서울특별시 2025년 침수흔적도 원도형(사용자 제공)', default_epsg=5179,
+            group_field='TYPE',
+            detail='2025년 침수흔적도 원도형과 대상지의 실제 중첩을 계산한 과거 침수이력 FACT입니다.'
+        )
+    except Exception as exc:
+        out['flood_trace_2025']={'status':'error','known':False,'present':False,'overlap_area_m2':None,'overlap_pct':None,'features':[],'overlap_features':[],'source':'서울특별시 2025년 침수흔적도 원도형(사용자 제공)','source_type':'BUNDLED_OFFICIAL_SHP','error':str(exc)[:300]}
+        errors.append({'source':'flood_trace_2025','error':str(exc)[:300]})
+    try:
         out['landslide_risk_map'] = _analyze_landslide_risk_raster(geometry)
     except Exception as exc:
         out['landslide_risk_map']={'status':'error','known':False,'present':False,'overlap_area_m2':None,'overlap_pct':None,'features':[],'overlap_features':[],'distribution':[],'source':'산림청 산사태위험지도 2026 산불추가 · 서울 10m 원자료(사용자 제공)','source_type':'BUNDLED_OFFICIAL_RASTER','error':str(exc)[:300]}
         errors.append({'source':'landslide_risk_map','error':str(exc)[:300]})
-    return {'status':'available' if not errors else ('partial' if len(errors)<2 else 'error'),**out,'errors':errors,
-            'note':'외부 API를 기다리지 않고 자연재해위험개선지구와 산사태위험지도 번들 원자료만 분석한다.'}
+    return {'status':'available' if not errors else ('partial' if len(errors)<3 else 'error'),**out,'errors':errors,
+            'note':'외부 API를 기다리지 않고 자연재해위험개선지구·2025 침수흔적도·산사태위험지도 번들 원자료만 분석한다.'}
 
 
 @app.post("/api/spatial/local-disaster-reference-intersections")
