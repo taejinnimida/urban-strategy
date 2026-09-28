@@ -5254,7 +5254,7 @@ async function analyzeRegulatoryConstraints(options=null){
   const exact=(id)=>regulatoryPlanningFact(id),items=[],add=(item)=>items.push(item),nedItem=(id,label,key,cat,group,impact,follow)=>{const f=regulatoryNedFact(ned,key);add(regulatoryItem(id,label,cat,{group,known:f.known,present:f.present,features:regulatoryParcelFeatures(f,cat,label),rows:f.rows,source:'VWorld NED 토지이용계획정보',source_type:'PARCEL_ATTRIBUTE_POSITIVE_ONLY',impact_note:impact,followup:follow}));};
   const bundledItem=(id,label,key,cat,group,impact,follow)=>{const f=bundled?.[key]||{},detail=[f.error||'',f.detail||'',f.scope_note||''].filter(Boolean).join(' · ');add(regulatoryItem(id,label,cat,{group,known:f.known===true,present:f.present===true,area_m2:f.overlap_area_m2,pct:f.overlap_pct,features:f.overlap_features||f.features||[],context_features:f.features||[],overlap_features:f.overlap_features||[],rows:f.distribution||f.rows||[],source:f.source||'',source_type:f.source_type||'BUNDLED_OFFICIAL_SHP',data_status:f.known===true?'CONFIRMED':(f.status==='error'?'ERROR':'UNKNOWN'),detail,impact_note:impact,followup:follow}));};
   const ecvamMapOnlyItem=(id,label,layer,impact,follow)=>{const configured=ecvam?.configured===true,detail=`ECVAM WMS ${layer} · ${configured?'API KEY 설정 확인':'ECVAM_API_KEY 미설정'} · WMS 도면 전용(벡터 중첩면적 미산정)`;add(regulatoryItem(id,label,'NATURE',{group:'natural',known:false,present:false,source:'국토환경성평가지도 OpenAPI WMS',source_type:'OFFICIAL_WMS_MAP_ONLY',data_status:configured?'MAP_ONLY':'ERROR',detail,impact_note:impact,followup:follow}));};
-  const disasterItem=(id,label,key,impact,follow)=>{const f=disaster?.[key]||{},rasterMeta=key==='landslide_risk_map'?`유효등급 ${f.valid_coverage_pct==null?'-':Number(f.valid_coverage_pct).toFixed(1)+'%'} · NoData ${f.nodata_pct==null?'-':Number(f.nodata_pct).toFixed(1)+'%'} · 격자 ${Number(f.resolution_m||10)}m`:'';const detail=[f.error||'',rasterMeta,f.detail||'',f.scope_note||''].filter(Boolean).join(' · ');add(regulatoryItem(id,label,'DISASTER',{group:'disaster',known:f.known===true,present:f.present===true,area_m2:f.overlap_area_m2,pct:f.overlap_pct,features:f.overlap_features||f.features||[],context_features:f.features||[],overlap_features:f.overlap_features||[],rows:f.distribution||f.rows||[],source:f.source||'',source_type:f.source_type||'OFFICIAL_REMOTE_SHP',data_status:f.known===true?'CONFIRMED':(f.status==='error'?'ERROR':'UNKNOWN'),detail,impact_note:impact,followup:follow}));};
+  const disasterItem=(id,label,key,impact,follow)=>{const f=disaster?.[key]||{},rasterMeta=key==='landslide_risk_map'?`유효등급 ${f.valid_coverage_pct==null?'-':Number(f.valid_coverage_pct).toFixed(1)+'%'} · NoData ${f.nodata_pct==null?'-':Number(f.nodata_pct).toFixed(1)+'%'} · 격자 ${Number(f.resolution_m||10)}m`:'';const detail=[f.error||'',rasterMeta,f.detail||'',f.scope_note||''].filter(Boolean).join(' · ');const landslideStatus=key==='landslide_risk_map'&&f.status==='nodata'?'NO_GRADE_DATA':(key==='landslide_risk_map'&&f.status==='out_of_coverage'?'OUT_OF_COVERAGE':null);add(regulatoryItem(id,label,'DISASTER',{group:'disaster',known:f.known===true,present:f.present===true,area_m2:f.overlap_area_m2,pct:f.overlap_pct,features:f.overlap_features||f.features||[],context_features:f.features||[],overlap_features:f.overlap_features||[],rows:f.distribution||f.rows||[],source:f.source||'',source_type:f.source_type||'OFFICIAL_REMOTE_SHP',data_status:landslideStatus||(f.known===true?'CONFIRMED':(f.status==='error'?'ERROR':'UNKNOWN')),detail,impact_note:impact,followup:follow}));};
 
   // 문화유산 카드는 기존 국가유산 공간자료에 VWorld NED 양성 필지정보만 보조한다.
   if(!localOnly)nedItem('heritage_environment','역사문화환경 보존지역·영향권','heritage_environment','HERITAGE','heritage','문화유산 인접 영향으로 높이·경관·현상변경 검토 가능','국가유산공간정보·개별 문화유산 현상변경 허용기준 및 영향권 확인');
@@ -5285,9 +5285,9 @@ async function analyzeRegulatoryConstraints(options=null){
   disasterItem('flood_trace_2025','서울시 침수흔적도(2025)','flood_trace_2025','과거 실제 침수이력은 방재계획·지하공간 검토 참고 FACT','2025 침수흔적도 속성·침수심·피해유형을 확인하고 필요 시 최신 이력을 추가 확인');
 
   a.items=items;a.loaded=true;a.loading=false;a.generated_at=new Date().toISOString();a.local_only=localOnly;
-  const confirmed=items.filter(x=>x.present),mapOnly=items.filter(x=>x.data_status==='MAP_ONLY'),unknown=items.filter(x=>!x.known&&x.data_status!=='ERROR'&&x.data_status!=='MAP_ONLY'),failed=items.filter(x=>x.data_status==='ERROR');
+  const confirmed=items.filter(x=>x.present),mapOnly=items.filter(x=>x.data_status==='MAP_ONLY'),unknown=items.filter(x=>!x.known&&!['ERROR','MAP_ONLY','NO_GRADE_DATA','OUT_OF_COVERAGE'].includes(x.data_status)),failed=items.filter(x=>x.data_status==='ERROR');
   const localItems=items.filter(isLocalRegulatorySource),externalItems=items.filter(x=>!isLocalRegulatorySource(x));
-  const localFailed=localItems.filter(x=>x.data_status==='ERROR'||(!x.known&&x.data_status!=='MAP_ONLY'));
+  const localFailed=localItems.filter(x=>x.data_status==='ERROR'||(!x.known&&!['MAP_ONLY','NO_GRADE_DATA','OUT_OF_COVERAGE'].includes(x.data_status)));
   const localKnown=localItems.filter(x=>x.known).length,externalAvailable=externalItems.filter(x=>x.known||x.data_status==='MAP_ONLY').length;
   a.local_status=localItems.length?(localFailed.length?(localKnown?'partial':'error'):'available'):'not_applicable';
   a.external_status=externalItems.length?(externalAvailable===externalItems.length?'available':externalAvailable?'partial':'unavailable'):'not_applicable';
@@ -5297,7 +5297,7 @@ async function analyzeRegulatoryConstraints(options=null){
   renderRegulatoryConstraintSpatialStatus();renderHeritageSpatialStatus();refreshMainMapReviewData();return regulatoryConstraintAnalysis;
 }
 function regulatoryConstraintFacts(){
-  const a=regulatoryConstraintAnalysis||{};return {loaded:!!a.loaded,status:a.status||'unavailable',generated_at:a.generated_at||null,items:(a.items||[]).map(x=>({id:x.id,label:x.label,category:x.category,group:x.group||'',data_status:x.data_status,known:x.known===true,present:x.present===true,relation:x.relation,overlap_area_m2:x.overlap_area_m2,overlap_pct:x.overlap_pct,distance_m:x.distance_m,source:x.source,source_type:x.source_type,impact_note:x.impact_note,followup:x.followup,detail:x.detail,rows:(x.rows||[]).slice(0,20)})),confirmed_count:(a.items||[]).filter(x=>x.present).length,map_only_count:(a.items||[]).filter(x=>x.data_status==='MAP_ONLY').length,unknown_count:(a.items||[]).filter(x=>!x.known&&x.data_status!=='MAP_ONLY').length,errors:[...(a.errors||[])],policy:'사업판정과 독립된 추가검토 정보 · WMS 도면만으로 중첩 정량값/PASS/FAIL 판정 금지'};
+  const a=regulatoryConstraintAnalysis||{};return {loaded:!!a.loaded,status:a.status||'unavailable',generated_at:a.generated_at||null,items:(a.items||[]).map(x=>({id:x.id,label:x.label,category:x.category,group:x.group||'',data_status:x.data_status,known:x.known===true,present:x.present===true,relation:x.relation,overlap_area_m2:x.overlap_area_m2,overlap_pct:x.overlap_pct,distance_m:x.distance_m,source:x.source,source_type:x.source_type,impact_note:x.impact_note,followup:x.followup,detail:x.detail,rows:(x.rows||[]).slice(0,20)})),confirmed_count:(a.items||[]).filter(x=>x.present).length,map_only_count:(a.items||[]).filter(x=>x.data_status==='MAP_ONLY').length,unknown_count:(a.items||[]).filter(x=>!x.known&&!['MAP_ONLY','NO_GRADE_DATA','OUT_OF_COVERAGE'].includes(x.data_status)).length,errors:[...(a.errors||[])],policy:'사업판정과 독립된 추가검토 정보 · WMS 도면만으로 중첩 정량값/PASS/FAIL 판정 금지'};
 }
 function regulatoryItemColorSpec(id,category='CONDITIONAL'){
   const byId={
@@ -5362,20 +5362,22 @@ function renderRegulatoryGroup(group,box,stateId,confirmedId,unknownId,listId,le
   const parcels=compactParcelBaseFeatures();if(parcels.length)box.parcelBase.addData({type:'FeatureCollection',features:parcels});
   const facilities=regulatoryFacilityFeatures();if(facilities.length)box.facility.addData({type:'FeatureCollection',features:facilities});
   box.boundary.addData({type:'Feature',geometry:activeGeometry,properties:{}});
-  const a=regulatoryConstraintAnalysis,items=(a.items||[]).filter(x=>x.group===group),confirmed=items.filter(x=>x.present),knownNegative=items.filter(x=>x.known&&!x.present&&x.data_status!=='MAP_ONLY'),mapOnly=items.filter(x=>x.data_status==='MAP_ONLY'),unknown=items.filter(x=>!x.known&&x.data_status!=='MAP_ONLY'),mapFs=[];
+  const a=regulatoryConstraintAnalysis,items=(a.items||[]).filter(x=>x.group===group),confirmed=items.filter(x=>x.present),knownNegative=items.filter(x=>x.known&&!x.present&&x.data_status!=='MAP_ONLY'),noGradeData=items.filter(x=>x.data_status==='NO_GRADE_DATA'),outOfCoverage=items.filter(x=>x.data_status==='OUT_OF_COVERAGE'),mapOnly=items.filter(x=>x.data_status==='MAP_ONLY'),unknown=items.filter(x=>!x.known&&!['MAP_ONLY','NO_GRADE_DATA','OUT_OF_COVERAGE'].includes(x.data_status)),mapFs=[];
   for(const item of confirmed){mapFs.push(...tagRegulatoryFeatures(item.context_features,item,'source_zone'));mapFs.push(...tagRegulatoryFeatures(item.overlap_features?.length?item.overlap_features:item.features,item,'overlap'));}
   if(mapFs.length)box.layer.addData({type:'FeatureCollection',features:mapFs});
   set(confirmedId,`${confirmed.length}건`);set(unknownId,`${unknown.length}건`);set(itemCountId,`${items.length}종`);
   set(stateId,a.loading?'규제자료 분석 중':!a.loaded?'분석 전':`분석 완료 · 중첩 ${confirmed.length}건${unknown.length?` · 미확인/오류 ${unknown.length}건`:''}`);
   if(legend)legend.innerHTML=regulatoryLegendHtml(items);
   if(list){
-    const visible=[...confirmed,...knownNegative,...unknown,...mapOnly];
+    const visible=[...confirmed,...knownNegative,...noGradeData,...outOfCoverage,...unknown,...mapOnly];
     if(!visible.length)list.innerHTML='<div class="regulatory-empty">현재 확보된 공식자료 기준 해당 규제 중첩 없음</div>';
     else list.innerHTML=visible.map(x=>{
       let metric=x.data_status==='MAP_ONLY'?'WMS 도면 표시 · 정량 중첩 미산정':x.overlap_area_m2!=null?`${Math.round(x.overlap_area_m2).toLocaleString('ko-KR')}㎡${x.overlap_pct!=null?` · ${Number(x.overlap_pct).toFixed(1)}%`:''}`:x.known&&!x.present?'중첩 없음':x.present?'중첩 확인':'정량값 미확보';
-      if(x.id==='landslide_risk_map'&&Array.isArray(x.rows)&&x.rows.length){const grades=x.rows.filter(r=>Number(r.area_m2)>0).map(r=>`${Number(r.grade)}등급 ${Math.round(Number(r.area_m2||0)).toLocaleString('ko-KR')}㎡${r.pct_of_site==null?'':` (${Number(r.pct_of_site).toFixed(1)}%)`}`);if(grades.length)metric=grades.join(' · ');}
-      const state=x.present?regulatoryRelationText(x):(x.known?'중첩 없음':x.data_status==='MAP_ONLY'?'WMS 도면 표시':x.data_status==='ERROR'?'자료조회 오류':'미확인');
-      const cls=x.present?x.category:(x.known?'CONFIRMED':x.data_status==='MAP_ONLY'?x.category:'UNKNOWN');
+      if(x.id==='landslide_risk_map'&&x.data_status==='NO_GRADE_DATA'){const m=(x.detail||'').match(/유효등급\s+([0-9.]+%)\s+·\s+NoData\s+([0-9.]+%)/);metric=m?`원자료 NoData ${m[2]} · 유효등급 ${m[1]}`:'원자료 NoData · 1~5등급 셀 없음';}
+      else if(x.id==='landslide_risk_map'&&x.data_status==='OUT_OF_COVERAGE')metric='제공 래스터 범위 밖';
+      else if(x.id==='landslide_risk_map'&&Array.isArray(x.rows)&&x.rows.length){const grades=x.rows.filter(r=>Number(r.area_m2)>0).map(r=>`${Number(r.grade)}등급 ${Math.round(Number(r.area_m2||0)).toLocaleString('ko-KR')}㎡${r.pct_of_site==null?'':` (${Number(r.pct_of_site).toFixed(1)}%)`}`);if(grades.length)metric=grades.join(' · ');}
+      const state=x.present?regulatoryRelationText(x):(x.known?'중첩 없음':x.data_status==='NO_GRADE_DATA'?'위험등급 중첩 없음':x.data_status==='OUT_OF_COVERAGE'?'자료범위 밖':x.data_status==='MAP_ONLY'?'WMS 도면 표시':x.data_status==='ERROR'?'자료조회 오류':'미확인');
+      const cls=x.present?x.category:(x.known?'CONFIRMED':x.data_status==='NO_GRADE_DATA'?'CONDITIONAL':x.data_status==='MAP_ONLY'?x.category:'UNKNOWN');
       return `<div class="regulatory-row"><div><b>${escHtml(x.label)}</b><small class="regulatory-source">${escHtml(x.source||'자료원 미연결')}</small></div><div><span class="regulatory-status ${cls}">${escHtml(state)}</span><small>${escHtml(metric)}</small></div></div>`;
     }).join('');
   }
@@ -9186,7 +9188,7 @@ function regulatoryGroupProgress(group,base){
   const items=(regulatoryConstraintAnalysis.items||[]).filter(x=>x.group===group);
   if(!items.length)return base;
   const local=items.filter(isLocalRegulatorySource),external=items.filter(x=>!isLocalRegulatorySource(x));
-  const localKnown=local.filter(x=>x.known).length,localFailed=local.filter(x=>x.data_status==='ERROR'||(!x.known&&x.data_status!=='MAP_ONLY')).length;
+  const localKnown=local.filter(x=>x.known||['NO_GRADE_DATA','OUT_OF_COVERAGE'].includes(x.data_status)).length,localFailed=local.filter(x=>x.data_status==='ERROR'||(!x.known&&!['MAP_ONLY','NO_GRADE_DATA','OUT_OF_COVERAGE'].includes(x.data_status))).length;
   const externalAvailable=external.filter(x=>x.known||x.data_status==='MAP_ONLY').length,externalMissing=external.length-externalAvailable;
   const overlaps=items.filter(x=>x.present).length;
   const status=local.length?(localFailed?(localKnown?'partial':'rejected'):'fulfilled'):(externalAvailable?((externalMissing)?'partial':'fulfilled'):base.status);
