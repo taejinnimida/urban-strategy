@@ -2670,6 +2670,14 @@ PLANPLUS_PROJECT_TYPES = {'BZ101': ('renewal', '신속통합기획'),
  'BZ601': ('other', '도시개발사업'),
  'BZ602': ('other', '리모델링활성화구역'),
  'BZ603': ('other', '시장정비사업')}
+
+# R35 UI/FACT: 소규모주택정비 현황은 서울플랜+ UQ120을 1순위로 사용한다.
+# 보유 UQ120 공간도형은 항상 기준 경계로 유지하고, 서울 열린데이터광장 UQ120이
+# 정상 응답할 때만 동일 사업의 명칭·추진단계·기준일 속성을 실시간 보정한다.
+PLANPLUS_SMALLSCALE_CODES = {'BZ201', 'BZ202', 'BZ203', 'BZ204', 'BZ205'}
+_PLANPLUS_UQ120_LIVE_CACHE: Dict[str, Any] = {"ts": 0.0, "data": None}
+_PLANPLUS_UQ120_LIVE_CACHE_TTL = 6 * 60 * 60
+
 URBAN_REGEN_INNOVATION_SHP_BASE = _data_path("urban_regeneration_innovation_gimpo")
 URBAN_REGEN_INNOVATION_SHP_REQUIRED = tuple(
     URBAN_REGEN_INNOVATION_SHP_BASE + ext for ext in (".shp", ".shx", ".dbf", ".prj")
@@ -3059,10 +3067,27 @@ def _planplus_project_spatial_index():
     return features, geometries, STRtree(geometries)
 
 
-def _planplus_project_intersections(site_wgs: Any, site_metric: Any, site_area: float, to_metric: Any, to_wgs: Any) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+def _planplus_project_intersections(site_wgs: Any, site_metric: Any, site_area: float, to_metric: Any, to_wgs: Any) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]], Dict[str, Any]]:
     features, geometries, tree = _planplus_project_spatial_index()
+
+    # 보유 UQ120 경계가 공간분석의 기준이다. 실시간 API는 소규모주택정비(BZ201~205)
+    # 속성만 보정하며, API 실패·키 미설정·정확 일치 실패 시 보유자료를 그대로 사용한다.
+    live_snapshot = _planplus_uq120_live_smallscale_snapshot()
+    live_rows = live_snapshot.get("rows") or []
+    live_by_id: Dict[str, Dict[str, Any]] = {}
+    live_by_code_name: Dict[tuple[str, str], Dict[str, Any]] = {}
+    for row in live_rows:
+        rid = str(row.get("source_feature_id") or "").strip()
+        code = str(row.get("project_code") or "").strip()
+        name_key = _planplus_uq120_name_key(row.get("name"))
+        if rid:
+            live_by_id[rid] = row
+        if code and name_key:
+            live_by_code_name[(code, name_key)] = row
+
     overlaps: List[Dict[str, Any]] = []
     context_features: List[Dict[str, Any]] = []
+    matched_live_ids: set[str] = set()
     for index in tree.query(site_wgs, predicate="intersects"):
         feature = features[int(index)]
         source_wgs = geometries[int(index)]
@@ -3081,7 +3106,40 @@ def _planplus_project_intersections(site_wgs: Any, site_metric: Any, site_area: 
             result_geom = geometry_transform(to_wgs, intersection_metric.simplify(0.10, preserve_topology=True))
         except Exception:
             continue
+
         props = dict(feature.get("properties") or {})
+        if props.get("project_code") in PLANPLUS_SMALLSCALE_CODES:
+            local_reference_date = str(props.get("data_reference_date") or "").strip()
+            live_row = None
+            source_id = str(props.get("source_feature_id") or "").strip()
+            if source_id:
+                live_row = live_by_id.get(source_id)
+            if live_row is None:
+                live_row = live_by_code_name.get((
+                    str(props.get("project_code") or "").strip(),
+                    _planplus_uq120_name_key(props.get("name")),
+                ))
+            props["local_data_reference_date"] = local_reference_date
+            props["live_uq120_corrected"] = False
+            if live_row is not None:
+                live_id = str(live_row.get("source_feature_id") or "").strip()
+                if live_id:
+                    matched_live_ids.add(live_id)
+                live_name = str(live_row.get("name") or "").strip()
+                live_stage_code = str(live_row.get("project_stage_code") or "").strip()
+                live_reference_date = str(live_row.get("data_reference_date") or "").strip()
+                if live_name:
+                    props["name"] = live_name
+                if live_stage_code:
+                    props["project_stage_code"] = live_stage_code
+                    props["project_stage_label"] = PLANPLUS_STAGE_LABELS.get(
+                        live_stage_code, "단계코드 미확인"
+                    )
+                if live_reference_date:
+                    props["data_reference_date"] = live_reference_date
+                props["live_uq120_corrected"] = True
+                props["live_uq120_service"] = live_snapshot.get("service") or "upisCUq120"
+
         props.update({
             "overlap_area_m2": round(overlap_area, 2),
             "site_overlap_pct": round(overlap_area / site_area * 100, 4),
@@ -3098,7 +3156,17 @@ def _planplus_project_intersections(site_wgs: Any, site_metric: Any, site_area: 
         str(f["properties"].get("project_code") or ""),
         str(f["properties"].get("name") or ""),
     ))
-    return overlaps, context_features
+    live_meta = {
+        "service": live_snapshot.get("service") or "upisCUq120",
+        "status": live_snapshot.get("status") or "UNKNOWN",
+        "message": live_snapshot.get("message") or "",
+        "retrieved_at": live_snapshot.get("retrieved_at"),
+        "live_smallscale_rows": len(live_rows),
+        "matched_site_projects": len(matched_live_ids),
+        "local_reference_month": _planplus_project_reference_data()["metadata"].get("reference_month"),
+        "policy": "UQ120 실시간 속성 정확일치 보정 → 실패/미일치 시 보유 UQ120 공간·속성 유지",
+    }
+    return overlaps, context_features, live_meta
 
 
 def _polygonal_only(geom):
@@ -3188,7 +3256,7 @@ def analyze_renewal_intersections(geometry: Dict[str, Any]) -> Dict[str, Any]:
     legal_promotions = [f for f in promotions if f["properties"].get("source") == "legal"]
     primary = (legal_non_promotion or non_promotion or [None])[0]
     primary_promotion = (legal_promotions or promotions or [None])[0]
-    project_registry_overlaps, project_registry_context = _planplus_project_intersections(
+    project_registry_overlaps, project_registry_context, project_registry_live_metadata = _planplus_project_intersections(
         site_wgs, site_metric, site_area, to_metric, to_wgs
     )
     return {
@@ -3203,6 +3271,7 @@ def analyze_renewal_intersections(geometry: Dict[str, Any]) -> Dict[str, Any]:
         "project_registry_overlaps": project_registry_overlaps,
         "project_registry_context_features": project_registry_context,
         "project_registry_metadata": _planplus_project_reference_data()["metadata"],
+        "project_registry_live_metadata": project_registry_live_metadata,
         "metadata": _renewal_reference_data()["metadata"],
         "selection_rule": "법정 UQ181 우선 → 중첩면적 우선, 재정비촉진지구·구역은 별도 트랙",
     }
@@ -6205,6 +6274,73 @@ def _row_value_ci(row: Dict[str, Any], *names: str) -> str:
             return str(value).strip()
     return ""
 
+
+def _planplus_uq120_name_key(value: Any) -> str:
+    return re.sub(r"[^0-9a-zA-Z가-힣]+", "", str(value or "")).lower()
+
+
+def _planplus_uq120_live_smallscale_snapshot() -> Dict[str, Any]:
+    """Best-effort live attribute correction for BZ201~BZ205.
+
+    Geometry is intentionally never replaced here. The bundled UQ120 SHP stays
+    authoritative for spatial overlap; the live API may only refresh exact-match
+    project attributes. Failure keeps the bundled UQ120 result unchanged.
+    """
+    now = time.time()
+    cached = _PLANPLUS_UQ120_LIVE_CACHE.get("data")
+    if cached is not None and now - float(_PLANPLUS_UQ120_LIVE_CACHE.get("ts") or 0) < _PLANPLUS_UQ120_LIVE_CACHE_TTL:
+        return cached
+
+    service = "upisCUq120"
+    if not _seoul_open_data_key():
+        data = {
+            "service": service,
+            "status": "NO_KEY",
+            "message": "서울 열린데이터광장 API Key 미설정 · 보유 UQ120 사용",
+            "retrieved_at": None,
+            "rows": [],
+        }
+        _PLANPLUS_UQ120_LIVE_CACHE.update({"ts": now, "data": data})
+        return data
+
+    try:
+        raw_rows = _seoul_open_data_rows(service, limit=20000)
+        rows: List[Dict[str, Any]] = []
+        for row in raw_rows:
+            code = _row_value_ci(row, "SCLAS_CL", "ATRB_SE", "MLSFC_CL")
+            if code not in PLANPLUS_SMALLSCALE_CODES:
+                continue
+            stage_code = _row_value_ci(row, "PROPEL_CD")
+            rows.append({
+                "source_feature_id": _row_value_ci(row, "PRESENT_SN", "OBJT_ID"),
+                "project_code": code,
+                "name": _row_value_ci(row, "DGM_NM", "LBL_NM", "NAME"),
+                "project_stage_code": stage_code,
+                "project_stage_label": PLANPLUS_STAGE_LABELS.get(
+                    stage_code, "단계코드 미확인" if stage_code else "추진단계 미입력"
+                ),
+                "data_reference_date": _row_value_ci(
+                    row, "CREATE_DAT", "STUT_FIG_CRT_DT", "UPDT_DT", "MOD_DATE"
+                ),
+            })
+        data = {
+            "service": service,
+            "status": "OK",
+            "message": "서울 열린데이터광장 UQ120 실시간 속성 보정",
+            "retrieved_at": datetime.now(ZoneInfo("Asia/Seoul")).isoformat(timespec="seconds"),
+            "rows": rows,
+            "raw_count": len(raw_rows),
+        }
+    except Exception as exc:
+        data = {
+            "service": service,
+            "status": "ERROR",
+            "message": f"UQ120 실시간 조회 실패 · 보유 UQ120 사용: {str(exc)[:180]}",
+            "retrieved_at": None,
+            "rows": [],
+        }
+    _PLANPLUS_UQ120_LIVE_CACHE.update({"ts": now, "data": data})
+    return data
 
 def _district_unit_feature_key_candidates(hit: Dict[str, Any]) -> Dict[str, List[str]]:
     props = hit.get("properties") if isinstance(hit, dict) else {}
