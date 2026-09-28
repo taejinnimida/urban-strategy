@@ -1414,6 +1414,18 @@ body.review-modal-open{overflow:hidden}
 .feedback-context{padding:10px 11px;border:1px solid #d0d5dd;border-radius:8px;background:#f9fafb;color:#475467;font-size:10px;line-height:1.55}
 .feedback-context b{display:block;color:#101828;margin-bottom:3px}
 .feedback-status{min-height:18px;font-size:10px;font-weight:800;color:#175cd3}
+.admin-only[hidden],.admin-login[hidden]{display:none!important}
+.feedback-board-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.feedback-board-note{font-size:9px;color:#667085;line-height:1.5}
+.feedback-board-list{border:1px solid #eaecf0;border-radius:9px;overflow:auto;background:#fff}
+.feedback-board-list table{width:100%;border-collapse:collapse;font-size:9px}
+.feedback-board-list th,.feedback-board-list td{padding:8px 9px;border-bottom:1px solid #eaecf0;text-align:left;vertical-align:top}
+.feedback-board-list th{background:#f9fafb;color:#475467;font-weight:900;white-space:nowrap}
+.feedback-board-list td.message{white-space:normal;min-width:360px;line-height:1.55;color:#101828}
+.feedback-board-status{display:inline-flex;border-radius:999px;padding:2px 7px;font-size:8px;font-weight:900;white-space:nowrap}
+.feedback-board-status.open{background:#eff8ff;color:#175cd3}.feedback-board-status.checking{background:#fffaeb;color:#b54708}.feedback-board-status.done{background:#ecfdf3;color:#027a48}
+.feedback-write-panel{margin-top:12px;padding-top:12px;border-top:1px solid #eaecf0}
+.feedback-write-panel[hidden]{display:none!important}
 .mobile-workflow-bar{display:none!important}
 
 .service-main{padding:10px 12px 18px;background:#f2f4f7}
@@ -1666,9 +1678,10 @@ body.service-layout-ready>.shell{display:none!important}
 <span class="conn planned" id="buildingConn">건축물 AUTO 준비</span><span class="conn planned" id="planningConn">도시계획GIS 준비</span>
 </div>
 <div class="cc-header-actions">
-<button class="cc-header-action" type="button" onclick="openFeedbackModal()">오류·개선의견</button>
-<button class="cc-header-action cc-regulation-change-button" type="button" onclick="openRegulationChangeModal()">사업판정제도 변화정보<span class="cc-regulation-alert-count" id="regulationChangeAlertCount" hidden>0</span></button>
-<a class="cc-header-admin" href="/admin" aria-label="관리자 통계 및 오류 관리">⚙ 관리자</a>
+<button class="cc-header-action" type="button" onclick="openFeedbackModal()">오류·개선의견 게시판</button>
+<a class="cc-header-action admin-login" id="adminLoginLink" href="/admin" aria-label="관리자 로그인">ADMIN LOGIN</a>
+<button class="cc-header-action cc-regulation-change-button admin-only" id="adminRegulationButton" type="button" onclick="openRegulationChangeModal()" hidden>사업판정제도 변화정보<span class="cc-regulation-alert-count" id="regulationChangeAlertCount" hidden>0</span></button>
+<a class="cc-header-admin admin-only" id="adminMenuLink" href="/admin" aria-label="관리자 통계 및 오류 관리" hidden>⚙ 관리자</a>
 </div>
 </header>
 <div class="mobile-workflow-bar" id="mobileWorkflowBar">
@@ -17564,12 +17577,36 @@ async function loadRegulationChangeMonitor(force=false){
 }
 function openRegulationChangeModal(){regulationMonitorFilter='all';openReviewModal('regulationChangeModal');loadRegulationChangeMonitor(false);}
 
+let feedbackBoardCache=[];
+function feedbackCategoryLabel(key){return ({data:'데이터 오류',decision:'판정 오류',screen:'화면 오류',suggestion:'기능 제안',other:'기타'})[key]||'기타';}
+function feedbackStatusLabel(key){return ({open:'접수',checking:'확인 중',done:'처리완료'})[key]||'접수';}
+function renderFeedbackBoard(){
+  const body=document.getElementById('feedbackBoardList');if(!body)return;
+  const rows=(feedbackBoardCache||[]).map((x,i)=>{
+    const created=String(x.created_at||'').replace('T',' ').slice(0,16);
+    const id=String(x.id||'');
+    return `<tr><td>${feedbackBoardCache.length-i}</td><td>${escHtml(created||'-')}</td><td>${escHtml(x.category_label||feedbackCategoryLabel(x.category))}</td><td class="message">${escHtml(x.message||'-')}</td><td><span class="feedback-board-status ${escHtml(x.status||'open')}">${escHtml(x.status_label||feedbackStatusLabel(x.status))}</span></td><td><code>${escHtml(id?id.slice(0,8):'-')}</code></td></tr>`;
+  }).join('');
+  body.innerHTML=`<table><thead><tr><th>번호</th><th>접수시각</th><th>유형</th><th>내용</th><th>처리상태</th><th>접수번호</th></tr></thead><tbody>${rows||'<tr><td colspan="6"><div class="reg-monitor-empty">등록된 오류·개선의견이 없습니다.</div></td></tr>'}</tbody></table>`;
+}
+async function loadFeedbackBoard(){
+  const body=document.getElementById('feedbackBoardList');if(body)body.innerHTML='<div class="reg-monitor-empty">게시판을 불러오는 중입니다.</div>';
+  try{
+    const response=await fetch('/api/feedback/board?limit=100',{cache:'no-store'});
+    if(!response.ok)throw new Error(`HTTP ${response.status}`);
+    const result=await response.json();feedbackBoardCache=Array.isArray(result.items)?result.items:[];
+    renderFeedbackBoard();
+  }catch(e){if(body)body.innerHTML='<div class="reg-monitor-empty">게시판을 불러오지 못했습니다.</div>';}
+}
+function toggleFeedbackWrite(force){
+  const panel=document.getElementById('feedbackWritePanel');if(!panel)return;
+  const open=force===undefined?panel.hidden:!!force;panel.hidden=!open;
+  if(open){const context=document.getElementById('feedbackContextText');if(context)context.textContent=feedbackContextText();const status=document.getElementById('feedbackStatus');if(status)status.textContent='';}
+}
 function openFeedbackModal(){
-  const context=document.getElementById('feedbackContextText');
-  const status=document.getElementById('feedbackStatus');
-  if(context)context.textContent=feedbackContextText();
-  if(status)status.textContent='';
+  toggleFeedbackWrite(false);
   openReviewModal('feedbackModal');
+  loadFeedbackBoard();
 }
 async function submitFeedback(){
   const category=document.getElementById('feedbackCategory')?.value||'other';
@@ -17593,8 +17630,20 @@ async function submitFeedback(){
     const result=await response.json();
     if(status)status.textContent=`접수되었습니다. 번호 ${result.feedback_id}`;
     const textarea=document.getElementById('feedbackMessage');if(textarea)textarea.value='';
+    await loadFeedbackBoard();
+    setTimeout(()=>toggleFeedbackWrite(false),700);
   }catch(e){if(status)status.textContent='접수에 실패했습니다. 잠시 후 다시 시도해 주세요.';}
 }
+async function refreshAdminUi(){
+  let authenticated=false,configured=false;
+  try{
+    const response=await fetch('/api/admin/session',{cache:'no-store'});
+    if(response.ok){const result=await response.json();authenticated=!!result.authenticated;configured=!!result.configured;}
+  }catch(e){}
+  const login=document.getElementById('adminLoginLink');if(login){login.hidden=authenticated;login.textContent=configured?'ADMIN LOGIN':'ADMIN 설정필요';}
+  document.querySelectorAll('.admin-only').forEach(el=>{el.hidden=!authenticated;});
+}
+
 function queueAnalysisAnalytics(){
   clearTimeout(analyticsTimer);
   analyticsTimer=setTimeout(()=>{
@@ -18843,21 +18892,26 @@ function serviceModalMarkup(){
     </section>
   </div>
   <div class="review-modal-backdrop" id="feedbackModal" aria-hidden="true">
-    <section class="review-modal" role="dialog" aria-modal="true" aria-labelledby="feedbackModalTitle">
+    <section class="review-modal review-modal-wide" role="dialog" aria-modal="true" aria-labelledby="feedbackModalTitle">
       <div class="review-modal-head">
-        <div><h2 id="feedbackModalTitle">오류·개선의견</h2><span>현재 대상지와 분석결과는 자동으로 함께 접수됩니다.</span></div>
+        <div><h2 id="feedbackModalTitle">오류·개선의견 게시판</h2><span>접수내용과 처리상태를 공개합니다. 연락처·대상지·PNU·분석번호는 게시판에 공개하지 않습니다.</span></div>
         <button class="review-modal-close" type="button" onclick="closeReviewModal('feedbackModal')" aria-label="닫기">×</button>
       </div>
       <div class="review-modal-body">
-        <div class="feedback-form">
-          <div class="feedback-context"><b>자동 첨부 대상지</b><span id="feedbackContextText">분석 전</span></div>
-          <label>유형<select id="feedbackCategory"><option value="data">토지·건축물·GIS 데이터 오류</option><option value="decision">사업방식 판정 오류</option><option value="screen">화면·작동 오류</option><option value="suggestion">기능 개선 제안</option><option value="other">기타</option></select></label>
-          <label>내용<textarea id="feedbackMessage" maxlength="4000" placeholder="어떤 값이나 판정이 잘못됐는지 적어 주세요."></textarea></label>
-          <label>연락처 — 선택<input id="feedbackContact" maxlength="200" placeholder="답변이 필요할 때만 이메일 또는 연락처 입력"></label>
-          <div class="feedback-status" id="feedbackStatus" aria-live="polite"></div>
+        <div class="feedback-board-toolbar"><div class="feedback-board-note">최근 100건 · 접수 / 확인 중 / 처리완료 상태를 확인할 수 있습니다.</div><button class="btn primary" type="button" onclick="toggleFeedbackWrite()">의견 작성</button></div>
+        <div class="feedback-board-list" id="feedbackBoardList"><div class="reg-monitor-empty">게시판을 불러오는 중입니다.</div></div>
+        <div class="feedback-write-panel" id="feedbackWritePanel" hidden>
+          <div class="feedback-form">
+            <div class="feedback-context"><b>관리자 확인용 자동 첨부 대상지</b><span id="feedbackContextText">분석 전</span></div>
+            <label>유형<select id="feedbackCategory"><option value="data">토지·건축물·GIS 데이터 오류</option><option value="decision">사업방식 판정 오류</option><option value="screen">화면·작동 오류</option><option value="suggestion">기능 개선 제안</option><option value="other">기타</option></select></label>
+            <label>내용<textarea id="feedbackMessage" maxlength="4000" placeholder="어떤 값이나 판정이 잘못됐는지 적어 주세요. 이 내용은 게시판에 공개됩니다."></textarea></label>
+            <label>연락처 — 선택 · 게시판 비공개<input id="feedbackContact" maxlength="200" placeholder="답변이 필요할 때만 이메일 또는 연락처 입력"></label>
+            <div class="feedback-status" id="feedbackStatus" aria-live="polite"></div>
+            <div style="display:flex;justify-content:flex-end;gap:7px"><button class="btn" type="button" onclick="toggleFeedbackWrite(false)">취소</button><button class="btn primary" type="button" onclick="submitFeedback()">접수하기</button></div>
+          </div>
         </div>
       </div>
-      <div class="review-modal-foot"><span>회원가입 없이 접수되며 관리자 메뉴에서 처리상태를 관리합니다.</span><button class="btn" onclick="closeReviewModal('feedbackModal')">닫기</button><button class="btn primary" onclick="submitFeedback()">접수하기</button></div>
+      <div class="review-modal-foot"><span>게시판에는 의견 본문과 처리상태만 공개되며 대상지 정보와 연락처는 관리자 화면에서만 확인합니다.</span><button class="btn" onclick="closeReviewModal('feedbackModal')">닫기</button></div>
     </section>
   </div>
   <div class="review-modal-backdrop" id="regulationChangeModal" aria-hidden="true">
@@ -21096,6 +21150,7 @@ refreshCompactMiniMaps();
 loadBuiltInStationDataset();
 loadBuiltInCenterDataset();
 analyticsPost('page_view');
+refreshAdminUi();
 
 </script>
 <!-- R33_CURRENT_YEAR_SITE_PRICE_2025_SEOUL_AVG_20260928 -->

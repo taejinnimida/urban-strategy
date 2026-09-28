@@ -5588,6 +5588,7 @@ FEEDBACK_MEMORY = deque(maxlen=2000)
 ANALYTICS_LOCK = threading.Lock()
 ANALYTICS_DB_READY = False
 ADMIN_SECURITY = HTTPBasic(auto_error=False)
+ADMIN_SESSION_COOKIE = "urban_admin_session"
 
 
 
@@ -5662,72 +5663,150 @@ def _database_url() -> str:
     return os.getenv("DATABASE_URL", "").strip()
 
 
+def _analytics_sqlite_path() -> str:
+    """PostgreSQL이 없을 때 사용하는 누적 SQLite 저장소.
+
+    ANALYTICS_DB_PATH를 지정하면 그 경로를 최우선으로 사용한다. Render에서
+    영구 Disk를 /var/data에 마운트한 경우에는 자동으로 그 경로를 사용한다.
+    둘 다 없으면 앱 디렉터리에 저장하여 프로세스 재시작에는 유지되지만,
+    새 배포 이미지로 교체할 때는 유실될 수 있음을 관리자 화면에 명시한다.
+    """
+    explicit = os.getenv("ANALYTICS_DB_PATH", "").strip()
+    if explicit:
+        path = os.path.abspath(explicit)
+        os.makedirs(os.path.dirname(path) or BASE_DIR, exist_ok=True)
+        return path
+    render_disk = "/var/data"
+    if os.path.isdir(render_disk) and os.access(render_disk, os.W_OK):
+        return os.path.join(render_disk, "urban_strategy_analytics.sqlite3")
+    return os.path.join(BASE_DIR, "urban_strategy_analytics.sqlite3")
+
+
 def _analytics_storage_mode() -> str:
-    return "postgres" if _database_url() else "memory"
+    if _database_url():
+        return "postgres"
+    path = _analytics_sqlite_path()
+    return "sqlite_persistent" if os.path.dirname(path) == "/var/data" or bool(os.getenv("ANALYTICS_DB_PATH", "").strip()) else "sqlite_local"
+
+
+def _sqlite_analytics_connect() -> sqlite3.Connection:
+    path = _analytics_sqlite_path()
+    conn = sqlite3.connect(path, timeout=30)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=30000")
+    return conn
 
 
 def _ensure_analytics_table() -> None:
     global ANALYTICS_DB_READY
-    if ANALYTICS_DB_READY or not _database_url():
+    if ANALYTICS_DB_READY:
         return
-    if psycopg is None:
-        raise RuntimeError("DATABASE_URL is configured but psycopg is not installed")
     with ANALYTICS_LOCK:
         if ANALYTICS_DB_READY:
             return
-        with psycopg.connect(_database_url()) as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS analytics_events (
-                    id BIGSERIAL PRIMARY KEY,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                    analysis_id VARCHAR(80),
-                    visitor_id VARCHAR(80) NOT NULL,
-                    session_id VARCHAR(80),
-                    event_type VARCHAR(40) NOT NULL,
-                    address_text TEXT,
-                    pnu_list JSONB NOT NULL DEFAULT '[]'::jsonb,
-                    area_m2 DOUBLE PRECISION,
-                    parcel_count INTEGER,
-                    centroid_lat DOUBLE PRECISION,
-                    centroid_lng DOUBLE PRECISION,
-                    recommendations JSONB NOT NULL DEFAULT '[]'::jsonb,
-                    result_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
-                    user_agent_group VARCHAR(40)
-                )
-            """)
-            conn.execute("CREATE INDEX IF NOT EXISTS analytics_events_created_idx ON analytics_events(created_at DESC)")
-            conn.execute("CREATE INDEX IF NOT EXISTS analytics_events_visitor_idx ON analytics_events(visitor_id)")
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS feedback_reports (
-                    id VARCHAR(36) PRIMARY KEY,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                    analysis_id VARCHAR(80),
-                    visitor_id VARCHAR(80) NOT NULL,
-                    session_id VARCHAR(80),
-                    category VARCHAR(30) NOT NULL,
-                    message TEXT NOT NULL,
-                    contact TEXT,
-                    page_context VARCHAR(80),
-                    address_text TEXT,
-                    pnu_list JSONB NOT NULL DEFAULT '[]'::jsonb,
-                    area_m2 DOUBLE PRECISION,
-                    recommendations JSONB NOT NULL DEFAULT '[]'::jsonb,
-                    status VARCHAR(20) NOT NULL DEFAULT 'open',
-                    user_agent_group VARCHAR(40)
-                )
-            """)
-            conn.execute("ALTER TABLE analytics_events ADD COLUMN IF NOT EXISTS analysis_id VARCHAR(80)")
-            conn.execute("ALTER TABLE feedback_reports ADD COLUMN IF NOT EXISTS analysis_id VARCHAR(80)")
-            conn.execute("CREATE INDEX IF NOT EXISTS feedback_reports_created_idx ON feedback_reports(created_at DESC)")
-            conn.execute("CREATE INDEX IF NOT EXISTS feedback_reports_status_idx ON feedback_reports(status)")
-            conn.commit()
+        if _database_url():
+            if psycopg is None:
+                raise RuntimeError("DATABASE_URL is configured but psycopg is not installed")
+            with psycopg.connect(_database_url()) as conn:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS analytics_events (
+                        id BIGSERIAL PRIMARY KEY,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        analysis_id VARCHAR(80),
+                        visitor_id VARCHAR(80) NOT NULL,
+                        session_id VARCHAR(80),
+                        event_type VARCHAR(40) NOT NULL,
+                        address_text TEXT,
+                        pnu_list JSONB NOT NULL DEFAULT '[]'::jsonb,
+                        area_m2 DOUBLE PRECISION,
+                        parcel_count INTEGER,
+                        centroid_lat DOUBLE PRECISION,
+                        centroid_lng DOUBLE PRECISION,
+                        recommendations JSONB NOT NULL DEFAULT '[]'::jsonb,
+                        result_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
+                        user_agent_group VARCHAR(40)
+                    )
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS analytics_events_created_idx ON analytics_events(created_at DESC)")
+                conn.execute("CREATE INDEX IF NOT EXISTS analytics_events_visitor_idx ON analytics_events(visitor_id)")
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS feedback_reports (
+                        id VARCHAR(36) PRIMARY KEY,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        analysis_id VARCHAR(80),
+                        visitor_id VARCHAR(80) NOT NULL,
+                        session_id VARCHAR(80),
+                        category VARCHAR(30) NOT NULL,
+                        message TEXT NOT NULL,
+                        contact TEXT,
+                        page_context VARCHAR(80),
+                        address_text TEXT,
+                        pnu_list JSONB NOT NULL DEFAULT '[]'::jsonb,
+                        area_m2 DOUBLE PRECISION,
+                        recommendations JSONB NOT NULL DEFAULT '[]'::jsonb,
+                        status VARCHAR(20) NOT NULL DEFAULT 'open',
+                        user_agent_group VARCHAR(40)
+                    )
+                """)
+                conn.execute("ALTER TABLE analytics_events ADD COLUMN IF NOT EXISTS analysis_id VARCHAR(80)")
+                conn.execute("ALTER TABLE feedback_reports ADD COLUMN IF NOT EXISTS analysis_id VARCHAR(80)")
+                conn.execute("CREATE INDEX IF NOT EXISTS feedback_reports_created_idx ON feedback_reports(created_at DESC)")
+                conn.execute("CREATE INDEX IF NOT EXISTS feedback_reports_status_idx ON feedback_reports(status)")
+                conn.commit()
+        else:
+            with _sqlite_analytics_connect() as conn:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS analytics_events (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        created_at TEXT NOT NULL,
+                        analysis_id TEXT,
+                        visitor_id TEXT NOT NULL,
+                        session_id TEXT,
+                        event_type TEXT NOT NULL,
+                        address_text TEXT,
+                        pnu_list TEXT NOT NULL DEFAULT '[]',
+                        area_m2 REAL,
+                        parcel_count INTEGER,
+                        centroid_lat REAL,
+                        centroid_lng REAL,
+                        recommendations TEXT NOT NULL DEFAULT '[]',
+                        result_summary TEXT NOT NULL DEFAULT '{}',
+                        user_agent_group TEXT
+                    )
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS analytics_events_created_idx ON analytics_events(created_at DESC)")
+                conn.execute("CREATE INDEX IF NOT EXISTS analytics_events_visitor_idx ON analytics_events(visitor_id)")
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS feedback_reports (
+                        id TEXT PRIMARY KEY,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL,
+                        analysis_id TEXT,
+                        visitor_id TEXT NOT NULL,
+                        session_id TEXT,
+                        category TEXT NOT NULL,
+                        message TEXT NOT NULL,
+                        contact TEXT,
+                        page_context TEXT,
+                        address_text TEXT,
+                        pnu_list TEXT NOT NULL DEFAULT '[]',
+                        area_m2 REAL,
+                        recommendations TEXT NOT NULL DEFAULT '[]',
+                        status TEXT NOT NULL DEFAULT 'open',
+                        user_agent_group TEXT
+                    )
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS feedback_reports_created_idx ON feedback_reports(created_at DESC)")
+                conn.execute("CREATE INDEX IF NOT EXISTS feedback_reports_status_idx ON feedback_reports(status)")
+                conn.commit()
         ANALYTICS_DB_READY = True
 
 
 def _store_analytics_event(data: Dict[str, Any]) -> None:
+    _ensure_analytics_table()
     if _database_url():
-        _ensure_analytics_table()
         with psycopg.connect(_database_url()) as conn:
             conn.execute("""
                 INSERT INTO analytics_events
@@ -5744,15 +5823,38 @@ def _store_analytics_event(data: Dict[str, Any]) -> None:
             ))
             conn.commit()
     else:
-        row = dict(data)
-        row["created_at"] = datetime.now().astimezone().isoformat(timespec="seconds")
-        with ANALYTICS_LOCK:
-            ANALYTICS_MEMORY.appendleft(row)
+        created_at = datetime.now().astimezone().isoformat(timespec="seconds")
+        with _sqlite_analytics_connect() as conn:
+            conn.execute("""
+                INSERT INTO analytics_events
+                (created_at, analysis_id, visitor_id, session_id, event_type, address_text, pnu_list,
+                 area_m2, parcel_count, centroid_lat, centroid_lng, recommendations, result_summary, user_agent_group)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """, (
+                created_at, data.get("analysis_id"), data["visitor_id"], data.get("session_id"), data["event_type"],
+                data.get("address_text"), json.dumps(data.get("pnu_list") or [], ensure_ascii=False),
+                data.get("area_m2"), data.get("parcel_count"), data.get("centroid_lat"), data.get("centroid_lng"),
+                json.dumps(data.get("recommendations") or [], ensure_ascii=False),
+                json.dumps(data.get("result_summary") or {}, ensure_ascii=False), data.get("user_agent_group"),
+            ))
+            conn.commit()
+
+
+def _decode_json_field(value: Any, default: Any) -> Any:
+    if value is None:
+        return default
+    if isinstance(value, (list, dict)):
+        return value
+    try:
+        return json.loads(str(value))
+    except Exception:
+        return default
 
 
 def _analytics_rows(limit: int = 500) -> List[Dict[str, Any]]:
+    _ensure_analytics_table()
+    keys = ["created_at","analysis_id","visitor_id","session_id","event_type","address_text","pnu_list","area_m2","parcel_count","centroid_lat","centroid_lng","recommendations","result_summary","user_agent_group"]
     if _database_url():
-        _ensure_analytics_table()
         with psycopg.connect(_database_url()) as conn:
             rows = conn.execute("""
                 SELECT created_at, analysis_id, visitor_id, session_id, event_type, address_text,
@@ -5760,23 +5862,29 @@ def _analytics_rows(limit: int = 500) -> List[Dict[str, Any]]:
                        recommendations, result_summary, user_agent_group
                 FROM analytics_events ORDER BY created_at DESC LIMIT %s
             """, (limit,)).fetchall()
-        keys = ["created_at","analysis_id","visitor_id","session_id","event_type","address_text","pnu_list","area_m2","parcel_count","centroid_lat","centroid_lng","recommendations","result_summary","user_agent_group"]
         return [dict(zip(keys, row)) for row in rows]
-    with ANALYTICS_LOCK:
-        return list(ANALYTICS_MEMORY)[:limit]
+    with _sqlite_analytics_connect() as conn:
+        rows = conn.execute("""
+            SELECT created_at, analysis_id, visitor_id, session_id, event_type, address_text,
+                   pnu_list, area_m2, parcel_count, centroid_lat, centroid_lng,
+                   recommendations, result_summary, user_agent_group
+            FROM analytics_events ORDER BY created_at DESC LIMIT ?
+        """, (limit,)).fetchall()
+    out=[]
+    for row in rows:
+        item=dict(row)
+        item["pnu_list"]=_decode_json_field(item.get("pnu_list"), [])
+        item["recommendations"]=_decode_json_field(item.get("recommendations"), [])
+        item["result_summary"]=_decode_json_field(item.get("result_summary"), {})
+        out.append(item)
+    return out
 
 
 def _store_feedback(data: Dict[str, Any]) -> str:
     feedback_id = str(uuid.uuid4())
-    row = dict(data)
-    row.update({
-        "id": feedback_id,
-        "status": "open",
-        "created_at": datetime.now().astimezone().isoformat(timespec="seconds"),
-        "updated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
-    })
+    created_at = datetime.now().astimezone().isoformat(timespec="seconds")
+    _ensure_analytics_table()
     if _database_url():
-        _ensure_analytics_table()
         with psycopg.connect(_database_url()) as conn:
             conn.execute("""
                 INSERT INTO feedback_reports
@@ -5791,14 +5899,26 @@ def _store_feedback(data: Dict[str, Any]) -> str:
             ))
             conn.commit()
     else:
-        with ANALYTICS_LOCK:
-            FEEDBACK_MEMORY.appendleft(row)
+        with _sqlite_analytics_connect() as conn:
+            conn.execute("""
+                INSERT INTO feedback_reports
+                (id, created_at, updated_at, analysis_id, visitor_id, session_id, category, message, contact,
+                 page_context, address_text, pnu_list, area_m2, recommendations, status, user_agent_group)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """, (
+                feedback_id, created_at, created_at, data.get("analysis_id"), data["visitor_id"], data.get("session_id"),
+                data["category"], data["message"], data.get("contact"), data.get("page_context"), data.get("address_text"),
+                json.dumps(data.get("pnu_list") or [], ensure_ascii=False), data.get("area_m2"),
+                json.dumps(data.get("recommendations") or [], ensure_ascii=False), "open", data.get("user_agent_group"),
+            ))
+            conn.commit()
     return feedback_id
 
 
 def _feedback_rows(limit: int = 1000) -> List[Dict[str, Any]]:
+    _ensure_analytics_table()
+    keys = ["id","created_at","updated_at","analysis_id","visitor_id","session_id","category","message","contact","page_context","address_text","pnu_list","area_m2","recommendations","status","user_agent_group"]
     if _database_url():
-        _ensure_analytics_table()
         with psycopg.connect(_database_url()) as conn:
             rows = conn.execute("""
                 SELECT id, created_at, updated_at, analysis_id, visitor_id, session_id, category, message,
@@ -5806,15 +5926,25 @@ def _feedback_rows(limit: int = 1000) -> List[Dict[str, Any]]:
                        recommendations, status, user_agent_group
                 FROM feedback_reports ORDER BY created_at DESC LIMIT %s
             """, (limit,)).fetchall()
-        keys = ["id","created_at","updated_at","analysis_id","visitor_id","session_id","category","message","contact","page_context","address_text","pnu_list","area_m2","recommendations","status","user_agent_group"]
         return [dict(zip(keys, row)) for row in rows]
-    with ANALYTICS_LOCK:
-        return list(FEEDBACK_MEMORY)[:limit]
+    with _sqlite_analytics_connect() as conn:
+        rows = conn.execute("""
+            SELECT id, created_at, updated_at, analysis_id, visitor_id, session_id, category, message,
+                   contact, page_context, address_text, pnu_list, area_m2, recommendations, status, user_agent_group
+            FROM feedback_reports ORDER BY created_at DESC LIMIT ?
+        """, (limit,)).fetchall()
+    out=[]
+    for row in rows:
+        item=dict(row)
+        item["pnu_list"]=_decode_json_field(item.get("pnu_list"), [])
+        item["recommendations"]=_decode_json_field(item.get("recommendations"), [])
+        out.append(item)
+    return out
 
 
 def _set_feedback_status(feedback_id: str, status: str) -> bool:
+    _ensure_analytics_table()
     if _database_url():
-        _ensure_analytics_table()
         with psycopg.connect(_database_url()) as conn:
             result = conn.execute(
                 "UPDATE feedback_reports SET status=%s, updated_at=NOW() WHERE id=%s",
@@ -5822,13 +5952,26 @@ def _set_feedback_status(feedback_id: str, status: str) -> bool:
             )
             conn.commit()
             return result.rowcount > 0
-    with ANALYTICS_LOCK:
-        for row in FEEDBACK_MEMORY:
-            if row.get("id") == feedback_id:
-                row["status"] = status
-                row["updated_at"] = datetime.now().astimezone().isoformat(timespec="seconds")
-                return True
-    return False
+    with _sqlite_analytics_connect() as conn:
+        result = conn.execute(
+            "UPDATE feedback_reports SET status=?, updated_at=? WHERE id=?",
+            (status, datetime.now().astimezone().isoformat(timespec="seconds"), feedback_id),
+        )
+        conn.commit()
+        return result.rowcount > 0
+
+
+def _admin_session_token() -> str:
+    configured = os.getenv("ADMIN_PASSWORD", "")
+    if not configured:
+        return ""
+    return hmac.new(configured.encode(), b"urban-admin-session-v1", hashlib.sha256).hexdigest()
+
+
+def _admin_cookie_valid(request: Request) -> bool:
+    expected = _admin_session_token()
+    supplied = request.cookies.get(ADMIN_SESSION_COOKIE, "")
+    return bool(expected and supplied and hmac.compare_digest(supplied.encode(), expected.encode()))
 
 
 def _admin_auth(credentials: Optional[HTTPBasicCredentials] = Depends(ADMIN_SECURITY)) -> bool:
@@ -5840,6 +5983,12 @@ def _admin_auth(credentials: Optional[HTTPBasicCredentials] = Depends(ADMIN_SECU
     if not (hmac.compare_digest(user.encode(), b"admin") and hmac.compare_digest(supplied.encode(), configured.encode())):
         raise HTTPException(status_code=401, detail="Admin authentication required", headers={"WWW-Authenticate": "Basic"})
     return True
+
+
+def _admin_auth_or_session(request: Request, credentials: Optional[HTTPBasicCredentials] = Depends(ADMIN_SECURITY)) -> bool:
+    if _admin_cookie_valid(request):
+        return True
+    return _admin_auth(credentials)
 
 
 
@@ -7715,37 +7864,56 @@ def create_feedback(payload: FeedbackInput, request: Request):
     return {"ok": True, "feedback_id": feedback_id, "storage": _analytics_storage_mode()}
 
 
+@app.get("/api/feedback/board")
+def feedback_board(limit: int = 100):
+    limit = max(1, min(int(limit or 100), 200))
+    rows = _feedback_rows(limit)
+    category_labels = {"data":"데이터 오류", "decision":"판정 오류", "screen":"화면 오류", "suggestion":"기능 제안", "other":"기타"}
+    status_labels = {"open":"접수", "checking":"확인 중", "done":"처리완료"}
+    items = []
+    for row in rows:
+        created = row.get("created_at")
+        if isinstance(created, datetime):
+            created = created.astimezone().isoformat(timespec="minutes")
+        items.append({
+            "id": str(row.get("id") or ""),
+            "created_at": str(created or ""),
+            "category": str(row.get("category") or "other"),
+            "category_label": category_labels.get(str(row.get("category") or "other"), "기타"),
+            "message": str(row.get("message") or ""),
+            "status": str(row.get("status") or "open"),
+            "status_label": status_labels.get(str(row.get("status") or "open"), "접수"),
+        })
+    return {"ok": True, "items": items, "storage": _analytics_storage_mode()}
+
+
+@app.get("/api/admin/session")
+def admin_session_status(request: Request):
+    return {"authenticated": _admin_cookie_valid(request), "configured": bool(os.getenv("ADMIN_PASSWORD", ""))}
+
+
 @app.post("/admin/feedback/{feedback_id}/status")
-def update_feedback_status(feedback_id: str, payload: FeedbackStatusInput, _: bool = Depends(_admin_auth)):
+def update_feedback_status(feedback_id: str, payload: FeedbackStatusInput, request: Request, _: bool = Depends(_admin_auth_or_session)):
     if not _set_feedback_status(feedback_id, payload.status):
         raise HTTPException(status_code=404, detail="Feedback not found")
     return {"ok": True, "status": payload.status}
 
 
 @app.post("/admin/exclude-me")
-def admin_exclude_me(payload: AdminVisitorInput, response: Response, _: bool = Depends(_admin_auth)):
-    if payload.visitor_id:
-        if _database_url():
-            _ensure_analytics_table()
-            with psycopg.connect(_database_url()) as conn:
-                conn.execute("DELETE FROM analytics_events WHERE visitor_id=%s", (payload.visitor_id,))
-                conn.commit()
-        else:
-            with ANALYTICS_LOCK:
-                kept=[r for r in ANALYTICS_MEMORY if r.get("visitor_id") != payload.visitor_id]
-                ANALYTICS_MEMORY.clear();ANALYTICS_MEMORY.extend(kept)
-    response.set_cookie("urban_admin_exclude", "1", max_age=60 * 60 * 24 * 365 * 5, httponly=True, secure=True, samesite="lax")
-    return {"ok": True, "message": "This browser is excluded and its earlier anonymous events were removed."}
+def admin_exclude_me(payload: AdminVisitorInput, request: Request, response: Response, _: bool = Depends(_admin_auth_or_session)):
+    # 기존 분석기록은 보존한다. 이 브라우저에서 앞으로 발생하는 신규 이벤트만 집계 제외한다.
+    response.set_cookie("urban_admin_exclude", "1", max_age=60 * 60 * 24 * 365 * 5, httponly=True, secure=request.url.scheme == "https", samesite="lax")
+    return {"ok": True, "message": "This browser is excluded from future analytics. Existing records are preserved."}
 
 
 @app.post("/admin/include-me")
-def admin_include_me(response: Response, _: bool = Depends(_admin_auth)):
+def admin_include_me(request: Request, response: Response, _: bool = Depends(_admin_auth_or_session)):
     response.delete_cookie("urban_admin_exclude")
     return {"ok": True, "message": "This browser is included in analytics."}
 
 
 @app.get("/admin", response_class=HTMLResponse)
-def admin_dashboard(request: Request, _: bool = Depends(_admin_auth)):
+def admin_dashboard(request: Request, _: bool = Depends(_admin_auth_or_session)):
     rows = _analytics_rows(5000)
     feedback = _feedback_rows(2000)
     analyses = [r for r in rows if r.get("event_type") == "analysis_complete"]
@@ -7800,16 +7968,25 @@ def admin_dashboard(request: Request, _: bool = Depends(_admin_auth)):
           <td>{float(r.get('area_m2') or 0):,.0f}㎡</td><td>{html.escape(str(r.get('contact') or '-'))}</td>
           <td><select onchange="setFeedbackStatus('{html.escape(str(r.get('id') or ''))}',this.value)">{options}</select></td></tr>
         """)
-    storage_note = "PostgreSQL 영구저장" if _analytics_storage_mode() == "postgres" else "⚠ 메모리 임시저장 · 재시작/배포 시 삭제 · DATABASE_URL 필요"
-    return f"""<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    storage_mode = _analytics_storage_mode()
+    if storage_mode == "postgres":
+        storage_note = "PostgreSQL 영구저장 · 분석/의견 계속 누적"
+    elif storage_mode == "sqlite_persistent":
+        storage_note = f"SQLite 영구저장 · 분석/의견 계속 누적 · {html.escape(_analytics_sqlite_path())}"
+    else:
+        storage_note = f"SQLite 로컬저장 · 프로세스 재시작 유지 · 새 배포 보존에는 Render Disk 또는 DATABASE_URL 필요 · {html.escape(_analytics_sqlite_path())}"
+    content = f"""<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
     <title>도시검토 관리자</title><style>
     body{{font-family:system-ui,'Noto Sans KR',sans-serif;margin:0;background:#f3f5f7;color:#101828}}header{{padding:18px 24px;background:#101828;color:white;display:flex;justify-content:space-between;align-items:center}}main{{padding:18px;max-width:1500px;margin:auto}}.cards{{display:grid;grid-template-columns:repeat(6,1fr);gap:12px}}.card{{background:white;border:1px solid #e4e7ec;border-radius:12px;padding:16px}}.card span{{font-size:12px;color:#667085}}.card b{{display:block;font-size:26px;margin-top:5px}}.tools{{margin:14px 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap}}button,select{{padding:9px 12px;border:1px solid #d0d5dd;border-radius:8px;background:white;font-weight:700;cursor:pointer}}.warn{{color:#b54708}}.table{{overflow:auto;background:white;border:1px solid #e4e7ec;border-radius:12px;margin-bottom:24px}}table{{border-collapse:collapse;width:100%;font-size:12px}}th,td{{padding:9px;border-bottom:1px solid #eaecf0;text-align:left;vertical-align:top;white-space:nowrap}}th{{background:#f9fafb;position:sticky;top:0}}td.wrap{{white-space:normal;min-width:260px;line-height:1.5}}code{{font-size:11px}}@media(max-width:900px){{.cards{{grid-template-columns:1fr 1fr}}}}
     </style><script>function setFeedbackStatus(id,status){{fetch('/admin/feedback/'+encodeURIComponent(id)+'/status',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{status}})}}).then(r=>{{if(!r.ok)throw new Error();}}).catch(()=>alert('처리상태 저장 실패'));}}</script></head><body><header><div><b>도시검토 관리자</b><div style="font-size:11px;opacity:.75">{storage_note}</div></div><a href="/" style="color:white">서비스로</a></header><main>
     <div class="cards"><div class="card"><span>전체 익명 방문자</span><b>{len(visitors):,}</b></div><div class="card"><span>분석 실행 방문자</span><b>{len(analysis_visitors):,}</b></div><div class="card"><span>총 분석 실행</span><b>{len(analyses):,}</b></div><div class="card"><span>오늘 분석</span><b>{today_analyses:,}</b></div><div class="card"><span>미처리 오류·의견</span><b>{open_feedback:,}</b></div><div class="card"><span>도로중심선 API</span><b>{'준비됨' if road_ready else 'VWorld 키 확인'}</b></div></div>
-    <div class="tools"><button onclick="fetch('/admin/exclude-me',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{visitor_id:localStorage.getItem('urban_visitor_id_v1')}})}}).then(()=>location.reload())">이 브라우저·기존기록 통계 제외</button><button onclick="fetch('/admin/include-me',{{method:'POST'}}).then(()=>location.reload())">앞으로 통계 다시 포함</button><span class="{'warn' if excluded else ''}">{'현재 관리자 브라우저는 통계에서 제외됩니다.' if excluded else '현재 브라우저도 통계에 포함됩니다.'}</span></div>
+    <div class="tools"><button onclick="fetch('/admin/exclude-me',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{visitor_id:localStorage.getItem('urban_visitor_id_v1')}})}}).then(()=>location.reload())">이 브라우저 앞으로 통계 제외</button><button onclick="fetch('/admin/include-me',{{method:'POST'}}).then(()=>location.reload())">앞으로 통계 다시 포함</button><span class="{'warn' if excluded else ''}">{'현재 관리자 브라우저는 통계에서 제외됩니다.' if excluded else '현재 브라우저도 통계에 포함됩니다.'}</span></div>
     <h2>최근 대상지 분석</h2><div class="table"><table><thead><tr><th>시각</th><th>분석번호</th><th>익명사용자</th><th>입력주소</th><th>면적</th><th>필지</th><th>추천결과</th><th>위치</th><th>PNU</th></tr></thead><tbody>{''.join(table_rows) or '<tr><td colspan="9">아직 분석 기록이 없습니다.</td></tr>'}</tbody></table></div>
     <h2>오류·개선의견</h2><div class="table"><table><thead><tr><th>접수시각</th><th>분석번호</th><th>유형</th><th>내용</th><th>대상지</th><th>면적</th><th>연락처</th><th>처리상태</th></tr></thead><tbody>{''.join(feedback_rows) or '<tr><td colspan="8">접수된 오류·의견이 없습니다.</td></tr>'}</tbody></table></div>
     </main></body></html>"""
+    response = HTMLResponse(content=content)
+    response.set_cookie(ADMIN_SESSION_COOKIE, _admin_session_token(), max_age=60 * 60 * 12, httponly=True, secure=request.url.scheme == "https", samesite="lax")
+    return response
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -8169,7 +8346,7 @@ def reference_route_commercial():
 
 
 @app.get("/api/reference/regulation-change-monitor")
-def reference_regulation_change_monitor():
+def reference_regulation_change_monitor(request: Request, _: bool = Depends(_admin_auth_or_session)):
     return _regulation_change_monitor_data()
 
 
