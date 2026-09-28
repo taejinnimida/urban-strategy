@@ -2049,11 +2049,11 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="spatial-metrics">
 <div><span>도시개발구역</span><b id="spDevelopmentUrban">-</b></div>
 <div><span>공공주택지구</span><b id="spDevelopmentHousing">-</b></div>
-<div><span>도심공공주택복합지구</span><b id="spDevelopmentOther">-</b></div>
+<div><span>기타 사업법 구역</span><b id="spDevelopmentOther">-</b></div>
 <div><span>중첩 사업구역 합계</span><b id="spDevelopmentTotal">-</b></div>
 </div>
-<div class="spatial-tags"><span class="map-legend-chip lg-urban-development">도시개발구역</span><span class="map-legend-chip lg-public-housing">공공주택지구</span><span class="map-legend-chip dashed lg-other-project">도심공공주택복합지구</span><span>검은선: 대상지</span></div>
-<div class="spatial-caption">도면정보 · UQ181 중 현재 사업경합 검토에 의미 있는 도시개발구역·공공주택지구·도심공공주택복합지구만 표시합니다. 토지구획정리·택지개발·일단의 조성·시가지조성 등 과거/기타 사업이력은 제외하며 산업단지는 별도 카드에서 표시합니다.</div>
+<div class="spatial-tags"><span class="map-legend-chip lg-urban-development">도시개발구역</span><span class="map-legend-chip lg-public-housing">공공주택지구</span><span class="map-legend-chip dashed lg-other-project">기타 사업법 구역</span><span>검은선: 대상지</span></div>
+<div class="spatial-caption">도면정보 · UQ181의 도시개발·공공주택 등 사업법상 구역만 표시합니다. 지구단위계획과 산업단지는 각각 별도 카드에서 표시합니다.</div>
 <div class="spatial-mini-map" id="ccDevelopmentStatusMiniMap"></div>
 </section>
 <section class="spatial-module site-analysis-card site-analysis-local site-analysis-wide" id="siteDetail_districtUnitPlan">
@@ -7159,19 +7159,13 @@ async function analyzeSchoolAbsoluteProtection(){
   finally{a.loading=false;renderSchoolAbsoluteProtectionSpatialStatus();}
   return a;
 }
-// R38: 현재 사업경합 검토에 의미 있는 개발사업구역만 화면/선제검토에 사용한다.
-// UQ181의 토지구획정리·택지개발·일단의 조성·시가지조성 등 과거/기타 사업이력은 배제한다.
-function developmentDisplayKind(f){
-  const p=f?.properties||{},code=String(p.code||''),kind=String(p.development_kind||''),name=String(p.name||'');
-  if(kind==='industrial_park'||code==='UQ1300'||code==='UQ1400')return null;
-  if(kind==='urban_development'||code==='UQ1100')return 'urban_development';
-  if(code==='UQ5500'&&/도심\s*공공주택\s*복합지구/.test(name))return 'public_complex';
-  if(kind==='public_housing'||code==='UQ5500')return 'public_housing';
-  return null;
+function developmentCardFeature(f){
+  const p=f?.properties||{},code=String(p.code||'');
+  if(code==='UQ1300'||code==='UQ1400')return false;
+  return p.development_kind!=='industrial_park';
 }
-function developmentCardFeature(f){return developmentDisplayKind(f)!==null;}
 function developmentStatusText(kind){
-  const rows=(developmentAnalysis.overlaps||[]).filter(f=>developmentDisplayKind(f)===kind);
+  const rows=(developmentAnalysis.overlaps||[]).filter(f=>developmentCardFeature(f)&&(f.properties||{}).development_kind===kind);
   if(rows.length)return `${rows.length}건 · 최대 ${Math.max(...rows.map(f=>Number(f.properties?._overlap_pct||0))).toFixed(1)}%`;
   if(developmentAnalysis.loaded)return '중첩 없음';
   return developmentAnalysis.error?'공식자료 확인 필요':'미조회';
@@ -7325,7 +7319,7 @@ function renderIndependentSpatialStatusMaps(){
   if(developmentOverlap.length)ccDevelopmentStatusOverlap.addData({type:'FeatureCollection',features:developmentOverlap});
   set('spDevelopmentUrban',developmentStatusText('urban_development'));
   set('spDevelopmentHousing',developmentStatusText('public_housing'));
-  set('spDevelopmentOther',developmentStatusText('public_complex'));
+  set('spDevelopmentOther',developmentStatusText('other_project'));
   set('spDevelopmentTotal',developmentAnalysis.loaded?`${developmentOverlap.length}건`:(developmentAnalysis.error?'확인 필요':'미조회'));
   set('spDevelopmentMapState',developmentAnalysis.error?'사업구역 자료 확인 필요':developmentAnalysis.loaded?'사업법 구역 조회 완료':'GIS 미조회');
 
@@ -17589,40 +17583,50 @@ function queueAnalysisAnalytics(){
   },2500);
 }
 
-// R38: 기존 사업추진구역 선제검토는 명시적 화이트리스트만 사용한다.
-// 정비구역·소정법 사업구역·모아타운·재정비촉진·도시개발·공공주택·산업단지·도심공공주택복합만 포함한다.
-// 신속통합기획 후보지, 역세권 특례사업, 택지개발, 토지구획정리, 시가지조성 등은 여기서 경고하지 않는다.
-const CANDIDATE_PREFLIGHT_UQ120_CODES=new Set([
-  'BZ102','BZ103','BZ104','BZ105','BZ107','BZ108',
-  'BZ201','BZ202','BZ203','BZ204','BZ205',
-  'BZ401','BZ402','BZ403','BZ404',
-  'BZ501','BZ502','BZ601'
-]);
 function candidatePreflightProjectItems(){
+  // R39: 기존 사업추진구역 선제검토는 명시적 화이트리스트만 사용한다.
+  // 과거 토지구획정리·택지개발·시가지조성·기타 의제처리구역 및 후보지는 경고대상에서 제외한다.
   const out=[],seen=new Set(),push=(type,name,stage,pct,source)=>{
     const label=String(type||'기존 사업추진구역').trim(),nm=String(name||'').trim(),key=`${label}|${nm}`;
     if(seen.has(key))return;seen.add(key);
     out.push({type:label,name:nm,stage:String(stage||'').trim(),pct:Number.isFinite(Number(pct))?Number(pct):null,source:String(source||'').trim()});
   };
-  // UQ120은 합의한 현행 추진사업 코드만 포함한다.
-  for(const f of (renewalAnalysis.projectRegistryOverlaps||[])){
-    const p=f?.properties||{},code=String(p.project_code||'');
-    if(!CANDIDATE_PREFLIGHT_UQ120_CODES.has(code))continue;
-    push(p.type_label||'추진사업',p.name||'미상사업',p.project_stage_label||'추진단계 미확인',p._overlap_pct,'UQ120');
-  }
-  // UQ181 정비자료에서는 법정 지정구역만 사용한다. UQ120 후보·사업도형의 중복 유입을 막는다.
+
+  // 1) UQ181 법정 정비구역 + 재정비촉진지구/촉진구역.
+  // UQ120 추진사업은 아래 project_registry에서 별도로 화이트리스트 처리하므로 여기서는 legal만 사용한다.
   for(const f of (renewalAnalysis.overlaps||[])){
     const p=f?.properties||{};
-    if(p.source!=='legal')continue;
-    push(p.type_label||'법정 정비구역',p.name||'미상구역','법정 지정구역',p._overlap_pct,'UQ181');
+    if(String(p.source||'')!=='legal')continue;
+    push(p.type_label||'정비구역',p.name||'미상구역','법정 지정구역',p._overlap_pct,'UQ181');
   }
-  // 개발사업은 도시개발·공공주택·도심공공주택복합만 허용한다.
-  for(const f of (developmentAnalysis.overlaps||[]).filter(developmentCardFeature)){
-    const p=f?.properties||{};push(p.type_label||p.development_kind_label||'사업법상 개발구역',p.name||'미상구역',p.project_stage_label||'지정구역',p._overlap_pct,'UQ181');
+
+  // 2) 서울플랜+ UQ120 현재 추진사업 중 최종 확정된 8개 계열만 사용한다.
+  // 정비구역 / 소정법 사업구역 / 모아타운 / 재정비촉진지구·구역 /
+  // 도시개발구역 / 공공주택지구 / 도심공공주택복합지구.
+  const allowedUq120Codes=new Set([
+    'BZ102','BZ103','BZ104','BZ105','BZ107','BZ108',
+    'BZ201','BZ202','BZ203','BZ204','BZ205',
+    'BZ401','BZ402',
+    'BZ501','BZ502','BZ601'
+  ]);
+  for(const f of (renewalAnalysis.projectRegistryOverlaps||[])){
+    const p=f?.properties||{},code=String(p.project_code||'');
+    if(!allowedUq120Codes.has(code))continue;
+    push(p.type_label||'기존 추진사업',p.name||'미상사업',p.project_stage_label||'추진단계 미확인',p._overlap_pct,'UQ120');
   }
-  // 산업단지는 UQ181 기타구역이 아니라 전용경계(LT_C_DAMDAN) 중첩을 사용한다.
+
+  // 3) UQ181 개발사업 법정구역: 도시개발구역·공공주택지구·도심공공주택복합지구만.
+  for(const f of (developmentAnalysis.overlaps||[])){
+    const p=f?.properties||{},kind=String(p.development_kind||''),label=String(p.type_label||'');
+    const allowed=kind==='urban_development'||kind==='public_housing'||label==='도심 공공주택 복합지구';
+    if(!allowed)continue;
+    push(label||p.development_kind_label||'사업법상 개발구역',p.name||'미상구역',p.project_stage_label||'지정구역',p._overlap_pct,'UQ181');
+  }
+
+  // 4) 산업단지는 UQ181 보조코드가 아니라 기존 전용경계 분석결과를 사용한다.
   for(const f of (developmentAnalysis.industrialParks||[])){
-    const p=f?.properties||{};push(p.type_label||'산업단지',p.name||'미상단지','산업단지 지정',p._overlap_pct??p.site_overlap_pct,'LT_C_DAMDAN');
+    const p=f?.properties||{};
+    push('산업단지',p.name||'미상 산업단지',p.project_stage_label||'지정구역',p._overlap_pct??p.site_overlap_pct,'LT_C_DAMDAN');
   }
   return out;
 }
@@ -17650,7 +17654,7 @@ function renderCandidatePreflightReview(){
   if(!projectBox||!regBox)return;
   const setState=(box,badge,active,label)=>{box.classList.toggle('alert',!!active);box.classList.toggle('ok',!active&&label!=='분석 전');badge.textContent=label;};
   if(!activeGeometry){
-    setState(projectBox,projectBadge,false,'분석 전');projectMsg.textContent='기존 사업추진구역 중첩 여부를 확인합니다.';projectDetail.textContent='정비구역 · 소규모주택정비 · 모아타운 · 재정비촉진 · 도시개발 · 공공주택 · 산업단지 · 도심공공주택복합';
+    setState(projectBox,projectBadge,false,'분석 전');projectMsg.textContent='기존 사업추진구역 중첩 여부를 확인합니다.';projectDetail.textContent='주거지 정비 · 도시정비형 · 소규모주택정비 · 도시개발·공공주택 등';
     setState(regBox,regBadge,false,'분석 전');regMsg.textContent='문화유산·개발제한구역 등 개발규제 중첩 여부를 확인합니다.';regDetail.textContent='확인된 공간 FACT만 표시하며 사업 PASS/FAIL을 변경하지 않습니다.';return;
   }
   const projects=candidatePreflightProjectItems(),projectReady=renewalAnalysis.loaded&&developmentAnalysis.loaded;
@@ -17660,7 +17664,7 @@ function renderCandidatePreflightReview(){
   }else if(projectReady){
     setState(projectBox,projectBadge,false,'중첩 없음');projectMsg.textContent='현재 확보자료 기준 기존 사업추진구역 중첩이 확인되지 않았습니다.';projectDetail.textContent='기존 사업구역 미중첩은 신규 사업방식의 법적 적합성을 의미하지 않습니다.';
   }else{
-    setState(projectBox,projectBadge,false,'조회 중');projectMsg.textContent='기존 사업추진구역 공간자료를 확인하고 있습니다.';projectDetail.textContent='화이트리스트 사업구역(UQ181/UQ120) 및 산업단지 전용경계 확인';
+    setState(projectBox,projectBadge,false,'조회 중');projectMsg.textContent='기존 사업추진구역 공간자료를 확인하고 있습니다.';projectDetail.textContent='UQ181 법정구역 및 UQ120 추진사업 현황 확인';
   }
   const regs=candidatePreflightRegulationItems(),regReady=sharedConservationAnalysis.loaded&&planningAnalysis.loaded&&regulatoryConstraintAnalysis.loaded;
   if(regs.length){
