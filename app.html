@@ -15493,28 +15493,30 @@ function dxfProject5186(lon,lat){
 function dxfTextValue(v){
   return String(v??'').replace(/[\\\r\n]/g,' ').replace(/[^\x20-\x7E]/g,ch=>`\\U+${ch.charCodeAt(0).toString(16).toUpperCase().padStart(4,'0')}`);
 }
-function dxfAddPolyline(out,coords,layer,closed=true,nextHandle=null){
+function dxfAddPolyline(out,coords,layer,closed=true,nextHandle=null,ownerHandle=null){
   const pts=(coords||[]).map(c=>dxfProject5186(c[0],c[1]));
   if(pts.length<2)return;
   const same=closed&&pts.length>2&&Math.abs(pts[0][0]-pts[pts.length-1][0])<.001&&Math.abs(pts[0][1]-pts[pts.length-1][1])<.001;
   const arr=same?pts.slice(0,-1):pts;
   out.push('0','LWPOLYLINE');
   if(nextHandle)out.push('5',nextHandle());
+  if(ownerHandle)out.push('330',ownerHandle);
   out.push('100','AcDbEntity','8',layer,'100','AcDbPolyline','90',String(arr.length),'70',closed?'1':'0');
   for(const [x,y] of arr)out.push('10',x.toFixed(3),'20',y.toFixed(3));
 }
-function dxfAddGeometry(out,geometry,layer,nextHandle=null){
+function dxfAddGeometry(out,geometry,layer,nextHandle=null,ownerHandle=null){
   if(!geometry)return;
-  if(geometry.type==='Polygon')for(const ring of geometry.coordinates||[])dxfAddPolyline(out,ring,layer,true,nextHandle);
-  else if(geometry.type==='MultiPolygon')for(const poly of geometry.coordinates||[])for(const ring of poly||[])dxfAddPolyline(out,ring,layer,true,nextHandle);
-  else if(geometry.type==='LineString')dxfAddPolyline(out,geometry.coordinates||[],layer,false,nextHandle);
-  else if(geometry.type==='MultiLineString')for(const line of geometry.coordinates||[])dxfAddPolyline(out,line,layer,false,nextHandle);
+  if(geometry.type==='Polygon')for(const ring of geometry.coordinates||[])dxfAddPolyline(out,ring,layer,true,nextHandle,ownerHandle);
+  else if(geometry.type==='MultiPolygon')for(const poly of geometry.coordinates||[])for(const ring of poly||[])dxfAddPolyline(out,ring,layer,true,nextHandle,ownerHandle);
+  else if(geometry.type==='LineString')dxfAddPolyline(out,geometry.coordinates||[],layer,false,nextHandle,ownerHandle);
+  else if(geometry.type==='MultiLineString')for(const line of geometry.coordinates||[])dxfAddPolyline(out,line,layer,false,nextHandle,ownerHandle);
 }
-function dxfAddText(out,coord,text,layer,height=1.4,nextHandle=null){
+function dxfAddText(out,coord,text,layer,height=1.4,nextHandle=null,ownerHandle=null){
   if(!coord||text==null||String(text).trim()==='')return;
   const [x,y]=dxfProject5186(coord[0],coord[1]);
   out.push('0','TEXT');
   if(nextHandle)out.push('5',nextHandle());
+  if(ownerHandle)out.push('330',ownerHandle);
   out.push('100','AcDbEntity','8',layer,'100','AcDbText','10',x.toFixed(3),'20',y.toFixed(3),'30','0','40',String(height),'1',dxfTextValue(text),'50','0','7','Standard','11',x.toFixed(3),'21',y.toFixed(3),'31','0','100','AcDbText');
 }
 function dxfLabelPoint(feature){
@@ -15529,46 +15531,57 @@ function buildingCadLabel(feature){
   return [name,use,(floors!==undefined&&floors!==null&&String(floors)!=='')?`지상${floors}층`:null].filter(Boolean).join(' / ');
 }
 function buildReviewBaseDxf(scopeGeometry,parcels,buildings){
-  // AutoCAD 2000 ASCII DXF. TABLE/record subclass와 handle을 포함해 AutoCAD가 복구 없이 읽을 수 있는 최소 정식 구조로 작성한다.
+  // AutoCAD 2000 ASCII DXF. MODEL_SPACE BLOCK_RECORD/owner를 포함해 desktop CAD에서 직접 열 수 있는 정식 구조로 작성한다.
   let handleSeq=0x20;
   const nextHandle=()=>String((handleSeq++).toString(16).toUpperCase());
+  const modelSpaceHandle='18',paperSpaceHandle='19';
   const out=[
     '0','SECTION','2','HEADER',
     '9','$ACADVER','1','AC1015',
+    '9','$DWGCODEPAGE','3','ANSI_1252',
     '9','$INSUNITS','70','6',
     '9','$MEASUREMENT','70','1',
     '9','$HANDSEED','5','FFFF',
     '0','ENDSEC'
   ];
-  const layers=[['SITE_BOUNDARY',1],['PARCEL_LINE',7],['PARCEL_TEXT',3],['BUILDING_LINE',5],['BUILDING_TEXT',2]];
+  const layers=[['SITE_BOUNDARY',1,'11'],['PARCEL_LINE',7,'12'],['PARCEL_TEXT',3,'13'],['BUILDING_LINE',5,'14'],['BUILDING_TEXT',2,'15'],['0',7,'17']];
   out.push('0','SECTION','2','TABLES');
   // CONTINUOUS linetype table
-  out.push('0','TABLE','2','LTYPE','5','2','100','AcDbSymbolTable','70','1');
-  out.push('0','LTYPE','5','10','100','AcDbSymbolTableRecord','100','AcDbLinetypeTableRecord','2','CONTINUOUS','70','0','3','Solid line','72','65','73','0','40','0.0');
+  out.push('0','TABLE','2','LTYPE','5','2','330','0','100','AcDbSymbolTable','70','1');
+  out.push('0','LTYPE','5','10','330','2','100','AcDbSymbolTableRecord','100','AcDbLinetypeTableRecord','2','CONTINUOUS','70','0','3','Solid line','72','65','73','0','40','0.0');
   out.push('0','ENDTAB');
-  // Layer table
-  out.push('0','TABLE','2','LAYER','5','3','100','AcDbSymbolTable','70',String(layers.length));
-  for(let i=0;i<layers.length;i++){
-    const [name,color]=layers[i],handle=(0x11+i).toString(16).toUpperCase();
-    out.push('0','LAYER','5',handle,'100','AcDbSymbolTableRecord','100','AcDbLayerTableRecord','2',name,'70','0','62',String(color),'6','CONTINUOUS');
+  // Layer table: model-space BLOCK 정의에 필요한 기본 layer 0도 반드시 포함한다.
+  out.push('0','TABLE','2','LAYER','5','3','330','0','100','AcDbSymbolTable','70',String(layers.length));
+  for(const [name,color,handle] of layers){
+    out.push('0','LAYER','5',handle,'330','3','100','AcDbSymbolTableRecord','100','AcDbLayerTableRecord','2',name,'70','0','62',String(color),'6','CONTINUOUS');
   }
   out.push('0','ENDTAB');
   // Standard text style table
-  out.push('0','TABLE','2','STYLE','5','4','100','AcDbSymbolTable','70','1');
-  out.push('0','STYLE','5','16','100','AcDbSymbolTableRecord','100','AcDbTextStyleTableRecord','2','Standard','70','0','40','0','41','1','50','0','71','0','42','2.5','3','txt','4','');
+  out.push('0','TABLE','2','STYLE','5','4','330','0','100','AcDbSymbolTable','70','1');
+  out.push('0','STYLE','5','16','330','4','100','AcDbSymbolTableRecord','100','AcDbTextStyleTableRecord','2','Standard','70','0','40','0','41','1','50','0','71','0','42','2.5','3','txt','4','');
+  out.push('0','ENDTAB');
+  // AC1015에서는 ENTITIES가 소속될 *Model_Space BLOCK_RECORD를 명시한다.
+  out.push('0','TABLE','2','BLOCK_RECORD','5','6','330','0','100','AcDbSymbolTable','70','2');
+  out.push('0','BLOCK_RECORD','5',modelSpaceHandle,'330','6','100','AcDbSymbolTableRecord','100','AcDbBlockTableRecord','2','*Model_Space');
+  out.push('0','BLOCK_RECORD','5',paperSpaceHandle,'330','6','100','AcDbSymbolTableRecord','100','AcDbBlockTableRecord','2','*Paper_Space');
   out.push('0','ENDTAB','0','ENDSEC');
-  // Empty BLOCKS section keeps the file structure conventional for desktop CAD readers.
-  out.push('0','SECTION','2','BLOCKS','0','ENDSEC');
+  // Model/Paper space BLOCK 정의. 기존 파일의 빈 BLOCKS section 때문에 일부 CAD가 파일을 거부하는 문제를 방지한다.
+  out.push('0','SECTION','2','BLOCKS');
+  out.push('0','BLOCK','5','1A','330',modelSpaceHandle,'100','AcDbEntity','8','0','100','AcDbBlockBegin','2','*Model_Space','70','0','10','0','20','0','30','0','3','*Model_Space','1','');
+  out.push('0','ENDBLK','5','1B','330',modelSpaceHandle,'100','AcDbEntity','8','0','100','AcDbBlockEnd');
+  out.push('0','BLOCK','5','1C','330',paperSpaceHandle,'100','AcDbEntity','8','0','100','AcDbBlockBegin','2','*Paper_Space','70','0','10','0','20','0','30','0','3','*Paper_Space','1','');
+  out.push('0','ENDBLK','5','1D','330',paperSpaceHandle,'100','AcDbEntity','8','0','100','AcDbBlockEnd');
+  out.push('0','ENDSEC');
   out.push('0','SECTION','2','ENTITIES');
-  dxfAddGeometry(out,scopeGeometry,'SITE_BOUNDARY',nextHandle);
+  dxfAddGeometry(out,scopeGeometry,'SITE_BOUNDARY',nextHandle,modelSpaceHandle);
   for(const f of parcels||[]){
-    dxfAddGeometry(out,f.geometry,'PARCEL_LINE',nextHandle);
+    dxfAddGeometry(out,f.geometry,'PARCEL_LINE',nextHandle,modelSpaceHandle);
     const p=f.properties||{},label=p.jibun||p.jibun_nm||p.jibun_addr||p.pnu||'';
-    dxfAddText(out,dxfLabelPoint(f),label,'PARCEL_TEXT',1.4,nextHandle);
+    dxfAddText(out,dxfLabelPoint(f),label,'PARCEL_TEXT',1.4,nextHandle,modelSpaceHandle);
   }
   for(const f of buildings||[]){
-    dxfAddGeometry(out,f.geometry,'BUILDING_LINE',nextHandle);
-    dxfAddText(out,dxfLabelPoint(f),buildingCadLabel(f),'BUILDING_TEXT',1.1,nextHandle);
+    dxfAddGeometry(out,f.geometry,'BUILDING_LINE',nextHandle,modelSpaceHandle);
+    dxfAddText(out,dxfLabelPoint(f),buildingCadLabel(f),'BUILDING_TEXT',1.1,nextHandle,modelSpaceHandle);
   }
   out.push('0','ENDSEC','0','EOF');
   return out.join('\r\n')+'\r\n';
