@@ -9316,6 +9316,79 @@ function setSiteReviewStatus(text,state='idle'){
   const el=document.getElementById('siteReviewStatus');if(el){el.textContent=text;el.dataset.state=state;}
   const btn=document.getElementById('siteReviewBtn');if(btn){btn.disabled=siteReviewRunning||!activeGeometry;btn.textContent=siteReviewRunning?'검토 중…':'검토하기';}
 }
+
+let analysisQueueTicket=null;
+let analysisQueueHeartbeatTimer=null;
+let analysisQueueCancelled=false;
+function ensureAnalysisQueueModal(){
+  let overlay=document.getElementById('analysisQueueOverlay');
+  if(overlay)return overlay;
+  overlay=document.createElement('div');
+  overlay.id='analysisQueueOverlay';
+  overlay.style.cssText='display:none;position:fixed;inset:0;z-index:100000;background:rgba(15,23,42,.38);align-items:center;justify-content:center;padding:20px;';
+  overlay.innerHTML=`<div style="width:min(460px,calc(100vw - 40px));background:#fff;border-radius:14px;box-shadow:0 20px 60px rgba(15,23,42,.28);padding:22px 24px;font-family:inherit;color:#172033">
+    <div style="font-size:18px;font-weight:800;margin-bottom:10px">검토 대기</div>
+    <div id="analysisQueueMessage" style="font-size:14px;line-height:1.65;color:#344054">현재 선행 작업자가 대상지를 검토 중입니다. 서버 안정성을 위해 동시에 2건까지만 검토합니다. 선행 작업이 완료되면 자동으로 검토를 시작합니다.</div>
+    <div id="analysisQueueStatus" style="margin-top:14px;padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;font-size:14px;line-height:1.7"></div>
+    <div style="display:flex;justify-content:flex-end;margin-top:16px"><button id="analysisQueueCancelBtn" type="button" style="border:1px solid #cbd5e1;background:#fff;border-radius:8px;padding:8px 14px;cursor:pointer">대기 취소</button></div>
+  </div>`;
+  document.body.appendChild(overlay);
+  const cancel=overlay.querySelector('#analysisQueueCancelBtn');if(cancel)cancel.addEventListener('click',cancelAnalysisQueueWait);
+  return overlay;
+}
+function showAnalysisQueueModal(info={}){
+  const overlay=ensureAnalysisQueueModal();
+  const status=overlay.querySelector('#analysisQueueStatus');
+  const position=Math.max(1,Number(info.position||1));
+  const running=Number(info.running_count||0),max=Number(info.max_concurrent||2);
+  if(status)status.innerHTML=`현재 분석 중 <b>${running}/${max}건</b><br>내 대기 순번 <b>${position}번</b><br><span style="color:#667085">잠시 기다려 주세요.</span>`;
+  overlay.style.display='flex';
+}
+function hideAnalysisQueueModal(){const overlay=document.getElementById('analysisQueueOverlay');if(overlay)overlay.style.display='none';}
+function startAnalysisQueueHeartbeat(){
+  if(analysisQueueHeartbeatTimer)clearInterval(analysisQueueHeartbeatTimer);
+  analysisQueueHeartbeatTimer=setInterval(()=>{
+    const ticket=analysisQueueTicket;if(!ticket)return;
+    fetch(`/api/analysis-queue/heartbeat/${encodeURIComponent(ticket)}`,{method:'POST',cache:'no-store'}).catch(()=>{});
+  },20000);
+}
+function stopAnalysisQueueHeartbeat(){if(analysisQueueHeartbeatTimer){clearInterval(analysisQueueHeartbeatTimer);analysisQueueHeartbeatTimer=null;}}
+async function releaseAnalysisQueueSlot(){
+  const ticket=analysisQueueTicket;analysisQueueTicket=null;analysisQueueCancelled=false;stopAnalysisQueueHeartbeat();hideAnalysisQueueModal();
+  if(!ticket)return;
+  try{await fetch(`/api/analysis-queue/release/${encodeURIComponent(ticket)}`,{method:'POST',cache:'no-store',keepalive:true});}catch(_e){}
+}
+async function cancelAnalysisQueueWait(){
+  if(!analysisQueueTicket)return;
+  analysisQueueCancelled=true;
+  const ticket=analysisQueueTicket;analysisQueueTicket=null;stopAnalysisQueueHeartbeat();hideAnalysisQueueModal();
+  try{await fetch(`/api/analysis-queue/cancel/${encodeURIComponent(ticket)}`,{method:'POST',cache:'no-store',keepalive:true});}catch(_e){}
+}
+async function acquireAnalysisQueueSlot(){
+  analysisQueueCancelled=false;
+  const response=await fetch('/api/analysis-queue/acquire',{method:'POST',cache:'no-store'});
+  if(!response.ok)throw new Error(`분석 대기열 연결 실패 (HTTP ${response.status})`);
+  let info=await response.json();
+  analysisQueueTicket=info.ticket_id||null;
+  if(!analysisQueueTicket)throw new Error('분석 대기표를 발급받지 못했습니다.');
+  startAnalysisQueueHeartbeat();
+  if(info.state==='running')return true;
+  showAnalysisQueueModal(info);
+  while(analysisQueueTicket&&!analysisQueueCancelled){
+    await new Promise(resolve=>setTimeout(resolve,2000));
+    if(!analysisQueueTicket||analysisQueueCancelled)break;
+    const statusResponse=await fetch(`/api/analysis-queue/status/${encodeURIComponent(analysisQueueTicket)}`,{cache:'no-store'});
+    if(!statusResponse.ok)throw new Error(`분석 대기상태 확인 실패 (HTTP ${statusResponse.status})`);
+    info=await statusResponse.json();
+    if(info.state==='running'){hideAnalysisQueueModal();return true;}
+    showAnalysisQueueModal(info);
+  }
+  return false;
+}
+window.addEventListener('beforeunload',()=>{
+  const ticket=analysisQueueTicket;if(!ticket)return;
+  try{navigator.sendBeacon(`/api/analysis-queue/release/${encodeURIComponent(ticket)}`,'');}catch(_e){}
+});
 const analysisStepRegistry=new Map();
 const analysisFactStepCache=new Map();
 const ANALYSIS_FACT_CACHE_TTL_MS=10*60*1000;
@@ -9544,7 +9617,20 @@ async function measureAndSync(){
 async function runSiteReview(){
   if(!activeGeometry){setSiteReviewStatus('먼저 구역계를 설정하세요.','review');return;}
   if(siteReviewRunning)return;
-  siteReviewRunning=true;currentAnalysisRunId=++analysisRunSequence;analysisStepRegistry.clear();
+  siteReviewRunning=true;
+  setSiteReviewStatus('검토 순서를 확인 중입니다.','running');
+  let queueGranted=false;
+  try{
+    queueGranted=await acquireAnalysisQueueSlot();
+    if(!queueGranted){siteReviewRunning=false;setSiteReviewStatus('검토 대기를 취소했습니다. 다시 검토하기를 누르면 대기열에 들어갑니다.','ready');return;}
+  }catch(e){
+    console.error('[analysis-queue] acquire',e);
+    await releaseAnalysisQueueSlot();
+    siteReviewRunning=false;
+    setSiteReviewStatus('분석 대기열 연결에 실패했습니다. 잠시 후 다시 검토해 주세요.','review');
+    return;
+  }
+  currentAnalysisRunId=++analysisRunSequence;analysisStepRegistry.clear();
   // 새 검토가 시작되면 이전 timeout 후 뒤늦게 도착하는 요청이 현재 화면을 덮지 않도록 기존 request token을 무효화한다.
   buildingHubRequestToken+=1;planningAnalysis.requestToken=(planningAnalysis.requestToken||0)+1;streetBlockAnalysis.requestToken=(streetBlockAnalysis.requestToken||0)+1;
   openMappedSpatialModulesForAnalysis();beginAnalysisProgress();setSiteReviewStatus('검토 시작 · 독립 FACT 병행모드 · 완료된 결과부터 화면에 표시합니다.','running');
@@ -9642,6 +9728,7 @@ async function runSiteReview(){
   }catch(e){
     console.error('[site-review] 전체 검토',e);finalState='review';finalText='검토 중 오류가 발생했습니다. 확보된 Fact만 유지하고 미확보 항목은 REVIEW로 남겼습니다.';
   }finally{
+    await releaseAnalysisQueueSlot();
     siteReviewRunning=false;finishAnalysisProgress(finalState);setSiteReviewStatus(`${finalText} · 총 ${formatAnalysisElapsed(analysisState.analysis_runtime?.elapsed_ms||0)}`,finalState);
     // 최종 UI는 각각 독립 실행한다. 한 렌더러 오류로 추천/미리보기가 함께 중단되지 않는다.
     safeSchemeUiStep('compact-final',()=>updateCompactInfoRail(),null);

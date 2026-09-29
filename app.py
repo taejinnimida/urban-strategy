@@ -5590,6 +5590,90 @@ ANALYTICS_DB_READY = False
 ADMIN_SECURITY = HTTPBasic(auto_error=False)
 ADMIN_SESSION_COOKIE = "urban_admin_session"
 
+# ---------------------------------------------------------------------------
+# Whole-site review concurrency gate
+# - One browser review = one queue ticket.
+# - At most two review jobs run at the same time; later requests wait FIFO.
+# - This gate does not change FACT/RULE/GIS logic. It only controls entry to
+#   the existing browser-driven "검토하기" pipeline.
+# ---------------------------------------------------------------------------
+ANALYSIS_QUEUE_MAX_CONCURRENT = 2
+ANALYSIS_QUEUE_STALE_SECONDS = 180
+ANALYSIS_QUEUE_LOCK = threading.Lock()
+ANALYSIS_QUEUE_RUNNING: Dict[str, Dict[str, Any]] = {}
+ANALYSIS_QUEUE_WAITING = deque()
+ANALYSIS_QUEUE_TICKETS: Dict[str, Dict[str, Any]] = {}
+
+
+def _analysis_queue_promote_locked(now: Optional[float] = None) -> None:
+    now = time.monotonic() if now is None else now
+    while len(ANALYSIS_QUEUE_RUNNING) < ANALYSIS_QUEUE_MAX_CONCURRENT and ANALYSIS_QUEUE_WAITING:
+        ticket_id = ANALYSIS_QUEUE_WAITING.popleft()
+        row = ANALYSIS_QUEUE_TICKETS.get(ticket_id)
+        if not row or row.get("state") != "waiting":
+            continue
+        row["state"] = "running"
+        row["started_at_monotonic"] = now
+        row["last_seen_monotonic"] = now
+        ANALYSIS_QUEUE_RUNNING[ticket_id] = row
+
+
+def _analysis_queue_cleanup_locked(now: Optional[float] = None) -> None:
+    now = time.monotonic() if now is None else now
+    stale = []
+    for ticket_id, row in list(ANALYSIS_QUEUE_TICKETS.items()):
+        last_seen = float(row.get("last_seen_monotonic") or row.get("created_at_monotonic") or now)
+        if now - last_seen > ANALYSIS_QUEUE_STALE_SECONDS:
+            stale.append(ticket_id)
+    if stale:
+        stale_set = set(stale)
+        for ticket_id in stale:
+            ANALYSIS_QUEUE_RUNNING.pop(ticket_id, None)
+            ANALYSIS_QUEUE_TICKETS.pop(ticket_id, None)
+        if ANALYSIS_QUEUE_WAITING:
+            kept = [ticket_id for ticket_id in ANALYSIS_QUEUE_WAITING if ticket_id not in stale_set]
+            ANALYSIS_QUEUE_WAITING.clear()
+            ANALYSIS_QUEUE_WAITING.extend(kept)
+    _analysis_queue_promote_locked(now)
+
+
+def _analysis_queue_snapshot_locked(ticket_id: str) -> Dict[str, Any]:
+    row = ANALYSIS_QUEUE_TICKETS.get(ticket_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="분석 대기표가 만료되었거나 존재하지 않습니다.")
+    state = str(row.get("state") or "waiting")
+    position = 0
+    if state == "waiting":
+        try:
+            position = list(ANALYSIS_QUEUE_WAITING).index(ticket_id) + 1
+        except ValueError:
+            position = 0
+    return {
+        "ok": True,
+        "ticket_id": ticket_id,
+        "state": state,
+        "max_concurrent": ANALYSIS_QUEUE_MAX_CONCURRENT,
+        "running_count": len(ANALYSIS_QUEUE_RUNNING),
+        "waiting_count": len(ANALYSIS_QUEUE_WAITING),
+        "position": position,
+    }
+
+
+def _analysis_queue_release_locked(ticket_id: str) -> Dict[str, Any]:
+    row = ANALYSIS_QUEUE_TICKETS.pop(ticket_id, None)
+    ANALYSIS_QUEUE_RUNNING.pop(ticket_id, None)
+    if ANALYSIS_QUEUE_WAITING:
+        kept = [tid for tid in ANALYSIS_QUEUE_WAITING if tid != ticket_id]
+        ANALYSIS_QUEUE_WAITING.clear()
+        ANALYSIS_QUEUE_WAITING.extend(kept)
+    _analysis_queue_promote_locked()
+    return {
+        "ok": True,
+        "released": bool(row),
+        "running_count": len(ANALYSIS_QUEUE_RUNNING),
+        "waiting_count": len(ANALYSIS_QUEUE_WAITING),
+        "max_concurrent": ANALYSIS_QUEUE_MAX_CONCURRENT,
+    }
 
 
 def analyze_street_block_batch(
@@ -7831,6 +7915,63 @@ def ai_comprehensive_analysis(payload: AIComprehensiveAnalysisInput):
     if not isinstance(summary, dict) or not summary:
         raise HTTPException(status_code=400, detail="AI 분석용 FACT/RULE 요약 객체가 없습니다.")
     return _openai_ai_comprehensive(summary)
+
+
+@app.post("/api/analysis-queue/acquire")
+def analysis_queue_acquire():
+    now = time.monotonic()
+    ticket_id = uuid.uuid4().hex
+    with ANALYSIS_QUEUE_LOCK:
+        _analysis_queue_cleanup_locked(now)
+        state = "running" if len(ANALYSIS_QUEUE_RUNNING) < ANALYSIS_QUEUE_MAX_CONCURRENT else "waiting"
+        row = {
+            "ticket_id": ticket_id,
+            "state": state,
+            "created_at_monotonic": now,
+            "last_seen_monotonic": now,
+            "started_at_monotonic": now if state == "running" else None,
+        }
+        ANALYSIS_QUEUE_TICKETS[ticket_id] = row
+        if state == "running":
+            ANALYSIS_QUEUE_RUNNING[ticket_id] = row
+        else:
+            ANALYSIS_QUEUE_WAITING.append(ticket_id)
+        return _analysis_queue_snapshot_locked(ticket_id)
+
+
+@app.get("/api/analysis-queue/status/{ticket_id}")
+def analysis_queue_status(ticket_id: str):
+    with ANALYSIS_QUEUE_LOCK:
+        _analysis_queue_cleanup_locked()
+        row = ANALYSIS_QUEUE_TICKETS.get(ticket_id)
+        if row:
+            row["last_seen_monotonic"] = time.monotonic()
+        return _analysis_queue_snapshot_locked(ticket_id)
+
+
+@app.post("/api/analysis-queue/heartbeat/{ticket_id}")
+def analysis_queue_heartbeat(ticket_id: str):
+    with ANALYSIS_QUEUE_LOCK:
+        _analysis_queue_cleanup_locked()
+        row = ANALYSIS_QUEUE_TICKETS.get(ticket_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="분석 대기표가 만료되었거나 존재하지 않습니다.")
+        row["last_seen_monotonic"] = time.monotonic()
+        return _analysis_queue_snapshot_locked(ticket_id)
+
+
+@app.post("/api/analysis-queue/release/{ticket_id}")
+def analysis_queue_release(ticket_id: str):
+    with ANALYSIS_QUEUE_LOCK:
+        _analysis_queue_cleanup_locked()
+        return _analysis_queue_release_locked(ticket_id)
+
+
+@app.post("/api/analysis-queue/cancel/{ticket_id}")
+def analysis_queue_cancel(ticket_id: str):
+    with ANALYSIS_QUEUE_LOCK:
+        _analysis_queue_cleanup_locked()
+        return _analysis_queue_release_locked(ticket_id)
 
 
 @app.post("/api/analytics/events")
