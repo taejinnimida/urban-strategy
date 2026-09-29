@@ -1931,9 +1931,9 @@ body.service-layout-ready>.shell{display:none!important}
   <div class="boundary-action-row"><button class="boundary-primary" id="downloadBaseDxfBtn" type="button" onclick="downloadReviewBaseDxf()" disabled>현재 검토범위 지적 DXF 다운로드</button></div>
   <div class="boundary-dxf-status" id="boundaryDxfStatus">검토범위를 먼저 설정하세요. DXF 좌표계는 서울지역 CAD 활용을 위한 EPSG:5186(m)로 작성합니다.</div>
 </div>
-<input class="boundary-shp-input" id="boundaryShpInput" type="file" accept=".zip,application/zip" onchange="loadBoundaryShp()"/>
+<input class="boundary-shp-input" id="boundaryShpInput" type="file" multiple accept=".zip,.shp,.shx,.dbf,.prj,.cpg,application/zip" onchange="loadBoundaryShp()"/>
 <div class="boundary-action-row"><button onclick="clearBoundaryShp()" type="button">SHP 입력 취소</button></div>
-<div class="boundary-address-status boundary-shp-status" id="boundaryShpStatus">.shp + .shx + .dbf + .prj를 ZIP으로 묶어 올리세요. Polygon/MultiPolygon만 구역계로 사용합니다.</div>
+<div class="boundary-address-status boundary-shp-status" id="boundaryShpStatus">ZIP 또는 같은 이름의 .shp/.shx/.dbf/.prj 파일을 함께 선택하세요. Polygon/MultiPolygon만 구역계로 사용합니다.</div>
 </div>
 
 <div class="boundary-common-tools">
@@ -3058,7 +3058,7 @@ body.service-layout-ready>.shell{display:none!important}
 <script crossorigin="" src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
-<script src="https://unpkg.com/shpjs@latest/dist/shp.js"></script>
+<script src="https://unpkg.com/shpjs@6.2.0/dist/shp.js"></script>
 <script>
 const VWORLD_CLIENT_KEY="__VWORLD_CLIENT_KEY__";
 const VWORLD_CLIENT_DOMAIN=window.location.origin;
@@ -15573,7 +15573,7 @@ function restartSiteReviewCompletely(){
   const addr=document.getElementById('boundaryAddressInput');if(addr)addr.value='';
   const shpInput=document.getElementById('boundaryShpInput');if(shpInput)shpInput.value='';
   const addrStatus=document.getElementById('boundaryAddressStatus');if(addrStatus)addrStatus.textContent='서울특별시 지번주소를 기준으로 검색합니다.';
-  const shpStatus=document.getElementById('boundaryShpStatus');if(shpStatus)shpStatus.textContent='.shp + .shx + .dbf + .prj를 ZIP으로 묶어 올리세요. Polygon/MultiPolygon만 구역계로 사용합니다.';
+  const shpStatus=document.getElementById('boundaryShpStatus');if(shpStatus)shpStatus.textContent='ZIP 또는 같은 이름의 .shp/.shx/.dbf/.prj 파일을 함께 선택하세요. Polygon/MultiPolygon만 구역계로 사용합니다.';
   const dxfStatus=document.getElementById('boundaryDxfStatus');if(dxfStatus)dxfStatus.textContent='검토범위를 먼저 설정하세요. DXF 좌표계는 서울지역 CAD 활용을 위한 EPSG:5186(m)로 작성합니다.';
   setBoundaryInputMode('draw');setParcelFindMode('input');
   setSiteReviewStatus('완전 재검토 · 대상지를 새로 설정하세요.','review');
@@ -15594,14 +15594,15 @@ function dxfTextValue(v){
   return String(v??'').replace(/[\\\r\n]/g,' ').replace(/[^\x20-\x7E]/g,ch=>`\\U+${ch.charCodeAt(0).toString(16).toUpperCase().padStart(4,'0')}`);
 }
 function dxfAddPolyline(out,coords,layer,closed=true,nextHandle=null){
-  const pts=(coords||[]).map(c=>dxfProject5186(c[0],c[1]));
+  // ZWCAD/AutoCAD 구버전까지 호환되는 R12 POLYLINE/VERTEX 형식.
+  // 좌표는 EPSG:5186 실좌표를 그대로 기록하며 원점이동/로컬좌표화하지 않는다.
+  const pts=(coords||[]).map(c=>dxfProject5186(c[0],c[1])).filter(p=>Number.isFinite(p?.[0])&&Number.isFinite(p?.[1]));
   if(pts.length<2)return;
   const same=closed&&pts.length>2&&Math.abs(pts[0][0]-pts[pts.length-1][0])<.001&&Math.abs(pts[0][1]-pts[pts.length-1][1])<.001;
   const arr=same?pts.slice(0,-1):pts;
-  out.push('0','LWPOLYLINE');
-  if(nextHandle)out.push('5',nextHandle());
-  out.push('100','AcDbEntity','8',layer,'100','AcDbPolyline','90',String(arr.length),'70',closed?'1':'0');
-  for(const [x,y] of arr)out.push('10',x.toFixed(3),'20',y.toFixed(3));
+  out.push('0','POLYLINE','8',layer,'66','1','10','0','20','0','30','0','70',closed?'1':'0');
+  for(const [x,y] of arr)out.push('0','VERTEX','8',layer,'10',x.toFixed(3),'20',y.toFixed(3),'30','0','70','0');
+  out.push('0','SEQEND','8',layer);
 }
 function dxfAddGeometry(out,geometry,layer,nextHandle=null){
   if(!geometry)return;
@@ -15613,9 +15614,9 @@ function dxfAddGeometry(out,geometry,layer,nextHandle=null){
 function dxfAddText(out,coord,text,layer,height=1.4,nextHandle=null){
   if(!coord||text==null||String(text).trim()==='')return;
   const [x,y]=dxfProject5186(coord[0],coord[1]);
-  out.push('0','TEXT');
-  if(nextHandle)out.push('5',nextHandle());
-  out.push('100','AcDbEntity','8',layer,'100','AcDbText','10',x.toFixed(3),'20',y.toFixed(3),'30','0','40',String(height),'1',dxfTextValue(text),'50','0','7','Standard','11',x.toFixed(3),'21',y.toFixed(3),'31','0','100','AcDbText');
+  if(!Number.isFinite(x)||!Number.isFinite(y))return;
+  // R12 TEXT는 최소 필드만 사용한다. 한글은 ASCII Unicode escape로 기록해 파일 자체를 7-bit 안전하게 유지한다.
+  out.push('0','TEXT','8',layer,'10',x.toFixed(3),'20',y.toFixed(3),'30','0','40',String(height),'1',dxfTextValue(text),'50','0','7','STANDARD');
 }
 function dxfLabelPoint(feature){
   try{return turf.pointOnFeature(turf.feature(feature.geometry,feature.properties||{})).geometry.coordinates;}catch(e){try{return turf.centroid(turf.feature(feature.geometry)).geometry.coordinates;}catch(_e){return null;}}
@@ -15629,10 +15630,8 @@ function buildingCadLabel(feature){
   return [name,use,(floors!==undefined&&floors!==null&&String(floors)!=='')?`지상${floors}층`:null].filter(Boolean).join(' / ');
 }
 function buildReviewBaseDxf(scopeGeometry,parcels,buildings){
-  // AutoCAD 2000 ASCII DXF. 도형 좌표는 EPSG:5186 실좌표를 그대로 유지하고,
-  // HEADER/VPORT에 실제 도면 범위를 기록해 ZWCAD/AutoCAD OPEN 및 ZOOM ALL 시 대상지가 바로 보이게 한다.
-  let handleSeq=0x20;
-  const nextHandle=()=>String((handleSeq++).toString(16).toUpperCase());
+  // 최대 CAD 호환성을 위해 AutoCAD R12 ASCII DXF(AC1009)로 작성한다.
+  // EPSG:5186 좌표는 그대로 유지하고 HEADER/VPORT에 실제 도면 범위를 기록한다.
   const extent={minX:Infinity,minY:Infinity,maxX:-Infinity,maxY:-Infinity};
   const addCoordToExtent=c=>{
     if(!Array.isArray(c)||c.length<2||!Number.isFinite(Number(c[0]))||!Number.isFinite(Number(c[1])))return;
@@ -15658,58 +15657,40 @@ function buildReviewBaseDxf(scopeGeometry,parcels,buildings){
   const margin=Math.max(10,Math.max(width,height)*0.05);
   const limMinX=minX-margin,limMinY=minY-margin,limMaxX=maxX+margin,limMaxY=maxY+margin;
   const centerX=(minX+maxX)/2,centerY=(minY+maxY)/2;
-  const viewAspect=1.34;
-  const viewHeight=Math.max(height,width/viewAspect)*1.15;
+  const viewAspect=1.34,viewHeight=Math.max(height,width/viewAspect)*1.15;
   const n=v=>Number(v).toFixed(3);
   const out=[
     '0','SECTION','2','HEADER',
-    '9','$ACADVER','1','AC1015',
+    '9','$ACADVER','1','AC1009',
+    '9','$DWGCODEPAGE','3','ANSI_1252',
+    '9','$INSBASE','10','0.000','20','0.000','30','0.000',
     '9','$EXTMIN','10',n(minX),'20',n(minY),'30','0.000',
     '9','$EXTMAX','10',n(maxX),'20',n(maxY),'30','0.000',
     '9','$LIMMIN','10',n(limMinX),'20',n(limMinY),
     '9','$LIMMAX','10',n(limMaxX),'20',n(limMaxY),
-    '9','$INSUNITS','70','6',
-    '9','$MEASUREMENT','70','1',
-    '9','$HANDSEED','5','FFFF',
-    '0','ENDSEC'
+    '0','ENDSEC',
+    '0','SECTION','2','TABLES'
   ];
+  // R12 VPORT: 파일을 OPEN했을 때 EPSG:5186 대상지 위치를 바로 보도록 중심/높이를 지정한다.
+  out.push('0','TABLE','2','VPORT','70','1');
+  out.push('0','VPORT','2','*ACTIVE','70','0','10','0','20','0','11','1','21','1','12',n(centerX),'22',n(centerY),'13','0','23','0','14','0.5','24','0.5','15','0.5','25','0.5','16','0','26','0','36','1','17','0','27','0','37','0','40',n(viewHeight),'41',String(viewAspect),'42','50','43','0','44','0','50','0','51','0','71','0','72','1000','73','1','74','3','75','0','76','0','77','0','78','0');
+  out.push('0','ENDTAB');
+  out.push('0','TABLE','2','LTYPE','70','1','0','LTYPE','2','CONTINUOUS','70','0','3','Solid line','72','65','73','0','40','0.0','0','ENDTAB');
   const layers=[['SITE_BOUNDARY',1],['PARCEL_LINE',7],['PARCEL_TEXT',3],['BUILDING_LINE',5],['BUILDING_TEXT',2]];
-  out.push('0','SECTION','2','TABLES');
-  // 활성 뷰포트만 실제 EPSG:5186 대상지 중심/범위로 지정한다. 엔티티 좌표는 변경하지 않는다.
-  out.push('0','TABLE','2','VPORT','5','5','100','AcDbSymbolTable','70','1');
-  out.push('0','VPORT','5','17','100','AcDbSymbolTableRecord','100','AcDbViewportTableRecord','2','*ACTIVE','70','0',
-    '10','0','20','0','11','1','21','1','12',n(centerX),'22',n(centerY),'13','0','23','0',
-    '14','0.5','24','0.5','15','0.5','25','0.5','16','0','26','0','36','1','17','0','27','0','37','0',
-    '40',n(viewHeight),'41',String(viewAspect),'42','50','43','0','44','0','50','0','51','0','71','0','72','1000','73','1','74','3','75','0','76','0','77','0','78','0','281','0',
-    '65','1','110','0','120','0','130','0','111','1','121','0','131','0','112','0','122','1','132','0','79','0','146','0');
+  out.push('0','TABLE','2','LAYER','70',String(layers.length));
+  for(const [name,color] of layers)out.push('0','LAYER','2',name,'70','0','62',String(color),'6','CONTINUOUS');
   out.push('0','ENDTAB');
-  // CONTINUOUS linetype table
-  out.push('0','TABLE','2','LTYPE','5','2','100','AcDbSymbolTable','70','1');
-  out.push('0','LTYPE','5','10','100','AcDbSymbolTableRecord','100','AcDbLinetypeTableRecord','2','CONTINUOUS','70','0','3','Solid line','72','65','73','0','40','0.0');
-  out.push('0','ENDTAB');
-  // Layer table
-  out.push('0','TABLE','2','LAYER','5','3','100','AcDbSymbolTable','70',String(layers.length));
-  for(let i=0;i<layers.length;i++){
-    const [name,color]=layers[i],handle=(0x11+i).toString(16).toUpperCase();
-    out.push('0','LAYER','5',handle,'100','AcDbSymbolTableRecord','100','AcDbLayerTableRecord','2',name,'70','0','62',String(color),'6','CONTINUOUS');
-  }
-  out.push('0','ENDTAB');
-  // Standard text style table
-  out.push('0','TABLE','2','STYLE','5','4','100','AcDbSymbolTable','70','1');
-  out.push('0','STYLE','5','16','100','AcDbSymbolTableRecord','100','AcDbTextStyleTableRecord','2','Standard','70','0','40','0','41','1','50','0','71','0','42','2.5','3','txt','4','');
-  out.push('0','ENDTAB','0','ENDSEC');
-  // Empty BLOCKS section keeps the file structure conventional for desktop CAD readers.
-  out.push('0','SECTION','2','BLOCKS','0','ENDSEC');
-  out.push('0','SECTION','2','ENTITIES');
-  dxfAddGeometry(out,scopeGeometry,'SITE_BOUNDARY',nextHandle);
+  out.push('0','TABLE','2','STYLE','70','1','0','STYLE','2','STANDARD','70','0','40','0','41','1','50','0','71','0','42','2.5','3','txt','4','','0','ENDTAB');
+  out.push('0','ENDSEC','0','SECTION','2','BLOCKS','0','ENDSEC','0','SECTION','2','ENTITIES');
+  dxfAddGeometry(out,scopeGeometry,'SITE_BOUNDARY');
   for(const f of parcels||[]){
-    dxfAddGeometry(out,f.geometry,'PARCEL_LINE',nextHandle);
+    dxfAddGeometry(out,f.geometry,'PARCEL_LINE');
     const p=f.properties||{},label=p.jibun||p.jibun_nm||p.jibun_addr||p.pnu||'';
-    dxfAddText(out,dxfLabelPoint(f),label,'PARCEL_TEXT',1.4,nextHandle);
+    dxfAddText(out,dxfLabelPoint(f),label,'PARCEL_TEXT',1.4);
   }
   for(const f of buildings||[]){
-    dxfAddGeometry(out,f.geometry,'BUILDING_LINE',nextHandle);
-    dxfAddText(out,dxfLabelPoint(f),buildingCadLabel(f),'BUILDING_TEXT',1.1,nextHandle);
+    dxfAddGeometry(out,f.geometry,'BUILDING_LINE');
+    dxfAddText(out,dxfLabelPoint(f),buildingCadLabel(f),'BUILDING_TEXT',1.1);
   }
   out.push('0','ENDSEC','0','EOF');
   return out.join('\r\n')+'\r\n';
@@ -15731,10 +15712,10 @@ async function downloadReviewBaseDxf(){
     ]);
     if(!parcels.length)throw new Error('검토범위에서 지적필지를 찾지 못했습니다.');
     const dxf=buildReviewBaseDxf(scopeGeometry,parcels,buildings);
-    const blob=new Blob([dxf],{type:'application/dxf;charset=us-ascii'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+    const blob=new Blob([dxf],{type:'application/octet-stream'}),url=URL.createObjectURL(blob),a=document.createElement('a');
     const now=new Date(),ymd=`${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
     a.href=url;a.download=`review_base_parcel_building_${ymd}.dxf`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
-    if(status)status.textContent=`DXF 생성 완료 · 지적 ${parcels.length}필지 · 건축물 ${buildings.length}동 · EPSG:5186(m) · PARCEL_LINE/PARCEL_TEXT/BUILDING_LINE/BUILDING_TEXT 레이어`;
+    if(status)status.textContent=`DXF 생성 완료 · CAD 호환 R12 · 지적 ${parcels.length}필지 · 건축물 ${buildings.length}동 · EPSG:5186(m) · PARCEL_LINE/PARCEL_TEXT/BUILDING_LINE/BUILDING_TEXT 레이어`;
   }catch(e){
     if(status)status.textContent='DXF 생성 실패: '+String(e?.message||e);
   }finally{if(btn)btn.disabled=false;}
@@ -16053,34 +16034,113 @@ function geometryLooksLikeSeoul(geometry){
     return minx>=126.65&&maxx<=127.35&&miny>=37.35&&maxy<=37.80;
   }catch(e){return false;}
 }
+function geometryLooksLike5186(geometry){
+  try{
+    const [minx,miny,maxx,maxy]=turf.bbox(turf.feature(geometry));
+    return minx>=80000&&maxx<=350000&&miny>=350000&&maxy<=750000;
+  }catch(e){return false;}
+}
+function dxfUnproject5186(x,y){
+  // EPSG:5186 (Korea 2000 / Central Belt 2010) -> WGS84 lon/lat.
+  // 다운로드 DXF와 동일한 GRS80 TM 정의를 역변환한다.
+  const a=6378137,invF=298.257222101,f=1/invF,e2=f*(2-f),ep2=e2/(1-e2),k0=1;
+  const lon0=127*Math.PI/180,lat0=38*Math.PI/180,FE=200000,FN=600000;
+  const e4=e2*e2,e6=e4*e2;
+  const M0=a*((1-e2/4-3*e4/64-5*e6/256)*lat0-(3*e2/8+3*e4/32+45*e6/1024)*Math.sin(2*lat0)+(15*e4/256+45*e6/1024)*Math.sin(4*lat0)-(35*e6/3072)*Math.sin(6*lat0));
+  const M=M0+(Number(y)-FN)/k0;
+  const mu=M/(a*(1-e2/4-3*e4/64-5*e6/256));
+  const e1=(1-Math.sqrt(1-e2))/(1+Math.sqrt(1-e2));
+  const e12=e1*e1,e13=e12*e1,e14=e13*e1;
+  const phi1=mu+(3*e1/2-27*e13/32)*Math.sin(2*mu)+(21*e12/16-55*e14/32)*Math.sin(4*mu)+(151*e13/96)*Math.sin(6*mu)+(1097*e14/512)*Math.sin(8*mu);
+  const sin1=Math.sin(phi1),cos1=Math.cos(phi1),tan1=Math.tan(phi1);
+  const N1=a/Math.sqrt(1-e2*sin1*sin1),R1=a*(1-e2)/Math.pow(1-e2*sin1*sin1,1.5),T1=tan1*tan1,C1=ep2*cos1*cos1,D=(Number(x)-FE)/(N1*k0);
+  const lat=phi1-(N1*tan1/R1)*(D*D/2-(5+3*T1+10*C1-4*C1*C1-9*ep2)*D**4/24+(61+90*T1+298*C1+45*T1*T1-252*ep2-3*C1*C1)*D**6/720);
+  const lon=lon0+(D-(1+2*T1+C1)*D**3/6+(5-2*C1+28*T1-3*C1*C1+8*ep2+24*T1*T1)*D**5/120)/cos1;
+  return [lon*180/Math.PI,lat*180/Math.PI];
+}
+function transformGeometry5186ToWgs84(geometry){
+  const clone=JSON.parse(JSON.stringify(geometry));
+  const walk=v=>{
+    if(Array.isArray(v)&&v.length>=2&&Number.isFinite(Number(v[0]))&&Number.isFinite(Number(v[1]))){
+      const ll=dxfUnproject5186(Number(v[0]),Number(v[1]));v[0]=ll[0];v[1]=ll[1];return;
+    }
+    if(Array.isArray(v))for(const child of v)walk(child);
+  };
+  walk(clone.coordinates);return clone;
+}
+function boundaryShpFileExt(file){
+  const m=String(file?.name||'').toLowerCase().match(/(\.[^.]+)$/);return m?m[1]:'';
+}
+function boundaryShpBaseName(file){
+  return String(file?.name||'').replace(/\.[^.]+$/,'').toLowerCase();
+}
+async function parseBoundaryShpSelection(files){
+  const selected=Array.from(files||[]).filter(Boolean);
+  if(!selected.length)throw new Error('SHP 파일을 선택하세요.');
+  const zip=selected.find(f=>boundaryShpFileExt(f)==='.zip');
+  if(zip)return {parsed:await shp(await zip.arrayBuffer()),label:zip.name,mode:'zip'};
+  const shpFile=selected.find(f=>boundaryShpFileExt(f)==='.shp');
+  if(!shpFile)throw new Error('.shp 파일 또는 SHP 구성파일 ZIP을 선택하세요.');
+  const base=boundaryShpBaseName(shpFile);
+  const companion=ext=>selected.find(f=>boundaryShpFileExt(f)===ext&&boundaryShpBaseName(f)===base)||selected.find(f=>boundaryShpFileExt(f)===ext);
+  const dbfFile=companion('.dbf'),prjFile=companion('.prj'),cpgFile=companion('.cpg');
+  const obj={shp:await shpFile.arrayBuffer()};
+  if(dbfFile)obj.dbf=await dbfFile.arrayBuffer();
+  if(prjFile)obj.prj=await prjFile.text();
+  if(cpgFile)obj.cpg=await cpgFile.text();
+  const parsed=await shp(obj);
+  return {parsed,label:[shpFile.name,dbfFile?.name,prjFile?.name].filter(Boolean).join(' + '),mode:'files',hasPrj:!!prjFile};
+}
 async function loadBoundaryShp(){
   const input=document.getElementById('boundaryShpInput'),status=document.getElementById('boundaryShpStatus');
-  const file=input?.files?.[0];
-  if(!file){if(status)status.textContent='SHP ZIP 파일을 선택하세요.';return;}
-  if(!/\.zip$/i.test(file.name)){if(status)status.textContent='현재는 .shp/.shx/.dbf/.prj를 묶은 ZIP만 지원합니다.';return;}
-  if(typeof shp!=='function'){if(status)status.textContent='SHP 해석 라이브러리를 불러오지 못했습니다.';return;}
+  const files=Array.from(input?.files||[]);
+  if(!files.length){if(status)status.textContent='SHP ZIP 또는 .shp/.shx/.dbf/.prj 파일을 선택하세요.';return;}
+  if(typeof shp!=='function'){if(status)status.textContent='SHP 해석 라이브러리를 불러오지 못했습니다. 페이지를 새로고침한 뒤 다시 시도하세요.';return;}
   try{
-    if(status)status.textContent='SHP 구역계를 읽는 중입니다...';
-    const parsed=await shp(await file.arrayBuffer());
-    const polys=normalizeShpGeojson(parsed);
+    if(status)status.textContent=`SHP 구역계를 읽는 중입니다... · 선택 ${files.length}개 파일`;
+    const loaded=await parseBoundaryShpSelection(files);
+    let polys=normalizeShpGeojson(loaded.parsed);
     if(!polys.length)throw new Error('Polygon/MultiPolygon 객체가 없습니다.');
+    let assumed5186=false;
+    // CAD에서 만든 구역계처럼 .shp만 들어오고 좌표가 EPSG:5186 범위이면
+    // 플랫폼 DXF와 동일 좌표계로 간주하여 WGS84로 변환한다. 다른 투영좌표는 임의 추정하지 않는다.
+    if(loaded.mode==='files'&&!loaded.hasPrj&&polys.every(f=>geometryLooksLike5186(f.geometry))){
+      polys=polys.map(f=>({type:'Feature',properties:Object.assign({},f.properties||{}),geometry:transformGeometry5186ToWgs84(f.geometry)}));
+      assumed5186=true;
+    }
     const merged=mergeFeatureGeometries(polys);
     if(!merged?.geometry)throw new Error('구역계 도형 병합에 실패했습니다.');
-    if(!geometryLooksLikeSeoul(merged.geometry))throw new Error('서울 범위의 WGS84 좌표로 변환되지 않았습니다. .prj 포함 여부를 확인하세요.');
+    if(!geometryLooksLikeSeoul(merged.geometry)){
+      if(loaded.mode==='files'&&!loaded.hasPrj)throw new Error('좌표계를 확인할 수 없습니다. EPSG:5186 이외 좌표계라면 .prj를 함께 선택하거나 ZIP으로 올리세요.');
+      throw new Error('서울 범위의 WGS84 좌표로 변환되지 않았습니다. .prj의 좌표계를 확인하세요.');
+    }
     pushBoundaryEditHistory('SHP 구역계 적용');
     activeGeometry=merged.geometry;
     drawnItems.clearLayers();addressPreviewFeatures=[];addressPreviewLayer.clearLayers();
     L.geoJSON(merged,{style:{weight:4,color:'#d92d20',fillColor:'#fecdca',fillOpacity:.04}}).eachLayer(l=>drawnItems.addLayer(l));
     updateCompactMapRole();enforceLocationMapBoundaryOnly();fitToActiveArea();
-    if(status)status.textContent=`${file.name} · 폴리곤 ${polys.length}개를 하나의 분석 구역계로 설정했습니다. ‘검토하기’를 눌러 공식 공간분석을 실행하세요.`;
-    await measureAndSync();
+    // SHP 파싱에 성공한 시점에 공통 구역계 버튼을 먼저 활성화한다.
+    // 이후 부가 UI 동기화 오류가 있어도 구역계 확정/검토하기가 다시 잠기지 않는다.
+    renderBoundaryParcelSelectionSummary();
+    siteReviewRunning=false;
+    setSiteReviewStatus('SHP 구역계 설정 완료 · ‘검토하기’를 눌러 공식 공간분석을 실행하세요.','ready');
+    if(status)status.textContent=`${loaded.label} · 폴리곤 ${polys.length}개를 분석 구역계로 설정했습니다.${assumed5186?' · PRJ 없음: EPSG:5186로 자동해석':''} 구역계 확정 또는 ‘검토하기’를 진행하세요.`;
+    try{
+      await measureAndSync();
+    }catch(syncErr){
+      console.warn('[boundary-shp] post-sync',syncErr);
+      renderBoundaryParcelSelectionSummary();
+      siteReviewRunning=false;
+      setSiteReviewStatus('SHP 구역계 설정 완료 · 일부 화면 동기화 오류가 있으나 검토를 실행할 수 있습니다.','ready');
+      if(status)status.textContent=`${loaded.label} · 구역계 설정 완료 · 부가 화면 동기화 일부 오류: ${String(syncErr?.message||syncErr)}`;
+    }
   }catch(e){
-    if(status)status.textContent='SHP 적용 실패: '+String(e.message||e);
+    if(status)status.textContent='SHP 적용 실패: '+String(e?.message||e);
   }
 }
 function clearBoundaryShp(){
   const input=document.getElementById('boundaryShpInput');if(input)input.value='';
-  const status=document.getElementById('boundaryShpStatus');if(status)status.textContent='.shp + .shx + .dbf + .prj를 ZIP으로 묶어 올리세요. Polygon/MultiPolygon만 구역계로 사용합니다.';
+  const status=document.getElementById('boundaryShpStatus');if(status)status.textContent='ZIP 또는 같은 이름의 .shp/.shx/.dbf/.prj 파일을 함께 선택하세요. Polygon/MultiPolygon만 구역계로 사용합니다.';
 }
 
 // ---------- Mobile responsive workflow ----------
