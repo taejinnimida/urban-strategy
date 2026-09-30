@@ -12247,8 +12247,11 @@ function compactRoadFacts(c){
 function renewalSpatialFacts(){
   const overlaps=(renewalAnalysis.overlaps||[]).map(f=>{
     const p=f.properties||{};
-    return {name:p.name||p.zone_name||'-',type:p.renewal_type||'other',source:p.source||'unknown',
-      overlap_area_m2:Number(p._overlap_area||0),overlap_pct:Number(p._overlap_pct||0)};
+    // R51: 서버가 이미 보유한 세부코드·유형·추진단계를 FACT Store에서 버리지 않는다.
+    // 사업별 배제/예외 규정은 renewal_type 같은 상위분류만으로 판정하지 않고 원 세부속성을 우선 사용한다.
+    return {name:p.name||p.zone_name||'-',code:p.code||'',type:p.renewal_type||'other',type_label:p.type_label||'',
+      stage_code:p.project_stage_code||'',stage_label:p.project_stage_label||'',source:p.source||'unknown',source_title:p.source_title||'',
+      data_reference_date:p.data_reference_date||'',overlap_area_m2:Number(p._overlap_area||0),overlap_pct:Number(p._overlap_pct||0)};
   });
   const existing_projects=(renewalAnalysis.projectRegistryOverlaps||[]).map(f=>{
     const p=f.properties||{};
@@ -12379,10 +12382,14 @@ function activationSpatialFacts(store){
   const stationBlockQuality=chosenStation?.activation_block?.quality||'NONE';
   const activationBlockAuto=chosenStation?.activation_block?.known===true;
   const renewalType=renewal.renewal_area_type||'auto';
-  const renewalException=renewalType==='urban_planned';
-  const renewalExcluded=['housing_district','housing_planned','urban_district','reconstruction'].includes(renewalType);
-  const promotionHits=(renewal.overlaps||[]).filter(x=>x.type==='promotion');
-  const smallscaleHits=(renewal.overlaps||[]).filter(x=>/소규모|가로주택|자율주택|소규모재건축|소규모재개발/.test(`${x.name||''} ${x.type||''} ${x.type_label||''}`));
+  const renewalExclusion=activationRenewalExclusionFact(store);
+  const promotionExclusion=activationPromotionExclusionFact(store);
+  const facilityExclusion=planningFacilityFact(store);
+  const smallscaleExclusion=activationSmallscaleExclusionFact(store);
+  const renewalException=renewalExclusion.status==='PASS'&&(renewalExclusion.exception_hits||[]).length>0;
+  const renewalExcluded=renewalExclusion.status==='FAIL';
+  const promotionHits=promotionExclusion.hits||[];
+  const smallscaleHits=smallscaleExclusion.hits||[];
   const characteristicFact=store.site.spatial_evidence?.downtown_characteristic||{known:false,status:'unavailable',hits:[],value:'도심 특성관리 Fact Store 미확보',note:'공통 FACT 미확보'};
   const districtPlanHits=development.district_plans||[];
   const route=effectiveActivationRoute(c);
@@ -12402,11 +12409,13 @@ function activationSpatialFacts(store){
     road:store.site.road,
     area:{m2:c.area,base_ok:c.area==null?null:(c.area>=1500&&c.area<=10000),advisory_possible:c.area==null?null:(c.area<1500||(c.area>10000&&c.area<=30000&&route.route==='redevelopment'))},
     exclusions:{renewal_type:renewalType,renewal_exception:renewalException,renewal_excluded:renewalExcluded,
-      renewal_loaded:renewal.loaded,renewal_error:renewal.error,promotion_hits:promotionHits,
+      renewal_loaded:renewal.loaded,renewal_error:renewal.error,renewal_fact:renewalExclusion,
+      promotion_hits:promotionHits,promotion_fact:promotionExclusion,
       district_plan_hits:districtPlanHits,prior_negotiation:c.priorNegotiation,
       planning_facility_loaded:development.planning_facility_loaded===true,planning_facility_errors:[...(development.planning_facility_errors||[])],
-      planning_facilities:[...(development.planning_facilities||[])],
-      characteristic_management:characteristicFact,smallscale_hits:smallscaleHits,smallscale_approved:(renewal.loaded&&!renewal.error)?smallscaleHits.length>0:null,manual_excluded:c.excluded},
+      planning_facilities:[...(development.planning_facilities||[])],planning_facility_fact:facilityExclusion,
+      characteristic_management:characteristicFact,smallscale_hits:smallscaleHits,smallscale_fact:smallscaleExclusion,
+      smallscale_approved:smallscaleExclusion.status==='FAIL'?true:smallscaleExclusion.status==='PASS'?false:null,manual_excluded:c.excluded},
     aging:{route:route.route,assessment:schemeAgeFact(store,'activation',route.route)},
     consent:{owner_pct:c.ownerConsent,land_pct:c.landConsent},
     planning:{target_zoning:targetOrSuggested(c,'activation'),mixed_use:c.activationMixedUse,
@@ -12415,7 +12424,7 @@ function activationSpatialFacts(store){
   };
   const stationDecision=activationStationCriterion(fact.location.station,c);
   const priorStatus=c.priorNegotiation===true?'FAIL':c.priorNegotiation===false?'PASS':(c.area!=null&&c.area<5000?'PASS':'REVIEW');
-  const renewalStatus=fact.exclusions.renewal_error?'REVIEW':fact.exclusions.renewal_excluded?'FAIL':(fact.exclusions.renewal_exception||fact.exclusions.renewal_loaded)?'PASS':'REVIEW';
+  const renewalStatus=renewalExclusion.status;
   fact.spatial_status_rows=[
     spatialFactRow('역세권 기준거리',threshold==null?'기준 미확인':`${threshold}m / 판정역 ${chosenStation?.name||'-'} ${chosenStation?.distance_m==null?'-':Number(chosenStation.distance_m).toFixed(1)+'m'}`,stationDecision.direct.status==='REVIEW'?'REVIEW':'CONFIRMED','승강장 경계·중심지위계·환승여부를 반영한 직접거리 판정',
       {criterionStatus:stationDecision.direct.status,criterionRule:threshold==null?'250/350m 적용거리 결정 필요':`승강장 경계 ${threshold}m 이내`,criterionNote:stationDecision.direct.note,criterionItem:'승강장 거리'}),
@@ -12427,7 +12436,7 @@ function activationSpatialFacts(store){
       {criterionStatus:c.activationLinearCommercial===true?'PASS':c.activationLinearCommercial===false?'FAIL':'REVIEW',criterionRule:'역세권 외 노선형 상업지역을 포함한 가로구역',criterionNote:c.activationLinearCommercialPath||'사용자 확정 노선상업 참조도형 자동검토 결과 확인 필요',criterionItem:'간선도로변'}),
     spatialFactRow('사전협상 대상요건',c.priorNegotiation==null?'-':c.priorNegotiation?'해당':'비해당',c.priorNegotiation==null?'REVIEW':'CONFIRMED','5,000㎡ 이상 대상지는 협상대상지요건 별도 확인',
       {criterionStatus:priorStatus,criterionRule:'사전협상 협상대상지요건 해당 시 역세권활성화 제외',criterionItem:'사전협상 대상여부'}),
-    spatialFactRow('정비구역 현황',renewalType==='auto'?(renewal.loaded?(renewal.overlaps.length?`${renewal.overlaps.length}건 중첩`:'중첩 없음'):'자료 미확인'):renewalType,renewal.loaded||renewalType!=='auto'?'CONFIRMED':'REVIEW','정비구역·정비예정구역·재정비촉진 배제/예외 검토에 사용',
+    spatialFactRow('정비구역 현황',renewalExclusion.value||'자료 미확인',renewalStatus==='REVIEW'?'REVIEW':'CONFIRMED',renewalExclusion.note||'정비구역·정비예정구역 배제/예외 검토에 사용',
       {criterionStatus:renewalStatus,criterionRule:'정비구역·정비예정구역 제외 / 도시정비형 재개발 정비예정구역 예외',criterionItem:'정비구역 배타관계'})
   ];
   store.scheme_specific.activation=fact;
@@ -12489,6 +12498,88 @@ function planningFacilityFact(store){
   }
   const hits=d.planning_facilities||[];
   return hits.length?{status:'REVIEW',value:hits.map(x=>x.name||x.category).join(' / '),note:'시설부지 중첩 · 조정(복합·해제) 가능성이 인정되면 예외'}:{status:'PASS',value:'도시·군계획시설 중첩 없음',note:'VWorld UPIS 공간중첩'};
+}
+
+// ---------- R51 역세권활성화 2-1-3 다목 배제/예외 전용 FACT ----------
+// 공통 정비현황 Fact는 다른 사업에서도 사용하므로 상위분류를 재작성하지 않고,
+// 역세권활성화 전용 Rule에서 세부 code/type_label/stage를 읽어 독립 판정한다.
+const ACTIVATION_SMALLSCALE_LEGAL_CODES=new Set(['UQ1260','UQ1270','UQ1280','UQ1811','UQ1812','UQ1813','UQ1814']);
+const ACTIVATION_SMALLSCALE_PROJECT_CODES=new Set(['BZ202','BZ203','BZ204','BZ205']);
+const ACTIVATION_PROMOTION_DETAIL_CODES=new Set(['BZ401','BZ402','BZ403','BZ404']);
+
+function activationRenewalExclusionFact(store){
+  const r=store.site.renewal||{},manual=r.renewal_area_type||'auto';
+  const manualFallback=()=>{
+    if(manual==='none')return {status:'PASS',value:'정비구역·정비예정구역 중첩 없음 확인',note:'수기/기존 자동선택값',hits:[],excluded_hits:[],exception_hits:[]};
+    if(manual==='urban_planned')return {status:'PASS',value:'도시정비형 재개발 정비예정구역 · 배제 예외',note:'운영기준 2-1-3 다목 2) 예외',hits:[],excluded_hits:[],exception_hits:[{type:'urban_planned'}]};
+    if(manual!=='auto')return {status:'FAIL',value:`정비구역 유형 ${manual}`,note:'정비구역·정비예정구역 배제조건 해당',hits:[],excluded_hits:[{type:manual}],exception_hits:[]};
+    return {status:'REVIEW',value:'정비구역·정비예정구역 GIS 확인 필요',note:r.error||'정비구역 공간자료 확인 필요',hits:[],excluded_hits:[],exception_hits:[]};
+  };
+  if(!r.loaded)return manualFallback();
+  const hits=(r.overlaps||[]).filter(x=>{
+    const code=String(x.code||'').trim(),type=String(x.type||'');
+    if(type==='promotion'||ACTIVATION_SMALLSCALE_LEGAL_CODES.has(code))return false;
+    if(['housing_district','housing_planned','urban_district','urban_planned','reconstruction'].includes(type))return true;
+    // UQ181의 주거환경개선·세부분류 미확인 재개발·결합/기타 정비구역은 도정법 정비구역 트랙으로 본다.
+    return type==='other_renewal' && ['UQ1211','UQ1212','UQ1220','UQ1250','UQ1290'].includes(code);
+  });
+  if(!hits.length){
+    if(manual!=='auto'&&manual!=='none')return manualFallback();
+    return {status:'PASS',value:'정비구역·정비예정구역 중첩 없음',note:'공식 정비현황 공간중첩',hits:[],excluded_hits:[],exception_hits:[]};
+  }
+  const exceptionHits=hits.filter(x=>x.type==='urban_planned'||String(x.code||'')==='BZ102');
+  const excludedHits=hits.filter(x=>!exceptionHits.includes(x));
+  const label=x=>`${x.name||x.type_label||x.type||'-'}${x.code?`(${x.code})`:''}`;
+  if(excludedHits.length)return {status:'FAIL',value:excludedHits.map(label).join(' / '),note:exceptionHits.length?'도시정비형 재개발 정비예정구역 예외도 중첩하나 별도 배제 정비구역이 함께 존재':'정비구역·정비예정구역 배제조건 해당',hits,excluded_hits:excludedHits,exception_hits:exceptionHits};
+  return {status:'PASS',value:exceptionHits.map(label).join(' / '),note:'도시정비형 재개발 정비예정구역만 배제 예외',hits,excluded_hits:[],exception_hits:exceptionHits};
+}
+
+function activationPromotionExclusionFact(store){
+  const r=store.site.renewal||{},manual=store.common.renewalPromotionStatus||'auto';
+  if(!r.loaded){
+    if(manual==='none')return {status:'PASS',value:'재정비촉진지구 중첩 없음 확인',note:'수기 확인값',hits:[],excluded_hits:[],exception_hits:[],unknown_hits:[]};
+    if(['district','zone'].includes(manual))return {status:'REVIEW',value:manual==='district'?'재정비촉진지구 중첩':'재정비촉진구역 중첩',note:'세부유형(존치관리구역·해제지역) 확인 필요',hits:[],excluded_hits:[],exception_hits:[],unknown_hits:[{type:'promotion'}]};
+    return {status:'REVIEW',value:'재정비촉진지구 GIS 확인 필요',note:r.error||'재정비촉진 공간자료 확인 필요',hits:[],excluded_hits:[],exception_hits:[],unknown_hits:[]};
+  }
+  const all=(r.overlaps||[]).filter(x=>x.type==='promotion');
+  if(!all.length)return {status:'PASS',value:'재정비촉진지구 중첩 없음',note:'공식 정비현황 공간중첩',hits:[],excluded_hits:[],exception_hits:[],unknown_hits:[]};
+  // UQ51 법정레이어가 세부유형을 일반명으로만 제공하는 경우가 있어,
+  // 동일 대상지에 BZ401~404 세부분류가 있으면 그 세부분류를 우선해 중복 generic hit의 오판정을 막는다.
+  const detailed=all.filter(x=>ACTIVATION_PROMOTION_DETAIL_CODES.has(String(x.code||''))||/존치관리구역|정비구역\s*해제/.test(String(x.type_label||'')));
+  const hits=detailed.length?detailed:all;
+  const exceptionHits=hits.filter(x=>String(x.code||'')==='BZ404'||/존치관리구역|정비구역\s*해제/.test(String(x.type_label||'')));
+  const excludedHits=hits.filter(x=>['BZ401','BZ402','BZ403'].includes(String(x.code||''))||/^(재정비촉진지구|재정비촉진구역|존치정비구역)$/.test(String(x.type_label||'')));
+  const unknownHits=hits.filter(x=>!exceptionHits.includes(x)&&!excludedHits.includes(x));
+  const label=x=>`${x.name||x.type_label||'재정비촉진'}${x.type_label?` · ${x.type_label}`:''}${x.code?`(${x.code})`:''}`;
+  if(excludedHits.length)return {status:'FAIL',value:excludedHits.map(label).join(' / '),note:exceptionHits.length?'예외구역도 중첩하나 배제대상 촉진구역이 함께 존재':'재정비촉진지구 원칙 배제',hits,excluded_hits:excludedHits,exception_hits:exceptionHits,unknown_hits:unknownHits};
+  if(unknownHits.length)return {status:'REVIEW',value:unknownHits.map(label).join(' / '),note:'세부유형 미확인 · 존치관리구역 또는 정비구역 해제지역 예외 여부 확인',hits,excluded_hits:[],exception_hits:exceptionHits,unknown_hits:unknownHits};
+  return {status:'PASS',value:exceptionHits.map(label).join(' / '),note:'존치관리구역 또는 정비구역 해제지역 · 배제 예외',hits,excluded_hits:[],exception_hits:exceptionHits,unknown_hits:[]};
+}
+
+function activationSmallscaleStageState(x){
+  const stage=String(x?.stage_label||'').trim();
+  if(!stage)return 'UNKNOWN';
+  if(/주민합의체\s*구성/.test(stage))return 'APPROVED';
+  if(/조합설립인가/.test(stage)&&!/추진중/.test(stage))return 'APPROVED';
+  // 현재단계가 인가 이후 절차라면 주민합의체 구성/조합설립인가 선행요건을 지난 사업으로 본다.
+  if(/건축심의|사업시행(?:계획)?인가|관리처분계획인가|착공|준공|사용승인|입주/.test(stage))return 'APPROVED';
+  if(/추진중|대상지선정|입안|열람|위원회심의|구역지정|사전자문|관리지역고시|정비계획수립/.test(stage))return 'PRE_APPROVAL';
+  return 'UNKNOWN';
+}
+function activationSmallscaleExclusionFact(store){
+  const r=store.site.renewal||{};
+  if(!r.loaded)return {status:'REVIEW',value:'소규모주택정비 추진단계 GIS 확인 필요',note:r.error||'주민합의체 구성·조합설립인가 여부 확인 필요',hits:[],approved_hits:[],pending_hits:[],unknown_hits:[]};
+  const projects=(r.existing_projects||[]).filter(x=>ACTIVATION_SMALLSCALE_PROJECT_CODES.has(String(x.project_code||'')));
+  const legalHits=(r.overlaps||[]).filter(x=>ACTIVATION_SMALLSCALE_LEGAL_CODES.has(String(x.code||'')));
+  const approved=projects.filter(x=>activationSmallscaleStageState(x)==='APPROVED');
+  const pending=projects.filter(x=>activationSmallscaleStageState(x)==='PRE_APPROVAL');
+  const unknown=projects.filter(x=>activationSmallscaleStageState(x)==='UNKNOWN');
+  const label=x=>`${x.type_label||x.name||'소규모주택정비'}${x.name&&x.type_label?` · ${x.name}`:''}${x.stage_label?` · ${x.stage_label}`:''}${x.project_code?`(${x.project_code})`:x.code?`(${x.code})`:''}`;
+  if(approved.length)return {status:'FAIL',value:approved.map(label).join(' / '),note:'주민합의체 구성 또는 조합설립인가 완료(또는 그 이후 추진단계) 확인',hits:[...projects,...legalHits],approved_hits:approved,pending_hits:pending,unknown_hits:unknown};
+  if(unknown.length)return {status:'REVIEW',value:unknown.map(label).join(' / '),note:'소규모주택정비 사업은 확인되나 주민합의체/조합설립인가 단계 식별 불가',hits:[...projects,...legalHits],approved_hits:[],pending_hits:pending,unknown_hits:unknown};
+  if(projects.length)return {status:'PASS',value:pending.map(label).join(' / ')||projects.map(label).join(' / '),note:'공식 현황상 주민합의체 구성·조합설립인가 이전 단계',hits:[...projects,...legalHits],approved_hits:[],pending_hits:pending,unknown_hits:[]};
+  if(legalHits.length)return {status:'REVIEW',value:legalHits.map(x=>`${x.name||x.type_label||'소규모주택정비'}${x.code?`(${x.code})`:''}`).join(' / '),note:'법정 사업구역 중첩은 확인되나 주민합의체 구성·조합설립인가 단계자료 미확보',hits:legalHits,approved_hits:[],pending_hits:[],unknown_hits:legalHits};
+  return {status:'PASS',value:'해당 추진사업 중첩 없음',note:'서울플랜+ 기존 추진사업 및 정비현황 공간중첩',hits:[],approved_hits:[],pending_hits:[],unknown_hits:[]};
 }
 function summarizeRoadList(road){
   const arr=(road?.roads||[]).slice(0,5).map(x=>`${x.name} ${x.width_m==null?'-':x.width_m+'m'}${x.contact_m==null?'':`(${Number(x.contact_m).toFixed(1)}m 접면)`}`);
@@ -15036,42 +15127,32 @@ function checkActivationFromFacts(store,f){
   rows.push(schemeRow('용도지역','제2종일반주거(7층 포함)·제3종일반주거·준주거·근린상업·일반상업',f.zoning.current||'-',
     !f.zoning.current?'REVIEW':f.zoning.allowed?'PASS':'FAIL','대상지 현황 용도지역',true,{sourceId:'ACTIVATION',locator:'2-1-3 가·나목'}));
 
-  let renewalExStatus='REVIEW',renewalExValue='정비구역 GIS 확인 필요';
-  if(f.exclusions.renewal_error){renewalExStatus='REVIEW';renewalExValue='정비구역 GIS 조회 실패';}
-  else if(f.exclusions.renewal_excluded){renewalExStatus='FAIL';renewalExValue=`정비구역 유형 ${f.exclusions.renewal_type}`;}
-  else if(f.exclusions.renewal_exception){renewalExStatus='PASS';renewalExValue='도시정비형 재개발 정비예정구역 · 예외';}
-  else if(f.exclusions.renewal_loaded){renewalExStatus='PASS';renewalExValue='정비구역·예정구역 중첩 없음';}
-  rows.push(schemeRow('정비구역 배타관계','정비구역·정비예정구역 제외, 도시정비형 재개발 정비예정구역 예외',renewalExValue,renewalExStatus,
-    '정비사업 현황도와 동일한 공식 SHP 중첩결과 사용',true,{sourceId:'ACTIVATION',locator:'2-1-3 다목 2)'}));
+  const renewalEx=f.exclusions.renewal_fact||{status:f.exclusions.renewal_error?'REVIEW':f.exclusions.renewal_excluded?'FAIL':f.exclusions.renewal_exception||f.exclusions.renewal_loaded?'PASS':'REVIEW',value:f.exclusions.renewal_type||'GIS 확인 필요',note:'정비사업 현황도 공간중첩'};
+  rows.push(schemeRow('정비구역 배타관계','정비구역·정비예정구역 제외, 도시정비형 재개발 정비예정구역만 예외',renewalEx.value,renewalEx.status,
+    renewalEx.note||'정비사업 현황도와 동일한 공식 SHP 중첩결과 사용',true,{sourceId:'ACTIVATION',locator:'2-1-3 다목 2)'}));
 
-  // 운영기준 2-1-3 다목: 재정비촉진지구는 원칙 배제. 예외(존치관리구역·정비구역 해제)는 원도서에서 별도 확인한다.
-  const promotionStatus=!f.exclusions.renewal_loaded?'REVIEW':f.exclusions.promotion_hits.length?'FAIL':'PASS';
-  rows.push(schemeRow('재정비촉진지구','원칙 제외 · 존치관리구역 및 정비구역 해제지역은 예외',
-    f.exclusions.promotion_hits.length?`${f.exclusions.promotion_hits.length}건 중첩`:(f.exclusions.renewal_loaded?'중첩 없음':'GIS 확인 필요'),promotionStatus,
-    f.exclusions.promotion_hits.length?'원칙 배제 · 존치관리구역/해제지역 예외가 확인되면 재검토':'공식 SHP 중첩',true,{sourceId:'ACTIVATION',locator:'2-1-3 다목 4)'}));
+  const promotion=f.exclusions.promotion_fact||{status:!f.exclusions.renewal_loaded?'REVIEW':f.exclusions.promotion_hits.length?'REVIEW':'PASS',value:f.exclusions.promotion_hits.length?`${f.exclusions.promotion_hits.length}건 중첩`:'중첩 없음',note:'세부유형 확인 필요'};
+  rows.push(schemeRow('재정비촉진지구','원칙 제외 · 존치관리구역 및 정비구역 해제지역은 예외',promotion.value,promotion.status,
+    promotion.note||'재정비촉진 세부유형 공간중첩',true,{sourceId:'ACTIVATION',locator:'2-1-3 다목 4)'}));
 
-  // 단순 도시계획시설 중첩은 현황/후속협의로 표시하고 현재 자동 진입 하드게이트에서는 제외한다.
-  let facilityValue='도시계획시설 GIS 확인 필요';
-  if(f.exclusions.planning_facility_loaded&&!f.exclusions.planning_facility_errors.length){facilityValue=f.exclusions.planning_facilities.length?`${f.exclusions.planning_facilities.length}건 중첩`:'도시계획시설 중첩 없음';}
-  rows.push(schemeRow('도시계획시설','현황표시 · 시설계획(관리)부서의 복합·해제 등 조정 가능성은 후속협의',facilityValue,'INFO',
-    f.exclusions.planning_facilities.length?'시설조정 가능성은 계획·협의단계에서 검토':'도시계획시설 현황도와 동일 GIS 결과',false,{sourceId:'ACTIVATION',locator:'2-1-3 다목 3)'}));
+  const facility=f.exclusions.planning_facility_fact||{status:'REVIEW',value:'도시계획시설 GIS 확인 필요',note:'시설계획(관리)부서의 조정(복합·해제) 가능 여부 확인'};
+  rows.push(schemeRow('도시계획시설','도시·군계획시설은 제외 · 시설계획(관리)부서에서 조정(복합 또는 해제) 가능으로 검토된 시설부지는 예외',facility.value,facility.status,
+    facility.note||'도시계획시설 현황도와 동일 GIS 결과',true,{sourceId:'ACTIVATION',locator:'2-1-3 다목 3)'}));
 
   const ch=f.exclusions.characteristic_management||{status:'REVIEW',note:'특성관리지구 자료 미연결'};
   rows.push(schemeRow('서울도심 특성관리지구','「서울특별시 서울도심 기본계획」상 특성관리지구 제외',
     ch.status==='FAIL'?`특성관리지구 내부 · 중첩 ${Math.round(Number(ch.raw_overlap_area_m2||0)).toLocaleString('ko-KR')}㎡`:ch.status==='PASS'?'복원도형 및 60m 경계오차대 외부':'경계/60m 오차대 중첩 · 공식도면 재확인',ch.status,
     ch.note||'공식도면 기반 복원자료',true,{sourceId:'ACTIVATION',locator:'2-1-3 다목 1)'}));
 
-  const ssHits=f.exclusions.smallscale_hits||[],smallscaleKnown=f.exclusions.smallscale_approved!=null;
-  const smallscaleStatus=!smallscaleKnown?'REVIEW':f.exclusions.smallscale_approved===true?'FAIL':'PASS';
-  rows.push(schemeRow('소규모주택정비 인가','주민합의체 구성 또는 조합설립인가를 받은 지역 제외',
-    ssHits.length?ssHits.map(x=>x.name||x.type||'소규모주택정비').join(' / '):smallscaleKnown?'공식 정비구역 현황자료상 해당 사업구역 중첩 없음':'정비구역 GIS 확인 필요',smallscaleStatus,
-    ssHits.length?'공식 정비구역 현황자료에서 소규모주택정비 사업구역 확인':smallscaleKnown?'공식 정비구역 현황자료 기준 비중첩':'정비구역 GIS 미확보 · 임의 PASS 금지',true,{sourceId:'ACTIVATION',locator:'2-1-3 다목 5)'}));
+  const smallscale=f.exclusions.smallscale_fact||{status:f.exclusions.smallscale_approved===true?'FAIL':f.exclusions.smallscale_approved===false?'PASS':'REVIEW',value:'소규모주택정비 추진단계 확인 필요',note:'주민합의체 구성·조합설립인가 여부 확인'};
+  rows.push(schemeRow('소규모주택정비 인가','소규모주택정비사업 시행을 위해 주민합의체 구성 또는 조합설립인가를 받은 지역 제외',
+    smallscale.value,smallscale.status,smallscale.note||'서울플랜+ 기존 추진사업의 세부 추진단계 사용',true,{sourceId:'ACTIVATION',locator:'2-1-3 다목 5)'}));
 
-  const exclusionRows=rows.filter(r=>['정비구역 배타관계','재정비촉진지구','서울도심 특성관리지구','소규모주택정비 인가'].includes(r.item));
+  const exclusionRows=rows.filter(r=>['정비구역 배타관계','재정비촉진지구','도시계획시설','서울도심 특성관리지구','소규모주택정비 인가'].includes(r.item));
   const exclusionStatus=exclusionRows.some(r=>r.status==='FAIL')?'FAIL':exclusionRows.some(r=>r.status==='REVIEW')?'REVIEW':'PASS';
-  rows.push(schemeRow('배제지역 종합','운영기준 2-1-3 다목의 자동연결 배제조건 확인',
+  rows.push(schemeRow('배제지역 종합','운영기준 2-1-3 다목 1)~5) 배제조건 및 각 예외 확인',
     exclusionStatus==='PASS'?'확인된 배제조건 없음':exclusionStatus==='FAIL'?'배제조건 해당':'일부 배제조건 자료보완 필요',exclusionStatus,
-    '도시계획시설은 현황·후속협의로 분리하고 자동 진입 하드게이트에서 제외',true,{sourceId:'ACTIVATION',locator:'2-1-3 다목'}));
+    '정비구역·도시계획시설·재정비촉진지구·소규모주택정비의 예외/추진단계를 세부 FACT로 판정',true,{sourceId:'ACTIVATION',locator:'2-1-3 다목'}));
 
   const road4Count=f.road.road4_faces==null?null:Number(f.road.road4_faces);
   const road8Count=f.road.road8_faces==null?null:Number(f.road.road8_faces);
@@ -16549,7 +16630,7 @@ function ruleReasonKey(row){
   if(/재건축진단|안전진단/.test(text))return '재건축진단';
   if(/정비가능구역|정비예정구역|도정법 진입경로|진입경로/.test(text))return '진입경로';
   if(/공공주택|임대주택/.test(text))return '공공주택';
-  if(/제외지역|제외/.test(item))return '제외지역';
+  if(/정비구역 배타관계|재정비촉진지구|도시계획시설|특성관리지구|소규모주택정비 인가|배제지역|제외지역|제외/.test(item))return '배제지역';
   if(/사업시행|시행자/.test(text))return '시행자';
   if(/입지/.test(item))return '입지';
   return item.replace(/\s+/g,'').slice(0,8)||'기타조건';
@@ -16731,7 +16812,7 @@ function candidateChangeOpportunity(name,st){
   // REVIEW를 이진판정상 FAIL로 귀결한 행은 빨간색 변경기회로 승격하지 않는다.
   // 원자료에서 실제 FAIL이고, 아래 허용한 변경수단이 계산되는 경우만 빨간색이다.
   const failed=(schemeResults[name]?.rows||[]).filter(r=>r.status==='FAIL'&&r.evaluatedStatus!=='REVIEW'&&r.required!==false);
-  const hardBlock=/개발제한|공익용산지|비오톱|문화재|보전지역|정책상 제외|법정 제외|대상 아님|진입 불가/;
+  const hardBlock=/개발제한|공익용산지|비오톱|문화재|보전지역|정책상 제외|법정 제외|배제지역|정비구역 배타관계|재정비촉진지구|도시계획시설|소규모주택정비 인가|대상 아님|진입 불가/;
   if(failed.some(r=>hardBlock.test(`${r.item} ${r.rule} ${r.note}`)))return null;
   const area=candidateAreaAdjustmentOpportunity(name,st);
   if(st.stage==='EXECUTION'||st.execution?.hardMismatch)return {possible:true,label:'사업시행자·토지확보 구조 변경',kind:'EXECUTION'};
