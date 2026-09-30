@@ -5815,6 +5815,39 @@ def _ensure_analytics_table() -> None:
                 conn.execute("CREATE INDEX IF NOT EXISTS analytics_events_created_idx ON analytics_events(created_at DESC)")
                 conn.execute("CREATE INDEX IF NOT EXISTS analytics_events_visitor_idx ON analytics_events(visitor_id)")
                 conn.execute("""
+                    CREATE TABLE IF NOT EXISTS analysis_runs (
+                        analysis_id VARCHAR(80) PRIMARY KEY,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        completed_at TIMESTAMPTZ,
+                        visitor_id VARCHAR(80) NOT NULL,
+                        session_id VARCHAR(80),
+                        ip_hash VARCHAR(64),
+                        status VARCHAR(20) NOT NULL DEFAULT 'running',
+                        address_text TEXT,
+                        area_m2 DOUBLE PRECISION,
+                        parcel_count INTEGER,
+                        centroid_lat DOUBLE PRECISION,
+                        centroid_lng DOUBLE PRECISION,
+                        recommendations JSONB NOT NULL DEFAULT '[]'::jsonb,
+                        result_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
+                        result_note TEXT,
+                        user_agent_group VARCHAR(40)
+                    )
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS analysis_runs_created_idx ON analysis_runs(created_at DESC)")
+                conn.execute("CREATE INDEX IF NOT EXISTS analysis_runs_visitor_idx ON analysis_runs(visitor_id)")
+                conn.execute("CREATE INDEX IF NOT EXISTS analysis_runs_status_idx ON analysis_runs(status)")
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS analysis_parcels (
+                        analysis_id VARCHAR(80) NOT NULL,
+                        pnu VARCHAR(30) NOT NULL,
+                        label TEXT,
+                        ordinal INTEGER NOT NULL DEFAULT 0,
+                        PRIMARY KEY (analysis_id, pnu)
+                    )
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS analysis_parcels_pnu_idx ON analysis_parcels(pnu)")
+                conn.execute("""
                     CREATE TABLE IF NOT EXISTS feedback_reports (
                         id VARCHAR(36) PRIMARY KEY,
                         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -5862,6 +5895,39 @@ def _ensure_analytics_table() -> None:
                 """)
                 conn.execute("CREATE INDEX IF NOT EXISTS analytics_events_created_idx ON analytics_events(created_at DESC)")
                 conn.execute("CREATE INDEX IF NOT EXISTS analytics_events_visitor_idx ON analytics_events(visitor_id)")
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS analysis_runs (
+                        analysis_id TEXT PRIMARY KEY,
+                        created_at TEXT NOT NULL,
+                        completed_at TEXT,
+                        visitor_id TEXT NOT NULL,
+                        session_id TEXT,
+                        ip_hash TEXT,
+                        status TEXT NOT NULL DEFAULT 'running',
+                        address_text TEXT,
+                        area_m2 REAL,
+                        parcel_count INTEGER,
+                        centroid_lat REAL,
+                        centroid_lng REAL,
+                        recommendations TEXT NOT NULL DEFAULT '[]',
+                        result_summary TEXT NOT NULL DEFAULT '{}',
+                        result_note TEXT,
+                        user_agent_group TEXT
+                    )
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS analysis_runs_created_idx ON analysis_runs(created_at DESC)")
+                conn.execute("CREATE INDEX IF NOT EXISTS analysis_runs_visitor_idx ON analysis_runs(visitor_id)")
+                conn.execute("CREATE INDEX IF NOT EXISTS analysis_runs_status_idx ON analysis_runs(status)")
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS analysis_parcels (
+                        analysis_id TEXT NOT NULL,
+                        pnu TEXT NOT NULL,
+                        label TEXT,
+                        ordinal INTEGER NOT NULL DEFAULT 0,
+                        PRIMARY KEY (analysis_id, pnu)
+                    )
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS analysis_parcels_pnu_idx ON analysis_parcels(pnu)")
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS feedback_reports (
                         id TEXT PRIMARY KEY,
@@ -5961,6 +6027,194 @@ def _analytics_rows(limit: int = 500) -> List[Dict[str, Any]]:
         item["recommendations"]=_decode_json_field(item.get("recommendations"), [])
         item["result_summary"]=_decode_json_field(item.get("result_summary"), {})
         out.append(item)
+    return out
+
+
+def _analysis_ip_hash(request: Request) -> Optional[str]:
+    """Return a stable pseudonymous network hash without storing the raw IP."""
+    raw = (request.headers.get("x-forwarded-for") or "").split(",", 1)[0].strip()
+    if not raw and request.client:
+        raw = str(request.client.host or "").strip()
+    if not raw:
+        return None
+    salt = os.getenv("ANALYTICS_IP_SALT", "").strip() or os.getenv("ADMIN_PASSWORD", "").strip() or "urban-redevelopment-platform"
+    return hashlib.sha256(f"{salt}|{raw}".encode("utf-8")).hexdigest()[:24]
+
+
+def _normalized_analysis_parcels(parcels: Any) -> List[Dict[str, str]]:
+    out: List[Dict[str, str]] = []
+    seen = set()
+    for item in parcels or []:
+        if isinstance(item, dict):
+            pnu = str(item.get("pnu") or "").strip()[:30]
+            label = str(item.get("label") or "").strip()[:300]
+        else:
+            pnu = str(item or "").strip()[:30]
+            label = ""
+        if not pnu or pnu in seen:
+            continue
+        seen.add(pnu)
+        out.append({"pnu": pnu, "label": label})
+        if len(out) >= 5000:
+            break
+    return out
+
+
+def _replace_analysis_parcels_postgres(conn: Any, analysis_id: str, parcels: List[Dict[str, str]]) -> None:
+    conn.execute("DELETE FROM analysis_parcels WHERE analysis_id=%s", (analysis_id,))
+    for idx, item in enumerate(parcels):
+        conn.execute(
+            "INSERT INTO analysis_parcels (analysis_id,pnu,label,ordinal) VALUES (%s,%s,%s,%s) ON CONFLICT (analysis_id,pnu) DO UPDATE SET label=EXCLUDED.label, ordinal=EXCLUDED.ordinal",
+            (analysis_id, item["pnu"], item.get("label") or None, idx),
+        )
+
+
+def _replace_analysis_parcels_sqlite(conn: sqlite3.Connection, analysis_id: str, parcels: List[Dict[str, str]]) -> None:
+    conn.execute("DELETE FROM analysis_parcels WHERE analysis_id=?", (analysis_id,))
+    conn.executemany(
+        "INSERT OR REPLACE INTO analysis_parcels (analysis_id,pnu,label,ordinal) VALUES (?,?,?,?)",
+        [(analysis_id, item["pnu"], item.get("label") or None, idx) for idx, item in enumerate(parcels)],
+    )
+
+
+def _store_analysis_run_start(data: Dict[str, Any]) -> None:
+    _ensure_analytics_table()
+    parcels = _normalized_analysis_parcels(data.get("parcels"))
+    if _database_url():
+        with psycopg.connect(_database_url()) as conn:
+            conn.execute("""
+                INSERT INTO analysis_runs
+                (analysis_id, visitor_id, session_id, ip_hash, status, address_text, area_m2, parcel_count,
+                 centroid_lat, centroid_lng, recommendations, result_summary, result_note, user_agent_group)
+                VALUES (%s,%s,%s,%s,'running',%s,%s,%s,%s,%s,'[]'::jsonb,'{}'::jsonb,NULL,%s)
+                ON CONFLICT (analysis_id) DO UPDATE SET
+                    visitor_id=EXCLUDED.visitor_id, session_id=EXCLUDED.session_id, ip_hash=EXCLUDED.ip_hash,
+                    status='running', address_text=EXCLUDED.address_text, area_m2=EXCLUDED.area_m2,
+                    parcel_count=EXCLUDED.parcel_count, centroid_lat=EXCLUDED.centroid_lat,
+                    centroid_lng=EXCLUDED.centroid_lng, user_agent_group=EXCLUDED.user_agent_group
+            """, (
+                data["analysis_id"], data["visitor_id"], data.get("session_id"), data.get("ip_hash"),
+                data.get("address_text"), data.get("area_m2"), data.get("parcel_count"),
+                data.get("centroid_lat"), data.get("centroid_lng"), data.get("user_agent_group"),
+            ))
+            _replace_analysis_parcels_postgres(conn, data["analysis_id"], parcels)
+            conn.commit()
+    else:
+        created_at = datetime.now().astimezone().isoformat(timespec="seconds")
+        with _sqlite_analytics_connect() as conn:
+            conn.execute("""
+                INSERT INTO analysis_runs
+                (analysis_id,created_at,visitor_id,session_id,ip_hash,status,address_text,area_m2,parcel_count,
+                 centroid_lat,centroid_lng,recommendations,result_summary,result_note,user_agent_group)
+                VALUES (?,?,?,?,?,'running',?,?,?,?,?,'[]','{}',NULL,?)
+                ON CONFLICT(analysis_id) DO UPDATE SET
+                    visitor_id=excluded.visitor_id,session_id=excluded.session_id,ip_hash=excluded.ip_hash,status='running',
+                    address_text=excluded.address_text,area_m2=excluded.area_m2,parcel_count=excluded.parcel_count,
+                    centroid_lat=excluded.centroid_lat,centroid_lng=excluded.centroid_lng,user_agent_group=excluded.user_agent_group
+            """, (
+                data["analysis_id"], created_at, data["visitor_id"], data.get("session_id"), data.get("ip_hash"),
+                data.get("address_text"), data.get("area_m2"), data.get("parcel_count"),
+                data.get("centroid_lat"), data.get("centroid_lng"), data.get("user_agent_group"),
+            ))
+            _replace_analysis_parcels_sqlite(conn, data["analysis_id"], parcels)
+            conn.commit()
+
+
+def _store_analysis_run_finish(data: Dict[str, Any]) -> None:
+    _ensure_analytics_table()
+    parcels = _normalized_analysis_parcels(data.get("parcels"))
+    status = str(data.get("status") or "completed")[:20]
+    if status not in {"completed", "review", "failed"}:
+        status = "review"
+    rec_json = json.dumps(data.get("recommendations") or [], ensure_ascii=False)
+    summary_json = json.dumps(data.get("result_summary") or {}, ensure_ascii=False)
+    if _database_url():
+        with psycopg.connect(_database_url()) as conn:
+            conn.execute("""
+                INSERT INTO analysis_runs
+                (analysis_id, visitor_id, session_id, ip_hash, status, completed_at, address_text, area_m2, parcel_count,
+                 centroid_lat, centroid_lng, recommendations, result_summary, result_note, user_agent_group)
+                VALUES (%s,%s,%s,%s,%s,NOW(),%s,%s,%s,%s,%s,%s::jsonb,%s::jsonb,%s,%s)
+                ON CONFLICT (analysis_id) DO UPDATE SET
+                    completed_at=NOW(), visitor_id=EXCLUDED.visitor_id, session_id=EXCLUDED.session_id,
+                    ip_hash=COALESCE(analysis_runs.ip_hash,EXCLUDED.ip_hash), status=EXCLUDED.status,
+                    address_text=EXCLUDED.address_text, area_m2=EXCLUDED.area_m2, parcel_count=EXCLUDED.parcel_count,
+                    centroid_lat=EXCLUDED.centroid_lat, centroid_lng=EXCLUDED.centroid_lng,
+                    recommendations=EXCLUDED.recommendations, result_summary=EXCLUDED.result_summary,
+                    result_note=EXCLUDED.result_note, user_agent_group=EXCLUDED.user_agent_group
+            """, (
+                data["analysis_id"], data["visitor_id"], data.get("session_id"), data.get("ip_hash"), status,
+                data.get("address_text"), data.get("area_m2"), data.get("parcel_count"),
+                data.get("centroid_lat"), data.get("centroid_lng"), rec_json, summary_json,
+                data.get("result_note"), data.get("user_agent_group"),
+            ))
+            _replace_analysis_parcels_postgres(conn, data["analysis_id"], parcels)
+            conn.commit()
+    else:
+        now = datetime.now().astimezone().isoformat(timespec="seconds")
+        with _sqlite_analytics_connect() as conn:
+            conn.execute("""
+                INSERT INTO analysis_runs
+                (analysis_id,created_at,completed_at,visitor_id,session_id,ip_hash,status,address_text,area_m2,parcel_count,
+                 centroid_lat,centroid_lng,recommendations,result_summary,result_note,user_agent_group)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(analysis_id) DO UPDATE SET
+                    completed_at=excluded.completed_at,visitor_id=excluded.visitor_id,session_id=excluded.session_id,
+                    ip_hash=COALESCE(analysis_runs.ip_hash,excluded.ip_hash),status=excluded.status,address_text=excluded.address_text,
+                    area_m2=excluded.area_m2,parcel_count=excluded.parcel_count,centroid_lat=excluded.centroid_lat,
+                    centroid_lng=excluded.centroid_lng,recommendations=excluded.recommendations,
+                    result_summary=excluded.result_summary,result_note=excluded.result_note,user_agent_group=excluded.user_agent_group
+            """, (
+                data["analysis_id"], now, now, data["visitor_id"], data.get("session_id"), data.get("ip_hash"), status,
+                data.get("address_text"), data.get("area_m2"), data.get("parcel_count"), data.get("centroid_lat"),
+                data.get("centroid_lng"), rec_json, summary_json, data.get("result_note"), data.get("user_agent_group"),
+            ))
+            _replace_analysis_parcels_sqlite(conn, data["analysis_id"], parcels)
+            conn.commit()
+
+
+def _analysis_run_rows(limit: int = 500) -> List[Dict[str, Any]]:
+    _ensure_analytics_table()
+    limit = max(1, min(int(limit or 500), 5000))
+    keys = ["analysis_id","created_at","completed_at","visitor_id","session_id","ip_hash","status","address_text","area_m2","parcel_count","centroid_lat","centroid_lng","recommendations","result_summary","result_note","user_agent_group"]
+    if _database_url():
+        with psycopg.connect(_database_url()) as conn:
+            rows = conn.execute("""
+                SELECT analysis_id,created_at,completed_at,visitor_id,session_id,ip_hash,status,address_text,area_m2,parcel_count,
+                       centroid_lat,centroid_lng,recommendations,result_summary,result_note,user_agent_group
+                FROM analysis_runs ORDER BY created_at DESC LIMIT %s
+            """, (limit,)).fetchall()
+            out = [dict(zip(keys, row)) for row in rows]
+            ids = [x["analysis_id"] for x in out]
+            parcel_rows = conn.execute(
+                "SELECT analysis_id,pnu,label,ordinal FROM analysis_parcels WHERE analysis_id = ANY(%s) ORDER BY analysis_id,ordinal",
+                (ids,),
+            ).fetchall() if ids else []
+    else:
+        with _sqlite_analytics_connect() as conn:
+            rows = conn.execute("""
+                SELECT analysis_id,created_at,completed_at,visitor_id,session_id,ip_hash,status,address_text,area_m2,parcel_count,
+                       centroid_lat,centroid_lng,recommendations,result_summary,result_note,user_agent_group
+                FROM analysis_runs ORDER BY created_at DESC LIMIT ?
+            """, (limit,)).fetchall()
+            out = [dict(row) for row in rows]
+            ids = [x["analysis_id"] for x in out]
+            if ids:
+                placeholders = ",".join("?" for _ in ids)
+                parcel_rows = conn.execute(
+                    f"SELECT analysis_id,pnu,label,ordinal FROM analysis_parcels WHERE analysis_id IN ({placeholders}) ORDER BY analysis_id,ordinal",
+                    ids,
+                ).fetchall()
+            else:
+                parcel_rows = []
+    by_id: Dict[str, List[Dict[str, Any]]] = {str(x["analysis_id"]): [] for x in out}
+    for row in parcel_rows:
+        aid, pnu, label, ordinal = row
+        by_id.setdefault(str(aid), []).append({"pnu": str(pnu), "label": str(label or ""), "ordinal": int(ordinal or 0)})
+    for item in out:
+        item["recommendations"] = _decode_json_field(item.get("recommendations"), [])
+        item["result_summary"] = _decode_json_field(item.get("result_summary"), {})
+        item["parcels"] = by_id.get(str(item.get("analysis_id")), [])
     return out
 
 
@@ -7707,6 +7961,30 @@ class AnalyticsEventInput(BaseModel):
     result_summary: Dict[str, Any] = Field(default_factory=dict)
 
 
+class AnalysisParcelInput(BaseModel):
+    pnu: str = Field(..., min_length=1, max_length=30)
+    label: Optional[str] = Field(None, max_length=300)
+
+
+class AnalysisRunStartInput(BaseModel):
+    analysis_id: str = Field(..., min_length=8, max_length=80)
+    visitor_id: str = Field(..., min_length=8, max_length=80)
+    session_id: Optional[str] = Field(None, max_length=80)
+    address_text: Optional[str] = Field(None, max_length=1000)
+    parcels: List[AnalysisParcelInput] = Field(default_factory=list, max_length=5000)
+    area_m2: Optional[float] = Field(None, ge=0)
+    parcel_count: Optional[int] = Field(None, ge=0)
+    centroid_lat: Optional[float] = Field(None, ge=-90, le=90)
+    centroid_lng: Optional[float] = Field(None, ge=-180, le=180)
+
+
+class AnalysisRunFinishInput(AnalysisRunStartInput):
+    status: str = Field(..., pattern="^(completed|review|failed)$")
+    recommendations: List[Dict[str, Any]] = Field(default_factory=list, max_length=10)
+    result_summary: Dict[str, Any] = Field(default_factory=dict)
+    result_note: Optional[str] = Field(None, max_length=4000)
+
+
 class AdminVisitorInput(BaseModel):
     visitor_id: Optional[str] = Field(None, min_length=8, max_length=80)
 
@@ -7990,6 +8268,35 @@ def analytics_event(payload: AnalyticsEventInput, request: Request):
     return {"ok": True, "stored": True, "storage": _analytics_storage_mode()}
 
 
+@app.post("/api/analytics/analysis-runs/start")
+def analysis_run_start(payload: AnalysisRunStartInput, request: Request):
+    data = payload.model_dump()
+    data["parcels"] = _normalized_analysis_parcels(data.get("parcels"))
+    data["ip_hash"] = _analysis_ip_hash(request)
+    data["user_agent_group"] = _user_agent_group(request)
+    try:
+        _store_analysis_run_start(data)
+    except Exception:
+        logging.exception("analysis run start storage failed")
+        return JSONResponse(status_code=202, content={"ok": False, "stored": False, "storage": _analytics_storage_mode()})
+    return {"ok": True, "stored": True, "analysis_id": data["analysis_id"], "storage": _analytics_storage_mode()}
+
+
+@app.post("/api/analytics/analysis-runs/finish")
+def analysis_run_finish(payload: AnalysisRunFinishInput, request: Request):
+    data = payload.model_dump()
+    data["parcels"] = _normalized_analysis_parcels(data.get("parcels"))
+    data["recommendations"] = data.get("recommendations", [])[:10]
+    data["ip_hash"] = _analysis_ip_hash(request)
+    data["user_agent_group"] = _user_agent_group(request)
+    try:
+        _store_analysis_run_finish(data)
+    except Exception:
+        logging.exception("analysis run finish storage failed")
+        return JSONResponse(status_code=202, content={"ok": False, "stored": False, "storage": _analytics_storage_mode()})
+    return {"ok": True, "stored": True, "analysis_id": data["analysis_id"], "status": data["status"], "storage": _analytics_storage_mode()}
+
+
 @app.post("/api/feedback")
 def create_feedback(payload: FeedbackInput, request: Request):
     data = payload.model_dump()
@@ -8057,8 +8364,8 @@ def admin_include_me(request: Request, response: Response, _: bool = Depends(_ad
 def admin_dashboard(request: Request, _: bool = Depends(_admin_auth_or_session)):
     rows = _analytics_rows(5000)
     feedback = _feedback_rows(2000)
-    analyses = [r for r in rows if r.get("event_type") == "analysis_complete"]
-    visitors = {r.get("visitor_id") for r in rows if r.get("visitor_id")}
+    analyses = _analysis_run_rows(5000)
+    visitors = {r.get("visitor_id") for r in rows if r.get("visitor_id")} | {r.get("visitor_id") for r in analyses if r.get("visitor_id")}
     analysis_visitors = {r.get("visitor_id") for r in analyses if r.get("visitor_id")}
     today = datetime.now().astimezone().date()
     def row_date(r):
@@ -8071,25 +8378,41 @@ def admin_dashboard(request: Request, _: bool = Depends(_admin_auth_or_session))
     road_ready = vworld_ready()
     excluded = request.cookies.get("urban_admin_exclude") == "1"
     table_rows = []
-    for r in analyses[:300]:
+    run_status_labels = {"running":"검토 중", "completed":"완료", "review":"완료·확인필요", "failed":"오류종료"}
+    for r in analyses[:500]:
         created = r.get("created_at")
-        if isinstance(created, datetime): created = created.astimezone().strftime("%Y-%m-%d %H:%M")
+        if isinstance(created, datetime):
+            created = created.astimezone().strftime("%Y-%m-%d %H:%M")
+        completed = r.get("completed_at")
+        if isinstance(completed, datetime):
+            completed = completed.astimezone().strftime("%Y-%m-%d %H:%M")
         recs = r.get("recommendations") or []
         if isinstance(recs, str):
             try: recs = json.loads(recs)
             except Exception: recs = []
         rec_text = " / ".join(str(x.get("name") or x.get("scheme") or "") for x in recs[:3] if isinstance(x, dict)) or "추천 없음"
-        pnus = r.get("pnu_list") or []
-        if isinstance(pnus, str):
-            try: pnus = json.loads(pnus)
-            except Exception: pnus = []
+        parcels = r.get("parcels") or []
+        parcel_lines = []
+        for item in parcels:
+            if not isinstance(item, dict):
+                continue
+            pnu = str(item.get("pnu") or "")
+            label = str(item.get("label") or "").strip()
+            parcel_lines.append(f"{html.escape(label) + ' · ' if label else ''}<code>{html.escape(pnu)}</code>")
+        representative = str(r.get("address_text") or "").strip()
+        if not representative and parcels:
+            representative = str((parcels[0] or {}).get("label") or "").strip()
         lat, lng = r.get("centroid_lat"), r.get("centroid_lng")
         map_link = f'<a href="https://map.kakao.com/link/map/{lat},{lng}" target="_blank">지도</a>' if lat is not None and lng is not None else "-"
+        status = str(r.get("status") or "running")
+        status_label = run_status_labels.get(status, status)
+        ip_group = str(r.get("ip_hash") or "")
         table_rows.append(f"""
-          <tr><td>{html.escape(str(created))}</td><td><code>{html.escape(str(r.get('analysis_id') or '-'))}</code></td><td><code>{html.escape(str(r.get('visitor_id',''))[-10:])}</code></td>
-          <td>{html.escape(str(r.get('address_text') or '-'))}</td><td>{float(r.get('area_m2') or 0):,.0f}㎡</td>
-          <td>{int(r.get('parcel_count') or 0)}필지</td><td>{html.escape(rec_text)}</td><td>{map_link}</td>
-          <td><details><summary>{len(pnus)}개 PNU</summary>{'<br>'.join(html.escape(str(x)) for x in pnus)}</details></td></tr>
+          <tr><td>{html.escape(str(created))}</td><td>{html.escape(status_label)}</td><td><code>{html.escape(str(r.get('analysis_id') or '-'))}</code></td>
+          <td><code>{html.escape(str(r.get('visitor_id',''))[-10:])}</code></td><td><code>{html.escape(ip_group[-10:] if ip_group else '-')}</code></td>
+          <td class="wrap">{html.escape(representative or '-')}</td><td>{float(r.get('area_m2') or 0):,.0f}㎡</td>
+          <td>{int(r.get('parcel_count') or len(parcels) or 0)}필지</td><td>{html.escape(rec_text)}</td><td>{map_link}</td>
+          <td><details><summary>{len(parcels)}개 지번/PNU</summary>{'<br>'.join(parcel_lines) or '-'}</details></td></tr>
         """)
     category_labels = {"data":"데이터 오류", "decision":"판정 오류", "screen":"화면 오류", "suggestion":"기능 제안", "other":"기타"}
     status_labels = {"open":"접수", "checking":"확인 중", "done":"처리완료"}
@@ -8122,7 +8445,7 @@ def admin_dashboard(request: Request, _: bool = Depends(_admin_auth_or_session))
     </style><script>function setFeedbackStatus(id,status){{fetch('/admin/feedback/'+encodeURIComponent(id)+'/status',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{status}})}}).then(r=>{{if(!r.ok)throw new Error();}}).catch(()=>alert('처리상태 저장 실패'));}}</script></head><body><header><div><b>도시검토 관리자</b><div style="font-size:11px;opacity:.75">{storage_note}</div></div><a href="/" style="color:white">서비스로</a></header><main>
     <div class="cards"><div class="card"><span>전체 익명 방문자</span><b>{len(visitors):,}</b></div><div class="card"><span>분석 실행 방문자</span><b>{len(analysis_visitors):,}</b></div><div class="card"><span>총 분석 실행</span><b>{len(analyses):,}</b></div><div class="card"><span>오늘 분석</span><b>{today_analyses:,}</b></div><div class="card"><span>미처리 오류·의견</span><b>{open_feedback:,}</b></div><div class="card"><span>도로중심선 API</span><b>{'준비됨' if road_ready else 'VWorld 키 확인'}</b></div></div>
     <div class="tools"><button onclick="fetch('/admin/exclude-me',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{visitor_id:localStorage.getItem('urban_visitor_id_v1')}})}}).then(()=>location.reload())">이 브라우저 앞으로 통계 제외</button><button onclick="fetch('/admin/include-me',{{method:'POST'}}).then(()=>location.reload())">앞으로 통계 다시 포함</button><span class="{'warn' if excluded else ''}">{'현재 관리자 브라우저는 통계에서 제외됩니다.' if excluded else '현재 브라우저도 통계에 포함됩니다.'}</span></div>
-    <h2>최근 대상지 분석</h2><div class="table"><table><thead><tr><th>시각</th><th>분석번호</th><th>익명사용자</th><th>입력주소</th><th>면적</th><th>필지</th><th>추천결과</th><th>위치</th><th>PNU</th></tr></thead><tbody>{''.join(table_rows) or '<tr><td colspan="9">아직 분석 기록이 없습니다.</td></tr>'}</tbody></table></div>
+    <h2>최근 대상지 분석</h2><div class="table"><table><thead><tr><th>시작시각</th><th>상태</th><th>분석번호</th><th>익명사용자</th><th>네트워크그룹</th><th>대표지번·입력주소</th><th>면적</th><th>필지</th><th>추천결과</th><th>위치</th><th>지번/PNU 목록</th></tr></thead><tbody>{''.join(table_rows) or '<tr><td colspan="11">아직 분석 기록이 없습니다.</td></tr>'}</tbody></table></div>
     <h2>오류·개선의견</h2><div class="table"><table><thead><tr><th>접수시각</th><th>분석번호</th><th>유형</th><th>내용</th><th>대상지</th><th>면적</th><th>연락처</th><th>처리상태</th></tr></thead><tbody>{''.join(feedback_rows) or '<tr><td colspan="8">접수된 오류·의견이 없습니다.</td></tr>'}</tbody></table></div>
     </main></body></html>"""
     response = HTMLResponse(content=content)

@@ -9636,11 +9636,16 @@ async function runSiteReview(){
     setSiteReviewStatus('분석 대기열 연결에 실패했습니다. 잠시 후 다시 검토해 주세요.','review');
     return;
   }
+  // R49: 매 검토 실행마다 고유 분석번호를 새로 발급해 동일 대상지 재검토도 DB 장부에 별도 누적한다.
+  currentAnalysisId=crypto.randomUUID?crypto.randomUUID():`analysis-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  currentAnalysisSignature='';analysisRunFinalized=false;analysisRunStartStored=false;
+  await startAnalysisRunLedger();
   currentAnalysisRunId=++analysisRunSequence;analysisStepRegistry.clear();
   // 새 검토가 시작되면 이전 timeout 후 뒤늦게 도착하는 요청이 현재 화면을 덮지 않도록 기존 request token을 무효화한다.
   buildingHubRequestToken+=1;planningAnalysis.requestToken=(planningAnalysis.requestToken||0)+1;streetBlockAnalysis.requestToken=(streetBlockAnalysis.requestToken||0)+1;
   openMappedSpatialModulesForAnalysis();beginAnalysisProgress();setSiteReviewStatus('검토 시작 · 독립 FACT 병행모드 · 완료된 결과부터 화면에 표시합니다.','running');
   let finalState='done',finalText='검토 완료 · 공식 공간 Fact와 사업별 판정을 갱신했습니다.';
+  let analysisTechnicalFailure=false;
   try{
     const measured=await safeAnalysisStep('도형면적',async()=>{const d=setBoundaryReferenceMetrics();if(!d)throw new Error('도형면적 계산 실패');return d;},5000,{classify:v=>({status:'fulfilled',detail:`${Math.round(v.area_m2).toLocaleString('ko-KR')}㎡ · 둘레 ${Math.round(v.perimeter_m).toLocaleString('ko-KR')}m`})});
 
@@ -9651,6 +9656,8 @@ async function runSiteReview(){
       const ok=Number(v?.selected_count||0)>0;
       return {status:ok?'fulfilled':'partial',detail:ok?`${v.selected_count}필지 · 사용자 구역계 유지`:'자동포함 필지 없음 · 사용자 구역계로 후속분석 계속'};
     }});
+    // 연속지적 확정 후 대표지번·전체 지번/PNU를 running 장부에도 즉시 갱신한다.
+    try{await startAnalysisRunLedger();}catch(e){console.warn('[analysis-ledger] parcel refresh failed',e);}
     const steps=[...localSteps,parcelStep];
     let stationStep=null;
     if(!stationAnalysis.loaded || !stationFeatures.length){await loadBuiltInStationDataset(true);}
@@ -9732,6 +9739,7 @@ async function runSiteReview(){
     const finalReadiness=coreFactReadiness();
     if(!finalReadiness.ready){finalState='review';finalText=finalReadiness.message;renderCoreFactPending(finalReadiness);}
   }catch(e){
+    analysisTechnicalFailure=true;
     console.error('[site-review] 전체 검토',e);finalState='review';finalText='검토 중 오류가 발생했습니다. 확보된 Fact만 유지하고 미확보 항목은 REVIEW로 남겼습니다.';
   }finally{
     await releaseAnalysisQueueSlot();
@@ -9742,6 +9750,10 @@ async function runSiteReview(){
     safeSchemeUiStep('overview-final',()=>syncServiceOverview(),null);
     safeSchemeUiStep('candidate-final',()=>updateCandidateSchemes(),null);
     safeSchemeUiStep('priority-final',()=>renderPriorityPreview(),null);
+    const ledgerStatus=analysisTechnicalFailure?'failed':(finalState==='review'?'review':'completed');
+    await finishAnalysisRunLedger(ledgerStatus,finalText);
+    analysisRunFinalized=true;
+    try{queueAnalysisAnalytics();}catch(e){console.error('[candidate-analytics-final]',e);}
     setTimeout(()=>invalidateAllSpatialMaps(true),80);
   }
 }
@@ -17773,6 +17785,8 @@ const analyticsSessionId=analyticsId(sessionStorage,'urban_session_id_v1');
 let analyticsTimer=null;
 let currentAnalysisId='';
 let currentAnalysisSignature='';
+let analysisRunFinalized=false;
+let analysisRunStartStored=false;
 function ensureAnalysisId(signature=''){
   if(!currentAnalysisId || (signature&&signature!==currentAnalysisSignature)){
     currentAnalysisId=crypto.randomUUID?crypto.randomUUID():`analysis-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -17796,6 +17810,60 @@ function analyticsAddressText(){
     if(v&&!labels.includes(v))labels.push(v);
   }
   return labels.slice(0,20).join(' / ').slice(0,1000);
+}
+function analyticsParcelEntries(){
+  const out=[];
+  for(const pnu0 of selectedParcelPnus){
+    const pnu=String(pnu0||'').trim();
+    if(!pnu)continue;
+    const props=parcelFeatureMap.get(pnu)?.properties||{};
+    const label=String(props._input_address||props.jibun_nm||props.jibun||props.addr||props.address||'').trim().slice(0,300);
+    out.push({pnu,label});
+    if(out.length>=5000)break;
+  }
+  return out.sort((a,b)=>(a.label||a.pnu).localeCompare((b.label||b.pnu),'ko'));
+}
+function analyticsCentroid(){
+  let centroid_lat=null,centroid_lng=null;
+  try{const c=turf.centroid(turf.feature(activeGeometry)).geometry.coordinates;centroid_lng=Number(c[0]);centroid_lat=Number(c[1]);}catch(e){}
+  return {centroid_lat,centroid_lng};
+}
+function currentAnalysisRunPayload(){
+  let area=0;
+  try{area=Number(commonSchemeData()?.area)||0;}catch(e){}
+  const parcels=analyticsParcelEntries();
+  const center=analyticsCentroid();
+  let address=analyticsAddressText();
+  if(!address&&parcels.length)address=parcels[0].label||'';
+  return {
+    analysis_id:currentAnalysisId,visitor_id:analyticsVisitorId,session_id:analyticsSessionId,
+    address_text:address||null,parcels,area_m2:area||null,parcel_count:Math.max(parcels.length,Number(document.getElementById('total_parcel_count')?.value)||0),
+    centroid_lat:center.centroid_lat,centroid_lng:center.centroid_lng
+  };
+}
+async function startAnalysisRunLedger(){
+  if(!currentAnalysisId)return;
+  try{
+    const response=await fetch('/api/analytics/analysis-runs/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(currentAnalysisRunPayload()),keepalive:true});
+    analysisRunStartStored=!!response.ok;
+  }catch(e){analysisRunStartStored=false;console.warn('[analysis-ledger] start storage failed',e);}
+}
+async function finishAnalysisRunLedger(status='completed',note=''){
+  if(!currentAnalysisId)return;
+  const payload=currentAnalysisRunPayload();
+  const recs=(analysisState.recommendations||[]).slice(0,10).map(x=>({scheme:x.scheme||'',name:x.name||'',decision:x.decision||''}));
+  const decisions=Object.values(analysisState.scheme_decisions||{});
+  payload.status=status;payload.recommendations=recs;payload.result_note=String(note||'').slice(0,4000);
+  payload.result_summary={
+    recommended:recs.length,
+    available:decisions.filter(x=>['available','alternative'].includes(x.display_state)).length,
+    alternative:decisions.filter(x=>x.display_state==='alternative').length,
+    adjustable:decisions.filter(x=>x.display_state==='adjustable').length,
+    excluded:decisions.filter(x=>x.display_state==='unavailable').length,
+    review:decisions.filter(x=>x.display_state==='pending').length
+  };
+  try{await fetch('/api/analytics/analysis-runs/finish',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),keepalive:true});}
+  catch(e){console.warn('[analysis-ledger] finish storage failed',e);}
 }
 
 function feedbackContextText(){
@@ -17912,21 +17980,21 @@ async function refreshAdminUi(){
 
 function queueAnalysisAnalytics(){
   clearTimeout(analyticsTimer);
+  const queuedAnalysisId=currentAnalysisId;
   analyticsTimer=setTimeout(()=>{
+    if(!analysisRunFinalized||!queuedAnalysisId||currentAnalysisId!==queuedAnalysisId)return;
     const area=commonSchemeData().area;
     if(!activeGeometry||area==null)return;
     const pnus=[...selectedParcelPnus].map(String).sort();
     const recs=(analysisState.recommendations||[]).slice(0,3).map(x=>({scheme:x.scheme,name:x.name,decision:x.decision}));
-    const signature=JSON.stringify([pnus,Math.round(Number(area)||0),recs.map(x=>x.scheme)]);
-    const analysisId=ensureAnalysisId(signature);
-    if(sessionStorage.getItem('urban_last_analysis_signature')===signature)return;
-    let centroidLat=null,centroidLng=null;
-    try{const c=turf.centroid(turf.feature(activeGeometry)).geometry.coordinates;centroidLng=Number(c[0]);centroidLat=Number(c[1]);}catch(e){}
+    const analysisId=queuedAnalysisId;
+    if(sessionStorage.getItem('urban_last_analysis_id')===analysisId)return;
+    const center=analyticsCentroid();
     const decisions=Object.values(analysisState.scheme_decisions||{});
     analyticsPost('analysis_complete',{
       analysis_id:analysisId,
       address_text:analyticsAddressText(),pnu_list:pnus.slice(0,200),area_m2:Number(area),parcel_count:pnus.length,
-      centroid_lat:centroidLat,centroid_lng:centroidLng,recommendations:recs,
+      centroid_lat:center.centroid_lat,centroid_lng:center.centroid_lng,recommendations:recs,
       result_summary:{
         recommended:recs.length,
         available:decisions.filter(x=>['available','alternative'].includes(x.display_state)).length,
@@ -17936,8 +18004,8 @@ function queueAnalysisAnalytics(){
         review:decisions.filter(x=>x.display_state==='pending').length
       }
     });
-    sessionStorage.setItem('urban_last_analysis_signature',signature);
-  },2500);
+    sessionStorage.setItem('urban_last_analysis_id',analysisId);
+  },600);
 }
 
 function candidatePreflightProjectItems(){
