@@ -12581,6 +12581,95 @@ function activationSmallscaleExclusionFact(store){
   if(legalHits.length)return {status:'REVIEW',value:legalHits.map(x=>`${x.name||x.type_label||'소규모주택정비'}${x.code?`(${x.code})`:''}`).join(' / '),note:'법정 사업구역 중첩은 확인되나 주민합의체 구성·조합설립인가 단계자료 미확보',hits:legalHits,approved_hits:[],pending_hits:[],unknown_hits:legalHits};
   return {status:'PASS',value:'해당 추진사업 중첩 없음',note:'서울플랜+ 기존 추진사업 및 정비현황 공간중첩',hits:[],approved_hits:[],pending_hits:[],unknown_hits:[]};
 }
+// ---------- R52 성장잠재권 2-1-4 가/나목 배제/예외 전용 FACT ----------
+// 역세권활성화와 유사한 현황 FACT를 사용하되 성장잠재권 Rule은 별도 함수로 유지한다.
+function growthRenewalExclusionFact(store){
+  const r=store.site.renewal||{},manual=r.renewal_area_type||'auto';
+  const manualFallback=()=>{
+    if(manual==='none')return {status:'PASS',value:'정비구역·정비예정구역 중첩 없음 확인',note:'수기/기존 자동선택값',hits:[],excluded_hits:[],exception_hits:[]};
+    if(manual==='urban_planned')return {status:'PASS',value:'도시정비형 재개발 정비예정구역 · 배제 예외',note:'성장잠재권 사업대상지 기준 나목 2) 예외',hits:[],excluded_hits:[],exception_hits:[{type:'urban_planned'}]};
+    if(manual!=='auto')return {status:'FAIL',value:`정비구역 유형 ${manual}`,note:'정비구역·정비예정구역 배제조건 해당',hits:[],excluded_hits:[{type:manual}],exception_hits:[]};
+    return {status:'REVIEW',value:'정비구역·정비예정구역 GIS 확인 필요',note:r.error||'정비구역 공간자료 확인 필요',hits:[],excluded_hits:[],exception_hits:[]};
+  };
+  if(!r.loaded)return manualFallback();
+  const hits=(r.overlaps||[]).filter(x=>{
+    const code=String(x.code||'').trim(),type=String(x.type||'');
+    if(type==='promotion'||ACTIVATION_SMALLSCALE_LEGAL_CODES.has(code))return false;
+    if(['housing_district','housing_planned','urban_district','urban_planned','reconstruction'].includes(type))return true;
+    return type==='other_renewal' && ['UQ1211','UQ1212','UQ1220','UQ1250','UQ1290'].includes(code);
+  });
+  if(!hits.length){
+    if(manual!=='auto'&&manual!=='none')return manualFallback();
+    return {status:'PASS',value:'정비구역·정비예정구역 중첩 없음',note:'공식 정비현황 공간중첩',hits:[],excluded_hits:[],exception_hits:[]};
+  }
+  const exceptionHits=hits.filter(x=>x.type==='urban_planned'||String(x.code||'')==='BZ102');
+  const excludedHits=hits.filter(x=>!exceptionHits.includes(x));
+  const label=x=>`${x.name||x.type_label||x.type||'-'}${x.code?`(${x.code})`:''}`;
+  if(excludedHits.length)return {status:'FAIL',value:excludedHits.map(label).join(' / '),note:exceptionHits.length?'도시정비형 재개발 정비예정구역 예외도 중첩하나 별도 배제 정비구역이 함께 존재':'정비구역·정비예정구역 배제조건 해당',hits,excluded_hits:excludedHits,exception_hits:exceptionHits};
+  return {status:'PASS',value:exceptionHits.map(label).join(' / '),note:'도시정비형 재개발 정비예정구역만 배제 예외',hits,excluded_hits:[],exception_hits:exceptionHits};
+}
+
+function growthPromotionExclusionFact(store){
+  const r=store.site.renewal||{},manual=store.common.renewalPromotionStatus||'auto';
+  if(!r.loaded){
+    if(manual==='none')return {status:'PASS',value:'재정비촉진지구 중첩 없음 확인',note:'수기 확인값',hits:[],excluded_hits:[],exception_hits:[],unknown_hits:[]};
+    if(['district','zone'].includes(manual))return {status:'REVIEW',value:manual==='district'?'재정비촉진지구 중첩':'재정비촉진구역 중첩',note:'세부유형(존치관리구역·정비구역 해제지역) 확인 필요',hits:[],excluded_hits:[],exception_hits:[],unknown_hits:[{type:'promotion'}]};
+    return {status:'REVIEW',value:'재정비촉진지구 GIS 확인 필요',note:r.error||'재정비촉진 공간자료 확인 필요',hits:[],excluded_hits:[],exception_hits:[],unknown_hits:[]};
+  }
+  const all=(r.overlaps||[]).filter(x=>x.type==='promotion');
+  if(!all.length)return {status:'PASS',value:'재정비촉진지구 중첩 없음',note:'공식 정비현황 공간중첩',hits:[],excluded_hits:[],exception_hits:[],unknown_hits:[]};
+  const detailed=all.filter(x=>ACTIVATION_PROMOTION_DETAIL_CODES.has(String(x.code||''))||/존치관리구역|정비구역\s*해제/.test(String(x.type_label||'')));
+  const hits=detailed.length?detailed:all;
+  const exceptionHits=hits.filter(x=>String(x.code||'')==='BZ404'||/존치관리구역|정비구역\s*해제/.test(String(x.type_label||'')));
+  const excludedHits=hits.filter(x=>['BZ401','BZ402','BZ403'].includes(String(x.code||''))||/^(재정비촉진지구|재정비촉진구역|존치정비구역)$/.test(String(x.type_label||'')));
+  const unknownHits=hits.filter(x=>!exceptionHits.includes(x)&&!excludedHits.includes(x));
+  const label=x=>`${x.name||x.type_label||'재정비촉진'}${x.type_label?` · ${x.type_label}`:''}${x.code?`(${x.code})`:''}`;
+  if(excludedHits.length)return {status:'FAIL',value:excludedHits.map(label).join(' / '),note:exceptionHits.length?'예외구역도 중첩하나 배제대상 촉진구역이 함께 존재':'재정비촉진지구 원칙 배제',hits,excluded_hits:excludedHits,exception_hits:exceptionHits,unknown_hits:unknownHits};
+  if(unknownHits.length)return {status:'REVIEW',value:unknownHits.map(label).join(' / '),note:'세부유형 미확인 · 존치관리구역 또는 정비구역 해제지역 예외 여부 확인',hits,excluded_hits:[],exception_hits:exceptionHits,unknown_hits:unknownHits};
+  return {status:'PASS',value:exceptionHits.map(label).join(' / '),note:'존치관리구역 또는 정비구역 해제지역 · 배제 예외',hits,excluded_hits:[],exception_hits:exceptionHits,unknown_hits:[]};
+}
+
+function growthSmallscaleExclusionFact(store){
+  const r=store.site.renewal||{};
+  if(!r.loaded)return {status:'REVIEW',value:'소규모주택정비 추진단계 GIS 확인 필요',note:r.error||'주민합의체 구성·조합설립인가 여부 확인 필요',hits:[],approved_hits:[],pending_hits:[],unknown_hits:[]};
+  const projects=(r.existing_projects||[]).filter(x=>ACTIVATION_SMALLSCALE_PROJECT_CODES.has(String(x.project_code||'')));
+  const legalHits=(r.overlaps||[]).filter(x=>ACTIVATION_SMALLSCALE_LEGAL_CODES.has(String(x.code||'')));
+  const approved=projects.filter(x=>activationSmallscaleStageState(x)==='APPROVED');
+  const pending=projects.filter(x=>activationSmallscaleStageState(x)==='PRE_APPROVAL');
+  const unknown=projects.filter(x=>activationSmallscaleStageState(x)==='UNKNOWN');
+  const label=x=>`${x.type_label||x.name||'소규모주택정비'}${x.name&&x.type_label?` · ${x.name}`:''}${x.stage_label?` · ${x.stage_label}`:''}${x.project_code?`(${x.project_code})`:x.code?`(${x.code})`:''}`;
+  if(approved.length)return {status:'FAIL',value:approved.map(label).join(' / '),note:'주민합의체 구성 또는 조합설립인가 완료(또는 그 이후 추진단계) 확인',hits:[...projects,...legalHits],approved_hits:approved,pending_hits:pending,unknown_hits:unknown};
+  if(unknown.length)return {status:'REVIEW',value:unknown.map(label).join(' / '),note:'소규모주택정비 사업은 확인되나 주민합의체/조합설립인가 단계 식별 불가',hits:[...projects,...legalHits],approved_hits:[],pending_hits:pending,unknown_hits:unknown};
+  if(projects.length)return {status:'PASS',value:pending.map(label).join(' / ')||projects.map(label).join(' / '),note:'공식 현황상 주민합의체 구성·조합설립인가 이전 단계',hits:[...projects,...legalHits],approved_hits:[],pending_hits:pending,unknown_hits:[]};
+  if(legalHits.length)return {status:'REVIEW',value:legalHits.map(x=>`${x.name||x.type_label||'소규모주택정비'}${x.code?`(${x.code})`:''}`).join(' / '),note:'법정 사업구역 중첩은 확인되나 주민합의체 구성·조합설립인가 단계자료 미확보',hits:legalHits,approved_hits:[],pending_hits:[],unknown_hits:legalHits};
+  return {status:'PASS',value:'해당 추진사업 중첩 없음',note:'서울플랜+ 기존 추진사업 및 정비현황 공간중첩',hits:[],approved_hits:[],pending_hits:[],unknown_hits:[]};
+}
+
+function growthCharacteristicExclusionFact(store){
+  const f=store.site?.spatial_evidence?.downtown_characteristic;
+  if(!f||f.known!==true)return {status:'REVIEW',value:'특성관리지구 공간판정 미확인',note:f?.note||'서울도심 기본계획 특성관리지구 FACT 확인 필요'};
+  const area=Number(f.raw_overlap_area_m2||0),pct=Number(f.raw_overlap_pct||0);
+  const value=f.status==='FAIL'?`특성관리지구 내부 안전영역 중첩${area>0?` · 복원경계 중첩 ${Math.round(area).toLocaleString('ko-KR')}㎡ (${pct.toFixed(1)}%)`:''}`:
+    f.status==='REVIEW'?`특성관리지구 경계·60m 오차대 확인필요${area>0?` · 복원경계 중첩 ${Math.round(area).toLocaleString('ko-KR')}㎡`:''}`:'특성관리지구 및 경계 60m 오차대 외부';
+  return {status:['PASS','FAIL','REVIEW'].includes(f.status)?f.status:'REVIEW',value,note:f.note||'서울도심 기본계획 공식도면 기반 복원자료',source_type:f.source_type||'',raw:f};
+}
+
+function growthApartment10kExclusionFact(store){
+  const b=store.site?.building||{},records=b.records||[],query=b.title_query||{};
+  const complete=query.complete===true;
+  const grouping=reconstructionComplexGroups(records);
+  const identified=(grouping.groups||[]).filter(g=>Number.isFinite(Number(g.area_m2))&&Number(g.area_m2)>0);
+  const excluded=identified.filter(g=>Number(g.area_m2)>=10000);
+  const areaUnknown=(grouping.groups||[]).filter(g=>!Number.isFinite(Number(g.area_m2))||Number(g.area_m2)<=0);
+  const label=g=>`${g.name||'공동주택단지'} ${Number(g.area_m2).toLocaleString('ko-KR',{maximumFractionDigits:0})}㎡`;
+  if(excluded.length)return {status:'FAIL',value:excluded.map(label).join(' / '),note:'확인된 개별 공동주택단지 대지면적이 10,000㎡ 이상',complexes:grouping.groups,excluded_complexes:excluded,unknown_complexes:areaUnknown,grouping_status:grouping.status};
+  if(!complete)return {status:'REVIEW',value:identified.length?`확인 단지 최대 ${Math.max(...identified.map(g=>Number(g.area_m2))).toLocaleString('ko-KR',{maximumFractionDigits:0})}㎡ · 건축HUB 일부 미확인`:'공동주택단지 대지면적 자료 미확인',note:`건축HUB 표제부 조회가 완전하지 않아 10,000㎡ 이상 단지 부재를 확정할 수 없음${Number(query.error_count||0)>0?` · 실패 ${Number(query.error_count||0)}필지`:''}`,complexes:grouping.groups,excluded_complexes:[],unknown_complexes:[...areaUnknown],grouping_status:grouping.status};
+  if(grouping.unnamed_count>0||areaUnknown.length)return {status:'REVIEW',value:identified.length?`확인 단지 최대 ${Math.max(...identified.map(g=>Number(g.area_m2))).toLocaleString('ko-KR',{maximumFractionDigits:0})}㎡ · 단지구성 일부 미확인`:'공동주택 건축물은 있으나 단지 대지면적 식별 불가',note:`단지명 미확인 ${Number(grouping.unnamed_count||0)}동 또는 대지면적 미확인 단지가 있어 10,000㎡ 기준 추가 확인 필요`,complexes:grouping.groups,excluded_complexes:[],unknown_complexes:[...areaUnknown],grouping_status:grouping.status};
+  if(!grouping.groups.length)return {status:'PASS',value:'10,000㎡ 이상 공동주택단지 증거 없음',note:'건축HUB 표제부 전체 조회 · 공동주택단지 식별 없음',complexes:[],excluded_complexes:[],unknown_complexes:[],grouping_status:grouping.status};
+  const max=Math.max(...identified.map(g=>Number(g.area_m2)));
+  return {status:'PASS',value:`확인 단지 최대 ${max.toLocaleString('ko-KR',{maximumFractionDigits:0})}㎡`,note:'개별 공동주택단지별 대지면적 확인 · 10,000㎡ 미만',complexes:grouping.groups,excluded_complexes:[],unknown_complexes:[],grouping_status:grouping.status};
+}
+
 function summarizeRoadList(road){
   const arr=(road?.roads||[]).slice(0,5).map(x=>`${x.name} ${x.width_m==null?'-':x.width_m+'m'}${x.contact_m==null?'':`(${Number(x.contact_m).toFixed(1)}m 접면)`}`);
   return arr.length?arr.join(' / '):'도로 현황 미확인';
@@ -12615,15 +12704,12 @@ function growthPotentialSpatialFacts(store){
   }else if(maxRoad!=null&&maxRoad>=35){
     arterialValue=`35m 이상 도로중심선 폭원 후보 · ${arterialValue}`;arterialNote+=' · ROAD_BT 폭원은 확인했으나 도로기능/자동차전용도로 제외 여부 미확인';
   }
-  const renewalFact=renewalExclusionFact(store,{allowUrbanPlanned:true});
-  const promotionFact=promotionExclusionFact(store);
+  const renewalFact=growthRenewalExclusionFact(store);
+  const promotionFact=growthPromotionExclusionFact(store);
   const facilityFact=planningFacilityFact(store);
-  const records=store.site.building.records||[];
-  const aptRecords=records.filter(r=>/공동주택|아파트/.test(`${r.main_use} ${r.other_use}`));
-  const apartment10k=Number.isFinite(area)&&area>=10000?(c.reconstructionApartment===true||aptRecords.length>0):false;
-  const apartmentKnown=records.length>0 || c.reconstructionApartment===true;
-  const smallscaleHits=(renewal.overlaps||[]).filter(x=>/소규모|가로주택|자율주택|소규모재건축/.test(`${x.name} ${x.type}`));
-  const characteristic=(store.site.development.planning_districts||[]).filter(x=>/특성관리/.test(x.name||''));
+  const characteristicFact=growthCharacteristicExclusionFact(store);
+  const smallscaleFact=growthSmallscaleExclusionFact(store);
+  const apartment10kFact=growthApartment10kExclusionFact(store);
   const age=schemeAgeFact(store,'growth_potential',route);
   const growthBlock=storeStreetBlockFact(store,'growth_potential');
   const fact={
@@ -12634,9 +12720,7 @@ function growthPotentialSpatialFacts(store){
     zoning:{current:c.zoning||'',allowed:['제2종일반주거(7층)','제2종일반주거','제3종일반주거','준주거'].includes(c.zoning||'')},
     area:{m2:c.area,route,base_ok:c.area==null?null:(route==='district'?(c.area>=1500&&c.area<=5000):(c.area>=1500&&c.area<=10000)),advisory_exception:c.growthAdvisory},
     exclusions:{renewal:renewalFact,promotion:promotionFact,facility:facilityFact,
-      characteristic:{known:characteristic.length>0,value:characteristic.map(x=>x.name).join(' / ')||'전용 공간데이터 미연결',status:characteristic.length?'FAIL':'REVIEW'},
-      smallscale:{known:smallscaleHits.length>0,value:smallscaleHits.map(x=>x.name).join(' / ')||'주민합의체 구성·조합설립인가 공간데이터 미확보',status:smallscaleHits.length?'FAIL':'REVIEW'},
-      apartment10k:{known:apartmentKnown,value:apartment10k?'10,000㎡ 이상 공동주택단지 후보':'해당 증거 없음',status:apartment10k?'FAIL':apartmentKnown?'PASS':'REVIEW'}},
+      characteristic:characteristicFact,smallscale:smallscaleFact,apartment10k:apartment10kFact},
     aging:{assessment:age},
     consent:{owner_pct:c.ownerConsent,land_pct:c.landConsent},
     planning:{target_zoning:growthPotentialTarget(c),density:growthPotentialDensity(c)},
@@ -12650,9 +12734,9 @@ function growthPotentialSpatialFacts(store){
       spatialFactRow('정비구역·예정구역',renewalFact.value,renewalFact.status==='REVIEW'?'REVIEW':'CONFIRMED',renewalFact.note),
       spatialFactRow('재정비촉진지구·구역',promotionFact.value,promotionFact.status==='REVIEW'?'REVIEW':'CONFIRMED',promotionFact.note),
       spatialFactRow('도시·군계획시설',facilityFact.value,facilityFact.status==='REVIEW'?'REVIEW':'CONFIRMED',facilityFact.note),
-      spatialFactRow('특성관리지구',characteristic.length?characteristic.map(x=>x.name).join(' / '):'전용 경계 미연결','REVIEW','서울도심 기본계획상 특성관리지구 여부 공식 경계 확인 필요'),
-      spatialFactRow('소규모주택정비 인가현황',smallscaleHits.length?smallscaleHits.map(x=>x.name).join(' / '):'전용 인가현황 미확보','REVIEW','주민합의체 구성 또는 조합설립인가 여부'),
-      spatialFactRow('10,000㎡ 이상 공동주택단지',apartmentKnown?(apartment10k?'해당 후보':'건축HUB상 해당 증거 없음'):'자료 미확인',apartmentKnown?'CONFIRMED':'REVIEW','건축물 용도+대상면적 1차 확인 · 단지경계 재확인')
+      spatialFactRow('특성관리지구',characteristicFact.value,characteristicFact.status==='REVIEW'?'REVIEW':'CONFIRMED',characteristicFact.note),
+      spatialFactRow('소규모주택정비 인가현황',smallscaleFact.value,smallscaleFact.status==='REVIEW'?'REVIEW':'CONFIRMED',smallscaleFact.note),
+      spatialFactRow('10,000㎡ 이상 공동주택단지',apartment10kFact.value,apartment10kFact.status==='REVIEW'?'REVIEW':'CONFIRMED',apartment10kFact.note)
     ]
   };
   store.scheme_specific.growth_potential=fact;return fact;
@@ -12685,9 +12769,9 @@ function checkGrowthPotentialFromFacts(store,f){
   for(const [label,ex] of [['정비구역·예정구역',f.exclusions.renewal],['재정비촉진지구',f.exclusions.promotion],['도시·군계획시설',f.exclusions.facility]]){
     rows.push(schemeRow(label,'운영기준 배제지역 · 일부 예외는 결정고시·조정가능성 확인',ex.value,ex.status,ex.note,true,{sourceId:'GROWTH',locator:'2-1-4 나목'}));
   }
-  rows.push(schemeRow('특성관리지구','서울도심 기본계획상 특성관리지구 제외',f.exclusions.characteristic.value,f.exclusions.characteristic.status,'전용 공식 경계 미연결 시 자동 PASS 금지',true,{sourceId:'GROWTH',locator:'2-1-4 나목 1)'}));
-  rows.push(schemeRow('소규모주택정비 인가','주민합의체 구성 또는 조합설립인가 지역 제외',f.exclusions.smallscale.value,f.exclusions.smallscale.status,'인가현황 공간자료 미확보 시 REVIEW',true,{sourceId:'GROWTH',locator:'2-1-4 나목 5)'}));
-  rows.push(schemeRow('대규모 공동주택단지','대지면적 10,000㎡ 이상 공동주택단지 제외',f.exclusions.apartment10k.value,f.exclusions.apartment10k.status,'단지경계·용도 최종확인',true,{sourceId:'GROWTH',locator:'2-1-4 나목 6)'}));
+  rows.push(schemeRow('특성관리지구','서울도심 기본계획상 특성관리지구 제외',f.exclusions.characteristic.value,f.exclusions.characteristic.status,f.exclusions.characteristic.note,true,{sourceId:'GROWTH',locator:'2-1-4 나목 1)'}));
+  rows.push(schemeRow('소규모주택정비 인가','주민합의체 구성 또는 조합설립인가 지역 제외',f.exclusions.smallscale.value,f.exclusions.smallscale.status,f.exclusions.smallscale.note,true,{sourceId:'GROWTH',locator:'2-1-4 나목 5)'}));
+  rows.push(schemeRow('대규모 공동주택단지','개별 공동주택단지의 대지면적 10,000㎡ 이상이면 제외',f.exclusions.apartment10k.value,f.exclusions.apartment10k.status,f.exclusions.apartment10k.note,true,{sourceId:'GROWTH',locator:'2-1-4 나목 6)'}));
 
   const age=f.aging.assessment;
   rows.push(schemeRow('노후도',f.route.selected==='district'?'지구단위계획형 → 서울시 도시계획조례 시행규칙 별표1':'도시정비형 → 도정법·서울시 도시정비조례',ageFactValue(age),age?.status||'REVIEW',ageFactNote(age),true,{sourceId:age?.source_id||(f.route.selected==='district'?'URBAN_PLANNING_AGE':'RENEWAL_AGE'),locator:age?.source_locator||'2-1-5 다목'}));
