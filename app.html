@@ -10737,6 +10737,7 @@ const RULE_SOURCE_CATALOG={
   HOUSING_ACT:{type:'법률·시행령',title:'주택법 제15조 및 주택법 시행령 제27조',effective:'주택법 시행령 2026-08-04',locator:'사업계획승인 대상',url:'https://www.law.go.kr/%EB%B2%95%EB%A0%B9/%EC%A3%BC%ED%83%9D%EB%B2%95',verified:true},
   SEOUL_URBAN_PLAN_ORD:{type:'조례',title:'서울특별시 도시계획 조례',effective:'2026-07-13',locator:'제48조 용도지역 안에서의 용적률 · 별표17 준공업지역 공장비율',url:'https://www.law.go.kr/ordinInfoP.do?ordinId=2000719',verified:true},
   INDUSTRIAL_BASIC_2040:{type:'법정 기본계획',title:'2040 서울 공업지역기본계획',effective:'2026-03-12 공고',locator:'공업지역 관리유형 · 산업혁신구역·산업정비구역 · 산업비율·밀도관리',url:'https://urban.seoul.go.kr/',verified:true},
+  SEMIINDUSTRIAL_2009_REF:{type:'서울시 계획자료',title:'2009 서울시 준공업지역 종합발전계획 수립 용역 최종성과품',effective:'2009-10',locator:'1.2 지역분석기준 · 가구별 공장비율 / 자치구별 가구별 공장비율 현황도',url:'',verified:true},
   INDUSTRIAL_ACT:{type:'법률·시행령·시행규칙',title:'도시 공업지역의 관리 및 활성화에 관한 특별법령',effective:'2026-03-12 현행',locator:'공업지역기본계획 · 산업혁신구역 · 산업정비구역 · 시행규칙 제19조·별표2 산업유지비율',url:'https://www.law.go.kr/lsInfoP.do?lsId=014220',verified:true},
   HOUSING_STANDARDS:{type:'대통령령',title:'주택건설기준 등에 관한 규정',effective:'2026-06-30',locator:'주택단지·부대복리시설·도로 등 설계기준',url:'https://law.go.kr/LSW/lsInfoP.do?lsId=004948',verified:true}
 };
@@ -12346,7 +12347,7 @@ function buildSiteFactStore(){
         union_coverage:stationSnapshot.union},
       road_raw:roadRawFacts(c),
       road:compactRoadFacts(c),
-      spatial_evidence:{downtown_characteristic:downtownCharacteristicSpatialEvidenceFacts(),zoning:zoningSpatialEvidenceFacts(),roads:schemeRoadEvidenceFacts(c),frontage:schemeFrontageEvidenceFacts(c),street_blocks:schemeStreetBlockSpatialEvidenceFacts(),street_block:schemeStreetBlockFact('smallscale'),activation_arterial:activationLinearCommercialEvidence(),safe_medical:safeMedicalSpatialEvidenceFacts(),safe_downtown_exclusion:safeDowntownExclusionSpatialEvidenceFacts(),school_absolute_protection:schoolAbsoluteProtectionSpatialEvidenceFacts()},
+      spatial_evidence:{downtown_characteristic:downtownCharacteristicSpatialEvidenceFacts(),zoning:zoningSpatialEvidenceFacts(),roads:schemeRoadEvidenceFacts(c),frontage:schemeFrontageEvidenceFacts(c),street_blocks:schemeStreetBlockSpatialEvidenceFacts(),street_block:schemeStreetBlockFact('smallscale'),activation_arterial:activationLinearCommercialEvidence(),safe_medical:safeMedicalSpatialEvidenceFacts(),safe_downtown_exclusion:safeDowntownExclusionSpatialEvidenceFacts(),school_absolute_protection:schoolAbsoluteProtectionSpatialEvidenceFacts(),factory_ratio_2009:factoryRatio2009SpatialEvidenceFacts()},
       building:{total:Number(analysisState.metrics.total_buildings||0),records:buildingRecords,source:'건축HUB 표제부',title_query:{...hubTitleQueryState},floor_query:{...hubFloorQueryState},current_far:siteCurrentVolumeRatioFact(buildingRecords,c.area),
         note:'공통 현황은 사용승인일·구조·용도·연면적·용적률산정연면적·지하층 등 사실값만 저장하며 법적 노후도 판정은 derived.age에서 제도별로 수행'},
       factory_usage:computeFactoryUsageFact(buildingRecords,currentBuildingFeatures,c.factory),
@@ -12498,6 +12499,18 @@ function planningFacilityFact(store){
   }
   const hits=d.planning_facilities||[];
   return hits.length?{status:'REVIEW',value:hits.map(x=>x.name||x.category).join(' / '),note:'시설부지 중첩 · 조정(복합·해제) 가능성이 인정되면 예외'}:{status:'PASS',value:'도시·군계획시설 중첩 없음',note:'VWorld UPIS 공간중첩'};
+}
+// 성장잠재권은 용도지역·도시관리계획 변경을 전제로 검토하는 초기 사업가능성 모듈이므로,
+// 도시계획시설 중첩 사실이 확인되면 REVIEW로 멈추지 않고 PASS + 계획조건으로 유지한다.
+// 다만 도시계획시설 자료 자체가 미확보이면 FACT 부재이므로 REVIEW를 유지한다.
+function growthPlanningFacilityFact(store){
+  const d=store.site.development||{};
+  if(!d.district_plan_loaded || (d.planning_errors||[]).some(x=>String(x?.id||'').startsWith('LT_C_UPISUQ15'))){
+    return {status:'REVIEW',value:'도시·군계획시설 자료 일부 미확인',note:'시설 현황 FACT 미확보 · 공식 결정도서 재조회 필요',plan_condition:true};
+  }
+  const hits=d.planning_facilities||[];
+  if(!hits.length)return {status:'PASS',value:'도시·군계획시설 중첩 없음',note:'VWorld UPIS 공간중첩',plan_condition:false};
+  return {status:'PASS',value:hits.map(x=>x.name||x.category).join(' / '),note:'도시계획시설 중첩 확인 · 초기 사업가능성은 유지하고 입안·계획수립 단계에서 도시관리계획 변경, 시설 조정·복합·해제 및 관계부서 협의를 검토',plan_condition:true,hits};
 }
 
 // ---------- R51 역세권활성화 2-1-3 다목 배제/예외 전용 FACT ----------
@@ -12706,7 +12719,7 @@ function growthPotentialSpatialFacts(store){
   }
   const renewalFact=growthRenewalExclusionFact(store);
   const promotionFact=growthPromotionExclusionFact(store);
-  const facilityFact=planningFacilityFact(store);
+  const facilityFact=growthPlanningFacilityFact(store);
   const characteristicFact=growthCharacteristicExclusionFact(store);
   const smallscaleFact=growthSmallscaleExclusionFact(store);
   const apartment10kFact=growthApartment10kExclusionFact(store);
@@ -12766,8 +12779,11 @@ function checkGrowthPotentialFromFacts(store,f){
   let areaStatus=f.area.m2==null?'REVIEW':f.area.base_ok?'PASS':f.area.advisory_exception===true?'REVIEW':'FAIL';
   rows.push(schemeRow('대상지 면적',f.route.selected==='district'?'지구단위계획형 1,500~5,000㎡':'도시정비형 재개발 1,500~10,000㎡',fmtSchemeArea(f.area.m2),areaStatus,!f.area.base_ok&&f.area.advisory_exception?'지원자문단 인정 예외 확인':'' ,true,{sourceId:'GROWTH',locator:'2-1-5 나목'}));
 
-  for(const [label,ex] of [['정비구역·예정구역',f.exclusions.renewal],['재정비촉진지구',f.exclusions.promotion],['도시·군계획시설',f.exclusions.facility]]){
-    rows.push(schemeRow(label,'운영기준 배제지역 · 일부 예외는 결정고시·조정가능성 확인',ex.value,ex.status,ex.note,true,{sourceId:'GROWTH',locator:'2-1-4 나목'}));
+  for(const [label,ex] of [['정비구역·예정구역',f.exclusions.renewal],['재정비촉진지구',f.exclusions.promotion]]){
+    rows.push(schemeRow(label,'운영기준 배제지역 · 일부 예외는 결정고시로 확인',ex.value,ex.status,ex.note,true,{sourceId:'GROWTH',locator:'2-1-4 나목'}));
+  }
+  {const ex=f.exclusions.facility;
+    rows.push(schemeRow('도시·군계획시설','현황시설 중첩은 도시관리계획 변경·조정(복합·해제) 검토를 전제로 초기 사업가능성 유지',ex.value,ex.status,ex.note,true,{sourceId:'GROWTH',locator:'2-1-4 나목 3)'}));
   }
   rows.push(schemeRow('특성관리지구','서울도심 기본계획상 특성관리지구 제외',f.exclusions.characteristic.value,f.exclusions.characteristic.status,f.exclusions.characteristic.note,true,{sourceId:'GROWTH',locator:'2-1-4 나목 1)'}));
   rows.push(schemeRow('소규모주택정비 인가','주민합의체 구성 또는 조합설립인가 지역 제외',f.exclusions.smallscale.value,f.exclusions.smallscale.status,f.exclusions.smallscale.note,true,{sourceId:'GROWTH',locator:'2-1-4 나목 5)'}));
@@ -13332,6 +13348,27 @@ function matchFactoryBuildingFeatures(factoryRecords,buildingFeatures){
   }
   return {matched,unmatched,ambiguous_parcels:[...ambiguousParcels]};
 }
+const SEMIINDUSTRIAL_FACTORY_2009_REFERENCE=Object.freeze({
+  available:true,
+  source_id:'SEMIINDUSTRIAL_2009_REF',
+  source_title:'2009 서울시 준공업지역 종합발전계획 수립 용역 최종성과품',
+  source_date:'2009-10',
+  legal_reference_date:'2008-01-31',
+  base_gis_date:'2008-11',
+  classes:['10% 미만','10~30%','30~50%','50% 이상'],
+  districts:['영등포구','강서구','구로구','금천구','성동구','도봉구'],
+  spatial_linked:false,
+  quality:'REFERENCE_BLOCK_CLASS',
+  note:'서울시 GIS(2008.11)를 기초로 2008.1.31 기준 공장등록대장·건축물 용도변경/말소대장·토지지목변경대장·현장조사를 반영한 가구·블록별 참고값. 법정계획 수립 시 공부·현장조사로 재산정.'
+});
+function factoryRatio2009SpatialEvidenceFacts(){
+  const a=analysisState?.factory_ratio_2009||null;
+  if(a&&a.known===true){
+    return {loaded:true,known:true,status:'CONFIRMED',class_label:a.class_label||a.factory_class||'',overlap_pct:Number.isFinite(Number(a.overlap_pct))?Number(a.overlap_pct):null,source_id:'SEMIINDUSTRIAL_2009_REF',quality:a.quality||'REFERENCE_BLOCK_CLASS',note:a.note||SEMIINDUSTRIAL_FACTORY_2009_REFERENCE.note};
+  }
+  return {loaded:false,known:false,status:'UNLINKED',class_label:'',overlap_pct:null,source_id:'SEMIINDUSTRIAL_2009_REF',quality:'REFERENCE_BLOCK_CLASS',note:'2009 계획 원문과 자치구별 가구별 공장비율 현황도는 확보했으나, 현재 배포본에는 지리좌표를 가진 원도형이 없어 대상지 자동중첩에는 사용하지 않음.'};
+}
+
 // 준공업지역 산업·공장 현황은 서로 다른 법정 개념을 분리한다.
 // 1) 법정 공장비율: 서울시 도시계획조례 별표17의 2008.1.31 기준 공장부지 비율.
 //    현재 데이터로 그 과거시점 비율을 확정하지 않으며, 공식/전문가 입력값만 사업 PASS/FAIL에 사용한다.
@@ -13429,6 +13466,7 @@ function computeFactoryUsageFact(records,buildingFeatures,manualPct){
     factory_ratio_reference_date:'2008-01-31',
     factory_ratio_current_proxy_pct:currentProxy.pct,
     factory_ratio_current_proxy:currentProxy,
+    factory_ratio_2009_reference:{...SEMIINDUSTRIAL_FACTORY_2009_REFERENCE},
     manual_ratio_pct:manual,
     source:manual!=null?'MANUAL':total||currentProxy.site_area_m2?'CURRENT_PROXY_ONLY':'NONE',
     calculation_basis:'LEGAL_FACTORY_RATIO_SEPARATED_FROM_BUILDING_COUNT',
@@ -13444,7 +13482,7 @@ function factoryUsageAsSchemeFact(factoryUsage){
   const note=fu.factory_ratio_pct!=null
     ?`서울시 도시계획조례 별표17 공장비율 ${fmtSchemePct(fu.factory_ratio_pct)} · 2008.1.31 기준 공식/전문가 입력`
     :(fu.factory_ratio_current_proxy_pct!=null?`법정 공장비율 미확정 · 현재 공장부지 현황추정 ${fmtSchemePct(fu.factory_ratio_current_proxy_pct)} · 2008.1.31 기준자료 필요`:'법정 공장비율 자료 없음');
-  return {pct:fu.factory_ratio_pct??null,factory_count:fu.factory_building_count??0,total_count:fu.total_building_count??0,building_pct:fu.factory_building_ratio_pct??null,current_proxy_pct:fu.factory_ratio_current_proxy_pct??null,source:fu.source||'NONE',note};
+  return {pct:fu.factory_ratio_pct??null,factory_count:fu.factory_building_count??0,total_count:fu.total_building_count??0,building_pct:fu.factory_building_ratio_pct??null,current_proxy_pct:fu.factory_ratio_current_proxy_pct??null,reference_2009:fu.factory_ratio_2009_reference||SEMIINDUSTRIAL_FACTORY_2009_REFERENCE,source:fu.source||'NONE',note};
 }
 
 // ---------- 2040 서울 공업지역기본계획: 준공업지역 전용 FACT / 실행수단 ----------
@@ -14235,6 +14273,57 @@ function smallscaleHousingStockFacts(records){
     autonomous_type:autoType,autonomous_count:autoCount,autonomous_threshold:autoThreshold,autonomous_label:autoLabel
   };
 }
+function smallscaleBlockCandidatePnus(relation){
+  const out=[];
+  if(!relation?.geometry)return out;
+  let block=null;try{block=turf.feature(relation.geometry);}catch(e){return out;}
+  for(const pnu0 of selectedParcelPnus){
+    const pnu=String(pnu0),pf=parcelFeatureMap.get(pnu);if(!pf?.geometry)continue;
+    try{
+      const pa=Math.max(0,turf.area(pf));
+      const pt=turf.pointOnFeature(pf);
+      let inside=false;try{inside=turf.booleanPointInPolygon(pt,block);}catch(e){}
+      let share=0;
+      if(!inside){const x=turf.intersect(pf,block);const ia=x?Math.max(0,turf.area(x)):0;share=pa>0?ia/pa:0;}
+      if(inside||share>=0.5)out.push(pnu);
+    }catch(e){}
+  }
+  return out;
+}
+function smallscaleBlockAreaStatus(area,moa){
+  const a=Number(area);if(!Number.isFinite(a))return {status:'REVIEW',conditional:false,basic:moa==='designated'?40000:13000,limit:moa==='designated'?40000:20000};
+  const basic=moa==='designated'?40000:13000,limit=moa==='designated'?40000:20000;
+  return {status:a<basic?'PASS':a<limit?'REVIEW':'FAIL',conditional:moa!=='designated'&&a>=basic&&a<limit,basic,limit};
+}
+function smallscaleBlockSiteAreaStatus(area,moa){
+  const a=Number(area);if(!Number.isFinite(a))return {status:'REVIEW',conditional:false,basic:moa==='designated'?20000:10000,limit:moa==='designated'?40000:20000};
+  const basic=moa==='designated'?20000:10000,limit=moa==='designated'?40000:20000;
+  return {status:a<basic?'PASS':a<limit?'REVIEW':'FAIL',conditional:a>=basic&&a<limit,basic,limit};
+}
+function smallscaleBlockCandidateFacts(sb,records,ageThreshold,moa){
+  const rels=Array.isArray(sb?.relations)?sb.relations:[];
+  const rows=Array.isArray(records)?records:[];
+  const out=[];
+  for(let i=0;i<rels.length;i++){
+    const rel=rels[i]||{},pnus=smallscaleBlockCandidatePnus(rel),pnuSet=new Set(pnus);
+    const candidateRows=pnus.length?rows.filter(r=>pnuSet.has(String(r.pnu||''))):[];
+    const area=Number.isFinite(Number(rel.selected_site_area_m2))?Number(rel.selected_site_area_m2):null;
+    const blockArea=Number.isFinite(Number(rel.block_area_m2))?Number(rel.block_area_m2):null;
+    const age=renewalAgeAssessment(candidateRows,ageThreshold,{ruleId:`smallscale_block_${i}_${ageThreshold}`,sourceId:'SMALL_HOUSING',locator:moa==='designated'?'소규모주택정비 관리지역 노후도 50% 적용':'일반 가로주택정비 노후도 60% 적용',label:`${rel.name||koreanBlockName(i)} 가로주택정비 노후·불량건축물`});
+    const stock=smallscaleHousingStockFacts(candidateRows);
+    const areaRule=smallscaleBlockAreaStatus(blockArea,moa),siteRule=smallscaleBlockSiteAreaStatus(area,moa);
+    const stockStatus=stock.block_count==null?(stock.block_eligible_rows>0?'REVIEW':stock.records_available?'FAIL':'REVIEW'):stock.block_count>=stock.block_threshold?'PASS':'FAIL';
+    const status=statusAll(['PASS',areaRule.status,siteRule.status,age?.status||'REVIEW',stockStatus]);
+    out.push({index:i,name:rel.name||koreanBlockName(i),block_area_m2:blockArea,site_area_m2:area,pnus,record_count:candidateRows.length,coverage_pct:Number.isFinite(Number(rel.block_coverage_of_site_pct))?Number(rel.block_coverage_of_site_pct):null,site_share_pct:Number.isFinite(Number(rel.site_share_of_block_pct))?Number(rel.site_share_of_block_pct):null,age,stock,stock_status:stockStatus,block_area_status:areaRule.status,site_area_status:siteRule.status,block_area_conditional:areaRule.conditional,site_area_conditional:siteRule.conditional,status,geometry:rel.geometry});
+  }
+  return out;
+}
+function statusAnyAlternative(values){
+  const v=(values||[]).filter(Boolean);
+  if(v.some(x=>x==='PASS'))return 'PASS';
+  if(v.some(x=>x==='REVIEW'))return 'REVIEW';
+  return v.length?'FAIL':'REVIEW';
+}
 function smallscaleAutonomousTargetFacts(store,c,dev,renewal,moa){
   const hits=[];
   if(moa==='designated')hits.push('소규모주택정비 관리지역');
@@ -14267,43 +14356,51 @@ function smallscaleSpatialFacts(store){
   ];
   const autonomousStatus=statusAll(autonomousCriteria.map(x=>x.status));
 
-  // 2) 가로주택정비 — 가로구역 해당여부와 가로구역/사업시행구역 면적을 분리한다.
+  // 2) 가로주택정비 — 사용자가 그린 검토구역은 후보탐색 범위(seed)다.
+  // 검토범위가 둘 이상의 가로구역에 걸치더라도 각 가로구역 안의 선택필지를 독립 사업시행구역 후보로 판정한다.
+  // 하나의 가로구역이 검토범위 전체의 98%를 포함해야 한다는 과거 내부 Gate는 사용하지 않는다.
   const sb=storeStreetBlockFact(store,'smallscale');
-  const autoBlockKnown=!!sb.loaded&&Number.isFinite(Number(sb.block_area_m2));
-  const blockArea=autoBlockKnown?Number(sb.block_area_m2):null;
-  // 가로구역 면적과 사업시행구역 면적은 서로 다른 기준이다.
-  // 일반지역(서울): 가로구역 13,000㎡ 미만을 기본으로 하되 지방도시계획위원회 심의 시 20,000㎡ 미만 가능.
-  // 관리지역: 가로구역은 40,000㎡ 미만.
-  // 사업시행구역: 일반 10,000㎡ 미만, 관리지역 20,000㎡ 미만이 기본 경로.
-  // 다만 일반지역은 공공시행+공공임대 10%+법정 절차 충족 시 20,000㎡ 미만,
-  // 관리지역은 공공시행+공공임대 10% 충족 시 40,000㎡ 미만의 조건부 경로가 있다.
-  const blockAreaBasicLimit=moa==='designated'?40000:13000;
-  const blockAreaConditionalLimit=moa==='designated'?40000:20000;
-  const blockAreaConditional=blockArea!=null&&moa!=='designated'&&blockArea>=blockAreaBasicLimit&&blockArea<blockAreaConditionalLimit;
-  const blockAreaStatus=blockArea==null?'REVIEW':blockArea<blockAreaBasicLimit?'PASS':blockArea<blockAreaConditionalLimit?'REVIEW':'FAIL';
-  const blockSiteAreaBasicLimit=moa==='designated'?20000:10000;
-  const blockSiteAreaConditionalLimit=moa==='designated'?40000:20000;
-  const blockSiteAreaConditional=c.area!=null&&c.area>=blockSiteAreaBasicLimit&&c.area<blockSiteAreaConditionalLimit;
-  const blockSiteAreaStatus=c.area==null?'REVIEW':c.area<blockSiteAreaBasicLimit?'PASS':c.area<blockSiteAreaConditionalLimit?'REVIEW':'FAIL';
-  const blockAreaLimit=blockAreaConditionalLimit;
-  const blockSiteAreaLimit=blockSiteAreaConditionalLimit;
+  const autoBlockKnown=!!sb.loaded&&Array.isArray(sb.relations)&&sb.relations.length>0;
+  const blockCandidates=autoBlockKnown?smallscaleBlockCandidateFacts(sb,records,ageThreshold,moa):[];
+  const passingBlockCandidates=blockCandidates.filter(x=>x.status==='PASS');
+  const reviewBlockCandidates=blockCandidates.filter(x=>x.status==='REVIEW');
+  const primaryBlockCandidate=passingBlockCandidates[0]||reviewBlockCandidates[0]||blockCandidates[0]||null;
+  const blockArea=primaryBlockCandidate?.block_area_m2??(Number.isFinite(Number(sb.block_area_m2))?Number(sb.block_area_m2):null);
   const relationCoverages=(sb.relations||[]).map(x=>Number(x.block_coverage_of_site_pct)).filter(Number.isFinite);
-  const scopeCoverage=Number.isFinite(Number(sb.block_coverage_of_site_pct))?Number(sb.block_coverage_of_site_pct):(relationCoverages.length?Math.max(...relationCoverages):NaN);
-  // 98%는 법정 수치가 아니라 GIS 경계·좌표 오차를 허용하기 위한 내부 topology tolerance다.
-  // 사용자가 그린 검토구역은 가로구역 전체일 필요가 없고, 하나의 산정 가로구역 안에 사실상 전부 포함되면 PASS다.
-  // 다른 가로구역 후보가 함께 탐색되더라도 하나의 후보가 검토구역 전체를 포함하면 multi_block 자체로 탈락시키지 않는다.
-  const scopeConnected=autoBlockKnown&&Number.isFinite(scopeCoverage)&&scopeCoverage>=98;
-  const blockStreetStatus=autoBlockKnown?(Number.isFinite(scopeCoverage)?(scopeConnected?'PASS':'FAIL'):'REVIEW'):(c.enclosed6==null?'REVIEW':c.enclosed6?'PASS':'FAIL');
+  const scopeCoverage=primaryBlockCandidate?.coverage_pct??(Number.isFinite(Number(sb.block_coverage_of_site_pct))?Number(sb.block_coverage_of_site_pct):(relationCoverages.length?Math.max(...relationCoverages):NaN));
+  const blockStreetStatus=autoBlockKnown?'PASS':(sb.loaded?'FAIL':(c.enclosed6==null?'REVIEW':c.enclosed6?'PASS':'FAIL'));
+  const scopeConnected=autoBlockKnown; // 호환 필드: 이제 '단일 가로구역 98% 포함'이 아니라 '독립 가로구역 후보 존재' 의미
   const existingRoadCutters=Number(sb.existing_road_cutter_count||0),planningRoadCutters=Number(sb.planning_road_cutter_count||0);
-  const blockStockStatus=stock.block_count==null?(stock.block_eligible_rows>0?'REVIEW':stock.records_available?'FAIL':'REVIEW'):stock.block_count>=stock.block_threshold?'PASS':'FAIL';
-  const blockCriteria=[
-    smallscaleCriterion('가로구역 해당여부','검토구역(seed)이 하나의 산정 가로구역 안에 사실상 전부 포함될 것 · 검토구역은 가로구역 일부 필지만 선택 가능 · 도시계획도로 또는 폭 6m 이상 건축법상 도로 및 법정 경계시설로 가로구역 복원',autoBlockKnown?`자동복원 가로구역 · 검토구역 편입률 ${Number.isFinite(scopeCoverage)?scopeCoverage.toFixed(1)+'%':'-'} · 가로구역 점유율 ${sb.site_share_of_block_pct==null?'-':Number(sb.site_share_of_block_pct).toFixed(1)+'%'}${sb.multi_block?' · 대안 가로구역 후보 복수':''}`:(c.enclosed6==null?'자동 가로구역 미산정':c.enclosed6?'수동 입력: 해당':'수동 입력: 비해당'),blockStreetStatus,autoBlockKnown?(scopeConnected?`검토구역이 하나의 산정 가로구역 안에 포함 · 일반도로 6m+ 경계 ${existingRoadCutters}건 · 도시계획시설 도로 경계 ${planningRoadCutters}건 · 법정 경계시설 반영`:`가장 높은 단일 가로구역 편입률 ${Number.isFinite(scopeCoverage)?scopeCoverage.toFixed(1)+'%':'-'} · 검토구역이 둘 이상 가로구역에 걸치거나 후보복원이 부족하므로 구역계/가로구역 재확인 필요`):'일반도로 6m 이상 경계 · 도시계획시설 도로는 폭원과 무관하게 경계/제외 · 법정 경계시설 반영 · 가로구역 자동분석 자료가 없을 때만 확인필요','SMALL_BLOCK','가로구역 요건'),
-    smallscaleCriterion('가로구역 면적',moa==='designated'?'관리지역 40,000㎡ 미만':'서울 기본 13,000㎡ 미만 · 지방도시계획위원회 심의 시 20,000㎡ 미만 가능',blockArea==null?'자동산정 없음':fmtSchemeArea(blockArea),blockAreaStatus,blockAreaConditional?'13,000㎡ 이상~20,000㎡ 미만으로 지방도시계획위원회 심의가 필요한 조건부 경로':'가로구역 전체 면적을 사업시행구역 면적과 분리하여 판정','SMALL_BLOCK','가로구역 면적',{conditional:blockAreaConditional,status_label:blockAreaConditional?'조건부':''}),
-    smallscaleCriterion('사업시행구역 면적',moa==='designated'?'관리지역 기본 20,000㎡ 미만 · 공공시행+공공임대 10% 이상 시 40,000㎡ 미만 가능':'일반 10,000㎡ 미만 · 공공시행+공공임대 10%+법정 절차 충족 시 20,000㎡ 미만 가능',fmtSchemeArea(c.area),blockSiteAreaStatus,blockSiteAreaConditional?(moa==='designated'?'20,000㎡ 이상~40,000㎡ 미만은 관리지역 + 시장·구청장/LH·SH 등 공공시행 + 공공임대주택 10% 이상 조건부 경로':'10,000㎡ 이상~20,000㎡ 미만은 공공시행 + 공공임대주택 10% 이상 + 토지소유자 동의·지방도시계획위원회 심의 등 법정 절차가 필요한 조건부 경로'):'선택한 사업구역 면적 기준','SMALL_BLOCK','사업시행구역 면적',{conditional:blockSiteAreaConditional,status_label:blockSiteAreaConditional?'조건부':''}),
-    smallscaleCriterion('노후·불량건축물','사업시행구역 전체 건축물의 60% 이상'+(moa==='designated'?' · 관리지역 노후도 특례 50% 적용':''),ageFactValue(age),age.status,ageFactNote(age),'SMALL_BLOCK','노후·불량건축물 기준'),
-    smallscaleCriterion('기존주택수','단독 10호 이상 / 공동주택 20세대 이상 / 단독+공동 20채 이상',stock.block_label,blockStockStatus,'건축물대장 세대수·가구수 우선 집계','SMALL_BLOCK','기존 주택수')
-  ];
-  const blockStatus=statusAll(blockCriteria.map(x=>x.status));
+  const primaryAreaRule=smallscaleBlockAreaStatus(blockArea,moa),primarySiteRule=smallscaleBlockSiteAreaStatus(primaryBlockCandidate?.site_area_m2??c.area,moa);
+  const blockAreaBasicLimit=primaryAreaRule.basic,blockAreaConditionalLimit=primaryAreaRule.limit,blockAreaConditional=!!primaryAreaRule.conditional,blockAreaStatus=primaryAreaRule.status;
+  const blockSiteAreaBasicLimit=primarySiteRule.basic,blockSiteAreaConditionalLimit=primarySiteRule.limit,blockSiteAreaConditional=!!primarySiteRule.conditional,blockSiteAreaStatus=primarySiteRule.status;
+  const blockAreaLimit=blockAreaConditionalLimit,blockSiteAreaLimit=blockSiteAreaConditionalLimit;
+  const blockStockStatus=primaryBlockCandidate?.stock_status??(stock.block_count==null?(stock.block_eligible_rows>0?'REVIEW':stock.records_available?'FAIL':'REVIEW'):stock.block_count>=stock.block_threshold?'PASS':'FAIL');
+  let blockCriteria=[];
+  let blockStatus='REVIEW';
+  if(autoBlockKnown){
+    const candidateSummary=blockCandidates.map(x=>`${x.name} ${x.status==='PASS'?'충족':x.status==='FAIL'?'불충족':'확인필요'}`).join(' / ');
+    blockCriteria.push(smallscaleCriterion('가로구역 후보 탐색','검토구역은 가로구역 경계가 아니라 후보를 찾는 seed · 둘 이상의 가로구역이 탐색되면 각 가로구역 안 선택필지를 독립 사업시행구역 후보로 판정',`${blockCandidates.length}개 후보 · ${candidateSummary}`,'PASS',`일반도로 6m+ 경계 ${existingRoadCutters}건 · 도시계획시설 도로 경계 ${planningRoadCutters}건 · 법정 경계시설 반영 · 검토구역 전체가 하나의 가로구역에 포함될 필요 없음`,'SMALL_BLOCK','가로구역 요건'));
+    for(const cand of blockCandidates){
+      const nm=cand.name||'가로구역';
+      blockCriteria.push(smallscaleCriterion(`${nm} · 가로구역 면적`,moa==='designated'?'관리지역 40,000㎡ 미만':'서울 기본 13,000㎡ 미만 · 지방도시계획위원회 심의 시 20,000㎡ 미만 가능',cand.block_area_m2==null?'자동산정 없음':fmtSchemeArea(cand.block_area_m2),cand.block_area_status,cand.block_area_conditional?'13,000㎡ 이상~20,000㎡ 미만으로 지방도시계획위원회 심의가 필요한 조건부 경로':'해당 가로구역 전체 면적 기준','SMALL_BLOCK','가로구역 면적',{conditional:cand.block_area_conditional,status_label:cand.block_area_conditional?'조건부':''}));
+      blockCriteria.push(smallscaleCriterion(`${nm} · 사업시행구역 면적`,moa==='designated'?'관리지역 기본 20,000㎡ 미만 · 공공시행+공공임대 10% 이상 시 40,000㎡ 미만 가능':'일반 10,000㎡ 미만 · 공공시행+공공임대 10%+법정 절차 충족 시 20,000㎡ 미만 가능',cand.site_area_m2==null?'선택필지 면적 미산정':fmtSchemeArea(cand.site_area_m2),cand.site_area_status,cand.site_area_conditional?(moa==='designated'?'20,000㎡ 이상~40,000㎡ 미만은 관리지역 + 공공시행 + 공공임대주택 10% 이상 조건부 경로':'10,000㎡ 이상~20,000㎡ 미만은 공공시행 + 공공임대주택 10% 이상 + 법정 절차가 필요한 조건부 경로'):`${cand.pnus.length}필지 · 해당 가로구역 안 선택필지만 독립 집계`,'SMALL_BLOCK','사업시행구역 면적',{conditional:cand.site_area_conditional,status_label:cand.site_area_conditional?'조건부':''}));
+      blockCriteria.push(smallscaleCriterion(`${nm} · 노후·불량건축물`,'해당 사업시행구역 건축물의 60% 이상'+(moa==='designated'?' · 관리지역 노후도 특례 50% 적용':''),ageFactValue(cand.age),cand.age?.status||'REVIEW',`${ageFactNote(cand.age)} · ${cand.pnus.length}필지의 건축물대장만 독립 집계`,'SMALL_BLOCK','노후·불량건축물 기준'));
+      blockCriteria.push(smallscaleCriterion(`${nm} · 기존주택수`,'단독 10호 이상 / 공동주택 20세대 이상 / 단독+공동 20채 이상',cand.stock.block_label,cand.stock_status,`해당 가로구역 안 ${cand.pnus.length}필지의 건축물대장 세대수·가구수 집계`,'SMALL_BLOCK','기존 주택수'));
+    }
+    blockStatus=statusAnyAlternative(blockCandidates.map(x=>x.status));
+  }else{
+    const manualAreaRule=smallscaleBlockAreaStatus(blockArea,moa),manualSiteRule=smallscaleBlockSiteAreaStatus(c.area,moa);
+    blockCriteria=[
+      smallscaleCriterion('가로구역 후보 탐색','도시계획도로 또는 폭 6m 이상 건축법상 도로 및 법정 경계시설로 가로구역 복원',c.enclosed6==null?'자동 가로구역 미산정':c.enclosed6?'수동 입력: 해당':'수동 입력: 비해당',blockStreetStatus,'자동 가로구역 자료가 없을 때만 수동 확인','SMALL_BLOCK','가로구역 요건'),
+      smallscaleCriterion('가로구역 면적',moa==='designated'?'관리지역 40,000㎡ 미만':'서울 기본 13,000㎡ 미만 · 지방도시계획위원회 심의 시 20,000㎡ 미만 가능',blockArea==null?'자동산정 없음':fmtSchemeArea(blockArea),manualAreaRule.status,'가로구역 자동복원 미확보','SMALL_BLOCK','가로구역 면적'),
+      smallscaleCriterion('사업시행구역 면적',moa==='designated'?'관리지역 기본 20,000㎡ 미만 · 공공시행+공공임대 10% 이상 시 40,000㎡ 미만 가능':'일반 10,000㎡ 미만 · 공공시행+공공임대 10%+법정 절차 충족 시 20,000㎡ 미만 가능',fmtSchemeArea(c.area),manualSiteRule.status,'자동 가로구역 미확보 시 선택한 검토구역 면적을 임시 사용','SMALL_BLOCK','사업시행구역 면적'),
+      smallscaleCriterion('노후·불량건축물','사업시행구역 전체 건축물의 60% 이상'+(moa==='designated'?' · 관리지역 노후도 특례 50% 적용':''),ageFactValue(age),age.status,ageFactNote(age),'SMALL_BLOCK','노후·불량건축물 기준'),
+      smallscaleCriterion('기존주택수','단독 10호 이상 / 공동주택 20세대 이상 / 단독+공동 20채 이상',stock.block_label,blockStockStatus,'건축물대장 세대수·가구수 우선 집계','SMALL_BLOCK','기존 주택수')
+    ];
+    blockStatus=statusAll(blockCriteria.map(x=>x.status));
+  }
+  const blockAnyConditional=blockCandidates.some(x=>x.block_area_conditional||x.site_area_conditional);
 
   // 3) 소규모재건축 — 건축물대장상 아파트·연립주택 단지형 여부를 진입관문으로 자동판정한다.
   const reconResidentialRows=records.filter(r=>/단독주택|다가구주택|다세대주택|연립주택|아파트|공동주택/.test(`${r.main_use||''} ${r.other_use||''}`));
@@ -14362,18 +14459,18 @@ function smallscaleSpatialFacts(store){
   const moaHillNote=moaHill.known!==true?'구릉지 지형 FACT 확인 필요':moaHill.intersects===true?'구릉지는 모아주택·모아타운 사업진입 배제조건이 아니라 지형순응·높이·경관·재해안전 등 통합심의 계획조건으로 반영':'구릉지 직접중첩 없음 · 필요 시 주변 지형여건을 관리계획·통합심의에서 검토';
   const routes={
     autonomous:{label:'자율주택정비',status:autonomousStatus,value:`${autoTarget.value} · ${stock.autonomous_label} · 노후도 ${ageFactValue(age)}`,source_id:'SMALL_AUTONOMOUS',criteria:autonomousCriteria},
-    block:{label:'가로주택정비',status:blockStatus,conditional:(blockAreaConditional||blockSiteAreaConditional)&&blockStatus==='REVIEW',value:`가로구역 ${blockArea==null?'-':fmtSchemeArea(blockArea)} · 검토구역 편입 ${Number.isFinite(scopeCoverage)?scopeCoverage.toFixed(1)+'%':'-'} · 가로구역 점유 ${sb.site_share_of_block_pct==null?'-':Number(sb.site_share_of_block_pct).toFixed(1)+'%'} · 사업구역 ${fmtSchemeArea(c.area)} · ${stock.block_label} · 노후도 ${ageFactValue(age)}`,source_id:'SMALL_BLOCK',criteria:blockCriteria},
+    block:{label:'가로주택정비',status:blockStatus,conditional:blockAnyConditional&&blockStatus==='REVIEW',value:autoBlockKnown?`가로구역 후보 ${blockCandidates.length}개 · ${blockCandidates.map(x=>`${x.name} ${x.status==='PASS'?'충족':x.status==='FAIL'?'불충족':'확인필요'}`).join(' / ')} · 검토구역 ${fmtSchemeArea(c.area)}는 후보탐색 범위`:`가로구역 자동분석 미확보 · 사업구역 ${fmtSchemeArea(c.area)} · ${stock.block_label} · 노후도 ${ageFactValue(age)}`,source_id:'SMALL_BLOCK',criteria:blockCriteria},
     reconstruction:{label:'소규모재건축',status:reconStatus,value:`${complexValue} · ${fmtSchemeArea(c.area)} · ${reconUnits==null?'세대수 미산정':reconUnits+'세대'} · 노후도 ${ageFactValue(age)}`,source_id:'SMALL_RECONSTRUCTION',criteria:reconCriteria},
     redevelopment:{label:'소규모재개발',status:srStatus,value:`${srLocationValue} · ${fmtSchemeArea(c.area)} · 노후도 ${ageFactValue(age)} · 접도 ${srRoad8Status==='PASS'&&srRoad4Status==='PASS'?'충족':srRoad8Status==='FAIL'||srRoad4Status==='FAIL'?'불충족':'확인필요'}`,source_id:'SMALL_REDEVELOPMENT',criteria:srCriteria,station:smallRedevelopmentStation?{name:smallRedevelopmentStation.name,distance_m:smallRedevelopmentStation.distance_m}:null},
     moa:{label:'모아타운·모아주택 추진경로',status:moaStatus,value:moaValue,source_id:'MOA_POLICY',criteria:[smallscaleCriterion('관리지역·모아타운', '소규모주택정비 관리지역·관리계획 지정 여부',moaValue,moaStatus,moaNote,'MOA_POLICY','관리지역·관리계획'),smallscaleCriterion('구릉지 계획조건','구릉지는 사업진입 배제조건이 아니라 관리계획·통합심의의 지형순응·높이·경관 등 계획조건',moaHillValue,'INFO',moaHillNote,'MOA_POLICY','모아주택·모아타운 계획·심의기준')]}
   };
   const statutoryStatuses=['autonomous','block','reconstruction','redevelopment'].map(k=>routes[k].status);
   const aggregate=statutoryStatuses.includes('PASS')?'PASS':statutoryStatuses.includes('REVIEW')?'REVIEW':'FAIL';
-  const fact={family:{key:'smallscale',label:'소규모주택정비 4개 법정사업'},management_area:{status:moa,age_threshold_pct:ageThreshold},aging:{assessment:age},stock,autonomous_target:autoTarget,street_block:{auto_known:autoBlockKnown,analysis_scope_m2:blockArea,analysis_scope_connected:scopeConnected,area_limit_m2:blockAreaLimit,area_basic_limit_m2:blockAreaBasicLimit,area_conditional_limit_m2:blockAreaConditionalLimit,site_area_limit_m2:blockSiteAreaLimit,site_area_basic_limit_m2:blockSiteAreaBasicLimit,site_area_conditional_limit_m2:blockSiteAreaConditionalLimit,site_area_conditional:blockSiteAreaConditional,site_area_status:blockSiteAreaStatus,street_status:blockStreetStatus,existing_road_cutter_count:existingRoadCutters,planning_road_cutter_count:planningRoadCutters,multi_block:sb.multi_block===true,coverage_pct:sb.block_coverage_of_site_pct,site_share_of_block_pct:sb.site_share_of_block_pct,quality:sb.quality,status:sb.status},routes,aggregate_status:aggregate,planning:{density:densityForScheme('smallscale',c),hill:{known:moaHill.known===true,intersects:moaHill.intersects??null,overlap_pct:moaHill.overlap_pct??null,distance_m:moaHill.distance_m??null}},spatial_status_rows:[]};
+  const fact={family:{key:'smallscale',label:'소규모주택정비 4개 법정사업'},management_area:{status:moa,age_threshold_pct:ageThreshold},aging:{assessment:age},stock,autonomous_target:autoTarget,street_block:{auto_known:autoBlockKnown,analysis_scope_m2:blockArea,analysis_scope_connected:scopeConnected,area_limit_m2:blockAreaLimit,area_basic_limit_m2:blockAreaBasicLimit,area_conditional_limit_m2:blockAreaConditionalLimit,site_area_limit_m2:blockSiteAreaLimit,site_area_basic_limit_m2:blockSiteAreaBasicLimit,site_area_conditional_limit_m2:blockSiteAreaConditionalLimit,site_area_conditional:blockSiteAreaConditional,site_area_status:blockSiteAreaStatus,street_status:blockStreetStatus,existing_road_cutter_count:existingRoadCutters,planning_road_cutter_count:planningRoadCutters,multi_block:sb.multi_block===true,coverage_pct:sb.block_coverage_of_site_pct,site_share_of_block_pct:sb.site_share_of_block_pct,candidate_count:blockCandidates.length,passing_candidate_count:passingBlockCandidates.length,candidates:blockCandidates.map(x=>({name:x.name,status:x.status,block_area_m2:x.block_area_m2,site_area_m2:x.site_area_m2,pnus:[...x.pnus],coverage_pct:x.coverage_pct,site_share_pct:x.site_share_pct,age_status:x.age?.status||'REVIEW',stock_status:x.stock_status})),quality:sb.quality,status:sb.status},routes,aggregate_status:aggregate,planning:{density:densityForScheme('smallscale',c),hill:{known:moaHill.known===true,intersects:moaHill.intersects??null,overlap_pct:moaHill.overlap_pct??null,distance_m:moaHill.distance_m??null}},spatial_status_rows:[]};
   fact.spatial_status_rows=[
     spatialFactRow('소규모정비 노후도',ageFactValue(age),age.status==='PASS'||age.status==='FAIL'?'CONFIRMED':'REVIEW',`관리지역 상태에 따라 적용 기준 ${ageThreshold}%`),
     spatialFactRow('건축물대장 주택수·세대수',`단독 ${stock.detached_count}호 · 다세대/연립 ${stock.multi_row_units==null?'-':stock.multi_row_units+'세대'} · 아파트/연립 재건축세대 ${stock.reconstruction_units==null?'-':stock.reconstruction_units+'세대'}`,stock.records_available?'CONFIRMED':'REVIEW','자율·가로·소규모재건축의 주택수/세대수 판정에 직접 사용'),
-    spatialFactRow('가로주택정비 가로구역',blockArea==null?'자동분석 미확보':`${Number(blockArea).toLocaleString('ko-KR',{maximumFractionDigits:0})}㎡ · 검토구역 편입률 ${Number.isFinite(scopeCoverage)?scopeCoverage.toFixed(1)+'%':'-'} · 가로구역 점유율 ${sb.site_share_of_block_pct==null?'-':Number(sb.site_share_of_block_pct).toFixed(1)+'%'}`,autoBlockKnown?'CONFIRMED':'REVIEW',moa==='designated'?`검토구역은 seed로 사용 · 하나의 산정 가로구역 안에 포함되는지 확인 · 일반도로 6m+ · 도시계획시설 도로 및 법정 경계시설 반영 · 관리지역 가로구역 40,000㎡ 미만`:`검토구역은 seed로 사용 · 하나의 산정 가로구역 안에 포함되는지 확인 · 일반도로 6m+ · 도시계획시설 도로 및 법정 경계시설 반영 · 서울 기본 13,000㎡ 미만, 지방도시계획위원회 심의 시 20,000㎡ 미만 가능`),
+    spatialFactRow('가로주택정비 가로구역',autoBlockKnown?`${blockCandidates.length}개 독립 후보 · ${blockCandidates.map(x=>`${x.name} ${x.block_area_m2==null?'-':Number(x.block_area_m2).toLocaleString('ko-KR',{maximumFractionDigits:0})+'㎡'} / 사업구역 ${x.site_area_m2==null?'-':Number(x.site_area_m2).toLocaleString('ko-KR',{maximumFractionDigits:0})+'㎡'} / ${x.status==='PASS'?'충족':x.status==='FAIL'?'불충족':'확인필요'}`).join(' · ')}`:'자동분석 미확보',autoBlockKnown?'CONFIRMED':'REVIEW',moa==='designated'?`검토구역은 후보탐색 seed · 복수 가로구역이면 각각 독립 사업시행구역 후보로 판정 · 일반도로 6m+ · 도시계획시설 도로 및 법정 경계시설 반영 · 관리지역 가로구역 40,000㎡ 미만`:`검토구역은 후보탐색 seed · 복수 가로구역이면 각각 독립 사업시행구역 후보로 판정 · 일반도로 6m+ · 도시계획시설 도로 및 법정 경계시설 반영 · 서울 기본 13,000㎡ 미만, 지방도시계획위원회 심의 시 20,000㎡ 미만 가능`),
     spatialFactRow('자율주택 사업대상지',autoTarget.value,autoTarget.status==='PASS'?'CONFIRMED':'REVIEW',autoTarget.note),
     spatialFactRow('소규모재개발 접도',`8m ${srRoad8Status==='PASS'?'충족':srRoad8Status==='FAIL'?'불충족':'미산정'} · 4m ${srRoad4Status==='PASS'?'충족':srRoad4Status==='FAIL'?'불충족':'미산정'}`,srRoad8Status==='REVIEW'||srRoad4Status==='REVIEW'?'REVIEW':'CONFIRMED','접도는 별도 개선과제이나 Fact 확보 시 PASS/FAIL 즉시 반영'),
     spatialFactRow('모아타운·관리지역',moaValue,moa==='designated'?'CONFIRMED':'REVIEW',moaNote),
@@ -20515,7 +20612,7 @@ function renderInnovationDetailPopup(name){
     <tr><th>위치</th><td>${escHtml(store.site.address||'-')}</td><th>사업면적</th><td>${escHtml(fmtSchemeArea(f.area?.m2))}</td></tr>
     <tr><th>사업유형</th><td>${escHtml(f.type_label||'-')}</td><th>중심지</th><td>${escHtml(f.center?.label||f.center?.value||'-')}</td></tr>
     <tr><th>${f.type==='growth'?'환승결절 판정역':'350m 판정역'}</th><td>${escHtml(f.type==='growth'?(f.station?.transfer_candidate?`${f.station.transfer_candidate.name} · ${(f.station.transfer_candidate.lines||[]).join('·')||f.station.transfer_candidate.line_count+'개 노선'} · ${f.station.transfer_candidate.distance_m==null?'-':Number(f.station.transfer_candidate.distance_m).toFixed(1)+'m'}`:'1km 후보역 중 환승결절 확인 필요'):(f.station?.coverage350_station?`${f.station.coverage350_station.name} · ${Number(f.station.coverage350_station.distance_m).toFixed(1)}m`:'-'))}</td><th>역세권 포함률</th><td>${escHtml(`350m ${fmtSchemePct(f.station?.coverage350_pct)}${f.station?.coverage350_station?' ('+f.station.coverage350_station.name+')':''} / 500m ${fmtSchemePct(f.station?.coverage500_pct)}${f.station?.coverage500_station?' ('+f.station.coverage500_station.name+')':''}`)}</td></tr>
-    ${f.type==='housing'?`<tr><th>노후도</th><td>${escHtml(ageFactValue(f.aging?.assessment))}</td><th>공장건축물 비율</th><td>${escHtml(factory.pct==null?'-':`${Number(factory.pct).toFixed(1)}% (${factory.factory_count}/${factory.total_count}동)`)}</td></tr>`:''}
+    ${f.type==='housing'?`<tr><th>노후도</th><td>${escHtml(ageFactValue(f.aging?.assessment))}</td><th>공장용도 건축물 비율</th><td>${escHtml(factory.building_pct==null?'-':`${Number(factory.building_pct).toFixed(1)}% (${factory.factory_count}/${factory.total_count}동)`)}</td></tr>`:''}
     <tr><th>공동주택단지</th><td colspan="3">${escHtml(apt.has_apartment===false?'건축물대장상 공동주택 용도 없음':`최대단지 ${fmtSchemeArea(apt.max_area_m2)} / 사업구역 대비 ${fmtSchemePct(apt.max_ratio_pct)} · ${apt.note||''}`)}</td></tr>
   </tbody></table></section>
   <section class="activation-section"><h4>2. 사업추진조건 판정</h4><table class="activation-table"><thead><tr><th>구분</th><th>검토항목</th><th>기준</th><th>대상지 현황</th><th>판정·후속</th><th>근거</th></tr></thead><tbody>${resultRows}</tbody></table>${schemeDetailSummary(res)}</section>
@@ -20721,7 +20818,7 @@ function renderSmallscaleSchemeDetailPopup(){
   const stock=f.stock||{};
   const commonStatus=`단독 ${stock.detached_count??'-'}호 · 다세대/연립 ${stock.multi_row_units==null?'-':stock.multi_row_units+'세대'} · 재건축대상 아파트/연립 ${stock.reconstruction_units==null?'-':stock.reconstruction_units+'세대'}`;
   const routeOverall=route.status||'REVIEW';
-  const routeNote=key==='autonomous'?'사업대상지 진입관문을 먼저 판정하고, 대상주택수·노후도를 각각 별도 판정합니다.':key==='block'?'가로구역 해당여부·가로구역 면적·사업시행구역 면적·노후도·기존주택수를 각각 독립 판정합니다.':key==='reconstruction'?'건축물대장상 아파트·연립주택 단지형 여부를 진입관문으로 두고 면적·세대수·노후도를 판정합니다.':key==='redevelopment'?'역세권/준공업 입지·면적·노후도·8m/4m 접도·기존 사업지역 배제를 각각 판정합니다. 접도만 데이터 미산정 시 확인필요를 허용합니다.':'모아타운은 별도 법정사업이 아니라 4개 법정사업에 연결되는 관리계획·통합심의 정책경로입니다.';
+  const routeNote=key==='autonomous'?'사업대상지 진입관문을 먼저 판정하고, 대상주택수·노후도를 각각 별도 판정합니다.':key==='block'?'검토구역은 후보탐색 seed로 사용하고, 복수 가로구역이면 각 후보별 사업시행구역 면적·노후도·기존주택수를 독립 판정합니다.':key==='reconstruction'?'건축물대장상 아파트·연립주택 단지형 여부를 진입관문으로 두고 면적·세대수·노후도를 판정합니다.':key==='redevelopment'?'역세권/준공업 입지·면적·노후도·8m/4m 접도·기존 사업지역 배제를 각각 판정합니다. 접도만 데이터 미산정 시 확인필요를 허용합니다.':'모아타운은 별도 법정사업이 아니라 4개 법정사업에 연결되는 관리계획·통합심의 정책경로입니다.';
   const sourceNote=key==='redevelopment'?'서울시 소규모재개발사업 업무처리기준 및 서울시 소규모주택정비 조례':key==='reconstruction'?'서울시 소규모재건축 안내·업무처리기준':key==='autonomous'?'서울시 자율주택정비사업 안내':key==='block'?'서울시 가로주택정비사업 안내 및 소규모주택정비법 시행령·시행규칙':'모아주택·모아타운 활성화를 위한 심의기준';
   const planRows=smallscaleDensityPlanRowsForPopup(key,res,store,f);
   const steps=schemeSheetSteps([['대상지·건축물·도로 현황 확인','지적·건축물대장·노후도·도로·역세권·용도지역 Fact 생성'],['4개 법정사업 병렬검토','자율주택·가로주택·소규모재건축·소규모재개발 요건을 각각 독립 판정'],['모아타운·관리지역 확인','관리계획 지정·수립 여부와 적용 가능한 모아주택 유형 확인'],['주민합의체·조합 등 시행구조 확정','선택 법정사업별 동의·시행주체 절차 진행'],['통합심의·사업시행계획','모아주택·모아타운 경로 적용 시 관리계획·통합심의와 사업계획 구체화'],['인가·착공','법정 사업유형에 따른 인가·건축·주택 절차 진행']]);
@@ -21669,6 +21766,26 @@ function normalizeSchemeDetailSectionHeadings(){
   });
 }
 
+const SEMIINDUSTRIAL_FACTORY_CONTEXT_SCHEMES=new Set(['longterm','public_complex','innovation_housing','safe','urban_redevelopment','general_housing','shared_housing','smallscale']);
+function semiindustrialFactoryContextHtml(name){
+  const store=latestSiteFactStore;if(!store||store.common?.zoning!=='준공업'||!SEMIINDUSTRIAL_FACTORY_CONTEXT_SCHEMES.has(name))return '';
+  const fu=store.site?.factory_usage||{},iu=store.site?.industrial_usage||{},ref=store.site?.spatial_evidence?.factory_ratio_2009||factoryRatio2009SpatialEvidenceFacts();
+  const legal=fu.factory_ratio_pct==null?'미확정 · 2008.1.31 기준 공부 재산정 필요':fmtSchemePct(fu.factory_ratio_pct);
+  const refValue=ref.known?`${ref.class_label||'참고등급 확인'}${ref.overlap_pct!=null?` · 대상지 중첩 ${Number(ref.overlap_pct).toFixed(1)}%`:''}`:'원도형 미연결 · 2009 계획자료 확보';
+  const current=fu.factory_ratio_current_proxy_pct==null?'-':`${Number(fu.factory_ratio_current_proxy_pct).toFixed(1)}%`;
+  const building=fu.factory_building_ratio_pct==null?'-':`${Number(fu.factory_building_ratio_pct).toFixed(1)}% (${fu.factory_building_count||0}/${fu.total_building_count||0}동)`;
+  const industrial=industrialUsageDisplay(iu);
+  const src=schemeSheetSourceCell({sourceType:'서울시 계획자료',sourceTitle:SEMIINDUSTRIAL_FACTORY_2009_REFERENCE.source_title,sourceLocator:'1.2 지역분석기준 · 가구별 공장비율 / 자치구별 현황도',sourceEffective:'2009-10 최종성과품 · 공장비율 기준시점 2008-01-31',sourceUrl:'',sourceVerified:true});
+  return `<div class="semiindustrial-factory-context" style="margin:8px;border:1px solid #d0d5dd;border-radius:8px;background:#f9fafb;padding:8px"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;margin-bottom:6px"><div><b style="font-size:10px">준공업지역 공장·산업 현황</b><div style="font-size:8px;color:#667085;margin-top:2px">법정 공장비율 · 2009 계획 참고등급 · 현재 공장현황 · 종전 산업비율을 서로 대체하지 않고 분리 표시</div></div></div><table class="activation-table"><tbody><tr><th>법정 공장비율</th><td>${escHtml(legal)}</td><th>2009 계획 참고등급</th><td>${escHtml(refValue)}</td></tr><tr><th>현재 공장부지 추정</th><td>${escHtml(current)}</td><th>현재 공장용도 건축물</th><td>${escHtml(building)}</td></tr><tr><th>종전 산업비율</th><td>${escHtml(industrial)}</td><th>2009 계획 근거</th><td>${src}</td></tr></tbody></table><div style="font-size:7.5px;color:#667085;margin-top:5px">2009 계획은 서울시 GIS(2008.11)를 기초로 2008.1.31 기준 공장등록대장·건축물 용도변경/말소대장·토지지목변경대장·현장조사를 반영한 가구·블록별 참고값입니다. 계획 자체도 법정계획 수립 시 공부·현장조사에 따른 재산정을 요구하므로, 2009 참고등급이나 현재 현황을 법정 공장비율로 대체하지 않습니다.</div></div>`;
+}
+function appendSemiindustrialFactoryContext(name){
+  const body=document.getElementById('schemeDetailPopupBody');if(!body||body.querySelector('.semiindustrial-factory-context'))return;
+  const html=semiindustrialFactoryContextHtml(name);if(!html)return;
+  const head=body.querySelector('.activation-sheet-title');
+  if(head)head.insertAdjacentHTML('afterend',html);
+  else body.insertAdjacentHTML('afterbegin',html);
+}
+
 function baseReviewDisclaimerHtml(name){
   const extra=name==='activation'?'<br>노선형 상업지역은 정비사업플랫폼 내부 판정모형용 참조도형을 사용한 결과이며 서울시 공식 법정도형이 아닙니다. 최종 검토 시 결정도서를 별도 확인해야 합니다.':'';
   const safeExtra=name==='safe'?'<br>의료시설 중심지역은 공식 좌표·주소로 확인한 대표지번 1필지의 경계를 기준으로 산정했으며 실제 의료시설 전체 대지와 다를 수 있습니다.':'';
@@ -21683,6 +21800,7 @@ function regulatoryReviewNoteHtml(){
 }
 function appendBaseReviewDisclaimer(name){
   const body=document.getElementById('schemeDetailPopupBody');if(!body)return;
+  appendSemiindustrialFactoryContext(name);
   if(!body.querySelector('.regulatory-review-note'))body.insertAdjacentHTML('beforeend',regulatoryReviewNoteHtml());
   if(!body.querySelector('.district-unit-plan-review-note'))body.insertAdjacentHTML('beforeend',districtUnitPlanReviewNoteHtml(name));
   if(!body.querySelector('.base-review-disclaimer'))body.insertAdjacentHTML('beforeend',baseReviewDisclaimerHtml(name));
