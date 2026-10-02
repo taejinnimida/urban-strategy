@@ -6395,8 +6395,11 @@ function activationArterialRouteDecision({referenceFetchFailed=false,referenceAv
   if(roadsideIncludes===true)return {status:'PASS',path:`사용자확정 노선상업 참조도형과 동일 도로측 공간관계 확인 · ROAD_BT 실제폭원 + ${ROUTE_COMMERCIAL_TOPOLOGY_TOLERANCE_M}m topology 보정`};
   if(blockIncludes===true)return {status:'PASS',path:'역세권활성화 전용 가로구역 내 사용자확정 노선상업 참조도형 확인'};
   if(siteIncludes===true)return {status:'PASS',path:'대상지 내 사용자확정 노선상업 참조도형 확인'};
-  if(referenceFetchFailed||!referenceAvailable)return {status:'REVIEW',path:'사용자확정 노선상업 참조도형 미확보·0건·조회실패 · 자동판정 확인불가'};
-  if(!blockKnown)return {status:'REVIEW',path:candidateCount>0?'인접 사용자확정 노선상업 참조도형 확인 · 역세권활성화 전용 가로구역 연계 대기':'노선상업 참조자료 정상 · 역세권활성화 전용 가로구역 연계 대기'};
+  if(referenceFetchFailed||!referenceAvailable)return {status:'REVIEW',path:'사용자확정 노선상업 참조도형 미확보·조회실패 · 자동판정 확인불가'};
+  // 참조자료가 정상 확보됐는데 대상지 주변 후보가 0건이면 간선가로형은 명백한 FAIL이다.
+  // 후보가 없는데 가로구역 산정을 기다린다는 이유로 REVIEW를 만들지 않는다.
+  if(candidateCount===0)return {status:'FAIL',path:'노선상업 참조자료 정상 · 대상지 주변 사용자확정 노선형 상업지역 참조도형 0건'};
+  if(!blockKnown)return {status:'REVIEW',path:'인접 사용자확정 노선상업 참조도형 확인 · 역세권활성화 전용 가로구역 연계 대기'};
   if(!roadContextKnown&&candidateCount>0)return {status:'REVIEW',path:'인접 노선상업 참조도형은 있으나 도로 문맥자료 조회실패 · FAIL 확정 보류'};
   if(candidateCount>0)return {status:'FAIL',path:'사용자확정 노선상업 참조도형은 주변에 있으나 대상지·가로구역·동일 도로측 관계가 확인되지 않음'};
   return {status:'FAIL',path:'가로구역은 산정되었으나 사용자확정 노선상업 참조도형과 대상지·가로구역의 공간연계가 확인되지 않음'};
@@ -11113,7 +11116,13 @@ function floorRowIsBasement(row){
   return /지하/.test(gb)||(Number.isFinite(no)&&no<0)||String(row?.flrGbCd||'')==='10';
 }
 function floorRowIsResidential(row){
-  return /주거|주택|아파트|연립|다세대|다가구|기숙사/.test(`${row?.mainPurpsCdNm||''} ${row?.etcPurps||''}`);
+  const main=String(row?.mainPurpsCdNm||''),etc=String(row?.etcPurps||''),text=`${main} ${etc}`;
+  // 지하층 '아파트' 표기는 건물의 대분류가 반복된 값일 수 있다. 주차장·기계실 등 명시적 비주거 용도가 있으면
+  // 단순 공동주택/아파트 문자열만으로 주거사용으로 보지 않는다.
+  const nonResidential=/주차|기계실|전기실|발전기|저수조|펌프실|창고|대피|관리실|경비실|주민공동|커뮤니티|복리시설|근린생활|상가|판매|업무|설비|통신실|방재실|소방|보일러실|열교환실|쓰레기|재활용/;
+  const explicitResidential=/주거용|주거시설|세대|주택|연립|다세대|다가구|기숙사|아파트/;
+  if(nonResidential.test(text))return false;
+  return explicitResidential.test(text);
 }
 function basementResidentialBuildingFact(records){
   const rs=Array.isArray(records)?records:[];
@@ -11124,9 +11133,10 @@ function basementResidentialBuildingFact(records){
     if(Number.isFinite(underground)&&underground<=0){known++;details.push({id:r.id,status:'NO_BASEMENT',residential:false});continue;}
     const floors=buildingFloorRowsForRecord(r);
     if(floors.length){
-      const basement=floors.filter(floorRowIsBasement),hit=basement.some(floorRowIsResidential);
+      const basement=floors.filter(floorRowIsBasement),residentialRows=basement.filter(floorRowIsResidential),hit=residentialRows.length>0;
       known++;if(hit)residentialBasement++;
-      details.push({id:r.id,status:'CONFIRMED',residential:hit,basement_floor_rows:basement.length});
+      details.push({id:r.id,status:'CONFIRMED',residential:hit,basement_floor_rows:basement.length,residential_floor_rows:residentialRows.length,
+        residential_uses:residentialRows.map(x=>`${x?.flrNoNm||x?.flrNo||'지하층'}:${x?.mainPurpsCdNm||''}${x?.etcPurps?'/'+x.etcPurps:''}`).slice(0,6)});
     }else{
       unknown++;details.push({id:r.id,status:'UNKNOWN',residential:null});
     }
@@ -13006,21 +13016,24 @@ function sharedHousingAutomaticTargetFacts(store){
   const vacant=titleComplete&&base.parcelCount>0&&records.length===0;
   const factoryLand=Number(base.categories?.['공장용지']||0)>0;
   const activeFactory=records.some(isFactoryRatioCurrentRecord);
-  const relocation=factoryLand&&!activeFactory;
+  const relocation=titleComplete&&factoryLand&&!activeFactory;
   const old=age?.status==='PASS';
   const lowFar=far?.known===true&&Number(far.pct)<=200;
   const manual=store.common.sharedLowUse===true,proposal=store.common.sharedProposal===true;
-  const candidates=[['나대지',vacant],['이적지 후보',relocation],['지구단위계획 노후도 충족',old],['현황용적률 200% 이하',lowFar],['사용자 저이용 확인',manual],['민간제안 의사',proposal]].filter(([,v])=>v).map(([k])=>k);
+  // 운영기준의 진입성격은 '저이용·유휴토지등' 또는 민간제안이다. 노후도·낮은 현황용적률은 보조지표일 뿐
+  // 그 하나만으로 정상 이용 중인 공동주택단지 등을 상생주택 후보로 승격시키지 않는다.
+  const candidates=[['나대지',vacant],['이적지 후보',relocation],['사용자 저이용 확인',manual],['민간제안 의사',proposal]].filter(([,v])=>v).map(([k])=>k);
+  const supporting=[['노후도 충족',old],['현황용적률 200% 이하',lowFar]].filter(([,v])=>v).map(([k])=>k);
   const newRatio=records.length?records.filter(r=>rawFactAgeState(r,20)==='NOT_OLD').length/records.length*100:null;
   const renewalConf=(store.site.renewal?.overlaps||[]).length>0;
   const devConf=(store.site.development?.overlaps||[]).length>0;
   const projectConf=(store.site.renewal?.existing_projects||[]).filter(x=>!['준공','준공(일부)'].includes(x.stage_label||'')).length>0;
   const conflict=renewalConf||devConf||projectConf;
-  let status='FAIL',note='플랫폼 저이용·개발가능성 후보기준에 해당하지 않음';
-  if(candidates.length){status=conflict?'REVIEW':'PASS';note=conflict?'후보조건은 충족하지만 정비구역·개발구역·기존 추진사업 중첩으로 사업충돌 검토 필요':'플랫폼 자동 사업대상 후보조건 충족';}
-  else if(newRatio!=null&&newRatio>=50){status='REVIEW';note='신축(20년 미만) 건축물 비율이 높아 저이용·유휴토지로 단정하지 않고 검토';}
-  else if(!titleComplete||!far?.known||!age){status='REVIEW';note='건축물대장·현황용적률·노후도 중 일부 FACT 미완료';}
-  return {status,candidates,vacant,relocation,age,far,new_building_pct:newRatio,conflict,conflict_detail:{renewal:renewalConf,development:devConf,existing_project:projectConf},note,model_basis:'PLATFORM_TARGET_MODEL',legal_threshold:false};
+  let status='FAIL',note=supporting.length?`노후도·저밀도 보조지표(${supporting.join('·')})만으로 저이용·유휴토지등을 확정하지 않음`:'저이용·유휴토지등 또는 민간제안 진입성격이 확인되지 않음';
+  if(candidates.length){status=conflict?'REVIEW':'PASS';note=conflict?'진입성격은 확인되나 정비구역·개발구역·기존 추진사업 중첩으로 사업충돌 검토 필요':'운영기준상 저이용·유휴토지등/민간제안 진입성격 확인';}
+  else if(newRatio!=null&&newRatio>=50){status='FAIL';note='신축 건축물 비율이 높고 저이용·유휴토지등 진입성격이 확인되지 않음';}
+  else if(!titleComplete){status='REVIEW';note='건축물대장 완전성 미확보로 나대지 여부 확인 필요';}
+  return {status,candidates,supporting,vacant,relocation,age,far,new_building_pct:newRatio,conflict,conflict_detail:{renewal:renewalConf,development:devConf,existing_project:projectConf},note,model_basis:'PLATFORM_TARGET_MODEL',legal_threshold:false};
 }
 
 function sharedHousingSpatialFacts(store){
@@ -13031,7 +13044,7 @@ function sharedHousingSpatialFacts(store){
   const target=sharedHousingAutomaticTargetFacts(store);
   const fact={target,scale:{area_m2:c.area,units:c.units},conservation:{urban_natural_park:{known:parkKnown,present:a.urbanPark?.present??(parkHits.length>0)},development_restriction:{known:gbKnown,present:a.greenbelt?.present??(gbHits.length>0)},biotope_grade1:{known:!!bio.known,present:bio.present===true,value:!bio.known?'자료 미확인':bio.present?'중첩':'해당 없음'},public_interest_forest:{known:!!forest.known,present:forest.present===true,value:!forest.known?'자료 미확인':forest.present?'중첩':'해당 없음'},manual_excluded:c.sharedExcluded},planning:{facilities:d.planning_facilities||[],density:sharedHousingDensity(c),type:effectiveSharedHousingType(c)},spatial_status_rows:[]};
   fact.spatial_status_rows=[
-    spatialFactRow('상생주택 사업대상 후보',target.candidates.length?target.candidates.join(' · '):'후보조건 없음',target.status==='PASS'?'CONFIRMED':target.status==='FAIL'?'FAIL':'REVIEW',`${target.note} · 나대지/이적지/노후도/현황용적률200%는 법정요건이 아닌 플랫폼 후보모형`,{criterionStatus:target.status}),
+    spatialFactRow('상생주택 사업대상 후보',target.candidates.length?target.candidates.join(' · '):'진입성격 미확인',target.status==='PASS'?'CONFIRMED':target.status==='FAIL'?'FAIL':'REVIEW',`${target.note} · 노후도/현황용적률은 보조지표이며 단독 진입조건으로 사용하지 않음`,{criterionStatus:target.status}),
     spatialFactRow('현황용적률',target.far?.known?`${Number(target.far.pct).toFixed(1)}%`:'미확인',target.far?.known?'CONFIRMED':'REVIEW',`${target.far?.basis||'건축HUB'} · 200%는 법정 진입요건이 아닌 플랫폼 저이용 후보참조`,{criterionStatus:target.far?.known?(Number(target.far.pct)<=200?'PASS':'FAIL'):'REVIEW',criterionRule:'플랫폼 후보참조: 현황용적률 200% 이하',criterionItem:'현황용적률'}),
     spatialFactRow('지구단위계획 노후도',ageFactValue(target.age),target.age?.status==='PASS'?'CONFIRMED':target.age?.status==='FAIL'?'FAIL':'REVIEW',ageFactNote(target.age),{criterionStatus:target.age?.status||'REVIEW',criterionRule:'플랫폼 후보참조: 지구단위계획 노후도 충족',criterionItem:'지구단위계획 노후도'}),
     spatialFactRow('타 개발사업 충돌',target.conflict?'정비·개발·추진사업 중첩':'중첩 없음',target.conflict?'REVIEW':'CONFIRMED',target.conflict?'후보 적합성은 유지하되 사업충돌 때문에 REVIEW':'연결된 공간사업 현황 기준',{criterionStatus:target.conflict?'REVIEW':'PASS',criterionRule:'기존 정비·개발사업 실제 추진 중이면 사업충돌 검토',criterionItem:'타 개발사업 충돌'})
@@ -13040,11 +13053,11 @@ function sharedHousingSpatialFacts(store){
 }
 function checkSharedHousingFromFacts(store,f){
   const rows=[];
-  rows.push(schemeRow('사업대상 후보','운영기준의 저이용·유휴토지등을 플랫폼에서 나대지·이적지·노후도충족·현황용적률200%이하 등으로 객관화',f.target.candidates.length?f.target.candidates.join(' / '):'후보조건 없음',f.target.status,`${f.target.note} · 200% 및 조합기준은 법정 숫자가 아닌 플랫폼 초기검토 모형`,true,{sourceId:'SHARED',locator:'저이용·유휴토지등 / 플랫폼 후보모형'}));
+  rows.push(schemeRow('사업대상 후보','운영기준상 민간의 저이용·유휴토지등 또는 민간제안 토지를 원칙으로 검토',f.target.candidates.length?f.target.candidates.join(' / '):'저이용·유휴토지등 진입성격 미확인',f.target.status,`${f.target.note} · 노후도·현황용적률 200% 이하는 보조참조이며 단독 PASS 조건 아님`,true,{sourceId:'SHARED',locator:'1-3-4 · 2-1-1'}));
   rows.push(schemeRow('나대지','건축HUB 전 필지 조회완료 + 건축물 없음',f.target.vacant?'해당':'비해당',f.target.vacant?'PASS':'INFO','상생주택 후보 FACT',false,{sourceId:'SHARED',locator:'사업대상지'}));
   rows.push(schemeRow('이적지 후보','공장용지 등 기존 기능부지이나 현재 공장용도 건축물 미확인',f.target.relocation?'해당':'비해당',f.target.relocation?'PASS':'INFO','법정 공장비율과 무관한 현재 저이용 후보 FACT',false,{sourceId:'SHARED',locator:'사업대상지'}));
-  rows.push(schemeRow('노후도 후보','지구단위계획 노후건축물 기준 충족 시 저이용·재개발 가능성 후보',ageFactValue(f.target.age),f.target.age?.status||'REVIEW',ageFactNote(f.target.age),false,{sourceId:'URBAN_PLANNING_AGE',locator:f.target.age?.source_locator||'도시계획조례 시행규칙 별표1'}));
-  rows.push(schemeRow('저밀개발 후보','현황용적률 200% 이하',f.target.far?.known?`${Number(f.target.far.pct).toFixed(1)}%`:'미확인',f.target.far?.known?(Number(f.target.far.pct)<=200?'PASS':'FAIL'):'REVIEW','200%는 플랫폼 저이용 후보판정값 · 법정 진입요건 아님',false,{sourceId:'SHARED',locator:'플랫폼 후보모형'}));
+  rows.push(schemeRow('노후도 참고','노후도는 저이용·유휴토지등 여부의 보조 사실값이며 단독 사업진입요건이 아님',ageFactValue(f.target.age),'INFO',ageFactNote(f.target.age),false,{sourceId:'URBAN_PLANNING_AGE',locator:f.target.age?.source_locator||'도시계획조례 시행규칙 별표1'}));
+  rows.push(schemeRow('현황용적률 참고','현황용적률은 저이용 여부의 보조 사실값으로만 사용',f.target.far?.known?`${Number(f.target.far.pct).toFixed(1)}%`:'미확인','INFO','200%는 법정 진입요건이 아니며 단독 후보판정에 사용하지 않음',false,{sourceId:'SHARED',locator:'플랫폼 보조 FACT'}));
   rows.push(schemeRow('기존 개발사업 충돌','정비구역·도시개발구역·기존 추진사업 등 중첩 시 후보여부와 별개로 사업조정 필요',f.target.conflict?'중첩 있음':'중첩 없음',f.target.conflict?'REVIEW':'PASS',f.target.conflict?'타법 사업 추진상태·중복사업 조정 검토':'연결된 공식 사업현황 기준',true,{sourceId:'SHARED',locator:'사업대상지 사전검토'}));
   const scaleAreaPass=f.scale.area_m2!=null&&f.scale.area_m2>=3000;
   rows.push(schemeRow('사업대상지 규모','부지면적 3,000㎡ 이상 또는 공동주택 100세대 이상',`면적 ${fmtSchemeArea(f.scale.area_m2)} / ${f.scale.units==null?'계획세대 미정':f.scale.units+'세대'}`,scaleAreaPass?'PASS':'INFO',scaleAreaPass?'부지면적 충족':'3,000㎡ 미만이면 100세대 이상 계획으로 후속 규모검토',scaleAreaPass,{sourceId:'SHARED',locator:'2-1-2'}));
@@ -13365,7 +13378,7 @@ function publicComplexSpatialFacts(store){
     {key:'house_density',label:'호수밀도 50호/ha 이상',value:c.houseDensity,status:c.houseDensity==null?'REVIEW':c.houseDensity>=50?'PASS':'FAIL',note:'공통 호수밀도 FACT'},
     {key:'road_frontage',label:'주택접도율 50% 이하',value:frontagePct,status:frontagePct==null?'REVIEW':frontagePct<=50?'PASS':'FAIL',note:'사이트 분석 접도현황의 주택접도율 FACT 직접연결'},
     {key:'disaster',label:'방재지구 면적 1/2 이상',value:disaster.pct,status:disaster.status,note:disaster.value},
-    {key:'basement',label:'지하층 주거사용 건축물 1/2 이상',value:basement.lower_pct,status:basement.status,note:basement.status==='REVIEW'?`확정 ${basement.known}/${basement.total}동 · 미확인 ${basement.unknown}동`:`${basement.residential_basement_buildings}/${basement.total}동 · ${Number(basement.lower_pct||0).toFixed(1)}%`}
+    {key:'basement',label:'지하층 주거사용 건축물 1/2 이상',value:basement.lower_pct,status:basement.status,note:(basement.status==='REVIEW'?`확정 ${basement.known}/${basement.total}동 · 미확인 ${basement.unknown}동`:`${basement.residential_basement_buildings}/${basement.total}동 · ${Number(basement.lower_pct||0).toFixed(1)}%`)+` · 층별개요의 명시적 주거용도만 인정하고 주차장·기계실·창고 등은 제외`}
   ];
   const urbanRegeneration=publicComplexUrbanRegenerationFact(store);
   const fact={type:typ,type_label:typ==='commercial'?'주거상업고밀지구':typ==='industrial'?'주거산업융합지구':'주택공급활성화지구',area:{m2:c.area},zoning:{current:c.zoning||''},station:{distance_m:publicStation?.distance_m??c.dist,coverage350_pct:cov350,name:publicStation?.name||c.stationName||'',candidate_count:storeStationFacts(store).length},road:{...store.site.road,evidence:store.site.spatial_evidence?.roads?.public_complex||null},commercial,industrial,housing:{lowrise_bad:c.lowriseBad,additional,basement,disaster},aging:{assessment:age},exclusions:{renewal_hits:renewalHits,urban_development_hits:urbanDevHits,known:exclusionKnown,urban_regeneration:urbanRegeneration},operator:{input:schemeVal('ccActor')||'',label:ccLabelOf('ccActor')||'미선택'},planning:{density:publicComplexDensity(c),sunset:'도심 공공주택 복합사업 관련 규정은 2026-12-31까지 유효(경과조치 별도)'},spatial_status_rows:[]};
@@ -14062,13 +14075,16 @@ function checkUrbanRedevelopmentFromFacts(store,f){
   return rows;
 }
 function reconstructionEligibleBuildingRecord(r){
-  const use=`${r?.main_use||''} ${r?.other_use||''}`,kind=String(r?.register_kind||'');
-  return /아파트|연립주택/.test(use)||(/집합/.test(kind)&&/공동주택|다세대주택/.test(use));
+  const use=`${r?.main_use||''} ${r?.other_use||''}`;
+  // 건축HUB가 세부종류를 생략하고 '공동주택'으로만 반환하는 경우가 있어 아파트단지를 누락시키지 않는다.
+  // 다세대주택은 일반 재건축 단지형과 구분하여 소규모정비 등 별도 경로에서 검토한다.
+  if(/다세대주택/.test(use))return false;
+  return /아파트|연립주택|공동주택/.test(use);
 }
 function reconstructionComplexBuildingRecord(r){
   const use=`${r?.main_use||''} ${r?.other_use||''}`;
-  // 재개발 배제용 '공동주택단지형'은 다세대주택 밀집지와 혼동하지 않도록 아파트·연립주택으로 좁게 본다.
-  return /아파트|연립주택/.test(use);
+  if(/다세대주택/.test(use))return false;
+  return /아파트|연립주택|공동주택/.test(use);
 }
 function reconstructionComplexName(r){
   let s=String(r?.building_name||'').trim().replace(/\s+/g,' ');
@@ -14667,17 +14683,19 @@ const PRIOR_SHARED_DEVELOPMENT_GU=['서대문구','금천구','구로구','강�
 function priorNegotiationDensity(){return {zone:'협상을 통한 도시계획 변경·지구단위계획 검토',far:'협상안 및 사전협상형 지구단위계획에서 결정',contribution:'도시계획 변경에 따른 계획이득의 공공기여를 협상으로 확정'};}
 function priorNegotiationSpatialFacts(store){
   const c=store.common,address=String(store.site.address||''),area=c.area;
+  const housingCharacter=(store.family_specific?.housing_renewal||housingRenewalFamilyFacts(store))?.site_character||null;
+  const existingCollectiveComplex=housingCharacter?.type==='APARTMENT_COMPLEX';
   const areaStatus=area==null?'REVIEW':area>=5000?'PASS':'FAIL';
   const manualEligible=c.priorNegotiation;
   const siteType=c.priorSiteType||'';
-  let siteStatus='REVIEW',siteLabel='대규모 유휴부지·시설 이전적지 등 부지성격 확인 필요';
+  let siteStatus='REVIEW',siteLabel=existingCollectiveComplex?'기존 공동주택단지 · 대규모 유휴부지로 자동 간주하지 않음 · 별도 협상대상지 성격 확인 필요':'대규모 유휴부지·시설 이전적지 등 부지성격 확인 필요';
   if(manualEligible===true){siteStatus='PASS';siteLabel='사전협상 대상지 요건 해당 확인 입력';}
   else if(manualEligible===false){siteStatus='FAIL';siteLabel='사전협상 대상지 요건 비해당 확인 입력';}
   else if(['idle','relocation','large_facility'].includes(siteType)){siteStatus='PASS';siteLabel=siteType==='idle'?'대규모 유휴부지':siteType==='relocation'?'대규모 시설 이전·재배치 적지':'대규모 시설부지 재편';}
   else if(siteType==='other'){siteStatus='REVIEW';siteLabel='기타 부지 · 조례 제2조 협상대상지 선정 가능성 확인';}
   const planStatus=c.priorPlanChange==null?'REVIEW':c.priorPlanChange?'PASS':'FAIL';
   const sharedGu=PRIOR_SHARED_DEVELOPMENT_GU.find(x=>address.includes(x))||'';
-  const fact={area:{m2:area,status:areaStatus},site_character:{type:siteType,status:siteStatus,label:siteLabel},plan_change:{status:planStatus,value:c.priorPlanChange==null?'도시계획변경 필요성 미확인':c.priorPlanChange?'도시계획변경 필요':'현행 도시계획 내 개발'},shared_development:{gu:sharedGu,status:sharedGu?'CANDIDATE':'REFERENCE',note:sharedGu?'2026.6.29 운영지침상 상생발전형 사전협상 적용 자치구 후보 · 개별 대상지 선정 별도':'상생발전형 적용 자치구 해당 여부 참고'},planning:{density:priorNegotiationDensity()},spatial_status_rows:[]};
+  const fact={area:{m2:area,status:areaStatus},site_character:{type:siteType,status:siteStatus,label:siteLabel,existing_collective_complex:existingCollectiveComplex},plan_change:{status:planStatus,value:c.priorPlanChange==null?'도시계획변경 필요성 미확인':c.priorPlanChange?'도시계획변경 필요':'현행 도시계획 내 개발'},entry_confirmed:areaStatus==='PASS'&&siteStatus==='PASS'&&planStatus==='PASS',shared_development:{gu:sharedGu,status:sharedGu?'CANDIDATE':'REFERENCE',note:sharedGu?'2026.6.29 운영지침상 상생발전형 사전협상 적용 자치구 후보 · 개별 대상지 선정 별도':'상생발전형 적용 자치구 해당 여부 참고'},planning:{density:priorNegotiationDensity()},spatial_status_rows:[]};
   fact.spatial_status_rows=[
     spatialFactRow('사전협상 대상지 면적',fmtSchemeArea(area),area==null?'REVIEW':'CONFIRMED','일반 사전협상 초기검토 5,000㎡ 이상'),
     spatialFactRow('부지성격',siteLabel,siteStatus==='PASS'||siteStatus==='FAIL'?'CONFIRMED':'REVIEW','유휴부지·대규모 시설 이전/재배치·복합적 토지이용 필요성 확인'),
@@ -14689,7 +14707,7 @@ function priorNegotiationSpatialFacts(store){
 function checkPriorNegotiationFromFacts(store,f){
   const rows=[];
   rows.push(schemeRow('협상대상지 면적','5,000㎡ 이상 대규모 부지를 사전협상 초기검토 대상으로 확인',fmtSchemeArea(f.area.m2),f.area.status,f.area.status==='FAIL'?'일반 사전협상 대상규모 미달':'대상지 선정은 별도 절차',true,{sourceId:'PRIOR_NEGOTIATION_AREA',locator:'서울특별시 도시계획 조례 제17조 · 대상지 5천제곱미터 이상',hardGate:'AREA'}));
-  rows.push(schemeRow('협상대상지·부지성격','대규모 유휴부지·시설 이전·재배치 등 복합적 토지이용 또는 토지이용 합리화가 필요한 부지',f.site_character.label,f.site_character.status,'공식 대상지 선정 전 초기 적합성 검토',true,{sourceId:'PRIOR_NEGOTIATION_ORD',locator:'조례 제1조·제2조·제9조'}));
+  rows.push(schemeRow('협상대상지·부지성격','국토계획법 제51조제1항제8호의2·제8호의3에 해당하는 대규모 유휴부지·시설 이전/재배치·복합적 토지이용 필요부지',f.site_character.label,f.site_character.status,f.site_character.existing_collective_complex?'기존 공동주택 집합건축물은 노후·철거가능성만으로 유휴부지로 보지 않음 · 명시적 협상대상지 성격 확인 필요':'공식 대상지 선정 전 초기 적합성 검토',true,{sourceId:'PRIOR_NEGOTIATION_ORD',locator:'운영지침 3.1 · 국토계획법 제51조제1항제8호의2·제8호의3'}));
   rows.push(schemeRow('도시계획변경·협상 필요성','용도지역·도시계획시설·지구단위계획 등의 변경과 공공기여 협상이 필요한지 확인',f.plan_change.value,f.plan_change.status,f.plan_change.status==='FAIL'?'현행 도시계획만으로 개발 가능하면 사전협상 적용 필요성이 낮음':'협상제안서 단계에서 도시계획 변경내용 확정',true,{sourceId:'PRIOR_NEGOTIATION',locator:'운영지침 · 대상지 선정 및 협상절차'}));
   rows.push(schemeRow('상생발전형 사전협상','2026.6.29 운영지침에서 지정한 비활성화지역 자치구는 상생발전형 적용 가능성을 별도 검토',f.shared_development.gu||'해당 자치구 확인',f.shared_development.gu?'INFO':'INFO',f.shared_development.note,false,{sourceId:'PRIOR_NEGOTIATION',locator:'운영지침 4.31 · 11차 개정 공지'}));
   rows.push(schemeRow('공공기여·협상구조','민간·공공·전문가 협상을 거쳐 도시계획 변경의 타당성·공공성과 공공기여를 확정','협상단계 결정','INFO','초기 플랫폼에서 공공기여율을 단일값으로 자동확정하지 않음',false,{sourceId:'PRIOR_NEGOTIATION',locator:'운영지침 협상주요기준·공공기여 이행'}));
@@ -15956,22 +15974,26 @@ function analyzeActivationPriorNegotiationCompetition(store){
   const aRows=activation.rows||[],pRows=prior.rows||[];
   const aLocation=aRows.find(r=>r.item==='입지유형'),aArea=aRows.find(r=>r.item==='대상지 면적'),aPrior=aRows.find(r=>r.item==='사전협상 대상여부');
   const pArea=pRows.find(r=>r.item==='협상대상지 면적');
+  const pSite=pRows.find(r=>r.item==='협상대상지·부지성격');
+  const pPlan=pRows.find(r=>r.item==='도시계획변경·협상 필요성');
   const unresolved=c.priorNegotiation==null;
   const activationIndependentFails=aRows.filter(r=>r.required!==false&&r.status==='FAIL'&&r.item!=='사전협상 대상여부');
   const priorIndependentFails=pRows.filter(r=>r.required!==false&&r.status==='FAIL');
-  const locationAlive=!!aLocation&&aLocation.status!=='FAIL';
-  const activationAreaAlive=!aArea||aArea.status!=='FAIL';
+  // 경합은 두 제도의 실질 진입경로가 모두 확인된 경우에만 표시한다. REVIEW는 '살아있는 후보'로 승격하지 않는다.
+  const locationAlive=!!aLocation&&aLocation.status==='PASS';
+  const activationAreaAlive=!aArea||aArea.status==='PASS';
   const priorAreaAlive=!!pArea&&pArea.status==='PASS';
-  const relationActive=unresolved&&locationAlive&&activationAreaAlive&&priorAreaAlive;
+  const priorEntryConfirmed=!!pSite&&pSite.status==='PASS'&&!!pPlan&&pPlan.status==='PASS';
+  const relationActive=unresolved&&locationAlive&&activationAreaAlive&&priorAreaAlive&&priorEntryConfirmed;
   const activationCandidate=relationActive&&activationIndependentFails.length===0;
-  const priorCandidate=relationActive&&priorIndependentFails.length===0;
+  const priorCandidate=relationActive&&prior.overall==='PASS'&&priorIndependentFails.length===0;
   const station=activation.facts?.location?.station||{},arterial=activation.facts?.location?.arterial||{};
   const stationRow=aRows.find(r=>r.item==='역세권'),arterialRow=aRows.find(r=>r.item==='간선도로변');
   out.relation_active=relationActive;out.activation_candidate=activationCandidate;out.prior_candidate=priorCandidate;out.active=relationActive&&(activationCandidate||priorCandidate);
   out.independent_activation_failures=activationIndependentFails.map(r=>r.item);out.independent_prior_failures=priorIndependentFails.map(r=>r.item);
   out.activation_routes={station:{status:stationRow?.status||'REVIEW',value:stationRow?.value||'',note:stationRow?.note||'',distance_m:station.distance_m??null,name:station.name||''},arterial:{status:arterialRow?.status||'REVIEW',value:arterialRow?.value||arterial.note||'',note:arterialRow?.note||'',linear_commercial:arterial.linear_commercial??null,overlap_pct:arterial.site_overlap_pct??null}};
   const areaText=`${Math.round(area).toLocaleString('ko-KR')}㎡`;
-  out.reason=relationActive?`대상지 ${areaText}로 5,000㎡ 이상이며 역세권활성화 입지경로가 살아 있는 상태에서 사전협상 대상지 여부가 아직 확정되지 않아 두 제도의 적용관계가 경합합니다.`:'';
+  out.reason=relationActive?`대상지 ${areaText}로 역세권활성화 입지·면적과 사전협상 면적·부지성격·도시계획변경 필요성이 모두 확인되어 두 제도의 적용관계 검토가 필요합니다.`:'';
   return out;
 }
 function activationRouteUiSummary(){
@@ -17236,7 +17258,8 @@ function candidateChangeOpportunity(name,st){
     if(/시행자|시행주체|공공 참여|토지확보/.test(text)){labels.push('사업시행자·토지확보 구조 변경');continue;}
     if(/동의/.test(text)){labels.push(`${row.gap&&row.gap!=='기준과 대상지 값 재확인'?row.gap+' · ':''}동의율 확보`);continue;}
     if(/세대수|주택수|주거 연면적/.test(text)){labels.push(`${row.gap&&row.gap!=='기준과 대상지 값 재확인'?row.gap+' · ':''}사업계획 조정`);continue;}
-    if(/대상지 포함|면적 과반|가로구역 포함/.test(text)){labels.push('구역계 재구성 검토');continue;}
+    // 입지·역세권 포함률·가로구역 FAIL은 실제 공간조정 가능성이 별도 계산되지 않은 한 빨간 후보로 승격하지 않는다.
+    if(/대상지 포함|면적 과반|가로구역 포함|역세권|입지/.test(text))return null;
     return null;
   }
   return labels.length?{possible:true,label:[...new Set(labels)].slice(0,2).join(' · '),kind:area&&labels.length===1?'AREA':'REGULATION'}:null;
