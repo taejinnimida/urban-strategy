@@ -1985,7 +1985,7 @@ body.service-layout-ready>.shell{display:none!important}
 <div><span>공시지가 확인률</span><b id="ccLandPriceCoverage">-</b></div>
 </div>
 <div class="spatial-tags" id="ccLandLegend"><span>지목 조회 전</span></div>
-<div class="spatial-caption">도면정보 · 구역 내 필지 진하게 / 구역 밖 주변지적 얇게 / 90㎡ 미만 강조</div>
+<div class="spatial-caption">도면정보 · 연속지적을 기본도로 사용하고 검토구역 내부 필지를 토지대장 지목별로 채색합니다. 주변 필지는 지적경계만 연하게 표시하며 도로폭·도시계획시설 등 다른 주제도는 이 도면에 중첩하지 않습니다.</div>
 <div class="spatial-mini-map" id="ccLandMiniMap"></div>
 </section>
 <section class="spatial-module site-analysis-card site-analysis-local" id="siteDetail_zoning">
@@ -4338,10 +4338,11 @@ const ccLandMiniRoads=L.geoJSON(null,{style:f=>{
   return {weight:ok?1.2:.7,color:ok?'#7a5af8':'#98a2b3',fillColor:ok?'#d9d6fe':'#eaecf0',fillOpacity:ok?.32:.12};
 }}).addTo(ccLandMini);
 const ccLandMiniParcels=L.geoJSON(null,{style:f=>{
-  const p=f.properties||{};
-  return p.is_small===true
-    ? {weight:1.75,color:'#b42318',fillColor:'#fecdca',fillOpacity:.42}
-    : {weight:1.25,color:'#175cd3',fillColor:'#d1e9ff',fillOpacity:.28};
+  const v=landCategoryVisual(parcelLandCategory(f));
+  return {weight:1.15,color:v.line,fillColor:v.fill,fillOpacity:.58,opacity:.95};
+},onEachFeature:(f,l)=>{
+  const p=f.properties||{},cat=parcelLandCategory(f),v=landCategoryVisual(cat);
+  l.bindTooltip(`${escHtml(p.jibun||p.jibun_nm||p.pnu||'필지')} · 지목 ${escHtml(v.label)}`);
 }}).addTo(ccLandMini);
 const ccLandMiniBoundary=L.geoJSON(null,{style:{weight:2.8,color:'#101828',fillOpacity:0}}).addTo(ccLandMini);
 
@@ -6681,7 +6682,6 @@ function refreshCompactMiniMaps(){
     try{return !turf.booleanIntersects(turf.feature(activeGeometry),turf.feature(f.geometry,f.properties||{}));}catch(e){return true;}
   });
   if(outsideParcels.length)ccLandMiniContext.addData({type:'FeatureCollection',features:outsideParcels.map(cloneFeature)});
-  if(currentRoadWidthFeatures.length)ccLandMiniRoads.addData({type:'FeatureCollection',features:currentRoadWidthFeatures.map(cloneFeature)});
   if(landFs.length)ccLandMiniParcels.addData({type:'FeatureCollection',features:landFs});
 
   const currentKeys=new Set((currentBuildingFeatures||[]).map(f=>String((f.properties||{})._building_key||(f.properties||{}).bd_mgt_sn||(f.properties||{}).bul_man_no||f.id||'')));
@@ -11576,6 +11576,39 @@ const CURRENT_PARK_GREEN_CATEGORIES=new Set([
 function normalizedLandCategory(v){
   return String(v||'').replace(/\s+/g,'').trim();
 }
+// R61 토지현황 도면: 연속지적 + 지목 단일 주제도.
+// 법정 판정색이 아니라 현황 가독성을 위한 UI 색상이며, 범례와 1:1 대응한다.
+const LAND_CATEGORY_VISUAL=Object.freeze({
+  '대':{label:'대지',fill:'#fde68a',line:'#b45309'},
+  '도로':{label:'도로',fill:'#d1d5db',line:'#6b7280'},
+  '공원':{label:'공원',fill:'#bbf7d0',line:'#15803d'},
+  '하천':{label:'하천',fill:'#bae6fd',line:'#0369a1'},
+  '구거':{label:'구거',fill:'#cffafe',line:'#0e7490'},
+  '유지':{label:'유지',fill:'#bfdbfe',line:'#1d4ed8'},
+  '전':{label:'전',fill:'#d9f99d',line:'#4d7c0f'},
+  '답':{label:'답',fill:'#ccfbf1',line:'#0f766e'},
+  '과수원':{label:'과수원',fill:'#ecfccb',line:'#3f6212'},
+  '임야':{label:'임야',fill:'#86efac',line:'#166534'},
+  '잡종지':{label:'잡종지',fill:'#fed7aa',line:'#c2410c'},
+  '주차장':{label:'주차장',fill:'#e5e7eb',line:'#4b5563'},
+  '학교용지':{label:'학교용지',fill:'#ddd6fe',line:'#6d28d9'},
+  '철도용지':{label:'철도용지',fill:'#cbd5e1',line:'#475569'},
+  '체육용지':{label:'체육용지',fill:'#a7f3d0',line:'#047857'},
+  '유원지':{label:'유원지',fill:'#fbcfe8',line:'#be185d'},
+  '공장용지':{label:'공장용지',fill:'#fecaca',line:'#b91c1c'}
+});
+function landCategoryVisual(cat){
+  const c=normalizedLandCategory(cat);
+  return LAND_CATEGORY_VISUAL[c]||{label:c||'미확인',fill:'#f3f4f6',line:'#6b7280'};
+}
+function parcelLandCategory(f){
+  const p=f?.properties||{},ledger=p.land_ledger||{};
+  return normalizedLandCategory(ledger.lndcgrCodeNm||parseJibunLandCategory(p.jibun||''));
+}
+function landCategoryLegendChip(cat,count=null){
+  const v=landCategoryVisual(cat),n=count==null?'':` <b>${count}</b>`;
+  return `<span class="map-legend-chip" style="--zone-fill:${v.fill};--zone-border:${v.line}">${escHtml(v.label)}${n}</span>`;
+}
 function isPublicLandOwnership(v){
   const s=String(v||'').replace(/\s+/g,'').trim();
   return /국유|공유|시유|구유|군유|도유|국공유|공공/.test(s);
@@ -13012,6 +13045,27 @@ function checkSafeFromFacts(store,f){
   rows.push(schemeRow('공공기여 기준','용도지역 변경 조합별 공공기여율',den.contribution,'INFO','최종계획에 따라 결정',false,{sourceId:'SAFE_OP',locator:'제5장'}));
   return rows;
 }
+// R61 상생주택 전문가 추천 FACT: 검토부지의 순대지 중 건축물 footprint가 차지하지 않는 면적비율.
+// 운영기준의 법정 정량기준이 아니라 저이용 토지를 자동 발굴하기 위한 플랫폼 전문가 기준이다.
+function sharedHousingOpenLandFact(){
+  const base=selectedParcelLandBase(),siteArea=Number(base.baseNetSite);
+  if(!(Number.isFinite(siteArea)&&siteArea>0))return {known:false,pct:null,open_area_m2:null,building_footprint_m2:null,site_area_m2:null,note:'순대지면적 미확보'};
+  const buildable=[];
+  for(const pnu of selectedParcelPnus){const f=parcelFeatureMap.get(String(pnu));if(!f?.geometry)continue;const info=parcelAnalysisAreaAndCategory(f);if(info.infra)continue;buildable.push(turf.feature(f.geometry,f.properties||{}));}
+  const spatialKnown=['SUCCESS_DATA','SUCCESS_EMPTY'].includes(String(buildingSpatialQueryState.status||''))||(currentBuildingFeatures||[]).length>0||(hubTitleQueryState.complete===true&&buildingRawFacts().length===0);
+  if(!spatialKnown)return {known:false,pct:null,open_area_m2:null,building_footprint_m2:null,site_area_m2:siteArea,note:'건축물 공간도형 미확보'};
+  const pieces=[];
+  for(const bf0 of (currentBuildingFeatures||[])){
+    if(!bf0?.geometry)continue;const bf=turf.feature(bf0.geometry,bf0.properties||{});
+    for(const pf of buildable){try{const x=turf.intersect(pf,bf);if(x&&turf.area(x)>.05)pieces.push(x);}catch(e){}}
+  }
+  let footprint=0;
+  if(pieces.length){const u=safeUnionPolygons(pieces);footprint=u?Math.max(0,turf.area(u)):pieces.reduce((sum,x)=>sum+Math.max(0,turf.area(x)),0);}
+  footprint=Math.min(siteArea,footprint);
+  const open=Math.max(0,siteArea-footprint),pct=open/siteArea*100;
+  return {known:true,pct,open_area_m2:open,building_footprint_m2:footprint,site_area_m2:siteArea,note:'기초 순대지면적 - 건축물 footprint / 기초 순대지면적',source:'연속지적·토지대장 + VWorld 건축물 공간'};
+}
+
 function sharedHousingAutomaticTargetFacts(store){
   const records=store.site.building?.records||[],base=selectedParcelLandBase(),age=resolvedSchemeAgeFact(store,'general_housing'),far=store.site.building?.current_far||siteCurrentVolumeRatioFact(records,store.common.area);
   const titleComplete=store.site.building?.title_query?.complete===true;
@@ -13019,23 +13073,25 @@ function sharedHousingAutomaticTargetFacts(store){
   const factoryLand=Number(base.categories?.['공장용지']||0)>0;
   const activeFactory=records.some(isFactoryRatioCurrentRecord);
   const relocation=titleComplete&&factoryLand&&!activeFactory;
-  const old=age?.status==='PASS';
-  const lowFar=far?.known===true&&Number(far.pct)<=200;
+  const openLand=sharedHousingOpenLandFact();
+  const lowFar=far?.known===true&&Number(far.pct)<200;
+  const expertLowUse=openLand.known===true&&Number(openLand.pct)>=40&&lowFar;
   const manual=store.common.sharedLowUse===true,proposal=store.common.sharedProposal===true;
-  // 운영기준의 진입성격은 '저이용·유휴토지등' 또는 민간제안이다. 노후도·낮은 현황용적률은 보조지표일 뿐
-  // 그 하나만으로 정상 이용 중인 공동주택단지 등을 상생주택 후보로 승격시키지 않는다.
-  const candidates=[['나대지',vacant],['이적지 후보',relocation],['사용자 저이용 확인',manual],['민간제안 의사',proposal]].filter(([,v])=>v).map(([k])=>k);
-  const supporting=[['노후도 충족',old],['현황용적률 200% 이하',lowFar]].filter(([,v])=>v).map(([k])=>k);
+  const legalCandidates=[['나대지',vacant],['이적지 후보',relocation],['사용자 저이용 확인',manual],['민간제안 의사',proposal]].filter(([,v])=>v).map(([k])=>k);
+  const candidates=[...legalCandidates];
+  if(expertLowUse)candidates.push(`플랫폼 전문가 저이용형 · 나지 ${Number(openLand.pct).toFixed(1)}% · 현황용적률 ${Number(far.pct).toFixed(1)}%`);
+  const supporting=[['지구단위계획 노후도 충족',age?.status==='PASS'],['나지비율 40% 이상',openLand.known&&Number(openLand.pct)>=40],['현황용적률 200% 미만',lowFar]].filter(([,v])=>v).map(([k])=>k);
   const newRatio=records.length?records.filter(r=>rawFactAgeState(r,20)==='NOT_OLD').length/records.length*100:null;
   const renewalConf=(store.site.renewal?.overlaps||[]).length>0;
   const devConf=(store.site.development?.overlaps||[]).length>0;
   const projectConf=(store.site.renewal?.existing_projects||[]).filter(x=>!['준공','준공(일부)'].includes(x.stage_label||'')).length>0;
   const conflict=renewalConf||devConf||projectConf;
-  let status='FAIL',note=supporting.length?`노후도·저밀도 보조지표(${supporting.join('·')})만으로 저이용·유휴토지등을 확정하지 않음`:'저이용·유휴토지등 또는 민간제안 진입성격이 확인되지 않음';
-  if(candidates.length){status=conflict?'REVIEW':'PASS';note=conflict?'진입성격은 확인되나 정비구역·개발구역·기존 추진사업 중첩으로 사업충돌 검토 필요':'운영기준상 저이용·유휴토지등/민간제안 진입성격 확인';}
+  let status='FAIL',note='저이용·유휴토지등/민간제안 또는 플랫폼 전문가 저이용형 진입조건이 확인되지 않음';
+  if(candidates.length){status=conflict?'REVIEW':'PASS';note=conflict?'사업대상 후보성격은 확인되나 정비구역·개발구역·기존 추진사업 중첩으로 사업충돌 검토 필요':expertLowUse&&!legalCandidates.length?'플랫폼 전문가 저이용형 자동추천 · 나지비율 40% 이상 + 현황용적률 200% 미만':'운영기준상 저이용·유휴토지등/민간제안 진입성격 확인';}
   else if(newRatio!=null&&newRatio>=50){status='FAIL';note='신축 건축물 비율이 높고 저이용·유휴토지등 진입성격이 확인되지 않음';}
-  else if(!titleComplete){status='REVIEW';note='건축물대장 완전성 미확보로 나대지 여부 확인 필요';}
-  return {status,candidates,supporting,vacant,relocation,age,far,new_building_pct:newRatio,conflict,conflict_detail:{renewal:renewalConf,development:devConf,existing_project:projectConf},note,model_basis:'PLATFORM_TARGET_MODEL',legal_threshold:false};
+  else if(!titleComplete){status='REVIEW';note='건축물대장 완전성 미확보로 나대지·저이용 여부 확인 필요';}
+  else if(!openLand.known||far?.known!==true){status='REVIEW';note='나지비율 또는 현황용적률 FACT 미확보로 플랫폼 저이용형 기준 확인 필요';}
+  return {status,candidates,legal_candidates:legalCandidates,supporting,vacant,relocation,age,far,open_land:openLand,expert_lowuse:expertLowUse,expert_only:expertLowUse&&legalCandidates.length===0,new_building_pct:newRatio,conflict,conflict_detail:{renewal:renewalConf,development:devConf,existing_project:projectConf},note,model_basis:'PLATFORM_TARGET_MODEL',expert_rule:'나지비율 40% 이상 AND 현황용적률 200% 미만',legal_threshold:false};
 }
 
 function sharedHousingSpatialFacts(store){
@@ -13046,20 +13102,22 @@ function sharedHousingSpatialFacts(store){
   const target=sharedHousingAutomaticTargetFacts(store);
   const fact={target,scale:{area_m2:c.area,units:c.units},conservation:{urban_natural_park:{known:parkKnown,present:a.urbanPark?.present??(parkHits.length>0)},development_restriction:{known:gbKnown,present:a.greenbelt?.present??(gbHits.length>0)},biotope_grade1:{known:!!bio.known,present:bio.present===true,value:!bio.known?'자료 미확인':bio.present?'중첩':'해당 없음'},public_interest_forest:{known:!!forest.known,present:forest.present===true,value:!forest.known?'자료 미확인':forest.present?'중첩':'해당 없음'},manual_excluded:c.sharedExcluded},planning:{facilities:d.planning_facilities||[],density:sharedHousingDensity(c),type:effectiveSharedHousingType(c)},spatial_status_rows:[]};
   fact.spatial_status_rows=[
-    spatialFactRow('상생주택 사업대상 후보',target.candidates.length?target.candidates.join(' · '):'진입성격 미확인',target.status==='PASS'?'CONFIRMED':target.status==='FAIL'?'FAIL':'REVIEW',`${target.note} · 노후도/현황용적률은 보조지표이며 단독 진입조건으로 사용하지 않음`,{criterionStatus:target.status}),
-    spatialFactRow('현황용적률',target.far?.known?`${Number(target.far.pct).toFixed(1)}%`:'미확인',target.far?.known?'CONFIRMED':'REVIEW',`${target.far?.basis||'건축HUB'} · 200%는 법정 진입요건이 아닌 플랫폼 저이용 후보참조`,{criterionStatus:target.far?.known?(Number(target.far.pct)<=200?'PASS':'FAIL'):'REVIEW',criterionRule:'플랫폼 후보참조: 현황용적률 200% 이하',criterionItem:'현황용적률'}),
-    spatialFactRow('지구단위계획 노후도',ageFactValue(target.age),target.age?.status==='PASS'?'CONFIRMED':target.age?.status==='FAIL'?'FAIL':'REVIEW',ageFactNote(target.age),{criterionStatus:target.age?.status||'REVIEW',criterionRule:'플랫폼 후보참조: 지구단위계획 노후도 충족',criterionItem:'지구단위계획 노후도'}),
+    spatialFactRow('상생주택 사업대상 후보',target.candidates.length?target.candidates.join(' · '):'진입성격 미확인',target.status==='PASS'?'CONFIRMED':target.status==='FAIL'?'FAIL':'REVIEW',`${target.note} · 플랫폼 전문가 저이용형은 법정 정량기준이 아니라 초기 추천기준`,{criterionStatus:target.status}),
+    spatialFactRow('나지비율',target.open_land?.known?`${Number(target.open_land.pct).toFixed(1)}%`:'미확인',target.open_land?.known?'CONFIRMED':'REVIEW',`${target.open_land?.note||'건축물 footprint 확인 필요'} · 플랫폼 전문가 추천기준 40% 이상`,{criterionStatus:target.open_land?.known?(Number(target.open_land.pct)>=40?'PASS':'FAIL'):'REVIEW',criterionRule:'플랫폼 전문가 추천: 나지비율 40% 이상',criterionItem:'나지비율'}),
+    spatialFactRow('현황용적률',target.far?.known?`${Number(target.far.pct).toFixed(1)}%`:'미확인',target.far?.known?'CONFIRMED':'REVIEW',`${target.far?.basis||'건축HUB'} · 플랫폼 전문가 추천기준 200% 미만`,{criterionStatus:target.far?.known?(Number(target.far.pct)<200?'PASS':'FAIL'):'REVIEW',criterionRule:'플랫폼 전문가 추천: 현황용적률 200% 미만',criterionItem:'현황용적률'}),
+    spatialFactRow('지구단위계획 노후도',ageFactValue(target.age),target.age?.status==='PASS'?'CONFIRMED':target.age?.status==='FAIL'?'FAIL':'REVIEW',`${ageFactNote(target.age)} · 상생주택 전문가 저이용형 자동추천의 필수조건은 아님`,{criterionStatus:'INFO',criterionRule:'참고 FACT',criterionItem:'지구단위계획 노후도'}),
     spatialFactRow('타 개발사업 충돌',target.conflict?'정비·개발·추진사업 중첩':'중첩 없음',target.conflict?'REVIEW':'CONFIRMED',target.conflict?'후보 적합성은 유지하되 사업충돌 때문에 REVIEW':'연결된 공간사업 현황 기준',{criterionStatus:target.conflict?'REVIEW':'PASS',criterionRule:'기존 정비·개발사업 실제 추진 중이면 사업충돌 검토',criterionItem:'타 개발사업 충돌'})
   ];
   store.scheme_specific.shared_housing=fact;return fact;
 }
 function checkSharedHousingFromFacts(store,f){
   const rows=[];
-  rows.push(schemeRow('사업대상 후보','운영기준상 민간의 저이용·유휴토지등 또는 민간제안 토지를 원칙으로 검토',f.target.candidates.length?f.target.candidates.join(' / '):'저이용·유휴토지등 진입성격 미확인',f.target.status,`${f.target.note} · 노후도·현황용적률 200% 이하는 보조참조이며 단독 PASS 조건 아님`,true,{sourceId:'SHARED',locator:'1-3-4 · 2-1-1'}));
+  rows.push(schemeRow('사업대상 후보','운영기준상 저이용·유휴토지등/민간제안 + 플랫폼 전문가 저이용형(나지비율 40% 이상 AND 현황용적률 200% 미만)',f.target.candidates.length?f.target.candidates.join(' / '):'사업대상 진입성격 미확인',f.target.status,`${f.target.note} · 전문가 저이용형은 법정 정량기준이 아닌 초기 사업방식 추천기준`,true,{sourceId:'SHARED',locator:'1-3-4 · 2-1-1 / 플랫폼 전문가 추천기준'}));
+  rows.push(schemeRow('나지비율','플랫폼 전문가 추천기준 · 기초 순대지 중 건축물 footprint 미점유 면적 40% 이상',f.target.open_land?.known?`${Number(f.target.open_land.pct).toFixed(1)}%`:'미확인',f.target.open_land?.known?(Number(f.target.open_land.pct)>=40?'PASS':'FAIL'):'REVIEW',f.target.open_land?.note||'건축물 공간도형 확인 필요',false,{sourceId:'PLATFORM_EXPERT',locator:'상생주택 초기 추천기준'}));
   rows.push(schemeRow('나대지','건축HUB 전 필지 조회완료 + 건축물 없음',f.target.vacant?'해당':'비해당',f.target.vacant?'PASS':'INFO','상생주택 후보 FACT',false,{sourceId:'SHARED',locator:'사업대상지'}));
   rows.push(schemeRow('이적지 후보','공장용지 등 기존 기능부지이나 현재 공장용도 건축물 미확인',f.target.relocation?'해당':'비해당',f.target.relocation?'PASS':'INFO','법정 공장비율과 무관한 현재 저이용 후보 FACT',false,{sourceId:'SHARED',locator:'사업대상지'}));
   rows.push(schemeRow('노후도 참고','노후도는 저이용·유휴토지등 여부의 보조 사실값이며 단독 사업진입요건이 아님',ageFactValue(f.target.age),'INFO',ageFactNote(f.target.age),false,{sourceId:'URBAN_PLANNING_AGE',locator:f.target.age?.source_locator||'도시계획조례 시행규칙 별표1'}));
-  rows.push(schemeRow('현황용적률 참고','현황용적률은 저이용 여부의 보조 사실값으로만 사용',f.target.far?.known?`${Number(f.target.far.pct).toFixed(1)}%`:'미확인','INFO','200%는 법정 진입요건이 아니며 단독 후보판정에 사용하지 않음',false,{sourceId:'SHARED',locator:'플랫폼 보조 FACT'}));
+  rows.push(schemeRow('현황용적률','플랫폼 전문가 저이용형 추천기준 · 검토부지 대비 용적률산정연면적 200% 미만',f.target.far?.known?`${Number(f.target.far.pct).toFixed(1)}%`:'미확인',f.target.far?.known?(Number(f.target.far.pct)<200?'PASS':'FAIL'):'REVIEW','나지비율 40% 이상과 동시에 충족할 때 전문가 자동추천 · 법정 진입기준 아님',false,{sourceId:'PLATFORM_EXPERT',locator:'상생주택 초기 추천기준'}));
   rows.push(schemeRow('기존 개발사업 충돌','정비구역·도시개발구역·기존 추진사업 등 중첩 시 후보여부와 별개로 사업조정 필요',f.target.conflict?'중첩 있음':'중첩 없음',f.target.conflict?'REVIEW':'PASS',f.target.conflict?'타법 사업 추진상태·중복사업 조정 검토':'연결된 공식 사업현황 기준',true,{sourceId:'SHARED',locator:'사업대상지 사전검토'}));
   const scaleAreaPass=f.scale.area_m2!=null&&f.scale.area_m2>=3000;
   rows.push(schemeRow('사업대상지 규모','부지면적 3,000㎡ 이상 또는 공동주택 100세대 이상',`면적 ${fmtSchemeArea(f.scale.area_m2)} / ${f.scale.units==null?'계획세대 미정':f.scale.units+'세대'}`,scaleAreaPass?'PASS':'INFO',scaleAreaPass?'부지면적 충족':'3,000㎡ 미만이면 100세대 이상 계획으로 후속 규모검토',scaleAreaPass,{sourceId:'SHARED',locator:'2-1-2'}));
@@ -14205,9 +14263,44 @@ function renewalHitsByType(store,types){
   const family=housingRenewalFamilyFacts(store);
   return (family.renewal.overlaps||[]).filter(x=>types.includes(x.type));
 }
+// R61 플랫폼 전문가 진입필터: 재개발은 기존 주거지 정비 성격이 우세한 대상지만 자동추천한다.
+// 법정 입안요건 자체를 대체하지 않으며, 기반시설 지목을 제외한 대지성 토지면적 중
+// 건축HUB 표제부의 주용도가 주거인 필지면적 비율 60%를 초기 진입기준으로 사용한다.
+function redevelopmentResidentialLandShareFact(records){
+  const areaByPnu=parcelAreaFactByPnu(),byPnu=new Map();
+  for(const r of (records||[])){const p=String(r.pnu||'');if(!p)continue;if(!byPnu.has(p))byPnu.set(p,[]);byPnu.get(p).push(r);}
+  const residentialMainUse=r=>/주거|공동주택|아파트|연립주택|다세대주택|단독주택|다가구주택|다중주택|기숙사/.test(String(r?.main_use||r?.mainPurpsCdNm||''));
+  let eligible=0,residential=0,unknown=0,classified=0;
+  const details=[];
+  for(const [pnu,info] of areaByPnu){
+    if(CURRENT_INFRA_LAND_CATEGORIES.has(info.land_category))continue;
+    const a=Number(info.area);if(!(Number.isFinite(a)&&a>0))continue;eligible+=a;
+    const rs=byPnu.get(pnu)||[];
+    if(!rs.length){
+      if(hubTitleQueryState.complete===true){classified++;details.push({pnu,area_m2:a,status:'NON_RESIDENTIAL_OR_VACANT',basis:'표제부 조회완료 · 주거 주용도 건축물 없음'});}
+      else{unknown+=a;details.push({pnu,area_m2:a,status:'UNKNOWN',basis:'건축HUB 표제부 미완료'});}
+      continue;
+    }
+    const known=rs.filter(r=>String(r.main_use||r.mainPurpsCdNm||'').trim());
+    if(!known.length){unknown+=a;details.push({pnu,area_m2:a,status:'UNKNOWN',basis:'주용도 미확인'});continue;}
+    let hw=0,nw=0;
+    for(const r of known){const w=Number(r.volume_ratio_area_m2)||Number(r.total_floor_area_m2)||1;if(residentialMainUse(r))hw+=w;else nw+=w;}
+    if(hw>nw){residential+=a;classified++;details.push({pnu,area_m2:a,status:'RESIDENTIAL',basis:'건축물 주용도 주거 우세'});}
+    else if(nw>hw){classified++;details.push({pnu,area_m2:a,status:'NON_RESIDENTIAL',basis:'건축물 주용도 비주거 우세'});}
+    else{unknown+=a;details.push({pnu,area_m2:a,status:'UNKNOWN',basis:'주용도 혼합·동률'});}
+  }
+  if(!(eligible>0))return {status:'REVIEW',pct:null,lower_pct:null,upper_pct:null,eligible_area_m2:0,residential_area_m2:0,unknown_area_m2:0,threshold_pct:60,details,note:'대지성 토지면적 FACT 미확보'};
+  const lower=residential/eligible*100,upper=(residential+unknown)/eligible*100;
+  let status='REVIEW';
+  if(lower>=60)status='PASS';else if(upper<60)status='FAIL';
+  const note=status==='PASS'?'주거 주용도 대지면적 60% 이상 · 재개발 자동진입':status==='FAIL'?'주거 주용도 대지면적 60% 미만 · 법정요건 검토와 별개로 자동추천 제외':'주용도 미확인 면적 때문에 60% 충족 여부 추가확인';
+  return {status,pct:unknown>0?null:lower,lower_pct:lower,upper_pct:upper,eligible_area_m2:eligible,residential_area_m2:residential,unknown_area_m2:unknown,classified_parcels:classified,threshold_pct:60,details,note,model_basis:'PLATFORM_EXPERT_ENTRY_FILTER',legal_threshold:false};
+}
+
 function redevelopmentSpatialFacts(store){
   const family=housingRenewalFamilyFacts(store),c=store.common,age=schemeAgeFact(store,'redevelopment');
   const frontage=family.frontage.redevelopment||null;
+  const residentialLand=redevelopmentResidentialLandShareFact(family.building_records||[]);
   const officialHits=renewalHitsByType(store,['housing_district','housing_planned']);
   const siteCharacter=family.site_character||{type:'UNKNOWN',label:'대상지 유형 확인 필요'};
   const siteTypeStatus=siteCharacter.type==='APARTMENT_COMPLEX'?'FAIL':siteCharacter.type==='UNKNOWN'?'REVIEW':'PASS';
@@ -14232,6 +14325,7 @@ function redevelopmentSpatialFacts(store){
   const fact={
     official:{loaded:store.site.renewal.loaded,hits:officialHits,value:officialHits.length?officialHits.map(x=>x.name).join(' / '):(store.site.renewal.loaded?'공식 중첩 없음':'정비구역 GIS 미확인')},
     site_character:{...siteCharacter,status:siteTypeStatus},
+    residential_land:residentialLand,
     area:{m2:area,status:areaStatus,note:areaNote,exception_confirmed:!!c.areaExceptionApproved,conditional:areaConditional},
     aging:{assessment:age},
     entry:{small_parcel_pct:small,small_status:smallStatus,house_density:hd,density_status:densityStatus,frontage,frontage_status:frontageStatus,additional_status:extraStatus,additional_note:extraNote},
@@ -14241,6 +14335,8 @@ function redevelopmentSpatialFacts(store){
   fact.spatial_status_rows=[
     spatialFactRow('주택정비 대상지 유형',siteCharacter.label,siteCharacter.type==='UNKNOWN'?'REVIEW':'CONFIRMED',siteTypeStatus==='FAIL'?'공동주택단지형은 일반 재개발 경로에서 제외하고 재건축을 우선 검토':'혼합형·기존시가지형은 재개발 독립요건을 계속 검토',
       {criterionStatus:siteTypeStatus,criterionRule:'명백한 아파트·연립주택 단지형은 재건축 우선 · 혼합형은 재개발 독립검토',criterionItem:'대상지 유형'}),
+    spatialFactRow('주거대지비율',residentialLand.lower_pct==null?'미산정':`${Number(residentialLand.lower_pct).toFixed(1)}%${residentialLand.unknown_area_m2>0?`~${Number(residentialLand.upper_pct||0).toFixed(1)}%`:''}`,residentialLand.status==='REVIEW'?'REVIEW':'CONFIRMED',`${residentialLand.note} · 플랫폼 전문가 진입필터(법정 입안기준 아님)`,
+      {criterionStatus:residentialLand.status,criterionRule:'플랫폼 전문가 진입필터: 기반시설 지목 제외 대지성 토지면적 중 건축물 주용도 주거 필지면적 60% 이상',criterionItem:'주거대지비율'}),
     spatialFactRow('주택정비형 정비구역·예정구역',fact.official.value,store.site.renewal.loaded?'CONFIRMED':'REVIEW','공식 SHP 중첩은 현황 참고이며 신규 입안 가능성을 배제하지 않음',
       {criterionStatus:'INFO',criterionRule:'기존 지정 여부는 신규 입안요건과 별개',criterionNote:'현황 참고항목 · 신규입안 최종판정에 직접 PASS/FAIL로 사용하지 않음'}),
     spatialFactRow('구역면적',fmtSchemeArea(area),area==null?'REVIEW':'CONFIRMED',areaNote,
@@ -14260,6 +14356,7 @@ function redevelopmentSpatialFacts(store){
 function checkRedevelopmentFromFacts(store,f){
   const rows=[];
   rows.push(schemeRow('대상지 유형','명백한 아파트·연립주택 단지형은 재건축 우선 · 혼합형·기존시가지형은 재개발 독립검토',f.site_character?.label||'대상지 유형 확인 필요',f.site_character?.status||'REVIEW',f.site_character?.status==='FAIL'?'공동주택단지형으로 확인되어 일반 재개발 후보에서 제외 · 재건축 우선검토':'건축물대장 기반 대상지 유형 Fact',true,{sourceId:'RENEWAL_PLAN',locator:'주택정비사업 유형별 사업대상 · 초기 사업가능성 분류'}));
+  {const x=f.residential_land||{};const val=x.lower_pct==null?'미산정':`${Number(x.lower_pct).toFixed(1)}%${x.unknown_area_m2>0?`~${Number(x.upper_pct).toFixed(1)}%`:''}`;rows.push(schemeRow('주거대지비율','플랫폼 전문가 진입필터 · 기반시설 지목 제외 대지성 토지면적 중 건축물 주용도가 주거인 필지면적 60% 이상',val,x.status||'REVIEW',`${x.note||'주거대지비율 확인 필요'} · 법정 재개발 입안요건과 별도`,true,{sourceId:'PLATFORM_EXPERT',locator:'내부 초기 사업방식 선별기준',hardGate:'SITE_CHARACTER'}));}
   rows.push(schemeRow('정비유형·정비구역','주택정비형 재개발 정비구역·예정구역의 공식 중첩 여부를 현황으로 확인',f.official.value,f.official.loaded?'INFO':'REVIEW','기존 지정 여부는 신규 입안요건과 별개',false,{sourceId:'RENEWAL_GIS',locator:'서울시 정비구역·정비예정구역 공식 공간자료 / 결정고시 재확인'}));
   rows.push(schemeRow('구역면적','10,000㎡ 이상 원칙 · 5,000㎡ 이상은 조례상 위원회 인정 등 예외 검토',fmtSchemeArea(f.area.m2),f.area.status,f.area.note,true,{sourceId:'RENEWAL_ORD',locator:'제6조제1항제2호',conditional:f.area.conditional===true,caveat:f.area.conditional?'위원회 인정 등 조례상 예외요건 확보 필요':'',decisionPath:f.area.conditional?'committee_exception':'base'}));
   rows.push(schemeRow('노후도','노후·불량건축물 수 60% 이상',ageFactValue(f.aging.assessment),f.aging.assessment?.status||'REVIEW',ageFactNote(f.aging.assessment),true,{sourceId:'RENEWAL_ORD',locator:'제6조제1항제2호 / 제4조·별표1'}));
@@ -17253,9 +17350,10 @@ function candidateOneYearAgeOpportunity(name){
   return null;
 }
 // 사업추천용 운영 휴리스틱. 법정 면적기준을 완화하는 규정이 아니다.
-// 법정 최소면적에 아주 근접한 대상지만 '인접필지 편입 검토' 대안으로 남기고,
-// 최소면적의 10%를 초과해 부족한 대상지는 다른 사업방식을 검토하도록 추천에서 제외한다.
-const CANDIDATE_AREA_SHORTFALL_TOLERANCE_PCT=10;
+// 기준면적과의 차이가 10% 이내면 적극적인 경계조정, 10~15%면 조건부 경계조정을 제안한다.
+// 15%를 넘으면 단순한 인접필지 편입/일부 제척 수준이 아니므로 자동 보완추천을 하지 않는다.
+const CANDIDATE_AREA_ACTIVE_TOLERANCE_PCT=10;
+const CANDIDATE_AREA_MAX_TOLERANCE_PCT=15;
 function candidateAreaMinimumM2(name,row=null){
   const f=schemeResults[name]?.facts||{};
   const dynamic=Number(f?.area?.min_m2);
@@ -17273,6 +17371,22 @@ function candidateAreaMinimumM2(name,row=null){
   if(atleast){const n=Number(String(atleast[1]).replace(/,/g,''));if(Number.isFinite(n)&&n>0)return n;}
   return null;
 }
+function candidateAreaMaximumM2(name,row=null){
+  const f=schemeResults[name]?.facts||{};
+  const dynamic=Number(f?.area?.max_m2);
+  if(Number.isFinite(dynamic)&&dynamic>0)return dynamic;
+  // 조건부 상한이 별도로 있는 사업은 팝업 문구의 첫 번째 숫자범위보다 실제 최종 상한을 우선한다.
+  if(name==='station_complex')return 10000;
+  if(name==='innovation_housing')return 60000;
+  if(name==='activation')return f?.route?.route==='redevelopment'?30000:10000;
+  if(name==='growth_potential')return f?.area?.route==='redevelopment'?10000:5000;
+  const rule=String(row?.rule||'');
+  const range=rule.match(/[0-9][0-9,]*\s*(?:㎡)?\s*[~～-]\s*([0-9][0-9,]*)\s*㎡/);
+  if(range){const n=Number(String(range[1]).replace(/,/g,''));if(Number.isFinite(n)&&n>0)return n;}
+  const under=rule.match(/([0-9][0-9,]*)\s*㎡\s*(?:이하|미만)/);
+  if(under){const n=Number(String(under[1]).replace(/,/g,''));if(Number.isFinite(n)&&n>0)return n;}
+  return null;
+}
 function candidateAreaAdjustmentOpportunity(name,st){
   const rows=(schemeResults[name]?.rows||[]).filter(r=>r.status==='FAIL'&&r.evaluatedStatus!=='REVIEW'&&r.hardGate==='AREA');
   if(!rows.length)return null;
@@ -17280,18 +17394,25 @@ function candidateAreaAdjustmentOpportunity(name,st){
   if(!Number.isFinite(area)||area<=0)return null;
   const candidates=[];
   for(const row of rows){
-    const minimum=candidateAreaMinimumM2(name,row);
-    // 최대면적 초과는 이번 '소폭 부족 대안추천'의 대상이 아니다.
-    if(!Number.isFinite(minimum)||minimum<=0||area>=minimum)continue;
-    const gap=minimum-area,pct=gap/minimum*100;
-    if(pct>0&&pct<=CANDIDATE_AREA_SHORTFALL_TOLERANCE_PCT+1e-9)candidates.push({row,minimum,gap,pct});
+    const minimum=candidateAreaMinimumM2(name,row),maximum=candidateAreaMaximumM2(name,row);
+    if(Number.isFinite(minimum)&&minimum>0&&area<minimum){
+      const gap=minimum-area,pct=gap/minimum*100;
+      if(pct>0&&pct<=CANDIDATE_AREA_MAX_TOLERANCE_PCT+1e-9)candidates.push({row,direction:'EXPAND',standard:minimum,gap,pct});
+    }
+    if(Number.isFinite(maximum)&&maximum>0&&area>maximum){
+      const gap=area-maximum,pct=gap/maximum*100;
+      if(pct>0&&pct<=CANDIDATE_AREA_MAX_TOLERANCE_PCT+1e-9)candidates.push({row,direction:'REDUCE',standard:maximum,gap,pct});
+    }
   }
   if(!candidates.length)return null;
   candidates.sort((a,b)=>a.pct-b.pct||a.gap-b.gap);
-  const x=candidates[0];
-  const gap=Math.ceil(x.gap),pct=x.pct;
-  return {possible:true,label:`법정 최소면적까지 ${gap.toLocaleString('ko-KR')}㎡(${pct.toFixed(1)}%) 부족 · 인접필지 편입 검토`,kind:'AREA',minimum_m2:x.minimum,current_m2:area,shortfall_m2:x.gap,shortfall_pct:pct,tolerance_pct:CANDIDATE_AREA_SHORTFALL_TOLERANCE_PCT};
+  const x=candidates[0],gap=Math.ceil(x.gap),pct=x.pct,tier=pct<=CANDIDATE_AREA_ACTIVE_TOLERANCE_PCT+1e-9?'ACTIVE':'CONDITIONAL';
+  const action=x.direction==='EXPAND'?'인접필지 편입':'일부필지 제척';
+  const qualifier=tier==='ACTIVE'?'적극 검토':'조건부 검토';
+  const basis=x.direction==='EXPAND'?'법정 최소면적':'법정 최대면적';
+  return {possible:true,label:`${basis} 대비 ${gap.toLocaleString('ko-KR')}㎡(${pct.toFixed(1)}%) ${x.direction==='EXPAND'?'부족':'초과'} · ${action} ${qualifier}`,kind:'AREA',direction:x.direction,standard_m2:x.standard,current_m2:area,gap_m2:x.gap,gap_pct:pct,tier,active_tolerance_pct:CANDIDATE_AREA_ACTIVE_TOLERANCE_PCT,max_tolerance_pct:CANDIDATE_AREA_MAX_TOLERANCE_PCT};
 }
+
 function candidateChangeOpportunity(name,st){
   if(!st||!st.ready||SHELL_SCHEMES.has(name))return null;
   // 조건을 바꿔도 독립 사업경로가 생기지 않는 하드 제외는 빨간 후보로 만들지 않는다.
@@ -17304,7 +17425,7 @@ function candidateChangeOpportunity(name,st){
   const area=candidateAreaAdjustmentOpportunity(name,st);
   if(st.stage==='EXECUTION'||st.execution?.hardMismatch)return {possible:true,label:'사업시행자·토지확보 구조 변경',kind:'EXECUTION'};
   if(!failed.length)return null;
-  // 면적 FAIL이 있으면 10% 이내 최소면적 부족인 경우에만 조정기회로 인정한다.
+  // 면적 FAIL은 기준 대비 15% 이내에서만 경계조정 기회로 인정하며, 10% 이내는 적극검토·10~15%는 조건부검토로 구분한다.
   // 면적 외 다른 FAIL도 함께 있으면 그 항목까지 실제 조정 가능한지 끝까지 확인한 뒤 추천한다.
   const failedAreaRows=failed.filter(r=>r.hardGate==='AREA');
   if(failedAreaRows.length&&!area)return null;
@@ -17337,6 +17458,10 @@ function candidateDisplayState(name,st=safeCandidateState(name)){
       if(ps.independent_status==='PASS'&&ps.linked_status==='PASS')return {kind:'available',css:'candidate-on',label:'독립·연계 가능',action:ps.overall_value||'독립추진 및 정책사업 연계추진 가능'};
       if(ps.linked_status==='PASS'&&ps.independent_status!=='PASS')return {kind:'available',css:'candidate-on',label:'연계추진 가능',action:ps.linked_value||'정책사업을 통한 도시정비형 재개발 시행방식 가능'};
       if(ps.independent_status==='PASS')return {kind:'available',css:'candidate-on',label:'독립추진 가능',action:ps.independent_value||'독립 도시정비형 재개발 진입 가능'};
+    }
+    if(name==='shared_housing'){
+      const tf=schemeResults.shared_housing?.facts?.target;
+      if(tf?.expert_only===true)return {kind:'available',css:'candidate-on',label:'전문가 추천',action:`나지비율 ${Number(tf.open_land?.pct||0).toFixed(1)}% · 현황용적률 ${Number(tf.far?.pct||0).toFixed(1)}% · 저이용형 상생주택 검토`};
     }
     if(name==='safe'){
       const sf=schemeResults.safe?.facts;
@@ -18951,10 +19076,8 @@ function updateCompactInfoRail(siteStore=null){
   set('ccLandState',parcels.length?`필지합계 · 공식 ${base.officialAreaCount}/${parcels.length}${edgeCandidates?` · 경계후보 ${edgeCandidates}`:''}`:(activeGeometry?'필지 자동선정 필요':'구역 설정 전'));
   const landLegend=document.getElementById('ccLandLegend');
   if(landLegend){
-    const entries=ccTopEntries(landCats);
-    const landTags=entries.map(([k,v])=>`<span>${escHtml(k)} <b>${v}</b></span>`);
-    const facilityTags=(base.planningFacilityNames||[]).slice(0,3).map(x=>`<span>도시계획시설 ${escHtml(x.name)} <b>${fmt(x.area,0)}㎡</b></span>`);
-    landLegend.innerHTML=(landTags.length||facilityTags.length)?[...landTags,...facilityTags].join(''):'<span>토지대장·도시계획시설 조회 후 표시</span>';
+    const entries=[...landCats.entries()].sort((a,b)=>b[1]-a[1]);
+    landLegend.innerHTML=entries.length?entries.map(([k,v])=>landCategoryLegendChip(k,v)).join(''):'<span>토지대장 지목 조회 후 표시</span>';
   }
 
   const records=selectedHubRecordsForSchemes();
