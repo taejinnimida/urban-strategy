@@ -1450,8 +1450,8 @@ body.review-modal-open{overflow:hidden}
 }
 .service-target-box,.service-right-box{min-width:0}
 .service-right-box{display:flex;flex-direction:column}
-.service-right-box .cc-candidate-panel{order:1}
-.service-right-box .result-action-panel{order:2}
+.service-right-box .result-action-panel{order:1}
+.service-right-box .cc-candidate-panel{order:2}
 .renewal-location-column .service-condition-box{margin:8px 0 6px;background:#fff;border:1px solid #e4e7ec;border-radius:10px;padding:8px}
 .renewal-location-column .service-condition-box>.service-block-title{margin-bottom:6px}
 .service-target-box>.service-block-title,
@@ -17744,6 +17744,15 @@ document.addEventListener('click',e=>{
   const backdrop=e.target.closest('.review-modal-backdrop');
   if(backdrop && e.target===backdrop)closeReviewModal(backdrop.id);
 });
+// R62: 공개 브라우저에서의 무심코 한 개발자도구 진입 억제.
+// 실제 소스보호는 서버사이드 이전으로 처리하며, 여기서는 사용자가 요청한 F12만 차단한다.
+document.addEventListener('keydown',e=>{
+  if(e.key==='F12'){
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    return;
+  }
+},true);
 document.addEventListener('keydown',e=>{
   if(e.key!=='Escape')return;
   const open=[...document.querySelectorAll('.review-modal-backdrop.open')].pop();
@@ -20074,8 +20083,8 @@ function buildServiceLayout(){
           <div id="serviceLocationMount"></div>
         </div>
         <div class="service-right-box">
-          <div id="serviceSchemeMount"></div>
           <div id="serviceResultMount"></div>
+          <div id="serviceSchemeMount"></div>
           <section class="service-priority-preview" id="servicePriorityPreview">
             <div class="service-priority-preview-head"><b>선순위 사업 미리보기</b><span>사업별 검토결과를 비교해 자동 갱신</span></div>
             <div class="service-priority-preview-body" id="servicePriorityPreviewBody">
@@ -20131,8 +20140,8 @@ function buildServiceLayout(){
     reviewBar.insertAdjacentElement('beforebegin',conditionBox);
     inputs.forEach(x=>conditionBox.querySelector('#serviceConditionInputs').appendChild(x));
   }
-  main.querySelector('#serviceSchemeMount').appendChild(candidate);
   main.querySelector('#serviceResultMount').appendChild(resultActions);
+  main.querySelector('#serviceSchemeMount').appendChild(candidate);
 
   // 후보 제목 우측 전체비교 버튼
   const head=candidate.querySelector('.cc-candidate-head');
