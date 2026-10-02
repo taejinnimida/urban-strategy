@@ -1793,10 +1793,10 @@ body.service-layout-ready>.shell{display:none!important}
   </div>
 </section>
 <section class="scheme-competition-panel" id="schemeCompetitionPanel" aria-live="polite">
-  <div class="scheme-competition-head"><div><b>사업성 제고제도 경합</b><span id="schemeCompetitionSummary">5,000㎡ 경계에서 역세권활성화와 사전협상의 적용관계를 비교합니다.</span></div><em>전략 검토</em></div>
+  <div class="scheme-competition-head"><div><b>사업성 제고제도 경합</b><span id="schemeCompetitionSummary">역세권활성화 자체 적격과 사전협상 전문가 자동후보가 동시에 성립할 때만 적용관계를 비교합니다.</span></div><em>전략 검토</em></div>
   <div class="scheme-competition-grid">
     <button class="scheme-competition-card" type="button" onclick="showCandidateBasis('activation')"><strong>역세권활성화 <em id="schemeCompetitionActivationBadge">경합검토</em></strong><span id="schemeCompetitionActivationText">역세권 입지·구역계 조건을 확인합니다.</span><small id="schemeCompetitionActivationRoute">역세권형 / 간선도로변형 판정 연계</small></button>
-    <button class="scheme-competition-card" type="button" onclick="showCandidateBasis('prior_negotiation')"><strong>사전협상 <em id="schemeCompetitionPriorBadge">추진후보</em></strong><span id="schemeCompetitionPriorText">5,000㎡ 이상과 협상대상지 성격을 확인합니다.</span><small id="schemeCompetitionPriorArea">토지 일괄확보·도시계획변경 필요성 확인</small></button>
+    <button class="scheme-competition-card" type="button" onclick="showCandidateBasis('prior_negotiation')"><strong>사전협상 <em id="schemeCompetitionPriorBadge">추진후보</em></strong><span id="schemeCompetitionPriorText">전문가 자동후보 6조건 충족 여부를 확인합니다.</span><small id="schemeCompetitionPriorArea">면적·필지·집합건축물·저밀·입지·노후도 확인</small></button>
   </div>
   <div class="scheme-competition-foot" id="schemeCompetitionFoot"><b>판정 원칙</b> · 법적 PASS/FAIL을 변경하지 않고, 두 제도가 경합하는 사업전략 상태만 별도로 표시합니다.</div>
 </section>
@@ -10832,6 +10832,7 @@ const RULE_SOURCE_CATALOG={
   PRIOR_NEGOTIATION:{type:'서울시 운영지침',title:'도시계획변경 사전협상 운영지침',effective:'2026-06-29 제11차 개정',locator:'대상지 선정·협상절차·협상기준·상생발전형 사전협상',url:'https://news.seoul.go.kr/citybuild/archives/540426',verified:true},
   PRIOR_NEGOTIATION_AREA:{type:'조례',title:'서울특별시 도시계획 조례',effective:'2026-07-13',locator:'제17조 · 사전협상 대상지 5천제곱미터 이상',url:'https://www.law.go.kr/ordinInfoP.do?ordinId=2000719',verified:true},
   PRIOR_NEGOTIATION_ORD:{type:'조례',title:'서울특별시 도시계획변경 사전협상 운영에 관한 조례',effective:'2025-07-14',locator:'제1조·제2조·제9조 등 협상대상지 선정·운영',url:'https://www.law.go.kr/LSW/ordinInfoP.do?ordinSeq=2054505',verified:true},
+  PRIOR_NEGOTIATION_EXPERT_GATE:{type:'플랫폼 전문가 초기선별',title:'사전협상 자동후보 전문가 필터(사용자 지정 · 비법정)',effective:'2026-10-02',locator:'면적 5,000㎡+ · 단일필지 · 비집합건축물 · 현황용적률 200% 미만 · 중심지 또는 역 500m 이내 · 도시계획조례 노후도 충족',url:'',verified:true},
   ACTIVATION:{type:'운영기준',title:'서울특별시 역세권 활성화사업 운영기준',effective:'2026-04-30',locator:'제1장 제3절·제2장 제1절',url:'https://news.seoul.go.kr/citybuild/archives/521155',verified:true},
   SAFE_ORD:{type:'조례',title:'서울특별시 안심주택 공급 지원에 관한 조례',effective:'2026-01-05',locator:'제2조·제5조',url:'https://www.law.go.kr/ordinSc.do?menuId=3&query=%EC%84%9C%EC%9A%B8%ED%8A%B9%EB%B3%84%EC%8B%9C%20%EC%95%88%EC%8B%AC%EC%A3%BC%ED%83%9D',verified:true},
   SAFE_OP:{type:'운영기준',title:'서울특별시 안심주택 건립 및 운영기준',effective:'2026-08-03 · 제2차 개정',locator:'제3장 입지·사업대상지 / 제4장 용도지역·도시계획 / 제5장 용적률·공공기여',url:'https://news.seoul.go.kr/citybuild/archives/526639',verified:true},
@@ -12543,7 +12544,8 @@ function activationSpatialFacts(store){
     spatial_status_rows:[]
   };
   const stationDecision=activationStationCriterion(fact.location.station,c);
-  const priorStatus=c.priorNegotiation===true?'FAIL':c.priorNegotiation===false?'PASS':(c.area!=null&&c.area<5000?'PASS':'REVIEW');
+  const priorGate=priorNegotiationExpertGate(store);
+  const priorStatus=c.priorNegotiation===true?'FAIL':c.priorNegotiation===false?'PASS':(priorGate.status==='PASS'?'REVIEW':'INFO');
   const renewalStatus=renewalExclusion.status;
   fact.spatial_status_rows=[
     spatialFactRow('역세권 기준거리',threshold==null?'기준 미확인':`${threshold}m / 판정역 ${chosenStation?.name||'-'} ${chosenStation?.distance_m==null?'-':Number(chosenStation.distance_m).toFixed(1)+'m'}`,stationDecision.direct.status==='REVIEW'?'REVIEW':'CONFIRMED','승강장 경계·중심지위계·환승여부를 반영한 직접거리 판정',
@@ -12554,8 +12556,8 @@ function activationSpatialFacts(store){
       {criterionStatus:stationDecision.overall.status,criterionRule:'승강장 경계 250/350m 직접거리 기준',criterionNote:stationDecision.overall.note,conditional:stationDecision.overall.conditional,caveat:stationDecision.overall.conditional?stationDecision.overall.note:'',criterionItem:'역세권',decisionPath:stationDecision.overall.path}),
     spatialFactRow('노선형 상업지역 포함',c.activationLinearCommercial===true?`포함${c.activationLinearCommercialOverlapPct!=null?' · 대상지 '+Number(c.activationLinearCommercialOverlapPct).toFixed(1)+'%':''}`:c.activationLinearCommercial===false?'미포함':'확인필요',store.site.spatial_evidence?.activation_arterial?.route_status==='REVIEW'?'REVIEW':store.site.spatial_evidence?.activation_arterial?.loaded?'CONFIRMED':'REVIEW','사용자 제공 노선상업 재검토.dxf 변환 MODEL_REFERENCE · 대상지·역세권활성화 가로구역·동일 도로측 공간관계',
       {criterionStatus:c.activationLinearCommercial===true?'PASS':c.activationLinearCommercial===false?'FAIL':'REVIEW',criterionRule:'역세권 외 노선형 상업지역을 포함한 가로구역',criterionNote:c.activationLinearCommercialPath||'사용자 확정 노선상업 참조도형 자동검토 결과 확인 필요',criterionItem:'간선도로변'}),
-    spatialFactRow('사전협상 대상요건',c.priorNegotiation==null?'-':c.priorNegotiation?'해당':'비해당',c.priorNegotiation==null?'REVIEW':'CONFIRMED','5,000㎡ 이상 대상지는 협상대상지요건 별도 확인',
-      {criterionStatus:priorStatus,criterionRule:'사전협상 협상대상지요건 해당 시 역세권활성화 제외',criterionItem:'사전협상 대상여부'}),
+    spatialFactRow('사전협상 대상요건',c.priorNegotiation===true?'공식·전문가 확인 입력: 해당':c.priorNegotiation===false?'공식·전문가 확인 입력: 비해당':priorGate.status==='PASS'?'플랫폼 전문가 자동후보 6조건 충족':'플랫폼 전문가 자동후보 미진입',c.priorNegotiation==null?(priorGate.status==='PASS'?'REVIEW':'INFO'):'CONFIRMED','자동후보는 비법정 전문가 필터이며 실제 협상대상지 선정과 구분',
+      {criterionStatus:priorStatus,criterionRule:'공식 사전협상 대상지로 확인된 경우 역세권활성화 제외 · 플랫폼 전문가 자동후보는 경합 2차검토에만 사용',criterionItem:'사전협상 대상여부'}),
     spatialFactRow('정비구역 현황',renewalExclusion.value||'자료 미확인',renewalStatus==='REVIEW'?'REVIEW':'CONFIRMED',renewalExclusion.note||'정비구역·정비예정구역 배제/예외 검토에 사용',
       {criterionStatus:renewalStatus,criterionRule:'정비구역·정비예정구역 제외 / 도시정비형 재개발 정비예정구역 예외',criterionItem:'정비구역 배타관계'})
   ];
@@ -14681,37 +14683,101 @@ function checkSmallscaleFromFacts(store,f){
 // ---------- Seoul urban-plan change prior negotiation ----------
 const PRIOR_SHARED_DEVELOPMENT_GU=['서대문구','금천구','구로구','강서구','동대문구','노원구','은평구','성북구','도봉구','강북구','중랑구'];
 function priorNegotiationDensity(){return {zone:'협상을 통한 도시계획 변경·지구단위계획 검토',far:'협상안 및 사전협상형 지구단위계획에서 결정',contribution:'도시계획 변경에 따른 계획이득의 공공기여를 협상으로 확정'};}
+function priorNegotiationExpertGate(store){
+  const c=store?.common||{},area=Number(c.area),records=store?.site?.building?.records||[];
+  const parcelCount=Number(store?.site?.parcel_count||0);
+  const manual=c.priorNegotiation;
+  const areaKnown=Number.isFinite(area)&&area>0,areaPass=areaKnown&&area>=5000;
+
+  const parcelKnown=parcelCount>0,singleParcel=parcelKnown&&parcelCount===1;
+
+  const housingCharacter=(store?.family_specific?.housing_renewal||housingRenewalFamilyFacts(store))?.site_character||null;
+  const apartmentComplex=housingCharacter?.type==='APARTMENT_COMPLEX';
+  const registerKnown=records.length===0?(store?.site?.building?.title_query?.complete===true):records.every(r=>String(r?.register_kind||'').trim());
+  const collectiveByRegister=records.some(r=>/집합/.test(String(r?.register_kind||'')));
+  const collectiveKnown=apartmentComplex||collectiveByRegister||registerKnown;
+  const collectiveBuilding=apartmentComplex||collectiveByRegister;
+  const nonCollectivePass=collectiveKnown&&!collectiveBuilding;
+
+  const far=store?.site?.building?.current_far||siteCurrentVolumeRatioFact(records,c.area);
+  const farKnown=far?.known===true&&Number.isFinite(Number(far?.pct));
+  const farPct=farKnown?Number(far.pct):null,lowDensityPass=farKnown&&farPct<200;
+
+  const centerValue=String(c.center||'').trim();
+  const centerKnown=c.centerAuto===true||!!centerValue;
+  const centerPass=!!centerValue&&centerValue!=='noncenter';
+  const stationDistance=Number(c.dist),stationKnown=c.dist!=null&&Number.isFinite(stationDistance);
+  const stationPass=stationKnown&&stationDistance<=500;
+  const locationKnown=centerKnown||stationKnown;
+  const locationPass=centerPass||stationPass;
+
+  const age=resolvedSchemeAgeFact(store,'station_complex'); // 서울시 도시계획조례 시행규칙 별표1
+  const agePass=age?.status==='PASS';
+
+  const checks={
+    area:{known:areaKnown,pass:areaPass,value:areaKnown?fmtSchemeArea(area):'면적 미확인',note:'플랫폼 자동후보 기준 5,000㎡ 이상'},
+    single_parcel:{known:parcelKnown,pass:singleParcel,value:parcelKnown?`${parcelCount}필지`:'필지수 미확인',note:'단일필지일 때만 자동후보 진입'},
+    non_collective:{known:collectiveKnown,pass:nonCollectivePass,value:!collectiveKnown?'집합건축물 여부 미확인':collectiveBuilding?'집합건축물 확인':'집합건축물 아님',note:collectiveBuilding?'집합건축물은 제도상 불가능으로 단정하지 않되 자동후보에서 제외하고 REVIEW':'집합건축물 아님'},
+    low_density:{known:farKnown,pass:lowDensityPass,value:farKnown?`${farPct.toFixed(1)}%`:'현황용적률 미확인',note:'플랫폼 전문가 기준 현황용적률 200% 미만'},
+    center_or_station:{known:locationKnown,pass:locationPass,value:locationPass?(centerPass?`중심지 ${c.centerLabel||c.centerType||centerValue}`:`역 ${stationDistance.toFixed(1)}m`):(locationKnown?`${centerKnown?(c.centerLabel||c.centerType||'비중심지'):'중심지 미확인'}${stationKnown?` · 역 ${stationDistance.toFixed(1)}m`:''}`:'중심지·역세권 미확인'),note:'중심지 또는 역 500m 이내 중 하나'},
+    aging:{known:!!age&&age.status!=='REVIEW',pass:agePass,value:ageFactValue(age),note:ageFactNote(age),assessment:age}
+  };
+  const allPass=Object.values(checks).every(x=>x.pass===true);
+  let status='REVIEW',label='전문가 자동후보 6조건 일부 미충족 또는 미확인';
+  if(manual===true){status='PASS';label='사전협상 대상지 요건 해당 · 사용자 확인 입력';}
+  else if(manual===false){status='FAIL';label='사전협상 대상지 요건 비해당 · 사용자 확인 입력';}
+  else if(allPass){status='PASS';label='전문가 자동후보 6조건 모두 충족';}
+  return {status,label,manual_override:manual===true?'YES':manual===false?'NO':null,auto_candidate:manual==null&&allPass,all_pass:allPass,checks,area_m2:areaKnown?area:null,parcel_count:parcelKnown?parcelCount:null,collective_building:collectiveKnown?collectiveBuilding:null,current_far_pct:farPct,center_pass:centerPass,station_pass:stationPass,station_distance_m:stationKnown?stationDistance:null,age};
+}
+function priorExpertCriterionStatus(check){
+  if(!check?.known)return 'REVIEW';
+  return check.pass===true?'PASS':'REVIEW';
+}
 function priorNegotiationSpatialFacts(store){
-  const c=store.common,address=String(store.site.address||''),area=c.area;
-  const housingCharacter=(store.family_specific?.housing_renewal||housingRenewalFamilyFacts(store))?.site_character||null;
-  const existingCollectiveComplex=housingCharacter?.type==='APARTMENT_COMPLEX';
-  const areaStatus=area==null?'REVIEW':area>=5000?'PASS':'FAIL';
-  const manualEligible=c.priorNegotiation;
-  const siteType=c.priorSiteType||'';
-  let siteStatus='REVIEW',siteLabel=existingCollectiveComplex?'기존 공동주택단지 · 대규모 유휴부지로 자동 간주하지 않음 · 별도 협상대상지 성격 확인 필요':'대규모 유휴부지·시설 이전적지 등 부지성격 확인 필요';
-  if(manualEligible===true){siteStatus='PASS';siteLabel='사전협상 대상지 요건 해당 확인 입력';}
-  else if(manualEligible===false){siteStatus='FAIL';siteLabel='사전협상 대상지 요건 비해당 확인 입력';}
-  else if(['idle','relocation','large_facility'].includes(siteType)){siteStatus='PASS';siteLabel=siteType==='idle'?'대규모 유휴부지':siteType==='relocation'?'대규모 시설 이전·재배치 적지':'대규모 시설부지 재편';}
-  else if(siteType==='other'){siteStatus='REVIEW';siteLabel='기타 부지 · 조례 제2조 협상대상지 선정 가능성 확인';}
-  const planStatus=c.priorPlanChange==null?'REVIEW':c.priorPlanChange?'PASS':'FAIL';
+  const c=store.common,address=String(store.site.address||''),gate=priorNegotiationExpertGate(store);
   const sharedGu=PRIOR_SHARED_DEVELOPMENT_GU.find(x=>address.includes(x))||'';
-  const fact={area:{m2:area,status:areaStatus},site_character:{type:siteType,status:siteStatus,label:siteLabel,existing_collective_complex:existingCollectiveComplex},plan_change:{status:planStatus,value:c.priorPlanChange==null?'도시계획변경 필요성 미확인':c.priorPlanChange?'도시계획변경 필요':'현행 도시계획 내 개발'},entry_confirmed:areaStatus==='PASS'&&siteStatus==='PASS'&&planStatus==='PASS',shared_development:{gu:sharedGu,status:sharedGu?'CANDIDATE':'REFERENCE',note:sharedGu?'2026.6.29 운영지침상 상생발전형 사전협상 적용 자치구 후보 · 개별 대상지 선정 별도':'상생발전형 적용 자치구 해당 여부 참고'},planning:{density:priorNegotiationDensity()},spatial_status_rows:[]};
+  const siteType=c.priorSiteType||'';
+  const siteTypeLabel=siteType==='idle'?'대규모 유휴부지':siteType==='relocation'?'대규모 시설 이전·재배치 적지':siteType==='large_facility'?'대규모 시설부지 재편':siteType==='other'?'기타 부지':'부지성격 미입력';
+  const planStatus=c.priorPlanChange==null?'REVIEW':c.priorPlanChange?'PASS':'REVIEW';
+  const fact={
+    area:{m2:gate.area_m2,status:gate.checks.area.pass?'PASS':'REVIEW'},
+    expert_gate:gate,
+    site_character:{type:siteType,status:'INFO',label:siteTypeLabel,existing_collective_complex:gate.collective_building===true},
+    plan_change:{status:planStatus,value:c.priorPlanChange==null?'도시계획변경 필요성 미확인':c.priorPlanChange?'도시계획변경 필요':'현행 도시계획 내 개발'},
+    entry_confirmed:gate.status==='PASS',
+    shared_development:{gu:sharedGu,status:sharedGu?'CANDIDATE':'REFERENCE',note:sharedGu?'2026.6.29 운영지침상 상생발전형 사전협상 적용 자치구 후보 · 개별 대상지 선정 별도':'상생발전형 적용 자치구 해당 여부 참고'},
+    planning:{density:priorNegotiationDensity()},spatial_status_rows:[]
+  };
+  const x=gate.checks;
   fact.spatial_status_rows=[
-    spatialFactRow('사전협상 대상지 면적',fmtSchemeArea(area),area==null?'REVIEW':'CONFIRMED','일반 사전협상 초기검토 5,000㎡ 이상'),
-    spatialFactRow('부지성격',siteLabel,siteStatus==='PASS'||siteStatus==='FAIL'?'CONFIRMED':'REVIEW','유휴부지·대규모 시설 이전/재배치·복합적 토지이용 필요성 확인'),
-    spatialFactRow('도시계획변경 필요성',fact.plan_change.value,planStatus==='PASS'||planStatus==='FAIL'?'CONFIRMED':'REVIEW','용도지역·도시계획시설·지구단위계획 등 변경 필요성'),
-    spatialFactRow('상생발전형 자치구',sharedGu||'해당 여부 참고',sharedGu?'CONFIRMED':'REVIEW','2026.6.29 운영지침 대상 자치구는 향후 변경될 수 있음')
+    spatialFactRow('사전협상 전문가 자동후보',gate.label,gate.status==='PASS'||gate.status==='FAIL'?'CONFIRMED':'REVIEW','플랫폼 전문가 초기선별 기준 · 서울시 법정 적격요건 또는 협상대상지 확정과 구분'),
+    spatialFactRow('사전협상 대상지 면적',x.area.value,x.area.known?'CONFIRMED':'REVIEW',x.area.note),
+    spatialFactRow('단일필지',x.single_parcel.value,x.single_parcel.known?'CONFIRMED':'REVIEW',x.single_parcel.note),
+    spatialFactRow('집합건축물 여부',x.non_collective.value,x.non_collective.known?'CONFIRMED':'REVIEW',x.non_collective.note),
+    spatialFactRow('현황용적률',x.low_density.value,x.low_density.known?'CONFIRMED':'REVIEW',x.low_density.note),
+    spatialFactRow('중심지·역세권',x.center_or_station.value,x.center_or_station.known?'CONFIRMED':'REVIEW',x.center_or_station.note),
+    spatialFactRow('도시계획조례 노후도',x.aging.value,x.aging.known?'CONFIRMED':'REVIEW',x.aging.note),
+    spatialFactRow('부지성격 참고',siteTypeLabel,'INFO','유휴부지·이전적지 여부는 전문가 자동후보 6조건과 별도로 실제 서울시 협상대상지 선정 단계에서 검토'),
+    spatialFactRow('도시계획변경 필요성',fact.plan_change.value,planStatus==='PASS'?'CONFIRMED':'REVIEW','자동후보 진입조건이 아니라 실제 사전협상 제안·선정단계의 후속 검토'),
+    spatialFactRow('상생발전형 자치구',sharedGu||'해당 여부 참고',sharedGu?'CONFIRMED':'REVIEW','2026.6.29 운영지침상 별도 경로 참고')
   ];
   store.scheme_specific.prior_negotiation=fact;return fact;
 }
 function checkPriorNegotiationFromFacts(store,f){
-  const rows=[];
-  rows.push(schemeRow('협상대상지 면적','5,000㎡ 이상 대규모 부지를 사전협상 초기검토 대상으로 확인',fmtSchemeArea(f.area.m2),f.area.status,f.area.status==='FAIL'?'일반 사전협상 대상규모 미달':'대상지 선정은 별도 절차',true,{sourceId:'PRIOR_NEGOTIATION_AREA',locator:'서울특별시 도시계획 조례 제17조 · 대상지 5천제곱미터 이상',hardGate:'AREA'}));
-  rows.push(schemeRow('협상대상지·부지성격','국토계획법 제51조제1항제8호의2·제8호의3에 해당하는 대규모 유휴부지·시설 이전/재배치·복합적 토지이용 필요부지',f.site_character.label,f.site_character.status,f.site_character.existing_collective_complex?'기존 공동주택 집합건축물은 노후·철거가능성만으로 유휴부지로 보지 않음 · 명시적 협상대상지 성격 확인 필요':'공식 대상지 선정 전 초기 적합성 검토',true,{sourceId:'PRIOR_NEGOTIATION_ORD',locator:'운영지침 3.1 · 국토계획법 제51조제1항제8호의2·제8호의3'}));
-  rows.push(schemeRow('도시계획변경·협상 필요성','용도지역·도시계획시설·지구단위계획 등의 변경과 공공기여 협상이 필요한지 확인',f.plan_change.value,f.plan_change.status,f.plan_change.status==='FAIL'?'현행 도시계획만으로 개발 가능하면 사전협상 적용 필요성이 낮음':'협상제안서 단계에서 도시계획 변경내용 확정',true,{sourceId:'PRIOR_NEGOTIATION',locator:'운영지침 · 대상지 선정 및 협상절차'}));
-  rows.push(schemeRow('상생발전형 사전협상','2026.6.29 운영지침에서 지정한 비활성화지역 자치구는 상생발전형 적용 가능성을 별도 검토',f.shared_development.gu||'해당 자치구 확인',f.shared_development.gu?'INFO':'INFO',f.shared_development.note,false,{sourceId:'PRIOR_NEGOTIATION',locator:'운영지침 4.31 · 11차 개정 공지'}));
+  const rows=[],g=f.expert_gate,x=g.checks;
+  const src={sourceId:'PRIOR_NEGOTIATION_EXPERT_GATE',locator:'플랫폼 전문가 초기선별 기준(사용자 지정 · 비법정)'};
+  rows.push(schemeRow('전문가 자동후보 종합','면적 5,000㎡ 이상 + 단일필지 + 집합건축물 아님 + 현황용적률 200% 미만 + 중심지 또는 역 500m 이내 + 도시계획조례 노후도 충족',g.label,g.status,g.status==='PASS'?'6개 조건 모두 충족 · 실제 서울시 협상대상지 선정은 별도':g.status==='FAIL'?'사용자 비해당 확인 입력':'일부 조건 미충족 또는 미확인 · 자동후보 진입하지 않고 REVIEW',true,src));
+  rows.push(schemeRow('협상대상지 면적','플랫폼 자동후보 기준 5,000㎡ 이상',x.area.value,priorExpertCriterionStatus(x.area),x.area.note,true,{...src,hardGate:'AREA'}));
+  rows.push(schemeRow('단일필지','플랫폼 전문가 초기선별은 단일필지만 자동후보로 진입',x.single_parcel.value,priorExpertCriterionStatus(x.single_parcel),x.single_parcel.note,true,src));
+  rows.push(schemeRow('집합건축물','집합건축물이 아닌 경우 자동후보 진입 · 집합건축물은 적용불가 단정 없이 REVIEW',x.non_collective.value,priorExpertCriterionStatus(x.non_collective),x.non_collective.note,true,src));
+  rows.push(schemeRow('현황용적률','현황용적률 200% 미만의 중·저밀 부지',x.low_density.value,priorExpertCriterionStatus(x.low_density),x.low_density.note,true,src));
+  rows.push(schemeRow('중심지 또는 역세권','중심지 또는 역 500m 이내',x.center_or_station.value,priorExpertCriterionStatus(x.center_or_station),x.center_or_station.note,true,src));
+  rows.push(schemeRow('도시계획조례 노후도','서울시 도시계획조례 시행규칙 별표1 노후도 충족',x.aging.value,priorExpertCriterionStatus(x.aging),x.aging.note,true,{sourceId:'URBAN_PLANNING_AGE',locator:x.aging.assessment?.source_locator||'서울시 도시계획조례 시행규칙 별표1'}));
+  rows.push(schemeRow('부지성격 참고','대규모 유휴부지·시설 이전·재배치·복합적 토지이용 필요성은 실제 협상대상지 선정단계에서 확인',f.site_character.label,'INFO',f.site_character.existing_collective_complex?'기존 공동주택 집합건축물은 노후·철거 가능성만으로 유휴부지로 간주하지 않음':'자동후보 6조건과 분리된 후속 검토',false,{sourceId:'PRIOR_NEGOTIATION_ORD',locator:'운영지침 3.1 · 국토계획법 제51조제1항제8호의2·제8호의3'}));
+  rows.push(schemeRow('도시계획변경·협상 필요성','도시계획변경과 공공기여 협상의 실질 필요성',f.plan_change.value,'INFO','자동후보 진입 후 서울시 제안·선정단계에서 확정',false,{sourceId:'PRIOR_NEGOTIATION',locator:'운영지침 대상지 선정 및 협상절차'}));
+  rows.push(schemeRow('상생발전형 사전협상','2026.6.29 운영지침상 지정 자치구의 상생발전형 경로 참고',f.shared_development.gu||'해당 자치구 확인','INFO',f.shared_development.note,false,{sourceId:'PRIOR_NEGOTIATION',locator:'운영지침 4.31 · 11차 개정 공지'}));
   rows.push(schemeRow('공공기여·협상구조','민간·공공·전문가 협상을 거쳐 도시계획 변경의 타당성·공공성과 공공기여를 확정','협상단계 결정','INFO','초기 플랫폼에서 공공기여율을 단일값으로 자동확정하지 않음',false,{sourceId:'PRIOR_NEGOTIATION',locator:'운영지침 협상주요기준·공공기여 이행'}));
-  rows.push(schemeRow('협상절차','대상지 선정 → 사전협상(협상조정협의회) → 도시계획 변경·지구단위계획 결정 → 사업시행','절차 확인','INFO','대상지 선정 전 PASS는 사업승인 의미가 아님',false,{sourceId:'PRIOR_NEGOTIATION',locator:'운영지침 대상지 선정·협상진행·협상결과 이행'}));
+  rows.push(schemeRow('협상절차','대상지 선정 → 사전협상 → 도시계획 변경·지구단위계획 결정 → 사업시행','절차 확인','INFO','플랫폼 자동후보 PASS는 서울시 협상대상지 선정·사업승인을 의미하지 않음',false,{sourceId:'PRIOR_NEGOTIATION',locator:'운영지침 대상지 선정·협상진행·협상결과 이행'}));
   return rows;
 }
 
@@ -15483,7 +15549,7 @@ function activationStationCriterion(station,c={}){
   if(shareKnown){
     if(share>=50){blockStatus='PASS';blockNote=`역세권 범위가 해당 가로구역의 ${share.toFixed(1)}%에 걸침 · 1/2 이상 일반경로`;}
     else if(share>0){blockStatus='REVIEW';blockConditional=true;blockNote=c.maxRoad!=null&&Number(c.maxRoad)>=20?`역세권 범위가 해당 가로구역의 ${share.toFixed(1)}%에 걸침 · 1/2 미만 · 폭 20m 이상 간선가로 접면 여부 등을 포함해 위원회 심의 후 사업대상지 결정`:`역세권 범위가 해당 가로구역의 ${share.toFixed(1)}%에 걸침 · 1/2 미만 · 구역 정형화 필요성 등을 포함해 위원회 심의 후 사업대상지 결정`;}
-    else{blockStatus='REVIEW';blockNote='산정 가로구역에서 역세권 범위 중첩이 확인되지 않음 · 판정역·가로구역 재확인 필요';}
+    else{blockStatus='FAIL';blockNote='역세권 250/350m 범위의 해당 가로구역 편입비율 0.0% · 가로구역 심의경로도 성립하지 않음';}
   }
   let status=directStatus,conditional=directConditional,path='distance_pending',note=directNote;
   if(directStatus==='PASS')path=threshold===350&&distance>250?'direct_inside_350_qualified':'direct_inside_250';
@@ -15572,11 +15638,12 @@ function checkActivationFromFacts(store,f){
   rows.push(schemeRow('대상지 면적','1,500~10,000㎡ 원칙 · 기준 외 대상지는 지원 자문단 인정, 도시정비형 재개발 방식은 30,000㎡ 이하',
     fmtSchemeArea(f.area.m2),areaStatus,areaNote,true,{sourceId:'ACTIVATION',locator:'2-1-4 나목',conditional:areaConditional,caveat:areaConditional?'지원 자문단 인정 필요':'',decisionPath:areaConditional?'advisory_exception':'base'}));
 
-  const prior=f.exclusions.prior_negotiation;
-  const priorStatus=prior===true?'FAIL':prior===false?'PASS':(f.area.m2!=null&&f.area.m2<5000?'PASS':'REVIEW');
-  rows.push(schemeRow('사전협상 대상여부','5,000㎡ 이상의 사전협상 협상대상지요건을 갖춘 지역은 역세권활성화 대상에서 제외',
-    prior===true?'사전협상 대상요건 해당':prior===false?'사전협상 대상요건 비해당':f.area.m2!=null&&f.area.m2<5000?'5,000㎡ 미만':'사전협상 대상요건 확인 필요',
-    priorStatus,priorStatus==='REVIEW'?'면적만으로 사전협상 해당을 확정하지 않고 협상대상지요건 별도 검토':'운영기준 2026.04.30 반영',true,{sourceId:'ACTIVATION',locator:'2-1-4 나목 단서'}));
+  const prior=f.exclusions.prior_negotiation,priorGate=priorNegotiationExpertGate(store);
+  const priorStatus=prior===true?'FAIL':prior===false?'PASS':priorGate.status==='PASS'?'REVIEW':'INFO';
+  const priorRequired=prior===true;
+  rows.push(schemeRow('사전협상 대상여부','5,000㎡ 이상의 실제 사전협상 협상대상지요건을 갖춘 지역은 역세권활성화 대상에서 제외',
+    prior===true?'사전협상 대상요건 해당 · 사용자 확인':prior===false?'사전협상 대상요건 비해당 · 사용자 확인':priorGate.status==='PASS'?'전문가 자동후보 6조건 충족 · 공식 대상지 여부 확인 필요':'전문가 자동후보 미진입',
+    priorStatus,prior===true?'운영기준상 배제조건 적용':prior===false?'비해당 확인 입력':priorGate.status==='PASS'?'비법정 전문가 필터 PASS · 역세권활성화와 사전협상 경합 2차검토로만 표시':'자동후보 미진입 · 역세권활성화 1차 적격판정에는 영향 없음',priorRequired,{sourceId:'ACTIVATION',locator:'2-1-4 나목 단서'}));
 
   const aging=f.aging.assessment;
   rows.push(schemeRow('노후건축물',f.route.route==='redevelopment'?'도정법·서울시 도시정비조례 노후도 기준':'서울시 도시계획조례 시행규칙 별표1 노후도 기준',
@@ -15965,35 +16032,31 @@ function selectedParcelUnder5000Scenario(){
   return {possible:options.length>0,total_m2:total,known_count:known,selected_count:selectedParcelPnus.size,options:options.slice(0,12),best:options[0]||null};
 }
 function analyzeActivationPriorNegotiationCompetition(store){
-  const empty={active:false,relation_active:false,activation_candidate:false,prior_candidate:false,area_m2:null,parcel_area_m2:null,parcel_adjustment:selectedParcelUnder5000Scenario(),reason:'',activation_routes:null,independent_activation_failures:[],independent_prior_failures:[]};
+  const empty={active:false,relation_active:false,activation_candidate:false,prior_candidate:false,area_m2:null,parcel_area_m2:null,parcel_adjustment:selectedParcelUnder5000Scenario(),reason:'',activation_routes:null,independent_activation_failures:[],independent_prior_failures:[],prior_gate:null};
   if(!store)return empty;
   const c=store.common||{},area=Number(c.area),activation=schemeResults.activation,prior=schemeResults.prior_negotiation;
-  const parcelAdjustment=selectedParcelUnder5000Scenario();
-  const out={...empty,area_m2:Number.isFinite(area)?area:null,parcel_area_m2:parcelAdjustment.total_m2,parcel_adjustment:parcelAdjustment};
-  if(!activation||!prior||!Number.isFinite(area)||area<5000)return out;
+  const parcelAdjustment=selectedParcelUnder5000Scenario(),priorGate=prior?.facts?.expert_gate||priorNegotiationExpertGate(store);
+  const out={...empty,area_m2:Number.isFinite(area)?area:null,parcel_area_m2:parcelAdjustment.total_m2,parcel_adjustment:parcelAdjustment,prior_gate:priorGate};
+  if(!activation||!prior||!Number.isFinite(area))return out;
   const aRows=activation.rows||[],pRows=prior.rows||[];
-  const aLocation=aRows.find(r=>r.item==='입지유형'),aArea=aRows.find(r=>r.item==='대상지 면적'),aPrior=aRows.find(r=>r.item==='사전협상 대상여부');
-  const pArea=pRows.find(r=>r.item==='협상대상지 면적');
-  const pSite=pRows.find(r=>r.item==='협상대상지·부지성격');
-  const pPlan=pRows.find(r=>r.item==='도시계획변경·협상 필요성');
+  const aLocation=aRows.find(r=>r.item==='입지유형'),aArea=aRows.find(r=>r.item==='대상지 면적');
   const unresolved=c.priorNegotiation==null;
   const activationIndependentFails=aRows.filter(r=>r.required!==false&&r.status==='FAIL'&&r.item!=='사전협상 대상여부');
   const priorIndependentFails=pRows.filter(r=>r.required!==false&&r.status==='FAIL');
-  // 경합은 두 제도의 실질 진입경로가 모두 확인된 경우에만 표시한다. REVIEW는 '살아있는 후보'로 승격하지 않는다.
-  const locationAlive=!!aLocation&&aLocation.status==='PASS';
-  const activationAreaAlive=!aArea||aArea.status==='PASS';
-  const priorAreaAlive=!!pArea&&pArea.status==='PASS';
-  const priorEntryConfirmed=!!pSite&&pSite.status==='PASS'&&!!pPlan&&pPlan.status==='PASS';
-  const relationActive=unresolved&&locationAlive&&activationAreaAlive&&priorAreaAlive&&priorEntryConfirmed;
-  const activationCandidate=relationActive&&activationIndependentFails.length===0;
-  const priorCandidate=relationActive&&prior.overall==='PASS'&&priorIndependentFails.length===0;
+  // 경합은 '역세권활성화 자체 적격'과 '사전협상 전문가 자동후보 6조건 PASS'가 동시에 성립할 때만 띄운다.
+  // 사전협상 REVIEW는 경합으로 승격하지 않으며, 경합 자체도 역세권활성화를 법적 FAIL로 만들지 않는다.
+  const activationOwnPass=activation.overall==='PASS'&&!!aLocation&&aLocation.status==='PASS'&&(!aArea||aArea.status==='PASS')&&activationIndependentFails.length===0;
+  const priorExpertPass=unresolved&&priorGate?.status==='PASS'&&priorGate?.auto_candidate===true;
+  const relationActive=activationOwnPass&&priorExpertPass;
+  const activationCandidate=relationActive;
+  const priorCandidate=relationActive&&prior.overall==='PASS';
   const station=activation.facts?.location?.station||{},arterial=activation.facts?.location?.arterial||{};
   const stationRow=aRows.find(r=>r.item==='역세권'),arterialRow=aRows.find(r=>r.item==='간선도로변');
-  out.relation_active=relationActive;out.activation_candidate=activationCandidate;out.prior_candidate=priorCandidate;out.active=relationActive&&(activationCandidate||priorCandidate);
+  out.relation_active=relationActive;out.activation_candidate=activationCandidate;out.prior_candidate=priorCandidate;out.active=relationActive;
   out.independent_activation_failures=activationIndependentFails.map(r=>r.item);out.independent_prior_failures=priorIndependentFails.map(r=>r.item);
   out.activation_routes={station:{status:stationRow?.status||'REVIEW',value:stationRow?.value||'',note:stationRow?.note||'',distance_m:station.distance_m??null,name:station.name||''},arterial:{status:arterialRow?.status||'REVIEW',value:arterialRow?.value||arterial.note||'',note:arterialRow?.note||'',linear_commercial:arterial.linear_commercial??null,overlap_pct:arterial.site_overlap_pct??null}};
   const areaText=`${Math.round(area).toLocaleString('ko-KR')}㎡`;
-  out.reason=relationActive?`대상지 ${areaText}로 역세권활성화 입지·면적과 사전협상 면적·부지성격·도시계획변경 필요성이 모두 확인되어 두 제도의 적용관계 검토가 필요합니다.`:'';
+  out.reason=relationActive?`대상지 ${areaText} · 역세권활성화 자체 진입조건 PASS + 사전협상 전문가 자동후보 6조건 PASS. 실제 사전협상 대상지 선정 여부에 따라 적용관계를 2차 검토합니다.`:'';
   return out;
 }
 function activationRouteUiSummary(){
@@ -16012,14 +16075,14 @@ function renderSchemeCompetitionPanel(){
   const x=schemeCompetitionState||{};el.classList.toggle('active',x.relation_active===true);
   if(!x.relation_active)return;
   const fmtA=n=>Number.isFinite(Number(n))?`${Math.round(Number(n)).toLocaleString('ko-KR')}㎡`:'-';
-  const summary=document.getElementById('schemeCompetitionSummary');if(summary)summary.textContent=`사업판정 구역계 ${fmtA(x.area_m2)} · 5,000㎡ 이상 경계에서 역세권활성화와 사전협상의 적용관계가 경합합니다.`;
+  const summary=document.getElementById('schemeCompetitionSummary');if(summary)summary.textContent=`사업판정 구역계 ${fmtA(x.area_m2)} · 역세권활성화 자체 적격 + 사전협상 전문가 자동후보 6조건이 동시에 충족되어 적용관계를 2차 검토합니다.`;
   const ar=x.activation_routes||{},actBadge=document.getElementById('schemeCompetitionActivationBadge'),actText=document.getElementById('schemeCompetitionActivationText'),actRoute=document.getElementById('schemeCompetitionActivationRoute');
   if(actBadge)actBadge.textContent=x.activation_candidate?'조건부 추진후보':x.independent_activation_failures?.length?'별도 미달조건':'경합검토';
-  if(actText)actText.textContent=x.activation_candidate?'사전협상 대상지로 확정되지 않는 경우 역세권활성화 적용을 계속 검토할 수 있습니다.':'경합관계와 별도로 충족해야 할 역세권활성화 조건이 남아 있습니다.';
+  if(actText)actText.textContent=x.activation_candidate?'현재 역세권활성화 자체 요건은 충족합니다. 사전협상은 전문가 자동후보일 뿐 공식 협상대상지 확정 전까지 역세권활성화를 배제하지 않습니다.':'경합관계와 별도로 충족해야 할 역세권활성화 조건이 남아 있습니다.';
   if(actRoute)actRoute.textContent=`${competitionRouteLabel(ar.station,'역세권형')} · ${competitionRouteLabel(ar.arterial,'간선도로변형')}${ar.arterial?.linear_commercial===true?' · 노선형 상업지역 포함':ar.arterial?.linear_commercial===false?' · 노선형 상업지역 미포함':' · 노선형 상업지역 확인중'}`;
   const pBadge=document.getElementById('schemeCompetitionPriorBadge'),pText=document.getElementById('schemeCompetitionPriorText'),pArea=document.getElementById('schemeCompetitionPriorArea');
   if(pBadge)pBadge.textContent=x.prior_candidate?'조건부 추진후보':'별도 확인필요';
-  if(pText)pText.textContent=x.prior_candidate?'5,000㎡ 이상 규모요건을 충족하며 토지 일괄확보·협상대상지 성격·도시계획변경 필요성을 전제로 사전협상 추진을 검토할 수 있습니다.':'사전협상 자체의 독립 필수요건을 추가 확인해야 합니다.';
+  if(pText)pText.textContent=x.prior_candidate?'면적·단일필지·비집합건축물·저밀·중심지/역세권·노후도 6조건을 모두 충족한 전문가 자동후보입니다. 서울시 협상대상지 선정은 별도입니다.':'사전협상 자체의 독립 필수요건을 추가 확인해야 합니다.';
   const pa=x.parcel_adjustment||{};if(pArea){
     if(pa.possible&&pa.best)pArea.textContent=`선택필지 ${fmtA(pa.total_m2)} · 1필지 제외 시 5,000㎡ 미만 조정 가능한 조합 ${pa.options.length}개 (예: ${fmtA(pa.best.area_m2)} 제외 → ${fmtA(pa.best.remaining_m2)})`;
     else if(Number.isFinite(Number(pa.total_m2)))pArea.textContent=`선택필지 합계 ${fmtA(pa.total_m2)} · 5,000㎡ 미만 조정 시나리오는 구역계 재설정 후 재판정`;
@@ -16032,8 +16095,8 @@ function renderSchemeCompetitionPanel(){
 }
 function schemeCompetitionDisplayOverride(name){
   const x=schemeCompetitionState||{};if(!x.relation_active||!['activation','prior_negotiation'].includes(name))return null;
-  if(name==='activation'&&x.activation_candidate)return {kind:'adjustable',css:'candidate-adjustable',label:'경합검토',action:'5,000㎡ 이상 경합 · 사전협상 대상지 미확정 시 역세권활성화 계속 검토',competition:true};
-  if(name==='prior_negotiation'&&x.prior_candidate)return {kind:'adjustable',css:'candidate-adjustable',label:'추진후보',action:'5,000㎡ 이상 · 토지 일괄확보 및 협상대상지 성격 충족 전제',competition:true};
+  if(name==='activation'&&x.activation_candidate)return {kind:'adjustable',css:'candidate-adjustable',label:'경합검토',action:'사전협상 전문가 자동후보와 경합 · 공식 대상지 확정 전 역세권활성화 유지',competition:true};
+  if(name==='prior_negotiation'&&x.prior_candidate)return {kind:'adjustable',css:'candidate-adjustable',label:'추진후보',action:'전문가 자동후보 6조건 충족 · 공식 협상대상지 선정 별도',competition:true};
   return null;
 }
 
@@ -21573,11 +21636,11 @@ function renderRemainingSchemeDetailPopup(name){
       note:'모아타운·모아주택은 5번째 법정사업으로 취급하지 않고, 4개 법정 소규모주택정비사업에 연결되는 관리계획·통합심의 정책경로로 표시합니다. 도로·가로구역은 초기 추정 후 도면으로 보완합니다.'
     },
     prior_negotiation:{
-      subtitle:'도시계획변경 사전협상 운영지침 제11차 개정(2026.06.29.)',feasibility:'협상 진입 가능성',
-      status:[['대상지 면적',fmtSchemeArea(f.area?.m2)],['부지성격',f.site_character?.label||'-'],['도시계획변경',f.plan_change?.value||'-'],['상생발전형',f.shared_development?.gu||'일반형/확인'],['용도지역',store.common.zoning||'-'],['현재 계획중첩',(store.site.development?.district_plans||[]).length?`${store.site.development.district_plans.length}건 지구단위계획`:'확인']],
-      groups:[{label:'협상대상지',items:['협상대상지 면적','협상대상지·부지성격']},{label:'협상 필요성',items:['도시계획변경·협상 필요성']},{label:'특례·운영',items:['상생발전형 사전협상']}],planItems:['공공기여·협상구조','협상절차'],
-      steps:[['검토신청·대상지 선정','5,000㎡ 이상 부지의 성격·도시계획변경 필요성 검토'],['사전컨설팅·제안서 작성','개발계획·공공성·도시계획변경·공공기여 쟁점 정리'],['사전협상','민간·공공·전문가 협상조정협의회 운영'],['지구단위계획 등 도시계획 결정','협상결과를 사전협상형 지구단위계획 등에 반영'],['사업 인허가','건축·주택·개발사업 인허가와 공공기여 이행']],
-      note:'5,000㎡ 이상만으로 사전협상 대상지가 확정되는 것은 아닙니다. 부지성격·도시계획변경 필요성·서울시 대상지 선정 및 협상절차를 거쳐야 하며, 공공기여 수치는 협상 전 자동확정하지 않습니다.'
+      subtitle:'플랫폼 전문가 초기선별 6조건(비법정) + 서울시 사전협상 운영지침',feasibility:'전문가 자동후보',
+      status:[['자동후보',f.expert_gate?.label||'-'],['대상지 면적',fmtSchemeArea(f.area?.m2)],['필지',f.expert_gate?.checks?.single_parcel?.value||'-'],['집합건축물',f.expert_gate?.checks?.non_collective?.value||'-'],['현황용적률',f.expert_gate?.checks?.low_density?.value||'-'],['중심지·역세권',f.expert_gate?.checks?.center_or_station?.value||'-'],['노후도',f.expert_gate?.checks?.aging?.value||'-']],
+      groups:[{label:'전문가 자동선별',items:['전문가 자동후보 종합','협상대상지 면적','단일필지','집합건축물','현황용적률','중심지 또는 역세권','도시계획조례 노후도']},{label:'후속 실제 협상검토',items:['부지성격 참고','도시계획변경·협상 필요성']},{label:'특례·운영',items:['상생발전형 사전협상']}],planItems:['공공기여·협상구조','협상절차'],
+      steps:[['전문가 자동선별','면적 5,000㎡+ · 단일필지 · 비집합건축물 · 현황용적률 200% 미만 · 중심지/역 500m · 도시계획조례 노후도'],['서울시 검토신청·대상지 선정','자동후보 PASS와 별개로 실제 협상대상지 성격·도시계획변경 필요성 검토'],['사전협상','민간·공공·전문가 협상조정협의회 운영'],['지구단위계획 등 도시계획 결정','협상결과를 사전협상형 지구단위계획 등에 반영'],['사업 인허가','건축·주택·개발사업 인허가와 공공기여 이행']],
+      note:'전문가 자동후보 6조건은 플랫폼 내부 초기선별 기준이며 서울시 법정 적격요건이 아닙니다. 6조건 미충족·미확인은 REVIEW로 남기고 자동후보·역세권활성화 경합에 올리지 않습니다. 집합건축물은 제도상 불가능으로 단정하지 않지만 자동후보에서 제외합니다.'
     }
   };
   const cfg=configs[name];if(!cfg)return;
