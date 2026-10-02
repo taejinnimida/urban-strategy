@@ -7562,6 +7562,223 @@ def _safe_medical_reference(geometry: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+# ============================================================
+# 2009 서울시 준공업지역 종합발전계획 — 가구별 공장비율 벡터 FACT
+# 원천: 사용자가 2009 자치구별 현황도와 서울시 연속지적을 대조·보정한 완료 DXF.
+# 배포본에는 완료 DXF 자체가 아니라, 공장비율 4등급 + 도시계획시설을 dissolve한
+# WGS84 GeoJSON만 포함한다. 브라우저에는 전체 원자료를 보내지 않고 대상지 중첩결과만 반환한다.
+# ============================================================
+FACTORY_RATIO_2009_GEOJSON = _data_path("semiindustrial_factory_ratio_2009.geojson")
+FACTORY_RATIO_2009_CLASSES = {
+    "LT10": {"label": "10% 미만", "min": 0.0, "max": 10.0},
+    "10_30": {"label": "10~30%", "min": 10.0, "max": 30.0},
+    "30_50": {"label": "30~50%", "min": 30.0, "max": 50.0},
+    "GE50": {"label": "50% 이상", "min": 50.0, "max": 100.0},
+}
+
+
+@lru_cache(maxsize=1)
+def _factory_ratio_2009_reference() -> Dict[str, Any]:
+    path = FACTORY_RATIO_2009_GEOJSON
+    if not os.path.isfile(path):
+        return {"available": False, "reason": "2009 공장비율 벡터 GeoJSON 미탑재", "path": path}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            fc = json.load(f)
+        to_metric = Transformer.from_crs(4326, 5186, always_xy=True).transform
+        rows: List[Dict[str, Any]] = []
+        for feature in fc.get("features") or []:
+            props = dict(feature.get("properties") or {})
+            code = str(props.get("factory_class") or "").strip()
+            if code not in {*FACTORY_RATIO_2009_CLASSES.keys(), "FACILITY"}:
+                continue
+            geom = _polygonal_only(shape(feature.get("geometry") or {}))
+            if geom is None or geom.is_empty:
+                continue
+            if not geom.is_valid:
+                geom = _polygonal_only(geom.buffer(0))
+            if geom is None or geom.is_empty:
+                continue
+            metric = _polygonal_only(geometry_transform(to_metric, geom))
+            if metric is None or metric.is_empty:
+                continue
+            rows.append({"code": code, "properties": props, "geometry": geom, "metric": metric})
+        meta = dict(fc.get("properties") or {})
+        return {
+            "available": bool(rows),
+            "rows": rows,
+            "metadata": meta,
+            "path": path,
+            "feature_count": len(rows),
+            "source_file": os.path.basename(path),
+        }
+    except Exception as exc:
+        logger.exception("2009 factory-ratio vector load failed")
+        return {"available": False, "reason": str(exc)[:300], "path": path}
+
+
+def analyze_factory_ratio_2009(geometry: Dict[str, Any]) -> Dict[str, Any]:
+    ref = _factory_ratio_2009_reference()
+    if not ref.get("available"):
+        return {
+            "available": False, "loaded": False, "known": False, "status": "UNAVAILABLE",
+            "reason": ref.get("reason") or "2009 공장비율 벡터 미연결",
+            "class_label": "", "class_breakdown": [], "overlap_pct": None,
+            "threshold_10": {"lt10_status": "REVIEW", "gte10_status": "REVIEW"},
+        }
+    site_wgs = _polygonal_only(shape(geometry))
+    if site_wgs is None or site_wgs.is_empty:
+        raise ValueError("유효한 Polygon 또는 MultiPolygon 구역계가 필요합니다.")
+    if not site_wgs.is_valid:
+        site_wgs = _polygonal_only(site_wgs.buffer(0))
+    if site_wgs is None or site_wgs.is_empty:
+        raise ValueError("유효한 Polygon 또는 MultiPolygon 구역계가 필요합니다.")
+    to_metric = Transformer.from_crs(4326, 5186, always_xy=True).transform
+    site = _polygonal_only(geometry_transform(to_metric, site_wgs))
+    if site is None or site.is_empty or site.area <= 0:
+        raise ValueError("대상지 면적을 계산할 수 없습니다.")
+    site_area = float(site.area)
+
+    ratio_parts: List[Any] = []
+    mapped_parts: List[Any] = []
+    breakdown: List[Dict[str, Any]] = []
+    facility_area = 0.0
+    for row in ref.get("rows") or []:
+        src = row["metric"]
+        if not src.intersects(site):
+            continue
+        inter = _polygonal_only(src.intersection(site))
+        if inter is None or inter.is_empty:
+            continue
+        area = float(inter.area)
+        if area <= 0.05:
+            continue
+        code = row["code"]
+        mapped_parts.append(inter)
+        if code == "FACILITY":
+            facility_area += area
+            continue
+        cls = FACTORY_RATIO_2009_CLASSES.get(code)
+        if not cls:
+            continue
+        ratio_parts.append(inter)
+        breakdown.append({
+            "factory_class": code,
+            "label": cls["label"],
+            "class_label": cls["label"],
+            "area_m2": round(area, 3),
+            "overlap_pct": round(area / site_area * 100.0, 4),
+            "ratio_min": cls["min"],
+            "ratio_max": cls["max"],
+        })
+
+    # Same class is dissolved to one source feature, but keep this aggregation defensive.
+    agg: Dict[str, Dict[str, Any]] = {}
+    for row in breakdown:
+        code = row["factory_class"]
+        if code not in agg:
+            agg[code] = dict(row)
+        else:
+            agg[code]["area_m2"] += row["area_m2"]
+            agg[code]["overlap_pct"] += row["overlap_pct"]
+    breakdown = list(agg.values())
+    class_order = {"LT10": 0, "10_30": 1, "30_50": 2, "GE50": 3}
+    breakdown.sort(key=lambda x: class_order.get(x["factory_class"], 99))
+
+    classified_geom = _polygonal_only(unary_union(ratio_parts)) if ratio_parts else None
+    mapped_geom = _polygonal_only(unary_union(mapped_parts)) if mapped_parts else None
+    classified_area = float(classified_geom.area) if classified_geom is not None and not classified_geom.is_empty else 0.0
+    mapped_area = float(mapped_geom.area) if mapped_geom is not None and not mapped_geom.is_empty else 0.0
+    classified_pct = classified_area / site_area * 100.0
+    mapped_pct = mapped_area / site_area * 100.0
+    facility_pct = facility_area / site_area * 100.0
+    if classified_area > 0:
+        for row in breakdown:
+            row["classified_share_pct"] = round(float(row["area_m2"]) / classified_area * 100.0, 4)
+    else:
+        for row in breakdown:
+            row["classified_share_pct"] = 0.0
+
+    by_code = {r["factory_class"]: float(r["area_m2"]) for r in breakdown}
+    low_area = by_code.get("LT10", 0.0)
+    high10 = by_code.get("10_30", 0.0)
+    high30 = by_code.get("30_50", 0.0)
+    high50 = by_code.get("GE50", 0.0)
+    threshold = {
+        "threshold_pct": 10.0,
+        "lt10_status": "REVIEW",
+        "gte10_status": "REVIEW",
+        "lower_bound_pct": None,
+        "upper_bound_pct": None,
+        "reason": "2009 공장비율 등급 중첩 없음",
+    }
+    if classified_area > 0.05:
+        lower = (high10 * 10.0 + high30 * 30.0 + high50 * 50.0) / classified_area
+        upper = (low_area * 10.0 + high10 * 30.0 + high30 * 50.0 + high50 * 100.0) / classified_area
+        threshold["lower_bound_pct"] = round(lower, 4)
+        threshold["upper_bound_pct"] = round(upper, 4)
+        non_low = high10 + high30 + high50
+        tol = max(0.05, classified_area * 1e-7)
+        if non_low <= tol:
+            # Every classified block is in the report's strict "10% 미만" band.
+            threshold["lt10_status"] = "PASS"
+            threshold["gte10_status"] = "FAIL"
+            threshold["reason"] = "중첩된 공장비율 등급이 전부 10% 미만"
+        elif low_area <= tol:
+            threshold["lt10_status"] = "FAIL"
+            threshold["gte10_status"] = "PASS"
+            threshold["reason"] = "중첩된 공장비율 등급이 전부 10% 이상"
+        elif lower >= 10.0 - 1e-9:
+            # Mixed classes, but even the mathematical lower bound is already 10% or more.
+            threshold["lt10_status"] = "FAIL"
+            threshold["gte10_status"] = "PASS"
+            threshold["reason"] = f"혼합등급 면적가중 하한 {lower:.2f}%로 10% 이상 확정"
+        else:
+            threshold["reason"] = f"10% 미만·이상 등급 혼재 · 면적가중 범위 {lower:.2f}~{upper:.2f}%로 정확한 전체 공장비율 재산정 필요"
+
+    dominant = max(breakdown, key=lambda x: x.get("classified_share_pct", 0.0), default=None)
+    if not breakdown:
+        class_label = "도시계획시설" if facility_area > 0.05 else ""
+        dominant_code = None
+        dominant_share = None
+    elif len(breakdown) == 1 or (dominant and float(dominant.get("classified_share_pct") or 0) >= 99.5):
+        class_label = str(dominant.get("class_label") or "")
+        dominant_code = dominant.get("factory_class")
+        dominant_share = dominant.get("classified_share_pct")
+    else:
+        class_label = "혼합"
+        dominant_code = dominant.get("factory_class") if dominant else None
+        dominant_share = dominant.get("classified_share_pct") if dominant else None
+
+    known = classified_area > 0.05
+    source_meta = ref.get("metadata") or {}
+    return {
+        "available": True,
+        "loaded": True,
+        "known": known,
+        "status": "CONFIRMED" if known else ("FACILITY_ONLY" if facility_area > 0.05 else "OUTSIDE_OR_UNCLASSIFIED"),
+        "site_area_m2": round(site_area, 3),
+        "classified_area_m2": round(classified_area, 3),
+        "mapped_area_m2": round(mapped_area, 3),
+        "facility_area_m2": round(facility_area, 3),
+        "overlap_pct": round(classified_pct, 4),
+        "classified_overlap_pct": round(classified_pct, 4),
+        "mapped_overlap_pct": round(mapped_pct, 4),
+        "facility_overlap_pct": round(facility_pct, 4),
+        "class_label": class_label,
+        "dominant_class": dominant_code,
+        "dominant_share_pct": dominant_share,
+        "class_breakdown": breakdown,
+        "threshold_10": threshold,
+        "reference_date": source_meta.get("reference_date") or "2008-01-31",
+        "source_id": "SEMIINDUSTRIAL_2009_REF",
+        "source_file": ref.get("source_file"),
+        "source_title": source_meta.get("source_title") or "2009 서울시 준공업지역 종합발전계획 수립 용역 최종성과품",
+        "quality": "USER_CORRECTED_CAD_REFERENCE",
+        "note": "2009 계획의 가구별 공장비율 현황도를 서울시 연속지적에 맞춰 보정 완료한 CAD 해치의 공간중첩 결과. 공장비율 10% 경계는 등급으로 확정 가능한 경우 PASS/FAIL에 사용하고, 10% 미만·이상 등급이 혼재해 전체비율이 확정되지 않으면 REVIEW로 남깁니다.",
+    }
+
+
 app = FastAPI(
     title="도시검토 플랫폼 - 서울 재개발 웹 MVP",
     version="2.5.0",
@@ -9040,6 +9257,31 @@ def heritage_wms_map(
     except Exception as exc:
         logging.warning("heritage WMS proxy failed: %s", exc)
         raise HTTPException(status_code=502, detail="heritage WMS unavailable") from exc
+
+
+@app.get("/api/reference/factory-ratio-2009-status")
+def factory_ratio_2009_status():
+    ref = _factory_ratio_2009_reference()
+    meta = dict(ref.get("metadata") or {})
+    return {
+        "available": bool(ref.get("available")),
+        "feature_count": int(ref.get("feature_count") or 0),
+        "source_file": ref.get("source_file") or "",
+        "reference_date": meta.get("reference_date") or "2008-01-31",
+        "source_title": meta.get("source_title") or "2009 서울시 준공업지역 종합발전계획 수립 용역 최종성과품",
+        "reason": ref.get("reason") or "",
+    }
+
+
+@app.post("/api/spatial/factory-ratio-2009")
+def factory_ratio_2009_intersections(inp: GeometryInput):
+    try:
+        return analyze_factory_ratio_2009(inp.geometry)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logging.exception("2009 factory-ratio intersection failed")
+        raise HTTPException(status_code=500, detail=f"2009 준공업지역 공장비율 분석 오류: {exc}") from exc
 
 
 @app.post("/api/spatial/safe-downtown-exclusion")

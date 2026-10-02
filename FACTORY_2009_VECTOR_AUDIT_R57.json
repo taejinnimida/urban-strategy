@@ -1,0 +1,84 @@
+{
+  "dxf": "/mnt/data/2009_준공업지역_공장비율_6개구_작업용_완료.dxf",
+  "stats": {
+    "10_미만": {
+      "entities": 7707,
+      "valid": 7707,
+      "xdata_vertices": 7617,
+      "xdata_edges": 2,
+      "block_fallback": 88,
+      "block_missing": 0,
+      "invalid_or_implausible": 0,
+      "raw_area_m2": 5651194.768343048
+    },
+    "50_이상": {
+      "entities": 5101,
+      "valid": 5100,
+      "xdata_vertices": 4960,
+      "xdata_edges": 1,
+      "block_fallback": 139,
+      "block_missing": 1,
+      "invalid_or_implausible": 0,
+      "raw_area_m2": 5072584.540164902
+    },
+    "10_30_": {
+      "entities": 3465,
+      "valid": 3465,
+      "xdata_vertices": 3432,
+      "xdata_edges": 0,
+      "block_fallback": 33,
+      "block_missing": 0,
+      "invalid_or_implausible": 0,
+      "raw_area_m2": 1519925.8476455032
+    },
+    "30_50_": {
+      "entities": 2279,
+      "valid": 2279,
+      "xdata_vertices": 2279,
+      "xdata_edges": 0,
+      "block_fallback": 0,
+      "block_missing": 0,
+      "invalid_or_implausible": 0,
+      "raw_area_m2": 823434.8306767832
+    },
+    "도시계획시설": {
+      "entities": 36,
+      "valid": 36,
+      "xdata_vertices": 36,
+      "xdata_edges": 0,
+      "block_fallback": 0,
+      "block_missing": 0,
+      "invalid_or_implausible": 0,
+      "raw_area_m2": 179707.49588440108
+    }
+  },
+  "block_fallback": {
+    "target_blocks": 261,
+    "resolved_blocks": 260,
+    "solid_entities": 3466,
+    "missing_examples": [
+      {
+        "layer": "50_이상",
+        "handle": "4EF98",
+        "block": "*U4919"
+      }
+    ]
+  },
+  "dissolved_area_m2": {
+    "10_미만": 5649675.166,
+    "50_이상": 5066441.592,
+    "10_30_": 1516606.231,
+    "30_50_": 822527.376,
+    "도시계획시설": 179707.464
+  },
+  "cross_class_overlap_m2": {
+    "10_미만__10_30_": 0.2305728523567529,
+    "10_미만__30_50_": 0.00099518093801059,
+    "10_미만__50_이상": 0.036698744409303166,
+    "10_30___30_50_": 0.0,
+    "10_30___50_이상": 0.0013501118737407436,
+    "30_50___50_이상": 0.0003100108853821837
+  },
+  "geojson_bytes": 2218549,
+  "elapsed_sec": 8.14
+}
