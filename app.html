@@ -16828,9 +16828,8 @@ function parseBoundaryAddressInput(text){
 async function resolveSeoulParcelAddress(row){
   const query=`서울특별시 ${row.gu} ${row.dong} ${row.jibun}`;
 
-  // R67: 지번입력은 브라우저 VWorld 키/JSONP 상태에 종속시키지 않는다.
-  // 기존 서버의 목적제한 parcel-by-address broker가 주소검색과 실제 연속지적
-  // 포함관계를 확인하고, 브라우저는 확정된 필지 Feature만 소비한다.
+  // R68: R62에서 정상 동작하던 주소검색 PNU → 연속지적 직접조회 흐름을 서버로 이전.
+  // 브라우저는 서버가 확정한 필지 Feature만 소비하며 서버 VWorld 키는 노출하지 않는다.
   try{
     const response=await fetch('/api/vworld/parcel-by-address',{
       method:'POST',
@@ -16843,7 +16842,7 @@ async function resolveSeoulParcelAddress(row){
       if(resolved?.status==='resolved'&&resolved?.feature){
         const copy=cloneFeature(resolved.feature);
         copy.properties=Object.assign({},copy.properties||{},
-          {_input_address:row.label,_input_query:query,_address_lookup_route:'server'});
+          {_input_address:row.label,_input_query:query,_address_lookup_route:`server_${resolved.lookup_method||'pnu'}`});
         return copy;
       }
       if(resolved?.status==='not_found')return null;

@@ -1263,6 +1263,62 @@ def _vworld_parcel_at_point(lon: float, lat: float) -> Dict[str, Any]:
     return {"status": "not_found", "feature": None, "pnu": None, "candidate_pnus": []}
 
 
+def _vworld_pnu_from_search_item(item: Dict[str, Any]) -> Optional[str]:
+    """VWorld ADDRESS(parcel) 검색결과에서 R62와 동일하게 19자리 PNU를 우선 추출한다."""
+    for raw in (item.get("id"), item.get("pnu")):
+        match = re.search(r"(?<!\d)(\d{19})(?!\d)", str(raw or ""))
+        if match:
+            return match.group(1)
+    return None
+
+
+def _vworld_parcel_by_pnu(pnu: str, *, force_retry: bool = False) -> Dict[str, Any]:
+    """LP_PA_CBND_BUBUN을 PNU attrfilter로 직접 조회한다.
+
+    지번 입력은 이미 주소검색 결과가 제공하는 PNU가 있으므로 좌표 주변검색보다 이
+    직접조회가 우선이다. 반환 Feature의 PNU도 요청 PNU와 일치하는지 확인한다.
+    """
+    pnu = str(pnu or "").strip()
+    if not re.fullmatch(r"\d{19}", pnu):
+        return {"status": "not_found", "feature": None, "pnu": None}
+    params = {
+        "key": _vworld_key(), "domain": _vworld_domain(),
+        "service": "data", "version": "2.0", "request": "getfeature",
+        "format": "json", "size": 10, "page": 1,
+        "geometry": "true", "attribute": "true", "crs": "EPSG:4326",
+        "data": VWORLD_LAYER_PARCEL, "attrfilter": f"pnu:=:{pnu}",
+    }
+    resp, _route = _vworld_get(
+        VWORLD_DATA_URL, params=params, timeout=(4.0, 12.0), force_retry=force_retry,
+    )
+    if resp.status_code >= 400:
+        raise RuntimeError(f"VWorld PNU 필지조회 HTTP {resp.status_code}")
+    try:
+        payload = resp.json()
+    except Exception as exc:
+        raise RuntimeError("VWorld PNU 필지조회 JSON 응답 해석 실패") from exc
+    rsp = payload.get("response") or {}
+    status = str(rsp.get("status") or "").upper()
+    if status == "NOT_FOUND":
+        return {"status": "not_found", "feature": None, "pnu": pnu}
+    if status != "OK":
+        raise RuntimeError(_response_error_message(payload))
+    features = ((((rsp.get("result") or {}).get("featureCollection") or {}).get("features")) or [])
+    for feature in features:
+        if not feature or not feature.get("geometry"):
+            continue
+        props = dict(feature.get("properties") or {})
+        feature_pnu = str(props.get("pnu") or props.get("PNU") or "").strip()
+        if feature_pnu and feature_pnu != pnu:
+            continue
+        if not feature_pnu:
+            props["pnu"] = pnu
+            feature = dict(feature)
+            feature["properties"] = props
+        return {"status": "resolved", "feature": feature, "pnu": pnu}
+    return {"status": "not_found", "feature": None, "pnu": pnu}
+
+
 def _vworld_parcel_by_address(address: str) -> Dict[str, Any]:
     """공식 시설주소를 VWorld 주소검색→검색좌표의 실제 지적 포함관계로 연결한다.
 
@@ -1317,6 +1373,90 @@ def _vworld_parcel_by_address(address: str) -> Dict[str, Any]:
             last_reason = str(exc)
     return {"status": "not_found", "feature": None, "pnu": None, "address": query, "reason": last_reason or "주소검색 실패"}
 
+
+
+def _vworld_boundary_parcel_by_address(address: str) -> Dict[str, Any]:
+    """지번입력 전용: ADDRESS(parcel) 검색 PNU → 연속지적 직접조회.
+
+    기존 _vworld_parcel_by_address()는 의료시설 등 도로명주소 소비자가 함께 사용하므로
+    변경하지 않는다. 이 함수만 대상지 '지번으로 찾기 · 입력하기' endpoint에서 사용한다.
+    """
+    query = re.sub(r"\s+", " ", str(address or "")).strip()
+    if not query:
+        return {"status": "not_found", "feature": None, "pnu": None, "address": query}
+    if not _vworld_key():
+        return {"status": "unavailable", "feature": None, "pnu": None, "address": query, "reason": "VWorld API 키 미설정"}
+
+    params = {
+        "key": _vworld_key(), "domain": _vworld_domain(),
+        "service": "search", "version": "2.0", "request": "search",
+        "format": "json", "size": 10, "page": 1,
+        "query": query, "type": "ADDRESS", "category": "parcel", "crs": "EPSG:4326",
+    }
+    # 사용자 명시 입력은 이전 bulk 분석의 VWorld cooldown 때문에 생략하지 않는다.
+    resp, _route = _vworld_get(
+        VWORLD_SEARCH_URL, params=params, timeout=(4.0, 12.0), force_retry=True,
+    )
+    if resp.status_code >= 400:
+        raise RuntimeError(f"VWorld 주소검색 HTTP {resp.status_code}")
+    try:
+        payload = resp.json()
+    except Exception as exc:
+        raise RuntimeError("VWorld 주소검색 JSON 응답 해석 실패") from exc
+    rsp = payload.get("response") or {}
+    status = str(rsp.get("status") or "").upper()
+    if status == "NOT_FOUND":
+        return {"status": "not_found", "feature": None, "pnu": None, "address": query, "reason": "지번주소 검색 결과 없음"}
+    if status != "OK":
+        raise RuntimeError(_response_error_message(payload))
+    items = (((rsp.get("result") or {}).get("items")) or [])
+    if not items:
+        return {"status": "not_found", "feature": None, "pnu": None, "address": query, "reason": "지번주소 검색 결과 없음"}
+
+    norm = lambda value: re.sub(r"\s+", "", str(value or ""))
+    query_norm = norm(query)
+    query_without_seoul = re.sub(r"^서울(?:특별시|시)", "", query_norm)
+
+    def rank(item: Dict[str, Any]):
+        parcel_address = norm((item.get("address") or {}).get("parcel"))
+        pnu = _vworld_pnu_from_search_item(item)
+        exact = parcel_address == query_norm
+        suffix = bool(query_without_seoul and parcel_address.endswith(query_without_seoul))
+        contains = bool(query_without_seoul and query_without_seoul in parcel_address)
+        return (0 if exact else 1, 0 if suffix else 1, 0 if contains else 1, 0 if pnu else 1)
+
+    ranked = sorted(items, key=rank)
+
+    # R62 정상경로: 검색결과 PNU를 그대로 LP_PA_CBND_BUBUN attrfilter로 조회.
+    for item in ranked[:5]:
+        pnu = _vworld_pnu_from_search_item(item)
+        if not pnu:
+            continue
+        direct = _vworld_parcel_by_pnu(pnu, force_retry=True)
+        if direct.get("status") == "resolved" and direct.get("feature"):
+            return {
+                "status": "resolved", "feature": direct["feature"], "pnu": pnu,
+                "address": query, "lookup_method": "pnu",
+            }
+
+    # PNU가 없거나 직접조회 0건인 경우에만 기존 좌표 포함관계를 보조경로로 사용.
+    for item in ranked[:3]:
+        point = item.get("point") or {}
+        try:
+            lon, lat = float(point.get("x")), float(point.get("y"))
+        except Exception:
+            continue
+        resolved = _vworld_parcel_at_point(lon, lat)
+        if resolved.get("status") == "resolved" and resolved.get("feature"):
+            return {
+                "status": "resolved", "feature": resolved["feature"],
+                "pnu": resolved.get("pnu"), "address": query,
+                "lookup_method": "point_fallback",
+            }
+    return {
+        "status": "not_found", "feature": None, "pnu": None, "address": query,
+        "reason": "주소검색은 성공했으나 연속지적 필지를 확정하지 못했습니다.",
+    }
 
 def _fetch_vworld_parcels_for_pnus(pnus: List[str], anchor_feature: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     wanted = {str(x) for x in pnus if str(x)}
@@ -8722,7 +8862,7 @@ def reference_station_entrances():
 # R22 station-line runtime hotfix.  This block is intentionally backend-only:
 # the existing multi-station frontend already consumes /api/reference/station-lines.
 STATION_RUNTIME_BUILD_MARKER = "R22_STATION_HOTFIX_20260901_0915"
-APP_BUILD_MARKER = "R67_RESTART_ADDRESS_PARCEL_SERVER_20261006"
+APP_BUILD_MARKER = "R68_RESTART_ADDRESS_PNU_DIRECT_20261006"
 _STATION_LINE_CACHE_LOCK = threading.Lock()
 _STATION_LINE_CACHE: Dict[str, Any] = {
     "expires_at": 0.0,
@@ -9487,7 +9627,7 @@ def vworld_parcel_by_address(inp: ParcelAddressInput):
     if not re.match(r"^서울(?:특별시|시)\s+", query):
         raise HTTPException(status_code=422, detail="서울특별시 지번주소만 조회할 수 있습니다.")
     try:
-        result = _vworld_parcel_by_address(query)
+        result = _vworld_boundary_parcel_by_address(query)
         if result.get("status") == "unavailable":
             raise HTTPException(status_code=503, detail=str(result.get("reason") or "VWorld 조회 불가"))
         # not_found is a valid lookup result, not a server failure.
