@@ -1343,7 +1343,30 @@ body.review-modal-open{overflow:hidden}
 
 .spatial-module-head-actions{display:flex;align-items:center;gap:6px}
 .spatial-mini-action{border:1px solid #d0d5dd;background:#fff;border-radius:7px;padding:3px 7px;font-size:8px;color:#344054;cursor:pointer}
+.site-ledger-action{display:inline-flex;align-items:center;gap:4px;font-weight:850}
+.site-ledger-action .site-ledger-icon{font-size:10px;line-height:1;color:#175cd3}
+.site-ledger-action.ready{border-color:#b2ddff;background:#eff8ff;color:#175cd3}
+.site-ledger-action.partial{border-color:#fedf89;background:#fffaeb;color:#b54708}
+.site-ledger-action.empty{color:#667085}
 .review-modal-parcels{width:min(1460px,96vw)}
+.review-modal-ledger{width:min(1660px,97vw)}
+.site-ledger-summary-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:7px;padding:12px}
+.site-ledger-summary-grid>div{background:#fff;border:1px solid #eaecf0;border-radius:9px;padding:8px;min-width:0}
+.site-ledger-summary-grid span{display:block;font-size:8px;color:#667085;line-height:1.35}
+.site-ledger-summary-grid b{display:block;margin-top:3px;font-size:11px;color:#101828;overflow-wrap:anywhere}
+.site-ledger-table-wrap{margin:0 12px 12px;background:#fff;border:1px solid #eaecf0;border-radius:9px;overflow:auto;max-height:62vh}
+.site-ledger-table{width:100%;border-collapse:collapse;min-width:1450px;font-size:8.5px}
+.site-ledger-table th{position:sticky;top:0;z-index:1;background:#f9fafb;color:#475467;text-align:left;padding:7px;border-bottom:1px solid #eaecf0;white-space:nowrap}
+.site-ledger-table td{padding:6px 7px;border-bottom:1px solid #f2f4f7;vertical-align:top;white-space:nowrap}
+.site-ledger-table td.wrap{white-space:normal;min-width:130px}
+.site-ledger-table .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:8px}
+.site-ledger-status{display:inline-flex;align-items:center;padding:2px 5px;border-radius:999px;border:1px solid #d0d5dd;background:#f9fafb;font-size:7px;font-weight:850}
+.site-ledger-status.COMPLETE{border-color:#abefc6;background:#ecfdf3;color:#067647}
+.site-ledger-status.PARTIAL{border-color:#fedf89;background:#fffaeb;color:#b54708}
+.site-ledger-status.ERROR{border-color:#fecdca;background:#fef3f2;color:#b42318}
+.site-ledger-status.UNKNOWN{color:#667085}
+.site-ledger-note{margin:0 12px 12px;padding:8px 10px;border:1px solid #b2ddff;background:#eff8ff;border-radius:8px;font-size:8px;line-height:1.5;color:#1849a9}
+@media(max-width:900px){.site-ledger-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr));padding:8px}.site-ledger-table-wrap,.site-ledger-note{margin-left:8px;margin-right:8px}}
 .parcel-status-summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;padding:12px}
 .parcel-status-summary-grid>div{background:#fff;border:1px solid #eaecf0;border-radius:9px;padding:8px}
 .parcel-status-summary-grid span{display:block;font-size:8px;color:#667085}
@@ -1969,7 +1992,7 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="workspace-column-title"><b>사이트 분석</b><span>토지·도시계획·건축물·제도별 입지 현황</span></div>
 <div class="spatial-module-grid">
 <section class="spatial-module site-analysis-card site-analysis-local" id="siteDetail_land">
-<div class="spatial-module-head"><b>토지</b><div class="spatial-module-head-actions"><span id="ccLandState">구역 설정 전</span><button class="spatial-mini-action" type="button" onclick="openParcelStatusModal()">필지목록</button></div></div>
+<div class="spatial-module-head"><b>토지</b><div class="spatial-module-head-actions"><span id="ccLandState">구역 설정 전</span><button class="spatial-mini-action site-ledger-action empty" id="siteLandLedgerBtn" type="button" onclick="openSiteLedgerModal('land')" title="대상지 토지조서 보기"><span class="site-ledger-icon" aria-hidden="true">▦</span><span>토지조서</span></button><button class="spatial-mini-action" type="button" onclick="openParcelStatusModal()">필지목록</button></div></div>
 <div class="spatial-metrics">
 <div><span>선택필지면적</span><b id="ccLandArea">-</b></div>
 <div><span>필지수</span><b id="ccLandParcels">-</b></div>
@@ -2167,7 +2190,7 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="spatial-mini-map" id="ccHillMiniMap"></div>
 </section>
 <section class="spatial-module site-analysis-card site-analysis-local" id="siteDetail_building">
-<div class="spatial-module-head"><b>건축물</b><span id="ccBuildingState">구역 설정 전</span></div>
+<div class="spatial-module-head"><b>건축물</b><div class="spatial-module-head-actions"><span id="ccBuildingState">구역 설정 전</span><button class="spatial-mini-action site-ledger-action empty" id="siteBuildingLedgerBtn" type="button" onclick="openSiteLedgerModal('building')" title="대상지 건축물조서 보기"><span class="site-ledger-icon" aria-hidden="true">▤</span><span>건축물조서</span></button></div></div>
 <div class="spatial-metrics">
 <div><span>건축물</span><b id="ccBuildingTotal">-</b></div>
 <div><span>사용승인일 확인</span><b id="ccBuildingOld">-</b></div>
@@ -2975,6 +2998,24 @@ body.service-layout-ready>.shell{display:none!important}
       <div class="parcel-status-note">토지대장 공식면적·지목·소유구분을 우선합니다. 미응답 필지는 연속지적 계산면적만 보조하고 지목·소유권은 추정하지 않습니다.</div>
     </div>
     <div class="review-modal-foot"><span>체크 변경 시 사업면적·현황기반시설·국공유지·기초 순수대지가 즉시 재계산됩니다.</span><button class="btn primary" type="button" onclick="applySelectedParcelsAsBoundaryFromModal()">선택필지로 구역계 정리</button></div>
+  </section>
+</div>
+
+<div class="review-modal-backdrop" id="siteLedgerModal" aria-hidden="true">
+  <section class="review-modal review-modal-ledger" role="dialog" aria-modal="true" aria-labelledby="siteLedgerModalTitle">
+    <div class="review-modal-head">
+      <div><h2 id="siteLedgerModalTitle">기초조서</h2><span id="siteLedgerModalSubtitle">대상지 확정 후 수집한 공부·공간 원자료를 분석용 정규화 형식으로 정리합니다.</span></div>
+      <div class="review-modal-head-actions">
+        <button class="btn" type="button" onclick="refreshSiteLedgerModal()">현재자료 갱신</button>
+        <button class="review-modal-close" type="button" onclick="closeReviewModal('siteLedgerModal')" aria-label="닫기">×</button>
+      </div>
+    </div>
+    <div class="review-modal-body">
+      <div class="site-ledger-summary-grid" id="siteLedgerSummary"></div>
+      <div class="site-ledger-note" id="siteLedgerNote">조서는 사업판정표가 아니라 공통 분석원장입니다. 여기서 정규화한 행·요약값을 다음 단계의 사이트분석 FACT가 직접 사용하도록 구성합니다.</div>
+      <div class="site-ledger-table-wrap"><table class="site-ledger-table"><thead id="siteLedgerTableHead"></thead><tbody id="siteLedgerTableBody"></tbody></table></div>
+    </div>
+    <div class="review-modal-foot"><span id="siteLedgerModalFoot">원자료 누락은 임의 추정하지 않고 상태값으로 남깁니다.</span><button class="btn primary" type="button" onclick="closeReviewModal('siteLedgerModal')">확인</button></div>
   </section>
 </div>
 
@@ -4319,8 +4360,12 @@ const analysisState={
   recommendations:[],
   planning_alternatives:[],
   report_draft:{},
+  site_ledger:null,
   quality:{small:'NONE',old:'NONE',road:'NONE',density:'NONE',planning:'NONE'}
 };
+const SITE_LEDGER_SCHEMA_VERSION='1.0';
+let latestSiteLedger=null;
+let activeSiteLedgerKind='land';
 
 
 const ccLandMini=L.map('ccLandMiniMap',{
@@ -9569,6 +9614,7 @@ function clearBoundaryAnalysisForNewGeometry(options={}){
   if(typeof safeMedicalAnalysis!=='undefined'){
     safeMedicalAnalysis.loaded=false;safeMedicalAnalysis.loading=false;safeMedicalAnalysis.status='unavailable';safeMedicalAnalysis.items=[];safeMedicalAnalysis.metadata={};safeMedicalAnalysis.errors=[];safeMedicalAnalysis.warnings=[];safeMedicalAnalysis.sourceStats={};safeMedicalAnalysis.nearbyCounts={};safeMedicalAnalysis.message='';safeDowntownExclusionAnalysis.loaded=false;safeDowntownExclusionAnalysis.loading=false;safeDowntownExclusionAnalysis.status='unavailable';safeDowntownExclusionAnalysis.known=false;safeDowntownExclusionAnalysis.present=null;safeDowntownExclusionAnalysis.overlapAreaM2=null;safeDowntownExclusionAnalysis.overlapPct=null;safeDowntownExclusionAnalysis.features=[];safeDowntownExclusionAnalysis.overlapFeatures=[];safeDowntownExclusionAnalysis.metadata={};safeDowntownExclusionAnalysis.error='';
   }
+  latestSiteLedger=null;analysisState.site_ledger=null;updateSiteLedgerButtons();
   latestSiteFactStore=null;latestSchemeModuleResults={};schemeResults={};
   try{resetAiComprehensiveAnalysis();}catch(e){}
   // 구역계 입력 직후 검토버튼 활성화가 사업엔진/UI 초기화 오류에 막히지 않도록 reset 자체를 방어한다.
@@ -9947,6 +9993,7 @@ const pnuCount=new Set(normalized.map(f=>String((f.properties||{}).pnu||'')).fil
     conn.textContent='건축물공간 AUTO';
     conn.className='conn auto';
     buildingSpatialQueryState={loaded:true,status:normalized.length?'SUCCESS_DATA':'SUCCESS_EMPTY',feature_count:normalized.length,pnu_count:pnuCount,error:''};
+    refreshSiteLedgerSnapshot();
     return {...buildingSpatialQueryState};
   
   }catch(e){
@@ -11084,6 +11131,125 @@ function buildingRawFacts(){
     source:'건축HUB 표제부'
   }));
 }
+function siteLedgerStatusLabel(status){
+  return ({COMPLETE:'완료',PARTIAL:'일부확인',ERROR:'오류',UNKNOWN:'미확인',EMPTY:'자료없음'})[status]||status||'미확인';
+}
+function siteLedgerStatusClass(status){return ['COMPLETE','PARTIAL','ERROR','UNKNOWN'].includes(status)?status:'UNKNOWN';}
+function siteLedgerDateText(v){const s=String(v||'').replace(/\D/g,'');return s.length===8?`${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}`:(v||'-');}
+function siteLedgerCountByPnu(){
+  const out=new Map();
+  for(const f of (currentBuildingFeatures||[])){
+    const pnu=String((f.properties||{})._parcel_pnu||(f.properties||{}).pnu||'');
+    if(pnu)out.set(pnu,(out.get(pnu)||0)+1);
+  }
+  return out;
+}
+function buildLandLedgerRows(){
+  const spatialCount=siteLedgerCountByPnu();
+  return [...selectedParcelPnus].map(pnu=>{
+    const f=parcelFeatureMap.get(String(pnu));
+    const p=f?.properties||{},r=p.land_ledger||{},query=landLedgerQueryState?.by_pnu?.[String(pnu)]||{};
+    const officialArea=validPositiveNumber(p.official_area_m2??r.lndpclAr),geometryArea=validPositiveNumber(p.geometry_area_m2??(f?parcelGeometryArea(f):null));
+    const preliminaryArea=validPositiveNumber(p._preliminary_area_m2),analysisArea=officialArea??validPositiveNumber(p._analysis_area_m2)??preliminaryArea??geometryArea;
+    const category=normalizedLandCategory(r.lndcgrCodeNm||parseJibunLandCategory(p.jibun||''));
+    const currentUse=parcelCurrentUseClass(category||'');
+    const ownership=String(r.posesnSeCodeNm||'').trim(),isPublic=ownership?isPublicLandOwnership(ownership):null;
+    const price=p.official_land_price||{},pricePerM2=validPositiveNumber(price.price_per_m2);
+    const hubCount=(hubRecordsByPnu.get(String(pnu))||[]).length;
+    let status='UNKNOWN';
+    if(query.status==='ERROR')status=officialArea!=null?'PARTIAL':'ERROR';
+    else if(officialArea!=null)status='COMPLETE';
+    else if(analysisArea!=null||category)status='PARTIAL';
+    return {
+      pnu:String(pnu),jibun:String(r.mnnmSlno||p.jibun||''),legal_dong:String(r.ldCodeNm||''),registry_type:String(r.regstrSeCodeNm||''),
+      land_category:category||'',official_area_m2:officialArea,geometry_area_m2:geometryArea,analysis_area_m2:analysisArea,
+      area_source:officialArea!=null?'토지임야대장 공식면적':analysisArea!=null?'연속지적 계산면적(예비)':'미확인',
+      current_use_class:currentUse?.label||'',is_infrastructure:currentUse?.infra===true,
+      ownership,public_land:isPublic,shared_owner_count:Number.isFinite(Number(r.cnrsPsnCo))?Number(r.cnrsPsnCo):null,land_grade:String(r.ladFrtlScNm||''),
+      official_land_price_per_m2:pricePerM2,official_land_price_year:price?.year??null,official_land_price_source:String(price?.source||''),
+      hub_building_count:hubCount,spatial_building_count:spatialCount.get(String(pnu))||0,
+      small_under_90:officialArea!=null?officialArea<90:null,last_update:String(r.lastUpdtDt||price?.last_update||''),
+      source_route:String(r._route||query.route||''),data_status:status,data_error:String(query.error||''),
+      analysis:{area_m2:analysisArea,official_area_m2:officialArea,land_category:category||'',is_infrastructure:currentUse?.infra===true,is_public_land:isPublic,small_under_90:officialArea!=null?officialArea<90:null,official_land_price_per_m2:pricePerM2}
+    };
+  }).sort((a,b)=>a.pnu.localeCompare(b.pnu));
+}
+function buildBuildingLedgerRows(){
+  const spatialCount=siteLedgerCountByPnu(),records=selectedHubRecordsForSchemes();
+  return records.map(r=>{
+    const pnu=String(r.pnu||''),query=hubTitleQueryState?.by_pnu?.[pnu]||{},approval=parseHubDate(r.useAprDay);
+    const totalArea=validPositiveNumber(r.totArea),archArea=validPositiveNumber(r.archArea),platArea=validPositiveNumber(r.platArea),vlArea=validPositiveNumber(r.vlRatEstmTotArea);
+    const vlRat=Number.isFinite(Number(r.vlRat))?Number(r.vlRat):null,ground=Number.isFinite(Number(r.grndFlrCnt))?Number(r.grndFlrCnt):null,underground=Number.isFinite(Number(r.ugrndFlrCnt))?Number(r.ugrndFlrCnt):null;
+    const household=Number.isFinite(Number(r.hhldCnt))?Number(r.hhldCnt):null,family=Number.isFinite(Number(r.fmlyCnt))?Number(r.fmlyCnt):null;
+    const status=query.status==='ERROR'?'PARTIAL':'COMPLETE';
+    return {
+      id:String(r.mgmBldrgstPk||`${pnu}|${r.dongNm||''}|${r.bldNm||''}|${r.useAprDay||''}`),mgm_bldrgst_pk:String(r.mgmBldrgstPk||''),pnu,
+      address:String(r.platPlc||r.newPlatPlc||''),dong_name:String(r.dongNm||''),building_name:String(r.bldNm||''),register_kind:String(r.regstrKindCdNm||r.regstrKindNm||''),
+      main_use:String(r.mainPurpsCdNm||''),other_use:String(r.etcPurps||''),structure:String(r.strctCdNm||''),ground_floors:ground,underground_floors:underground,
+      plat_area_m2:platArea,building_area_m2:archArea,total_floor_area_m2:totalArea,volume_ratio_area_m2:vlArea,volume_ratio_pct:vlRat,
+      household_count:household,family_count:family,approval_date:String(r.useAprDay||''),approval_date_iso:approval?siteLedgerDateText(r.useAprDay):'',approval_date_known:!!approval,
+      creation_date:String(r.crtnDay||''),spatial_building_count_on_pnu:spatialCount.get(pnu)||0,source:'건축HUB 표제부',data_status:status,data_error:String(query.error||''),
+      analysis:{approval_date:String(r.useAprDay||''),structure:String(r.strctCdNm||''),main_use:String(r.mainPurpsCdNm||''),other_use:String(r.etcPurps||''),register_kind:String(r.regstrKindCdNm||r.regstrKindNm||''),plat_area_m2:platArea,building_area_m2:archArea,total_floor_area_m2:totalArea,volume_ratio_area_m2:vlArea,volume_ratio_pct:vlRat,ground_floors:ground,underground_floors:underground,household_count:household,family_count:family}
+    };
+  }).sort((a,b)=>a.pnu.localeCompare(b.pnu)||a.id.localeCompare(b.id));
+}
+function summarizeLandLedgerRows(rows){
+  const selected=selectedParcelPnus.size,officialRows=rows.filter(x=>x.official_area_m2!=null),analysisRows=rows.filter(x=>x.analysis_area_m2!=null),priceRows=rows.filter(x=>x.official_land_price_per_m2!=null);
+  const categoryArea={},categoryCount={};let totalArea=0,publicArea=0,infraArea=0,small=0,smallUnknown=0;
+  for(const x of rows){
+    const a=Number(x.analysis_area_m2);if(Number.isFinite(a)&&a>0){totalArea+=a;if(x.public_land===true)publicArea+=a;if(x.is_infrastructure===true)infraArea+=a;if(x.land_category){categoryArea[x.land_category]=(categoryArea[x.land_category]||0)+a;}}
+    if(x.land_category)categoryCount[x.land_category]=(categoryCount[x.land_category]||0)+1;
+    if(x.small_under_90===true)small++;else if(x.small_under_90==null)smallUnknown++;
+  }
+  const status=selected===0?'EMPTY':officialRows.length===selected&&landLedgerQueryState.complete?'COMPLETE':rows.some(x=>x.data_status==='ERROR')?'PARTIAL':officialRows.length||analysisRows.length?'PARTIAL':'UNKNOWN';
+  return {status,selected_parcel_count:selected,row_count:rows.length,official_area_count:officialRows.length,analysis_area_count:analysisRows.length,total_analysis_area_m2:totalArea||null,public_land_area_m2:publicArea||0,infrastructure_land_area_m2:infraArea||0,small_parcel_count:small,small_parcel_unknown_count:smallUnknown,land_price_count:priceRows.length,land_price_years:[...new Set(priceRows.map(x=>x.official_land_price_year).filter(x=>x!=null))],category_area_m2:categoryArea,category_count:categoryCount,query_complete:landLedgerQueryState.complete===true,failed_pnu_count:Number(landLedgerQueryState.error_count||0),analysis_ready:selected>0&&analysisRows.length>0};
+}
+function summarizeBuildingLedgerRows(rows){
+  const approvalKnown=rows.filter(x=>x.approval_date_known),floorKnown=rows.filter(x=>x.total_floor_area_m2!=null),useKnown=rows.filter(x=>x.main_use),structureKnown=rows.filter(x=>x.structure);
+  const usageCount={},structureCount={};let floorArea=0,vlArea=0,households=0,families=0;
+  for(const x of rows){if(x.main_use)usageCount[x.main_use]=(usageCount[x.main_use]||0)+1;if(x.structure)structureCount[x.structure]=(structureCount[x.structure]||0)+1;if(x.total_floor_area_m2!=null)floorArea+=Number(x.total_floor_area_m2);if(x.volume_ratio_area_m2!=null)vlArea+=Number(x.volume_ratio_area_m2);if(x.household_count!=null)households+=Number(x.household_count);if(x.family_count!=null)families+=Number(x.family_count);}
+  const requested=(hubTitleQueryState.requested_pnus||[]).length||selectedParcelPnus.size;
+  const status=requested===0?'EMPTY':hubTitleQueryState.loaded&&hubTitleQueryState.complete?'COMPLETE':rows.length||hubTitleQueryState.loaded?'PARTIAL':'UNKNOWN';
+  return {status,selected_parcel_count:selectedParcelPnus.size,row_count:rows.length,hub_building_count:rows.length,spatial_building_count:(currentBuildingFeatures||[]).length,approval_date_known_count:approvalKnown.length,approval_date_unknown_count:Math.max(0,rows.length-approvalKnown.length),floor_area_known_count:floorKnown.length,total_floor_area_m2:floorArea||null,volume_ratio_area_m2:vlArea||null,household_count:households,family_count:families,main_use_known_count:useKnown.length,structure_known_count:structureKnown.length,main_use_count:usageCount,structure_count:structureCount,query_complete:hubTitleQueryState.complete===true,failed_pnu_count:Number(hubTitleQueryState.error_count||0),empty_pnu_count:(hubTitleQueryState.empty_pnus||[]).length,analysis_ready:rows.length>0};
+}
+function buildSiteLedger(){
+  const landRows=buildLandLedgerRows(),buildingRows=buildBuildingLedgerRows();
+  let boundarySignature='';try{boundarySignature=analysisBoundarySignature();}catch(e){}
+  const ledger={schema_version:SITE_LEDGER_SCHEMA_VERSION,generated_at:new Date().toISOString(),boundary_signature:boundarySignature,land:{rows:landRows,summary:summarizeLandLedgerRows(landRows)},building:{rows:buildingRows,summary:summarizeBuildingLedgerRows(buildingRows)},principle:'LEDGER → SITE FACT → SCHEME RULE'};
+  latestSiteLedger=ledger;analysisState.site_ledger=ledger;updateSiteLedgerButtons(ledger);return ledger;
+}
+function updateSiteLedgerButtons(ledger=null){
+  const l=ledger||latestSiteLedger,landBtn=document.getElementById('siteLandLedgerBtn'),buildingBtn=document.getElementById('siteBuildingLedgerBtn');
+  const setBtn=(btn,kind,count,status)=>{if(!btn)return;btn.classList.remove('ready','partial','empty');const cls=status==='COMPLETE'?'ready':status==='PARTIAL'?'partial':'empty';btn.classList.add(cls);const text=btn.querySelector('span:last-child');if(text)text.textContent=`${kind} ${count?count:''}`.trim();};
+  const landCount=l?.land?.summary?.selected_parcel_count??selectedParcelPnus.size,buildingCount=l?.building?.summary?.hub_building_count??selectedHubRecordsForSchemes().length;
+  setBtn(landBtn,'토지조서',landCount,l?.land?.summary?.status||(landCount?'PARTIAL':'EMPTY'));
+  setBtn(buildingBtn,'건축물조서',buildingCount,l?.building?.summary?.status||(buildingCount?'PARTIAL':'EMPTY'));
+}
+function siteLedgerSummaryCard(label,value){return `<div><span>${escHtml(label)}</span><b>${escHtml(value??'-')}</b></div>`;}
+function siteLedgerStatusBadge(status){return `<span class="site-ledger-status ${siteLedgerStatusClass(status)}">${escHtml(siteLedgerStatusLabel(status))}</span>`;}
+function renderSiteLedgerModal(kind=activeSiteLedgerKind){
+  activeSiteLedgerKind=kind==='building'?'building':'land';const ledger=buildSiteLedger(),isLand=activeSiteLedgerKind==='land',block=isLand?ledger.land:ledger.building,summary=block.summary||{},rows=block.rows||[];
+  const title=document.getElementById('siteLedgerModalTitle'),subtitle=document.getElementById('siteLedgerModalSubtitle'),sumEl=document.getElementById('siteLedgerSummary'),head=document.getElementById('siteLedgerTableHead'),body=document.getElementById('siteLedgerTableBody'),note=document.getElementById('siteLedgerNote'),foot=document.getElementById('siteLedgerModalFoot');
+  if(title)title.textContent=isLand?'토지조서':'건축물조서';
+  if(subtitle)subtitle.textContent=isLand?'선택필지의 토지임야대장·연속지적·공시지가 연결상태를 1필지 1행으로 정리합니다.':'건축HUB 표제부를 1건축물 1행으로 정리하고 공간건물은 PNU 단위 교차검증값으로 보존합니다.';
+  if(isLand){
+    if(sumEl)sumEl.innerHTML=[siteLedgerSummaryCard('조서 상태',siteLedgerStatusLabel(summary.status)),siteLedgerSummaryCard('선택필지',`${summary.selected_parcel_count||0}필지`),siteLedgerSummaryCard('공식면적',`${summary.official_area_count||0}/${summary.selected_parcel_count||0}필지`),siteLedgerSummaryCard('분석면적 합계',summary.total_analysis_area_m2==null?'-':`${fmt(summary.total_analysis_area_m2,1)}㎡`),siteLedgerSummaryCard('90㎡ 미만',`${summary.small_parcel_count||0}필지${summary.small_parcel_unknown_count?` · 미확인 ${summary.small_parcel_unknown_count}`:''}`),siteLedgerSummaryCard('공시지가 연결',`${summary.land_price_count||0}필지`)].join('');
+    if(head)head.innerHTML='<tr><th>지번</th><th>PNU</th><th>지목</th><th>공식면적㎡</th><th>분석면적㎡</th><th>면적출처</th><th>현황분류</th><th>소유구분</th><th>국공유</th><th>공유인수</th><th>공시지가(원/㎡)</th><th>건축HUB</th><th>공간건물</th><th>자료상태</th><th>기준일</th></tr>';
+    if(body)body.innerHTML=rows.length?rows.map(x=>`<tr><td>${escHtml(x.jibun||'-')}</td><td class="mono">${escHtml(x.pnu)}</td><td>${escHtml(x.land_category||'-')}</td><td>${x.official_area_m2==null?'-':fmt(x.official_area_m2,2)}</td><td>${x.analysis_area_m2==null?'-':fmt(x.analysis_area_m2,2)}</td><td>${escHtml(x.area_source||'-')}</td><td>${escHtml(x.current_use_class||'-')}</td><td>${escHtml(x.ownership||'-')}</td><td>${x.public_land===true?'국공유':x.public_land===false?'-':'미확인'}</td><td>${x.shared_owner_count==null?'-':fmt(x.shared_owner_count,0)}</td><td>${x.official_land_price_per_m2==null?'-':Math.round(x.official_land_price_per_m2).toLocaleString('ko-KR')}</td><td>${fmt(x.hub_building_count,0)}동</td><td>${fmt(x.spatial_building_count,0)}동</td><td>${siteLedgerStatusBadge(x.data_status)}</td><td>${escHtml(siteLedgerDateText(x.last_update))}</td></tr>`).join(''):'<tr><td colspan="15">선택필지 조서가 아직 작성되지 않았습니다.</td></tr>';
+    if(note)note.innerHTML='<b>분석 연결원칙</b> · 토지조서의 <b>analysis</b> 필드에 면적·지목·기반시설 여부·국공유지·90㎡ 미만 여부·공시지가를 정규화해 저장합니다. 다음 단계의 사이트분석은 이 원장을 직접 읽도록 연결하며, 공식면적 미확보 값은 연속지적 예비면적과 구분합니다.';
+    if(foot)foot.textContent=`토지조서 ${rows.length}행 · 공식면적 ${summary.official_area_count||0}/${summary.selected_parcel_count||0}필지 · 누락은 추정하지 않습니다.`;
+  }else{
+    if(sumEl)sumEl.innerHTML=[siteLedgerSummaryCard('조서 상태',siteLedgerStatusLabel(summary.status)),siteLedgerSummaryCard('건축HUB',`${summary.hub_building_count||0}동`),siteLedgerSummaryCard('공간건물',`${summary.spatial_building_count||0}동`),siteLedgerSummaryCard('사용승인일',`${summary.approval_date_known_count||0}/${summary.hub_building_count||0}동`),siteLedgerSummaryCard('총연면적',summary.total_floor_area_m2==null?'-':`${fmt(summary.total_floor_area_m2,1)}㎡`),siteLedgerSummaryCard('조회실패 PNU',`${summary.failed_pnu_count||0}필지`)].join('');
+    if(head)head.innerHTML='<tr><th>PNU</th><th>대장 PK</th><th>동/건물명</th><th>대장구분</th><th>주용도</th><th>기타용도</th><th>구조</th><th>지상/지하</th><th>대지면적㎡</th><th>건축면적㎡</th><th>연면적㎡</th><th>용적률산정연면적㎡</th><th>용적률%</th><th>세대/가구</th><th>사용승인일</th><th>PNU 공간건물</th><th>자료상태</th></tr>';
+    if(body)body.innerHTML=rows.length?rows.map(x=>`<tr><td class="mono">${escHtml(x.pnu||'-')}</td><td class="mono">${escHtml(x.mgm_bldrgst_pk||'-')}</td><td class="wrap">${escHtml([x.dong_name,x.building_name].filter(Boolean).join(' / ')||'-')}</td><td>${escHtml(x.register_kind||'-')}</td><td class="wrap">${escHtml(x.main_use||'-')}</td><td class="wrap">${escHtml(x.other_use||'-')}</td><td class="wrap">${escHtml(x.structure||'-')}</td><td>${x.ground_floors??'-'} / ${x.underground_floors??'-'}</td><td>${x.plat_area_m2==null?'-':fmt(x.plat_area_m2,2)}</td><td>${x.building_area_m2==null?'-':fmt(x.building_area_m2,2)}</td><td>${x.total_floor_area_m2==null?'-':fmt(x.total_floor_area_m2,2)}</td><td>${x.volume_ratio_area_m2==null?'-':fmt(x.volume_ratio_area_m2,2)}</td><td>${x.volume_ratio_pct==null?'-':fmt(x.volume_ratio_pct,2)}</td><td>${x.household_count??'-'} / ${x.family_count??'-'}</td><td>${escHtml(x.approval_date_iso||'-')}</td><td>${fmt(x.spatial_building_count_on_pnu,0)}동</td><td>${siteLedgerStatusBadge(x.data_status)}</td></tr>`).join(''):'<tr><td colspan="17">건축HUB 조서가 아직 작성되지 않았습니다.</td></tr>';
+    if(note)note.innerHTML='<b>분석 연결원칙</b> · 건축물조서의 <b>analysis</b> 필드에 사용승인일·구조·용도·면적·용적률산정연면적·층수·세대/가구수를 사실값으로 정규화합니다. 공간건물은 개별 대장동과 임의 1:1 매칭하지 않고 PNU 단위 검증값으로만 보존합니다.';
+    if(foot)foot.textContent=`건축물조서 ${rows.length}행 · 사용승인일 확인 ${summary.approval_date_known_count||0}/${summary.hub_building_count||0}동 · 미확인 속성은 그대로 남깁니다.`;
+  }
+}
+function openSiteLedgerModal(kind){renderSiteLedgerModal(kind);openReviewModal('siteLedgerModal');}
+function refreshSiteLedgerModal(){renderSiteLedgerModal(activeSiteLedgerKind);}
+function refreshSiteLedgerSnapshot(){try{return buildSiteLedger();}catch(e){console.warn('[site-ledger] snapshot failed',e);updateSiteLedgerButtons();return null;}}
+
 function buildingFloorRowsForRecord(r){
   const pnu=String(r?.pnu||''),key=String(r?.mgm_bldrgst_pk||'');
   const rows=hubFloorRecordsByPnu.get(pnu)||[];
@@ -16661,6 +16827,37 @@ function parseBoundaryAddressInput(text){
 }
 async function resolveSeoulParcelAddress(row){
   const query=`서울특별시 ${row.gu} ${row.dong} ${row.jibun}`;
+
+  // R67: 지번입력은 브라우저 VWorld 키/JSONP 상태에 종속시키지 않는다.
+  // 기존 서버의 목적제한 parcel-by-address broker가 주소검색과 실제 연속지적
+  // 포함관계를 확인하고, 브라우저는 확정된 필지 Feature만 소비한다.
+  try{
+    const response=await fetch('/api/vworld/parcel-by-address',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({address:query}),
+      cache:'no-store'
+    });
+    if(response.ok){
+      const resolved=await response.json();
+      if(resolved?.status==='resolved'&&resolved?.feature){
+        const copy=cloneFeature(resolved.feature);
+        copy.properties=Object.assign({},copy.properties||{},
+          {_input_address:row.label,_input_query:query,_address_lookup_route:'server'});
+        return copy;
+      }
+      if(resolved?.status==='not_found')return null;
+    }else{
+      let detail='';
+      try{const body=await response.json();detail=String(body?.detail||'');}catch(e){}
+      throw new Error(detail||`서버 지번조회 HTTP ${response.status}`);
+    }
+  }catch(serverErr){
+    // 기존 배포와의 호환용 최후 폴백. 전용 클라이언트키가 없으면 서버 오류를 그대로 전달한다.
+    if(!VWORLD_CLIENT_KEY)throw serverErr;
+  }
+
+  // Legacy fallback: 서버 broker가 일시적으로 실패했을 때만 기존 브라우저 직접조회 사용.
   const data=await vworldJsonp('https://api.vworld.kr/req/search',{
     key:VWORLD_CLIENT_KEY,
     domain:VWORLD_CLIENT_DOMAIN,
@@ -16707,12 +16904,11 @@ async function resolveSeoulParcelAddress(row){
   }
   if(!f)return null;
   const copy=cloneFeature(f);
-  copy.properties=Object.assign({},copy.properties||{},{
-    _input_address:row.label,
-    _input_query:query
-  });
+  copy.properties=Object.assign({},copy.properties||{},
+    {_input_address:row.label,_input_query:query,_address_lookup_route:'browser_fallback'});
   return copy;
 }
+
 async function lookupBoundaryAddresses(){
   const input=document.getElementById('boundaryAddressInput');
   const status=document.getElementById('boundaryAddressStatus');
@@ -16722,18 +16918,16 @@ async function lookupBoundaryAddresses(){
     if(status)status.textContent='입력 형식을 확인하세요. 예: 동대문구, 장안동, 123-4';
     return;
   }
-  if(!VWORLD_CLIENT_KEY){
-    if(status)status.textContent='VWorld API 키가 연결되지 않아 주소 필지를 조회할 수 없습니다.';
-    return;
-  }
   if(status)status.textContent=`${rows.length}필지 주소를 찾는 중...`;
   pushBoundaryEditHistory('지번 입력 필지 추가');
   addressPreviewFeatures=[];addressPreviewLayer.clearLayers();
-  let ok=0;const failed=[];
+  let ok=0;const failed=[];const lookupErrors=[];
   const results=await mapLimit(rows,4,async row=>{
-    try{return await resolveSeoulParcelAddress(row);}catch(e){return null;}
+    try{return {feature:await resolveSeoulParcelAddress(row),error:''};}
+    catch(e){return {feature:null,error:String(e?.message||e||'조회 오류')};}
   });
-  results.forEach((f,i)=>{
+  results.forEach((result,i)=>{
+    const f=result?.feature||null;
     if(f){
       const key=parcelKey(f),copy=cloneFeature(f),p=copy.properties||{};
       p.geometry_area_m2=p.geometry_area_m2??parcelGeometryArea(copy);
@@ -16742,7 +16936,10 @@ async function lookupBoundaryAddresses(){
       addressPreviewFeatures.push(copy);
       if(key){parcelFeatureMap.set(String(key),copy);selectedParcelPnus.add(String(key));}
       ok++;
-    }else failed.push(rows[i].label);
+    }else{
+      failed.push(rows[i].label);
+      if(result?.error)lookupErrors.push(`${rows[i].label}: ${result.error}`);
+    }
   });
   if(ok){clearPlanningFacilityConstraintCache();syncParcelLayerFromState();}
   if(addressPreviewFeatures.length){
@@ -16756,6 +16953,7 @@ async function lookupBoundaryAddresses(){
   if(status){
     status.textContent=`입력 ${rows.length}필지 · 확인 ${ok}필지 · 미확인 ${failed.length}필지`+
       (failed.length?` · 미확인: ${failed.slice(0,4).join(' / ')}${failed.length>4?' 외 '+(failed.length-4)+'필지':''}`:'')+
+      (lookupErrors.length?` · 조회오류: ${lookupErrors[0].slice(0,160)}`:'')+
       (ok?' · 확인된 필지를 선택목록에 추가했습니다. 아래 공통 편집도구에서 ‘구역계 확정’을 누르세요.':'');
   }
 }
@@ -19068,6 +19266,7 @@ function ccTopEntries(mp,limit=5){
   return [...mp.entries()].sort((a,b)=>b[1]-a[1]).slice(0,limit);
 }
 function updateCompactInfoRail(siteStore=null){
+  updateSiteLedgerButtons();
   const base=selectedParcelLandBase();
   const parcels=[...selectedParcelPnus].map(p=>parcelFeatureMap.get(String(p))).filter(Boolean);
   const small=parcels.filter(f=>(f.properties||{}).is_small===true).length;
@@ -19522,6 +19721,7 @@ async function analyzeBuildingHub(signal=null){
   document.getElementById('result').innerHTML='<div class="empty">건축HUB 값을 분석객체에 반영했습니다. 노후건축물 소재필지와 호수밀도 초기값을 자동분류했습니다.</div>';
   refreshBuildingAgeClassification();
   estimateHouseDensity();
+  refreshSiteLedgerSnapshot();
   return {requested_pnu_count:pnus.length,done_pnu_count:done,record_count:records.length,error_count:hubTitleQueryState.error_count,successful_pnus:titleSuccessful,empty_pnus:titleEmpty,failed_pnus:titleFailed,complete:hubTitleQueryState.complete,known_age_count:knownAge.length,unknown_age_count:unknownAge.length,spatial_building_count:currentBuildingFeatures.length,floor_record_count:[...hubFloorRecordsByPnu.values()].reduce((a,x)=>a+x.length,0),floor_error_count:hubFloorQueryState.error_count,floor_complete:hubFloorQueryState.complete};
 
 }
@@ -19856,6 +20056,7 @@ async function analyzeLandLedger(){
   landLedgerQueryState={loaded:true,complete:successful.length===pnus.length,geometry_signature:geometrySignature,queried_pnus:pnus.length,requested_pnus:[...pnus],successful_pnus:successful,empty_pnus:[],failed_pnus:failedPnus,by_pnu:byPnu,error_count:failedPnus.length,errors:results.filter(x=>x?.status!=='SUCCESS_DATA').map(x=>({pnu:x?.pnu,error:x?.error||'공식면적 미확인'})),official_area_count:official,missing_official_area_count:pnus.length-official,geometry_fallback_count:geometryFallback,preliminary_small_count:preliminarySmall,external_upstream_error:externalUpstreamError,local_snapshot_count:localSnapshotCount};
   if(localSnapshotCount)summary.innerHTML+=` · VWorld 실시간 미확보 <b>${localSnapshotCount}필지</b> → 보유 토지임야정보 보완`;
   if(externalUpstreamError&&!localSnapshotCount)summary.innerHTML+=' · <b>VWorld 외부서비스 장애로 반복호출 차단</b>';
+  refreshSiteLedgerSnapshot();
   runSchemeChecksWhenCoreReady();
   return {requested_pnu_count:pnus.length,official_area_count:official,missing_official_area_count:pnus.length-official,error_count:failedPnus.length,complete:landLedgerQueryState.complete,small_parcel_count:landLedgerQueryState.complete?small:null,preliminary_small_count:preliminarySmall,external_upstream_error:externalUpstreamError};
 }

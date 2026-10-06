@@ -7790,6 +7790,10 @@ class GeometryInput(BaseModel):
     geometry: Dict[str, Any]
 
 
+class ParcelAddressInput(BaseModel):
+    address: str = Field(..., min_length=3, max_length=200)
+
+
 class PlanningLayersInput(BaseModel):
     geometry: Dict[str, Any]
     layer_ids: List[str] = Field(..., min_length=1, max_length=5)
@@ -8718,7 +8722,7 @@ def reference_station_entrances():
 # R22 station-line runtime hotfix.  This block is intentionally backend-only:
 # the existing multi-station frontend already consumes /api/reference/station-lines.
 STATION_RUNTIME_BUILD_MARKER = "R22_STATION_HOTFIX_20260901_0915"
-APP_BUILD_MARKER = "R65_RESTART_SELECTED_PARCEL_TOPOLOGY_005M_20261006"
+APP_BUILD_MARKER = "R67_RESTART_ADDRESS_PARCEL_SERVER_20261006"
 _STATION_LINE_CACHE_LOCK = threading.Lock()
 _STATION_LINE_CACHE: Dict[str, Any] = {
     "expires_at": 0.0,
@@ -9464,6 +9468,37 @@ def street_block(inp: StreetBlockInput):
     except Exception as exc:
         logging.exception("street block analysis failed")
         raise HTTPException(status_code=500, detail=f"가로구역 자동추출 오류: {exc}") from exc
+
+
+@app.post("/api/vworld/parcel-by-address")
+def vworld_parcel_by_address(inp: ParcelAddressInput):
+    """Resolve one Seoul parcel address to the live cadastral parcel on the server.
+
+    This is a purpose-limited broker for the boundary-input workflow.  It keeps
+    the VWorld server key out of the browser path and returns only the resolved
+    parcel feature/status needed by the UI.
+    """
+    _require_vworld_key()
+    query = re.sub(r"\s+", " ", str(inp.address or "")).strip()
+    if not query:
+        raise HTTPException(status_code=422, detail="지번주소가 필요합니다.")
+    if not (query.startswith("서울특별시 ") or query.startswith("서울시 ")):
+        query = "서울특별시 " + query
+    if not re.match(r"^서울(?:특별시|시)\s+", query):
+        raise HTTPException(status_code=422, detail="서울특별시 지번주소만 조회할 수 있습니다.")
+    try:
+        result = _vworld_parcel_by_address(query)
+        if result.get("status") == "unavailable":
+            raise HTTPException(status_code=503, detail=str(result.get("reason") or "VWorld 조회 불가"))
+        # not_found is a valid lookup result, not a server failure.
+        return result
+    except HTTPException:
+        raise
+    except VWorldTransportError as exc:
+        raise HTTPException(status_code=502, detail=f"VWorld 지번조회 통신 오류: {str(exc)[:240]}") from exc
+    except Exception as exc:
+        logger.exception("parcel-by-address lookup failed")
+        raise HTTPException(status_code=502, detail=f"지번 필지 조회 실패: {str(exc)[:240]}") from exc
 
 
 @app.get("/api/vworld/test")
