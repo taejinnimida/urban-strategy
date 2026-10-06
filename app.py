@@ -7888,7 +7888,7 @@ async def _security_response_headers(request: Request, call_next):
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
     response.headers.setdefault("Permissions-Policy", "geolocation=(), camera=(), microphone=()")
-    response.headers["X-Urban-Build"] = globals().get("APP_BUILD_MARKER", "R63_SECURITY_HARDENING_20261003")
+    response.headers["X-Urban-Build"] = globals().get("APP_BUILD_MARKER", "R64_BASEMAP_FALLBACK_20261006")
     forwarded_proto = str(request.headers.get("x-forwarded-proto") or "").split(",", 1)[0].strip().lower()
     if request.url.scheme == "https" or forwarded_proto == "https":
         response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
@@ -8849,7 +8849,7 @@ def reference_station_entrances():
 # R22 station-line runtime hotfix.  This block is intentionally backend-only:
 # the existing multi-station frontend already consumes /api/reference/station-lines.
 STATION_RUNTIME_BUILD_MARKER = "R22_STATION_HOTFIX_20260901_0915"
-APP_BUILD_MARKER = "R63_SECURITY_HARDENING_20261003"
+APP_BUILD_MARKER = "R64_BASEMAP_FALLBACK_20261006"
 _STATION_LINE_CACHE_LOCK = threading.Lock()
 _STATION_LINE_CACHE: Dict[str, Any] = {
     "expires_at": 0.0,
