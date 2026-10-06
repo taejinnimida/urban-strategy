@@ -6,6 +6,7 @@
 <meta content="width=device-width, initial-scale=1" name="viewport"/>
 <title>서울 도시정비플랫폼</title>
 <link crossorigin="" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" rel="stylesheet"/>
+<link href="https://unpkg.com/maplibre-gl@5.7.3/dist/maplibre-gl.css" rel="stylesheet"/>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" rel="stylesheet"/>
 <style>
     :root{--bg:#f3f5f7;--card:#fff;--line:#dfe3e8;--text:#16181d;--muted:#667085;--dark:#111827;--green:#067647;--red:#b42318;--amber:#b54708;--blue:#175cd3}
@@ -3069,6 +3070,8 @@ body.service-layout-ready>.shell{display:none!important}
   <span id="ovSummaryFoot">-</span>
 </div>
 <script crossorigin="" src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/maplibre-gl@5.7.3/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
 <script src="https://unpkg.com/shpjs@6.2.0/dist/shp.js"></script>
@@ -3310,12 +3313,33 @@ for(const [paneName,z] of [
   const pane=map.getPane(paneName);pane.style.zIndex=String(z);pane.style.pointerEvents='none';
 }
 // 베이스맵은 항상 한 장 이상 남긴다. 서버용 VWORLD_API_KEY는 절대 브라우저로 내려오지 않는다.
-// CLIENT KEY가 있으면 VWorld 일반지도를 항공사진 아래에 깔고, 없거나 VWorld 타일이 실패하면 OSM이 최종 백지 방지용으로 남는다.
+// 일반지도는 KEY가 필요 없는 OpenFreeMap Liberty 벡터지도를 우선 사용하고, 로딩 자체가 불가능하면 OSM이 최종 백지 방지용으로 남는다.
+// VWorld Satellite는 별도 VWORLD_CLIENT_KEY가 있을 때만 일반지도 위에 표시한다.
 const mapBaseFallback=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:20,attribution:'© OpenStreetMap contributors',pane:'mainBaseFallbackPane'}).addTo(map);
-const mapBaseNormal=L.tileLayer(`https://api.vworld.kr/req/wmts/1.0.0/${VWORLD_CLIENT_KEY}/Base/{z}/{y}/{x}.png`,{maxZoom:20,attribution:'VWorld Base',pane:'mainBaseNormalPane',opacity:1});
+const mapBaseNormal=(typeof L.maplibreGL==='function')
+  ?L.maplibreGL({style:'https://tiles.openfreemap.org/styles/liberty',pane:'mainBaseNormalPane',interactive:false,attributionControl:false})
+  :L.layerGroup();
 const mapBaseSatellite=L.tileLayer(`https://api.vworld.kr/req/wmts/1.0.0/${VWORLD_CLIENT_KEY}/Satellite/{z}/{y}/{x}.jpeg`,{maxZoom:20,attribution:'VWorld Satellite',pane:'mainSatellitePane',opacity:1});
 function vworldTileKeyReady(){return !!VWORLD_CLIENT_KEY && !String(VWORLD_CLIENT_KEY).startsWith('__');}
-if(vworldTileKeyReady())mapBaseNormal.addTo(map);
+let openFreeMapLoaded=false,openFreeMapDisabled=false,openFreeMapAttributionAdded=false;
+const OPENFREEMAP_ATTRIBUTION='OpenFreeMap © OpenMapTiles · Data from OpenStreetMap';
+function disableOpenFreeMapFallback(){
+  if(openFreeMapDisabled)return;
+  openFreeMapDisabled=true;
+  try{if(map.hasLayer(mapBaseNormal))map.removeLayer(mapBaseNormal);}catch(e){}
+  try{if(openFreeMapAttributionAdded){map.attributionControl.removeAttribution(OPENFREEMAP_ATTRIBUTION);openFreeMapAttributionAdded=false;}}catch(e){}
+}
+function bindOpenFreeMapFallback(){
+  if(typeof mapBaseNormal?.getMaplibreMap!=='function')return disableOpenFreeMapFallback();
+  try{
+    const gl=mapBaseNormal.getMaplibreMap();
+    if(!gl)return disableOpenFreeMapFallback();
+    gl.once('load',()=>{openFreeMapLoaded=true;try{map.attributionControl.addAttribution(OPENFREEMAP_ATTRIBUTION);openFreeMapAttributionAdded=true;}catch(e){}});
+    gl.on('error',()=>{if(!openFreeMapLoaded)disableOpenFreeMapFallback();});
+    setTimeout(()=>{if(!openFreeMapLoaded)disableOpenFreeMapFallback();},12000);
+  }catch(e){disableOpenFreeMapFallback();}
+}
+try{mapBaseNormal.addTo(map);bindOpenFreeMapFallback();}catch(e){disableOpenFreeMapFallback();}
 if(vworldTileKeyReady())mapBaseSatellite.addTo(map);
 
 // 경계 작성 전 즉시 확인하는 표시용 도면. '투명 빈 레이어'가 아니라 서울시 GeoServer의 실제 UPIS/연속지적 도면을 요청한다.
@@ -3348,7 +3372,7 @@ function mainMapLayerValue(id,fallback){
 function mainMapLayerChecked(id,fallback=false){const el=document.getElementById(id);return el?!!el.checked:fallback;}
 function mainMapCadastralColor(){
   if(mainMapLayerChecked('mainLayerZoningToggle'))return '#111827';
-  const satVisible=mainMapLayerChecked('mainLayerSatelliteToggle',true)&&mainMapLayerValue('mainLayerSatelliteOpacity',1)>0;
+  const satVisible=vworldTileKeyReady()&&mainMapLayerChecked('mainLayerSatelliteToggle',true)&&mainMapLayerValue('mainLayerSatelliteOpacity',1)>0;
   return satVisible?'#ffffff':'#111827';
 }
 function mainMapZoningStyle(f){
@@ -3398,9 +3422,9 @@ function updateMainMapLayerDataStatus(){
 function syncMainMapLayerVisibility(){
   const satOn=mainMapLayerChecked('mainLayerSatelliteToggle',true),zoneOn=mainMapLayerChecked('mainLayerZoningToggle'),cadOn=mainMapLayerChecked('mainLayerCadastralToggle'),facilityOn=mainMapLayerChecked('mainLayerFacilityToggle'),regulatoryOn=mainMapLayerChecked('mainLayerRegulatoryToggle',true);
   const satOpacity=mainMapLayerValue('mainLayerSatelliteOpacity',1),zoneOpacity=mainMapLayerValue('mainLayerZoningOpacity',.92),cadOpacity=mainMapLayerValue('mainLayerCadastralOpacity',1),facilityOpacity=mainMapLayerValue('mainLayerFacilityOpacity',.88),regulatoryOpacity=mainMapLayerValue('mainLayerRegulatoryOpacity',.72);
-  // 비상 기본지도는 항상 유지한다. VWorld CLIENT KEY가 있으면 일반지도를 그 위에 유지하고 항공사진 토글은 위성레이어만 제어한다.
+  // OSM은 최하단 비상 fallback으로 항상 유지한다. OpenFreeMap Liberty가 정상일 때 일반지도로 사용하고, 항공사진 토글은 VWorld Satellite만 제어한다.
   setMainMapLayerVisible(mapBaseFallback,true);
-  setMainMapLayerVisible(mapBaseNormal,vworldTileKeyReady());
+  setMainMapLayerVisible(mapBaseNormal,!openFreeMapDisabled);
   mapBaseSatellite.setOpacity(satOpacity);
   if(vworldTileKeyReady())setMainMapLayerVisible(mapBaseSatellite,satOn&&satOpacity>0);else setMainMapLayerVisible(mapBaseSatellite,false);
 
