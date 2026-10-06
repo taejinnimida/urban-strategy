@@ -6116,23 +6116,6 @@ async function requestSchemeStreetBlockBatch(prepared,radius,signal=null){
   data._client_elapsed_ms=Math.round(performance.now()-t0);return data;
 }
 
-async function streetBlockRuntimePreflight(signal=null){
-  // 가로구역 필수 seed(SGIS 기초단위구)가 배포본에 없으면 VWorld 다중조회와
-  // 백엔드 가로구역 POST를 시작하지 않는다. 누락은 즉시 REVIEW로 확정한다.
-  // /health 자체가 확인되지 않는 경우에는 자료 누락으로 단정하지 않고 기존 분석을 시도한다.
-  const controller=new AbortController();let timer=null;
-  try{
-    if(signal?.aborted)return {known:false,configured:null,reason:'요청 취소'};
-    if(signal)signal.addEventListener('abort',()=>{try{controller.abort();}catch(_e){}},{once:true});
-    timer=setTimeout(()=>{try{controller.abort();}catch(_e){}},5000);
-    const res=await fetch('/health',{cache:'no-store',signal:controller.signal});
-    const data=await res.json();
-    if(!res.ok)throw new Error(data?.detail||`health HTTP ${res.status}`);
-    return {known:true,configured:data.street_block_basic_unit_configured===true,file:data.street_block_basic_unit_file||null};
-  }catch(e){
-    return {known:false,configured:null,reason:String(e?.message||e)};
-  }finally{if(timer)clearTimeout(timer);}
-}
 function sameSchemeStreetBlockSpatialRule(a,b){
   if(!a||!b)return false;
   const fields=['existing_min_m','planning_mode','planning_min_m','exclude_nonbuildable','all_roads_boundary','requires_road_width_for_block','outer_closure_all_roads'];
@@ -6181,14 +6164,9 @@ async function analyzeSchemeStreetBlocks(signal=null){
     return {status:'skipped',resolved_count:0,eligible_count:0,skipped_count:skippedKeys.length,skipped_keys:skippedKeys,reason:'면적규모 초과',batch_used:false,schemes:Object.fromEntries(Object.entries(schemeStreetBlockAnalysis).map(([k,v])=>[k,{status:v.status,area_m2:null,site_share_pct:null,block_count:0,skip_reason:v.metadata?.skip_reason||''}]))};
   }
   setSchemeStreetBlockProgress(`가로구역 · 면적 선필터 완료 · ${eligibleKeys.length}개 제도만 산정`);
-  const preflight=await streetBlockRuntimePreflight(signal);
-  if(preflight.known&&preflight.configured===false){
-    for(const key of eligibleKeys){
-      const st=schemeStreetBlockAnalysis[key]=newSchemeStreetBlockState(key);st.loaded=true;st.loading=false;st.status='review';st.quality='NONE';st.metadata={basic_unit_available:false,basic_unit_reason:'SGIS 기초단위구 ZIP 미설치 · 가로구역만 REVIEW, 다른 현황분석은 계속',reason:'SGIS 기초단위구 ZIP 미설치 · 가로구역만 REVIEW, 다른 현황분석은 계속'};st.warnings=[st.metadata.reason];
-    }
-    renderSchemeStreetBlockSpatialStatus();
-    return {status:'unavailable',resolved_count:0,eligible_count:eligibleKeys.length,skipped_count:skippedKeys.length,skipped_keys:skippedKeys,reason:'SGIS 기초단위구 ZIP 미설치',schemes:Object.fromEntries(Object.entries(schemeStreetBlockAnalysis).map(([k,v])=>[k,{status:v.status,area_m2:null,site_share_pct:null,block_count:0,skip_reason:v.metadata?.skip_reason||''}]))};
-  }
+  // R64: 공개 /health는 배포상태 확인 전용이다.
+  // 가로구역 필수자료(SGIS 기초단위구) 존재 여부는 실제 street-block endpoint가 직접 판정한다.
+  // 따라서 /health 응답 필드에 의존해 분석을 사전 차단하지 않는다.
   let roadFacts=null,roadErrors=[];
   const roadStarted=performance.now();setSchemeStreetBlockProgress(`가로구역 · ${eligibleKeys.length}개 제도 도로 FACT 수집 중`);
   try{roadFacts=await fetchIndependentRoadFacts(750);}catch(e){roadErrors.push(String(e?.message||e));}
