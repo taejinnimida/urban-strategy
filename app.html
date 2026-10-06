@@ -8594,7 +8594,7 @@ async function updateMeasurementOnly(){
   document.getElementById('mPerimeter').textContent=fmt(per)+' m';
 }
 const R24_BOUNDARY_DXF_PATCH_MARKER='R24_BOUNDARY_TOPOLOGY_DXF_20260923';
-const SELECTED_PARCEL_TOPOLOGY_TOLERANCE_M=0.5;
+const SELECTED_PARCEL_TOPOLOGY_TOLERANCE_M=0.05;
 function boundaryComponentCount(feature){
   const g=feature?.geometry;
   if(!g)return 0;
@@ -8605,9 +8605,10 @@ function healTinySelectedParcelGaps(feature,toleranceM=SELECTED_PARCEL_TOPOLOGY_
   const originalCount=boundaryComponentCount(feature);
   if(originalCount<=1)return {feature,healed:false,originalCount,componentCount:originalCount,areaDeltaM2:0};
   try{
-    // VWorld/연속지적 폴리곤 사이의 수 cm~수십 cm 위상오차만 닫는다.
-    // 실제 도로·미선택 필지 같은 의미 있는 이격은 0.5m 허용오차로 연결되지 않는다.
-    const radius=Math.max(0.05,Number(toleranceM||0)/2+0.01);
+    // 선택필지 사이의 눈에 보이지 않는 미세 좌표오차만 닫는다.
+    // 허용오차는 전체 gap 기준 0.05m(5cm)이며 실제 이격·도로·미선택 필지를 임의로 연결하지 않는다.
+    const tolerance=Math.max(0,Number(toleranceM||0));
+    const radius=Math.max(0.001,tolerance/2+0.0005);
     const expanded=turf.buffer(feature,radius,{units:'meters',steps:8});
     if(!expanded)return {feature,healed:false,originalCount,componentCount:originalCount,areaDeltaM2:0};
     const expandedCount=boundaryComponentCount(expanded);
@@ -8652,7 +8653,7 @@ async function applySelectedParcelsAsBoundary(){
   if(topologyHeal.healed)merged=topologyHeal.feature;
   const componentCount=boundaryComponentCount(merged);
   if(componentCount>1){
-    const proceed=window.confirm(`선택필지가 ${componentCount}개의 분리된 구역으로 구성됩니다. 0.5m 이내 지적 위상오차 자동보정 후에도 연결되지 않았습니다. 하나의 연속된 사업구역인지 확인하세요. 그래도 구역계로 확정할까요?`);
+    const proceed=window.confirm(`선택필지가 ${componentCount}개의 분리된 구역으로 구성됩니다. ${SELECTED_PARCEL_TOPOLOGY_TOLERANCE_M}m 이내 선택필지 경계오차 자동보정 후에도 연결되지 않았습니다. 하나의 연속된 사업구역인지 확인하세요. 그래도 구역계로 확정할까요?`);
     if(!proceed)return;
   }
   pushBoundaryEditHistory('선택필지 구역계 확정');
