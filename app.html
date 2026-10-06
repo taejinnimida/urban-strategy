@@ -1927,14 +1927,13 @@ body.service-layout-ready>.shell{display:none!important}
 <div id="boundaryParcelInputPanel">
 <div class="boundary-help">
 <b>지번 입력</b>
-<span><code>구, 동, 지번</code> 순서로 한 줄에 한 필지를 입력합니다. 여러 필지는 줄을 바꿔 입력하면 선택필지에 누적됩니다.</span>
+<span><code>성동구 용답동 236-1</code>처럼 입력하세요. 여러 주소는 콤마 또는 줄바꿈으로 구분합니다. 모두 확인되면 기존 선택필지와 합쳐 구역계를 설정합니다. 기존 <code>구, 동, 지번</code> 형식도 지원합니다.</span>
 </div>
 <textarea class="boundary-address-input" id="boundaryAddressInput" placeholder="예)
-동대문구, 장안동, 123-4
-동대문구, 장안동, 123-5
-동대문구, 장안동, 124"></textarea>
+성동구 용답동 236-1, 성동구 용답동 236-2
+성동구 용답동 236-3"></textarea>
 <div class="boundary-action-row">
-<button class="boundary-primary" onclick="lookupBoundaryAddresses()" type="button">입력 지번 찾기</button>
+<button class="boundary-primary" id="boundaryAddressLookupBtn" onclick="lookupBoundaryAddresses()" type="button">입력 지번 찾기 · 범위 설정</button>
 <button onclick="clearAddressPreview()" type="button">입력칸 초기화</button>
 </div>
 <div class="boundary-address-status" id="boundaryAddressStatus">서울특별시 지번주소를 기준으로 검색합니다.</div>
@@ -3501,6 +3500,8 @@ let addressPreviewFeatures=[];
 let boundaryInputMode='draw';
 let parcelFindMode='input';
 let parcelClickLookupBusy=false;
+let boundaryAddressLookupBusy=false;
+let boundaryAddressLookupRevision=0;
 let ccContextParcelFeatures=[];
 let ccContextBuildingFeatures=[];
 
@@ -8676,7 +8677,7 @@ function healTinySelectedParcelGaps(feature,toleranceM=SELECTED_PARCEL_TOPOLOGY_
 }
 async function applySelectedParcelsAsBoundary(){
   const fs=[...selectedParcelPnus].map(k=>parcelFeatureMap.get(k)).filter(Boolean);
-  if(!fs.length){alert('포함할 필지를 하나 이상 선택하세요.');return;}
+  if(!fs.length){alert('포함할 필지를 하나 이상 선택하세요.');return false;}
   let merged=turf.feature(fs[0].geometry,fs[0].properties||{});
   for(let i=1;i<fs.length;i++){
     const next=turf.feature(fs[i].geometry,fs[i].properties||{});
@@ -8699,7 +8700,7 @@ async function applySelectedParcelsAsBoundary(){
   const componentCount=boundaryComponentCount(merged);
   if(componentCount>1){
     const proceed=window.confirm(`선택필지가 ${componentCount}개의 분리된 구역으로 구성됩니다. ${SELECTED_PARCEL_TOPOLOGY_TOLERANCE_M}m 이내 선택필지 경계오차 자동보정 후에도 연결되지 않았습니다. 하나의 연속된 사업구역인지 확인하세요. 그래도 구역계로 확정할까요?`);
-    if(!proceed)return;
+    if(!proceed)return false;
   }
   pushBoundaryEditHistory('선택필지 구역계 확정');
   activeGeometry=merged.geometry;analysisGeometry=merged.geometry;boundaryReferenceGeometry=JSON.parse(JSON.stringify(merged.geometry));
@@ -8722,6 +8723,7 @@ async function applySelectedParcelsAsBoundary(){
   safeSchemeUiStep('compact-ready-parcels',()=>updateCompactInfoRail(),null);
   safeSchemeUiStep('mini-ready-parcels',()=>refreshCompactMiniMaps(),null);
   safeSchemeUiStep('overview-ready-parcels',()=>syncServiceOverview(),null);
+  return true;
 }
 
 
@@ -16797,6 +16799,7 @@ function updateParcelClickStatus(message){
   el.textContent=`${message||'지도에서 필지를 선택하세요.'} · 현재 ${m.count}필지${m.area_m2==null?'':` · 약 ${Math.round(m.area_m2).toLocaleString('ko-KR')}㎡`}`;
 }
 function clearParcelFindSelection(){
+  boundaryAddressLookupRevision++;
   if(selectedParcelPnus.size)pushBoundaryEditHistory('선택해제');
   addressPreviewFeatures=[];addressPreviewLayer.clearLayers();
   selectedParcelPnus.clear();
@@ -16849,28 +16852,37 @@ async function handleParcelFindMapClick(e){
     updateParcelClickStatus('클릭 지번 조회 실패: '+String(err?.message||err));
   }finally{parcelClickLookupBusy=false;}
 }
-function parseBoundaryAddressInput(text){
-  const raw=String(text||'').replace(/\r/g,'').trim();
-  if(!raw)return [];
-  const rows=raw.split(/\n|;/).map(s=>s.trim()).filter(Boolean);
-  const out=[];
-  for(const row of rows){
-    const parts=row.split(',').map(s=>s.trim()).filter(Boolean);
-    if(parts.length>=3 && parts.length%3===0){
-      for(let i=0;i<parts.length;i+=3){
-        let gu=parts[i].replace(/^서울특별시\s*|^서울시\s*/,'').trim();
-        let dong=parts[i+1].trim();
-        let jibun=parts[i+2].trim();
-        if(gu&&dong&&jibun)out.push({gu,dong,jibun,label:`${gu}, ${dong}, ${jibun}`});
-      }
-    }else{
-      const clean=row.replace(/^서울특별시\s*|^서울시\s*/,'').trim();
-      const m=clean.match(/^(\S+구)\s+(\S+(?:동|가))\s+(\d+(?:-\d+)?)$/);
-      if(m)out.push({gu:m[1],dong:m[2],jibun:m[3],label:`${m[1]}, ${m[2]}, ${m[3]}`});
+// R71: 주소 사이의 콤마·줄바꿈과 기존 구, 동, 지번 형식을 함께 지원한다.
+function parseBoundaryAddressEntries(text){
+  const raw=String(text||'').replace(/\r\n?/g,'\n').trim();
+  const out=[],invalid=[];
+  const parseAddress=value=>{
+    const clean=value.replace(/^(?:서울특별시|서울시)\s*/,'').trim();
+    const m=clean.match(/^(\S+구)\s+(\S+(?:동|가))\s+((?:산\s*)?\d+(?:-\d+)?)$/);
+    if(!m)return null;
+    const jibun=m[3].replace(/^산\s*/,'산 ');
+    return {gu:m[1],dong:m[2],jibun,label:`${m[1]}, ${m[2]}, ${jibun}`};
+  };
+  for(const line of raw.split(/\n|;/).map(s=>s.trim()).filter(Boolean)){
+    const parts=line.split(',').map(s=>s.trim()).filter(Boolean);
+    for(let i=0;i<parts.length;){
+      const full=parseAddress(parts[i]);
+      if(full){out.push(full);i++;continue;}
+      const legacy=i+2<parts.length?parseAddress(parts.slice(i,i+3).join(' ')):null;
+      if(legacy){out.push(legacy);i+=3;continue;}
+      invalid.push(parts[i]);i++;
     }
   }
   const seen=new Set();
-  return out.filter(x=>{const k=x.label.replace(/\s/g,'');if(seen.has(k))return false;seen.add(k);return true;});
+  const rows=out.filter(x=>{
+    const key=x.label.replace(/\s/g,'');
+    if(seen.has(key))return false;
+    seen.add(key);return true;
+  });
+  return {rows,invalid};
+}
+function parseBoundaryAddressInput(text){
+  return parseBoundaryAddressEntries(text).rows;
 }
 async function resolveSeoulParcelAddress(row){
   const query=`서울특별시 ${row.gu} ${row.dong} ${row.jibun}`;
@@ -16956,54 +16968,89 @@ async function resolveSeoulParcelAddress(row){
 }
 
 async function lookupBoundaryAddresses(){
+  if(boundaryAddressLookupBusy)return;
   const input=document.getElementById('boundaryAddressInput');
   const status=document.getElementById('boundaryAddressStatus');
+  const searchBtn=document.getElementById('boundaryAddressLookupBtn');
   const btn=document.getElementById('applyAddressBoundaryBtn');
-  const rows=parseBoundaryAddressInput(input?.value||'');
-  if(!rows.length){
-    if(status)status.textContent='입력 형식을 확인하세요. 예: 동대문구, 장안동, 123-4';
+  const inputValue=input?.value||'';
+  const {rows,invalid}=parseBoundaryAddressEntries(inputValue);
+  if(!rows.length||invalid.length){
+    if(status)status.textContent='입력 형식을 확인하세요. 예: 성동구 용답동 236-1. 여러 주소는 콤마 또는 줄바꿈으로 구분하세요.'+
+      (invalid.length?` · 형식 미확인: ${invalid.join(' / ')}`:'');
     return;
   }
+  boundaryAddressLookupBusy=true;
+  const revision=++boundaryAddressLookupRevision;
+  if(searchBtn)searchBtn.disabled=true;
   if(status)status.textContent=`${rows.length}필지 주소를 찾는 중...`;
-  pushBoundaryEditHistory('지번 입력 필지 추가');
-  addressPreviewFeatures=[];addressPreviewLayer.clearLayers();
-  let ok=0;const failed=[];const lookupErrors=[];
-  const results=await mapLimit(rows,4,async row=>{
-    try{return {feature:await resolveSeoulParcelAddress(row),error:''};}
-    catch(e){return {feature:null,error:String(e?.message||e||'조회 오류')};}
-  });
-  results.forEach((result,i)=>{
-    const f=result?.feature||null;
-    if(f){
-      const key=parcelKey(f),copy=cloneFeature(f),p=copy.properties||{};
-      p.geometry_area_m2=p.geometry_area_m2??parcelGeometryArea(copy);
-      p._analysis_area_m2=p._analysis_area_m2??p.official_area_m2??p.geometry_area_m2??null;
-      p._auto_include=true;p._boundary_candidate=false;copy.properties=p;
-      addressPreviewFeatures.push(copy);
-      if(key){parcelFeatureMap.set(String(key),copy);selectedParcelPnus.add(String(key));}
-      ok++;
-    }else{
-      failed.push(rows[i].label);
-      if(result?.error)lookupErrors.push(`${rows[i].label}: ${result.error}`);
+  try{
+    const results=await mapLimit(rows,4,async row=>{
+      try{return {feature:await resolveSeoulParcelAddress(row),error:''};}
+      catch(e){return {feature:null,error:String(e?.message||e||'조회 오류')};}
+    });
+    // 입력 초기화·선택해제·재시작 뒤 늦게 도착한 결과로 구역계를 다시 만들지 않는다.
+    if(revision!==boundaryAddressLookupRevision)return;
+    if((input?.value||'')!==inputValue){
+      if(status)status.textContent='검색 중 입력이 변경되었습니다. 현재 입력으로 다시 검색하세요.';
+      return;
     }
-  });
-  if(ok){clearPlanningFacilityConstraintCache();syncParcelLayerFromState();}
-  if(addressPreviewFeatures.length){
-    addressPreviewLayer.addData({type:'FeatureCollection',features:addressPreviewFeatures});
-    try{
-      const b=addressPreviewLayer.getBounds();
-      if(b.isValid())map.fitBounds(b.pad(.16),{animate:true,maxZoom:19});
-    }catch(e){}
-  }
-  if(btn)btn.disabled=!addressPreviewFeatures.length;
-  if(status){
-    status.textContent=`입력 ${rows.length}필지 · 확인 ${ok}필지 · 미확인 ${failed.length}필지`+
-      (failed.length?` · 미확인: ${failed.slice(0,4).join(' / ')}${failed.length>4?' 외 '+(failed.length-4)+'필지':''}`:'')+
-      (lookupErrors.length?` · 조회오류: ${lookupErrors[0].slice(0,160)}`:'')+
-      (ok?' · 확인된 필지를 선택목록에 추가했습니다. 아래 공통 편집도구에서 ‘구역계 확정’을 누르세요.':'');
+    pushBoundaryEditHistory('지번 입력 필지 추가');
+    addressPreviewFeatures=[];addressPreviewLayer.clearLayers();
+    let ok=0;const failed=[];const lookupErrors=[];
+    results.forEach((result,i)=>{
+      const f=result?.feature||null;
+      const key=f?parcelKey(f):'';
+      const area=f?parcelGeometryArea(f):null;
+      const usable=key&&['Polygon','MultiPolygon'].includes(f?.geometry?.type)&&Number.isFinite(area)&&area>0;
+      if(usable){
+        const copy=cloneFeature(f),p=copy.properties||{};
+        p.geometry_area_m2=p.geometry_area_m2??area;
+        p._analysis_area_m2=p._analysis_area_m2??p.official_area_m2??p.geometry_area_m2??null;
+        p._auto_include=true;p._boundary_candidate=false;copy.properties=p;
+        addressPreviewFeatures.push(copy);
+        parcelFeatureMap.set(String(key),copy);selectedParcelPnus.add(String(key));
+        ok++;
+      }else{
+        failed.push(rows[i].label);
+        const error=result?.error||(f?'필지 식별자 또는 경계도형 미확인':'');
+        if(error)lookupErrors.push(`${rows[i].label}: ${error}`);
+      }
+    });
+    if(ok){clearPlanningFacilityConstraintCache();syncParcelLayerFromState();}
+    if(addressPreviewFeatures.length){
+      addressPreviewLayer.addData({type:'FeatureCollection',features:addressPreviewFeatures});
+      try{
+        const b=addressPreviewLayer.getBounds();
+        if(b.isValid())map.fitBounds(b.pad(.16),{animate:true,maxZoom:19});
+      }catch(e){}
+    }
+    if(btn)btn.disabled=!addressPreviewFeatures.length;
+    const summary=`입력 ${rows.length}필지 · 확인 ${ok}필지 · 미확인 ${failed.length}필지`+
+      (failed.length?` · 미확인: ${failed.join(' / ')}`:'')+
+      (lookupErrors.length?` · 조회오류: ${lookupErrors[0].slice(0,160)}`:'');
+    if(status)status.textContent=summary;
+    if(ok===rows.length){
+      const applied=await applySelectedParcelsAsBoundary();
+      if(revision!==boundaryAddressLookupRevision)return;
+      if(applied){
+        fitToSelectedParcels();
+        if(status)status.textContent=summary+' · 기존 선택필지와 합쳐 구역계를 설정했습니다. ‘검토하기’를 눌러 분석하세요.';
+      }else if(status){
+        status.textContent=summary+' · 구역계 확정을 취소했습니다. 선택필지는 유지됩니다.';
+      }
+    }else if(status){
+      status.textContent=summary+(ok?' · 확인된 필지만 선택목록에 추가했습니다. 미확인 주소를 확인한 뒤 다시 검색하거나 공통 편집도구에서 구역계를 확정하세요.':'');
+    }
+  }catch(error){
+    if(revision===boundaryAddressLookupRevision&&status)status.textContent+=' · 범위 설정 처리 오류: '+String(error?.message||error);
+  }finally{
+    boundaryAddressLookupBusy=false;
+    if(searchBtn)searchBtn.disabled=false;
   }
 }
 function clearAddressPreview(){
+  boundaryAddressLookupRevision++;
   addressPreviewFeatures=[];addressPreviewLayer.clearLayers();
   const btn=document.getElementById('applyAddressBoundaryBtn');if(btn)btn.disabled=true;
   const input=document.getElementById('boundaryAddressInput');if(input)input.value='';
@@ -17250,6 +17297,7 @@ function fitToActiveArea(){
   }catch(e){}
 }
 function clearActiveArea(){
+  boundaryAddressLookupRevision++;
   try{
     drawnItems.clearLayers();
     activeGeometry=null;analysisGeometry=null;boundaryReferenceGeometry=null;boundaryReferenceMetrics={area_m2:null,area_ha:null,perimeter_m:null};
