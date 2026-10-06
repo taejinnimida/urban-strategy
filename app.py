@@ -20,7 +20,6 @@ import sys
 import struct
 import sqlite3
 import shutil
-import traceback
 from array import array
 from collections import deque
 import xml.etree.ElementTree as ET
@@ -44,7 +43,7 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel, Field
 from pyproj import CRS, Geod, Transformer
 import shapefile
-from shapely.geometry import GeometryCollection, MultiPolygon, Polygon, Point, shape, mapping, box
+from shapely.geometry import GeometryCollection, MultiPolygon, Polygon, shape, mapping, box
 from shapely.ops import transform as geometry_transform, unary_union
 from shapely.prepared import prep
 from shapely.strtree import STRtree
@@ -273,82 +272,19 @@ SMALL_PARCEL_THRESHOLD_M2 = 90.0
 logger = logging.getLogger("urban_strategy.vworld")
 logging.basicConfig(level=logging.INFO)
 
-# R63 security hardening: server credentials must never be reused as browser credentials
-# or emitted through diagnostics/logs.  A dedicated browser key is optional and, when
-# configured, is expected to be domain-restricted at the provider.
-_SECRET_ENV_NAMES = (
-    "VWORLD_API_KEY", "VWORLD_CLIENT_KEY", "BUILDING_HUB_API_KEY", "ECVAM_API_KEY",
-    "DATA_SEOUL_GO_KR_KEY", "OPENAI_API_KEY", "ADMIN_PASSWORD",
-    "ADMIN_SESSION_SECRET", "DATABASE_URL",
-)
-_SECRET_QUERY_RE = re.compile(
-    r"(?i)([?&](?:key|apikey|api_key|servicekey|service_key|token|access_token|authorization|password|secret)=)([^&\s]+)"
-)
-_BEARER_RE = re.compile(r"(?i)(bearer\s+)([A-Za-z0-9._~+\-/=]{8,})")
-
-
-def _security_secret_values() -> List[str]:
-    values = []
-    for name in _SECRET_ENV_NAMES:
-        value = str(os.getenv(name) or "").strip()
-        if len(value) >= 4:
-            values.append(value)
-    return sorted(set(values), key=len, reverse=True)
-
-
-def _redact_secret_text(value: Any) -> str:
-    text = str(value if value is not None else "")
-    for secret in _security_secret_values():
-        text = text.replace(secret, "***")
-    text = _SECRET_QUERY_RE.sub(lambda m: m.group(1) + "***", text)
-    text = _BEARER_RE.sub(lambda m: m.group(1) + "***", text)
-    return text
-
-
-def _redact_secret_value(value: Any) -> Any:
-    if isinstance(value, dict):
-        out = {}
-        for key, item in value.items():
-            if re.search(r"(?i)(?:^|_)(?:key|token|password|secret|authorization)(?:$|_)", str(key)):
-                out[key] = "***"
-            else:
-                out[key] = _redact_secret_value(item)
-        return out
-    if isinstance(value, list):
-        return [_redact_secret_value(item) for item in value]
-    if isinstance(value, tuple):
-        return [_redact_secret_value(item) for item in value]
-    if isinstance(value, str):
-        return _redact_secret_text(value)
-    return value
-
-
-class _SecretRedactionFilter(logging.Filter):
-    def filter(self, record: logging.LogRecord) -> bool:
-        try:
-            record.msg = _redact_secret_text(record.getMessage())
-            record.args = ()
-            if record.exc_info:
-                record.exc_text = _redact_secret_text("".join(traceback.format_exception(*record.exc_info)))
-                record.exc_info = None
-        except Exception:
-            pass
-        return True
-
-
-_SECRET_LOG_FILTER = _SecretRedactionFilter()
-logger.addFilter(_SECRET_LOG_FILTER)
-for _handler in logging.getLogger().handlers:
-    _handler.addFilter(_SECRET_LOG_FILTER)
-
 
 def _vworld_key() -> str:
     return (os.getenv("VWORLD_API_KEY") or "").strip()
 
 
 def _vworld_client_key() -> str:
-    """Dedicated browser-side VWorld key only. Never fall back to the server key."""
-    return (os.getenv("VWORLD_CLIENT_KEY") or "").strip()
+    """Browser-side VWorld key. Optional dedicated key, otherwise reuse server key.
+
+    The browser key is necessarily visible to the browser. Operators may set
+    VWORLD_CLIENT_KEY to a domain-restricted VWorld key; existing deployments
+    remain compatible because VWORLD_API_KEY is used when it is absent.
+    """
+    return (os.getenv("VWORLD_CLIENT_KEY") or _vworld_key() or "").strip()
 
 
 def _require_vworld_key() -> str:
@@ -375,53 +311,23 @@ def _vworld_slot_count() -> int:
 
 
 def _normalize_vworld_domain(raw: str) -> str:
-    """Return a safe origin only; reject paths, credentials, UUID/key-like values and secrets."""
-    value = str(raw or "").strip().rstrip("/")
-    if not value:
+    raw = str(raw or "").strip().rstrip("/")
+    if not raw:
         return ""
-    if value in _security_secret_values():
-        return ""
-    # A bare UUID is not a valid service domain and is commonly a misplaced API key.
-    if re.fullmatch(r"[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}", value):
-        return ""
-    if not re.match(r"^https?://", value, re.I):
-        value = ("http://" if value == "localhost" or value.startswith("localhost:") else "https://") + value
-    try:
-        parsed = urlparse(value)
-    except Exception:
-        return ""
-    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
-        return ""
-    if parsed.username or parsed.password or parsed.query or parsed.fragment:
-        return ""
-    if parsed.path not in {"", "/"}:
-        return ""
-    host = str(parsed.hostname or "").strip().lower()
-    if re.fullmatch(r"[0-9a-f]{32,64}", host, re.I):
-        return ""
-    if host != "localhost" and "." not in host and ":" not in host:
-        return ""
-    try:
-        parsed_port = parsed.port
-    except ValueError:
-        return ""
-    port = f":{parsed_port}" if parsed_port else ""
-    return f"{parsed.scheme.lower()}://{host}{port}"
+    if raw.startswith("http://") or raw.startswith("https://"):
+        return raw
+    if raw == "localhost" or raw.startswith("localhost:"):
+        return "http://" + raw
+    return "https://" + raw
 
 
 def _vworld_domain() -> str:
-    # Render's actual service hostname is authoritative in production. A manually supplied
-    # VWORLD_DOMAIN is only a fallback for non-Render deployments and is strictly validated.
-    candidates = [
-        (os.getenv("RENDER_EXTERNAL_HOSTNAME") or "").strip(),
-        (os.getenv("VWORLD_DOMAIN") or "").strip(),
-        "localhost",
-    ]
-    for raw in candidates:
-        normalized = _normalize_vworld_domain(raw)
-        if normalized:
-            return normalized
-    return "http://localhost"
+    raw = (
+        (os.getenv("VWORLD_DOMAIN") or "").strip()
+        or (os.getenv("RENDER_EXTERNAL_HOSTNAME") or "").strip()
+        or "localhost"
+    )
+    return _normalize_vworld_domain(raw)
 
 
 def _vworld_referer(domain: Optional[str] = None) -> str:
@@ -516,13 +422,12 @@ def _vworld_get(
     proxy_timeout: Optional[Any] = None,
     referer_domain: Optional[str] = None,
     force_retry: bool = False,
-    circuit_isolated: bool = False,
 ):
     """One direct attempt and one fallback with independent route timeouts.
 
     Direct/proxy no longer share the former 24-second total budget. This lets a
     slow direct attempt fall back to the proxy with its full configured timeout.
-    Failed responses are never facts. Bulk-analysis cooldown remains unless force_retry=True; interactive circuit_isolated calls bypass and do not mutate the shared VWorld circuit.
+    Failed responses are never facts; cooldown remains unless force_retry=True.
     """
     started = time.monotonic()
     endpoint = urlparse(url).netloc + urlparse(url).path
@@ -536,7 +441,6 @@ def _vworld_get(
         "direct_error": "", "proxy_error": "",
         "direct_timeout": direct_timeout, "proxy_timeout": proxy_timeout_tuple,
         "force_retry": bool(force_retry),
-        "circuit_isolated": bool(circuit_isolated),
     }
 
     def record():
@@ -544,7 +448,7 @@ def _vworld_get(
         _set_vworld_diagnostic(**diagnostic)
 
     def check_cooldown():
-        if force_retry or circuit_isolated:
+        if force_retry:
             return
         global_state = _vworld_circuit_snapshot()
         if global_state.get("open"):
@@ -595,10 +499,9 @@ def _vworld_get(
                 content_type = str(resp.headers.get("content-type") or "").lower()
                 html_response = "text/html" in content_type or resp.content.lstrip()[:15].lower().startswith((b"<!doctype html", b"<html"))
                 if resp.status_code < 500 and not html_response:
-                    if not circuit_isolated:
-                        with _VWORLD_FAILURE_LOCK:
-                            _VWORLD_FAILURES.pop(endpoint, None)
-                        _clear_vworld_circuit()
+                    with _VWORLD_FAILURE_LOCK:
+                        _VWORLD_FAILURES.pop(endpoint, None)
+                    _clear_vworld_circuit()
                     record()
                     return resp, route
                 diagnostic[prefix + "_error"] = f"HTTP_{resp.status_code}" if resp.status_code >= 500 else "NON_DATA_HTML"
@@ -606,21 +509,17 @@ def _vworld_get(
             except requests.RequestException as exc:
                 diagnostic[prefix + "_error"] = type(exc).__name__
 
-        if not circuit_isolated:
-            with _VWORLD_FAILURE_LOCK:
-                state = _VWORLD_FAILURES.setdefault(endpoint, {"count": 0, "until": 0})
-                state["count"] += 1
-                if state["count"] >= 3:
-                    state["until"] = time.monotonic() + 30
-            _open_vworld_circuit(
-                endpoint,
-                f"direct={diagnostic['direct_error']} · proxy={diagnostic['proxy_error']}",
-            )
-            diagnostic["global_circuit_opened"] = True
-            diagnostic["global_circuit_seconds"] = VWORLD_GLOBAL_CIRCUIT_SEC
-        else:
-            diagnostic["global_circuit_opened"] = False
-            diagnostic["shared_circuit_unchanged"] = True
+        with _VWORLD_FAILURE_LOCK:
+            state = _VWORLD_FAILURES.setdefault(endpoint, {"count": 0, "until": 0})
+            state["count"] += 1
+            if state["count"] >= 3:
+                state["until"] = time.monotonic() + 30
+        _open_vworld_circuit(
+            endpoint,
+            f"direct={diagnostic['direct_error']} · proxy={diagnostic['proxy_error']}",
+        )
+        diagnostic["global_circuit_opened"] = True
+        diagnostic["global_circuit_seconds"] = VWORLD_GLOBAL_CIRCUIT_SEC
         record()
         logger.warning(
             "VWorld transport failed endpoint=%s direct=%s proxy=%s elapsed_ms=%s",
@@ -649,7 +548,7 @@ def _response_error_message(payload: Dict[str, Any]) -> str:
     )
 
 
-def _fetch_vworld_parcel_candidates(target_geom, *, circuit_isolated: bool = False, timeout: Any = 20) -> List[Dict[str, Any]]:
+def _fetch_vworld_parcel_candidates(target_geom) -> List[Dict[str, Any]]:
     """Fetch cadastral features in the target bbox, then exact-filter locally.
 
     VWorld Data API 2.0 uses LP_PA_CBND_BUBUN with geomFilter=BOX(...).
@@ -693,7 +592,7 @@ def _fetch_vworld_parcel_candidates(target_geom, *, circuit_isolated: bool = Fal
         }
         safe_params = {k: ("***" if k == "key" else v) for k, v in params.items()}
         logger.info("VWorld parcel request page=%s domain=%s params=%s", page, _vworld_domain(), safe_params)
-        resp, route = _vworld_get(VWORLD_DATA_URL, params=params, timeout=timeout, circuit_isolated=circuit_isolated)
+        resp, route = _vworld_get(VWORLD_DATA_URL, params=params, timeout=20)
         logger.info("VWorld parcel response route=%s status=%s", route, resp.status_code)
         try:
             resp.raise_for_status()
@@ -7884,53 +7783,11 @@ app = FastAPI(
     title="도시검토 플랫폼 - 서울 재개발 웹 MVP",
     version="2.5.0",
     description="구역계 자동분석 + 서울 정비·개발 13개 독립 사업모듈 + 소규모주택정비 보류 shell",
-    docs_url=None, redoc_url=None, openapi_url=None,
 )
-
-
-@app.middleware("http")
-async def _security_response_headers(request: Request, call_next):
-    response = await call_next(request)
-    response.headers.setdefault("X-Content-Type-Options", "nosniff")
-    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
-    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
-    response.headers.setdefault("Permissions-Policy", "geolocation=(), camera=(), microphone=()")
-    response.headers["X-Urban-Build"] = globals().get("APP_BUILD_MARKER", "R67_VWORLD_LIVE_CLICK_ISOLATION_20261006")
-    forwarded_proto = str(request.headers.get("x-forwarded-proto") or "").split(",", 1)[0].strip().lower()
-    if request.url.scheme == "https" or forwarded_proto == "https":
-        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
-    return response
-
-
-@app.exception_handler(HTTPException)
-async def _redacted_http_exception_handler(request: Request, exc: HTTPException):
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"detail": _redact_secret_value(exc.detail)},
-        headers=exc.headers or {},
-    )
 
 
 class GeometryInput(BaseModel):
     geometry: Dict[str, Any]
-
-
-class VWorldFeatureInput(BaseModel):
-    geometry: Dict[str, Any]
-    layer_id: str
-
-
-class VWorldPnuInput(BaseModel):
-    pnu: str
-
-
-class VWorldParcelPointInput(BaseModel):
-    lat: float = Field(..., ge=33.0, le=39.5)
-    lon: float = Field(..., ge=124.0, le=132.0)
-
-
-class VWorldAddressInput(BaseModel):
-    address: str
 
 
 class PlanningLayersInput(BaseModel):
@@ -8815,8 +8672,8 @@ def admin_dashboard(request: Request, _: bool = Depends(_admin_auth_or_session))
 
 @app.get("/", response_class=HTMLResponse)
 def home():
-    # Browser VWorld access is allowed only with a dedicated, domain-restricted client key.
-    # VWORLD_API_KEY is server-only and is never injected into HTML.
+    # VWorld 공식 웹 샘플처럼 브라우저에서 Data API를 직접 호출한다.
+    # 키는 GitHub 소스에는 없고 Render 환경변수에서 런타임에 주입된다.
     html = _index_html().replace("__VWORLD_CLIENT_KEY__", _vworld_client_key())
     return HTMLResponse(
         content=html,
@@ -8861,7 +8718,7 @@ def reference_station_entrances():
 # R22 station-line runtime hotfix.  This block is intentionally backend-only:
 # the existing multi-station frontend already consumes /api/reference/station-lines.
 STATION_RUNTIME_BUILD_MARKER = "R22_STATION_HOTFIX_20260901_0915"
-APP_BUILD_MARKER = "R67_VWORLD_LIVE_CLICK_ISOLATION_20261006"
+APP_BUILD_MARKER = "R63_RESTART_HEALTH_ONLY_20261006"
 _STATION_LINE_CACHE_LOCK = threading.Lock()
 _STATION_LINE_CACHE: Dict[str, Any] = {
     "expires_at": 0.0,
@@ -9201,13 +9058,11 @@ def _reference_data_readiness() -> Dict[str, bool]:
 
 @app.get("/health")
 def health():
-    # Public health endpoint: deployment liveness + build identity only.
     return {
         "ok": True,
         "app": "seoul_urban_renewal_platform_v2.5.0",
         "build": APP_BUILD_MARKER,
     }
-
 
 def _prototype_low_memory_mode() -> bool:
     # R21 prototype: correctness over throughput. Render-class small instances should not
@@ -9612,11 +9467,8 @@ def street_block(inp: StreetBlockInput):
 
 
 @app.get("/api/vworld/test")
-def vworld_test(
-    layer: str = "LT_C_UQ111", lon: float = 126.978, lat: float = 37.566,
-    _admin: bool = Depends(_admin_auth),
-):
-    """Admin-only single-layer connection diagnostic; no credentials or raw response body."""
+def vworld_test(layer: str = "LT_C_UQ111", lon: float = 126.978, lat: float = 37.566):
+    """Single-layer connection diagnostic; no credentials or raw response body."""
     if layer not in {"LT_C_UQ111", VWORLD_LAYER_PARCEL, "TL_SPRD_MANAGE"}:
         raise HTTPException(status_code=422, detail="진단 지원 레이어가 아닙니다.")
     if not (-180 <= lon <= 180 and -90 <= lat <= 90):
@@ -9661,170 +9513,6 @@ def vworld_test(
         return result
     except Exception as exc:
         raise HTTPException(status_code=502, detail={"message": "VWorld 단일 조회 실패 · 미확인", "transport": _last_vworld_diagnostic()}) from exc
-
-_VWORLD_BROWSER_FALLBACK_LAYERS = frozenset({
-    VWORLD_LAYER_PARCEL, "LT_C_SPBD", VWORLD_LAYER_INDUSTRIAL_PARK,
-    "TL_SPRD_MANAGE", "LT_C_SPRD_MANAGE",
-})
-
-
-def _parcel_candidates_for_browser_fallback(geometry: Dict[str, Any]) -> List[Dict[str, Any]]:
-    target = shape(geometry)
-    if target.geom_type not in {"Polygon", "MultiPolygon"} or target.is_empty or not target.is_valid:
-        raise ValueError("유효한 Polygon 또는 MultiPolygon 구역계가 필요합니다.")
-    features = _fetch_vworld_parcel_candidates(target)
-    out = []
-    for feature in features:
-        props = dict(feature.get("properties") or {})
-        try:
-            parcel = shape(feature.get("geometry"))
-            inter = target.intersection(parcel)
-            ia, _ = GEOD.geometry_area_perimeter(inter)
-            pa, _ = GEOD.geometry_area_perimeter(parcel)
-            inter_area = abs(float(ia))
-            parcel_area = abs(float(pa))
-            overlap_pct = min(100.0, inter_area / parcel_area * 100.0) if parcel_area > 0 else 0.0
-            centroid_inside = bool(target.covers(parcel.centroid))
-            props.update({
-                "_boundary_intersection_area_m2": inter_area,
-                "_boundary_overlap_pct": overlap_pct,
-                "_boundary_centroid_inside": centroid_inside,
-                "_auto_include": bool(centroid_inside or overlap_pct >= 50.0),
-                "_boundary_candidate": bool(not (centroid_inside or overlap_pct >= 50.0)),
-            })
-        except Exception:
-            props.update({"_auto_include": False, "_boundary_candidate": True})
-        out.append({"type": "Feature", "id": feature.get("id"), "geometry": feature.get("geometry"), "properties": props})
-    return out
-
-
-@app.post("/api/spatial/vworld-features")
-def vworld_features_for_browser(inp: VWorldFeatureInput):
-    """Restricted server fallback for browser map/context operations; never a generic proxy."""
-    _require_vworld_key()
-    layer_id = str(inp.layer_id or "").strip()
-    if layer_id not in _VWORLD_BROWSER_FALLBACK_LAYERS:
-        raise HTTPException(status_code=422, detail="허용되지 않은 VWorld 보조 레이어입니다.")
-    try:
-        target = shape(inp.geometry)
-        if target.geom_type not in {"Polygon", "MultiPolygon"} or target.is_empty or not target.is_valid:
-            raise ValueError("유효한 Polygon 또는 MultiPolygon 구역계가 필요합니다.")
-        if layer_id == VWORLD_LAYER_PARCEL:
-            features = _parcel_candidates_for_browser_fallback(inp.geometry)
-        else:
-            features = _vworld_features_in_bbox(layer_id, target, size=1000, max_pages=10)
-        return {"layer_id": layer_id, "features": features, "feature_count": len(features)}
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except Exception as exc:
-        logger.exception("restricted VWorld feature fallback failed layer=%s", layer_id)
-        raise HTTPException(status_code=502, detail=f"VWorld 보조 공간조회 실패: {exc}") from exc
-
-
-def _parcel_point_probe_geometry(lon: float, lat: float, radius_m: float):
-    """Interactive cadastral point lookup probe in a local metric CRS.
-
-    This is used only to ask VWorld live data which current parcel contains a
-    user's click. Bundled cadastral data is intentionally not substituted here
-    because parcel split/merge freshness matters for interactive selection.
-    """
-    to_metric = Transformer.from_crs(4326, 5174, always_xy=True)
-    to_wgs = Transformer.from_crs(5174, 4326, always_xy=True)
-    x, y = to_metric.transform(float(lon), float(lat))
-    probe_metric = box(x - radius_m, y - radius_m, x + radius_m, y + radius_m)
-    return geometry_transform(to_wgs.transform, probe_metric)
-
-
-@app.post("/api/vworld/parcel-at-point")
-def vworld_parcel_at_point(inp: VWorldParcelPointInput):
-    """Live VWorld parcel lookup for one user click.
-
-    Interactive clicks are deliberately isolated from the bulk-analysis VWorld
-    circuit: an earlier analysis failure must not suppress a fresh user click,
-    and a failed click must not open/clear the shared bulk circuit.
-    """
-    _require_vworld_key()
-    point = Point(float(inp.lon), float(inp.lat))
-    try:
-        radius_m = 6.0
-        probe = _parcel_point_probe_geometry(inp.lon, inp.lat, radius_m)
-        features = _fetch_vworld_parcel_candidates(
-            probe,
-            circuit_isolated=True,
-            timeout=(3.0, 5.0),
-        )
-        hits = []
-        for feature in features:
-            try:
-                parcel = shape(feature.get("geometry"))
-                if not parcel.is_empty and parcel.covers(point):
-                    hits.append(feature)
-            except Exception:
-                continue
-        if hits:
-            if len(hits) > 1:
-                def _parcel_area(item):
-                    try:
-                        area, _ = GEOD.geometry_area_perimeter(shape(item.get("geometry")))
-                        return abs(float(area))
-                    except Exception:
-                        return float("inf")
-                hits.sort(key=_parcel_area)
-            return {
-                "feature": hits[0],
-                "source": "vworld_live",
-                "radius_m": radius_m,
-            }
-        return {"feature": None, "source": "vworld_live"}
-    except Exception as exc:
-        logger.warning("interactive VWorld parcel-at-point failed: %s", exc)
-        raise HTTPException(status_code=502, detail="실시간 지번 조회에 실패했습니다. 잠시 후 다시 클릭해 주세요.") from exc
-
-
-@app.post("/api/vworld/parcel-by-pnu")
-def vworld_parcel_by_pnu(inp: VWorldPnuInput):
-    _require_vworld_key()
-    pnu = str(inp.pnu or "").strip()
-    if len(pnu) != 19 or not pnu.isdigit():
-        raise HTTPException(status_code=422, detail="PNU는 19자리 숫자여야 합니다.")
-    params = {
-        "key": _vworld_key(), "domain": _vworld_domain(),
-        "service": "data", "version": "2.0", "request": "getfeature",
-        "format": "json", "size": 10, "page": 1, "geometry": "true",
-        "attribute": "true", "crs": "EPSG:4326", "data": VWORLD_LAYER_PARCEL,
-        "attrfilter": f"pnu:=:{pnu}",
-    }
-    try:
-        resp, _route = _vworld_get(VWORLD_DATA_URL, params=params, timeout=20)
-        payload = resp.json()
-        rsp = payload.get("response") or {}
-        status = str(rsp.get("status") or "").upper()
-        if status == "NOT_FOUND":
-            return {"feature": None}
-        if status != "OK":
-            raise RuntimeError(_response_error_message(payload))
-        features = ((((rsp.get("result") or {}).get("featureCollection") or {}).get("features")) or [])
-        return {"feature": features[0] if features else None}
-    except Exception as exc:
-        logger.exception("VWorld parcel-by-pnu fallback failed pnu=%s", pnu)
-        raise HTTPException(status_code=502, detail=f"PNU 필지조회 실패: {exc}") from exc
-
-
-@app.post("/api/vworld/address-parcel")
-def vworld_address_parcel(inp: VWorldAddressInput):
-    _require_vworld_key()
-    query = re.sub(r"\s+", " ", str(inp.address or "")).strip()
-    if not query or len(query) > 200:
-        raise HTTPException(status_code=422, detail="유효한 주소가 필요합니다.")
-    try:
-        result = _vworld_parcel_by_address(query)
-        if result.get("status") != "resolved":
-            return {"feature": None, "status": result.get("status") or "not_found"}
-        return {"feature": result.get("feature"), "status": "resolved"}
-    except Exception as exc:
-        logger.exception("VWorld address-parcel fallback failed")
-        raise HTTPException(status_code=502, detail=f"주소 필지조회 실패: {exc}") from exc
-
 
 @app.post("/api/parcels/analyze")
 def parcel_analyze(inp: GeometryInput):

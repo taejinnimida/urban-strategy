@@ -6,12 +6,9 @@
 <meta content="width=device-width, initial-scale=1" name="viewport"/>
 <title>서울 도시정비플랫폼</title>
 <link crossorigin="" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" rel="stylesheet"/>
-<link href="https://unpkg.com/maplibre-gl@5.7.3/dist/maplibre-gl.css" rel="stylesheet"/>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" rel="stylesheet"/>
 <style>
     :root{--bg:#f3f5f7;--card:#fff;--line:#dfe3e8;--text:#16181d;--muted:#667085;--dark:#111827;--green:#067647;--red:#b42318;--amber:#b54708;--blue:#175cd3}
-    /* R66: OpenFreeMap/MapLibre는 배경도 전용. Leaflet의 필지 클릭·그리기 이벤트를 가로채지 않도록 pointer event를 완전히 통과시킨다. */
-    #map .leaflet-maplibre-gl,#map .maplibregl-map,#map .maplibregl-canvas-container,#map .maplibregl-canvas,#map .maplibregl-control-container{pointer-events:none!important}
     *{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,"Noto Sans KR",sans-serif;background:var(--bg);color:var(--text)}
     header{padding:18px 24px;background:#fff;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:20px;align-items:center}
     header h1{font-size:22px;margin:0 0 4px}header .sub{font-size:12px;color:var(--muted)}
@@ -3072,8 +3069,6 @@ body.service-layout-ready>.shell{display:none!important}
   <span id="ovSummaryFoot">-</span>
 </div>
 <script crossorigin="" src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/maplibre-gl@5.7.3/dist/maplibre-gl.js"></script>
-<script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
 <script src="https://unpkg.com/shpjs@6.2.0/dist/shp.js"></script>
@@ -3160,12 +3155,7 @@ async function fetchBackendJson(url,options={}){
 }
 
 async function fetchParcelCandidatesBrowser(geometry){
-  if(!VWORLD_CLIENT_KEY){
-    const d=await fetchBackendJson('/api/spatial/vworld-features',{
-      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry,layer_id:'LP_PA_CBND_BUBUN'})
-    });
-    return Array.isArray(d?.features)?d.features:[];
-  }
+  if(!VWORLD_CLIENT_KEY) throw new Error('VWorld API 키가 페이지에 주입되지 않았습니다.');
   const target=turf.feature(geometry),[minx,miny,maxx,maxy]=turf.bbox(target);
   const collected=[],seen=new Set();
   for(let page=1;page<=10;page++){
@@ -3202,14 +3192,7 @@ async function fetchParcelCandidatesBrowser(geometry){
 
 
 async function fetchSpatialFeaturesBrowser(layerId, geometry, uniqueKeys=[]){
-  if(!VWORLD_CLIENT_KEY){
-    const allowed=new Set(['LT_C_SPBD','LT_C_DAMDAN','TL_SPRD_MANAGE','LT_C_SPRD_MANAGE','LP_PA_CBND_BUBUN']);
-    if(!allowed.has(String(layerId||'')))throw new Error('브라우저 직접 VWorld 보조조회 비활성 · 서버 판정경로를 사용합니다.');
-    const d=await fetchBackendJson('/api/spatial/vworld-features',{
-      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry,layer_id:String(layerId)})
-    });
-    return Array.isArray(d?.features)?d.features:[];
-  }
+  if(!VWORLD_CLIENT_KEY) throw new Error('VWorld API 키가 페이지에 주입되지 않았습니다.');
   const target=turf.feature(geometry);
   const [minx,miny,maxx,maxy]=turf.bbox(target);
   const collected=[];
@@ -3303,9 +3286,9 @@ const map=L.map('map',{zoomControl:true}).setView([37.5665,126.9780],13);
 // 메인 검토지도는 '도면을 보며 구역계를 그리는 화면'과 '분석 Fact를 검증하는 화면'을 겸한다.
 // 따라서 경계 설정 전에도 보이는 서울시 표시용 도면(WMS)과, 검토 후 확보되는 판정용 벡터 Fact를 분리한다.
 // 판정 로직은 아래 WMS를 절대 참조하지 않으며 기존 planningAnalysis/parcelFeatureMap 벡터 Fact만 사용한다.
-// 쌓임 순서: 비상 기본지도(180) → VWorld 일반지도(190) → 항공사진(200) → 용도지역(320~321) → 지적(330~331) → 도시계획시설(340~341) → 기존 작업레이어(400+).
+// 쌓임 순서: Satellite(200) → 용도지역(320~321) → 지적(330~331) → 도시계획시설(340~341) → 기존 작업레이어(400+).
 for(const [paneName,z] of [
-  ['mainBaseFallbackPane',180],['mainBaseNormalPane',190],['mainSatellitePane',200],
+  ['mainSatellitePane',200],
   ['mainZoningPreviewPane',320],['mainZoningFactPane',321],
   ['mainCadastralPreviewPane',330],['mainCadastralFactPane',331],
   ['mainFacilityPreviewPane',340],['mainFacilityFactPane',341],
@@ -3314,42 +3297,9 @@ for(const [paneName,z] of [
   if(!map.getPane(paneName))map.createPane(paneName);
   const pane=map.getPane(paneName);pane.style.zIndex=String(z);pane.style.pointerEvents='none';
 }
-// 베이스맵은 항상 한 장 이상 남긴다. 서버용 VWORLD_API_KEY는 절대 브라우저로 내려오지 않는다.
-// 일반지도는 KEY가 필요 없는 OpenFreeMap Liberty 벡터지도를 우선 사용하고, 로딩 자체가 불가능하면 OSM이 최종 백지 방지용으로 남는다.
-// VWorld Satellite는 별도 VWORLD_CLIENT_KEY가 있을 때만 일반지도 위에 표시한다.
-const mapBaseFallback=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:20,attribution:'© OpenStreetMap contributors',pane:'mainBaseFallbackPane'}).addTo(map);
-const mapBaseNormal=(typeof L.maplibreGL==='function')
-  ?L.maplibreGL({style:'https://tiles.openfreemap.org/styles/liberty',pane:'mainBaseNormalPane',interactive:false,attributionControl:false})
-  :L.layerGroup();
+const mapBaseNormal=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:20,attribution:'© OpenStreetMap contributors'}); // 호환용 정의만 유지, 기본 표시하지 않음
 const mapBaseSatellite=L.tileLayer(`https://api.vworld.kr/req/wmts/1.0.0/${VWORLD_CLIENT_KEY}/Satellite/{z}/{y}/{x}.jpeg`,{maxZoom:20,attribution:'VWorld Satellite',pane:'mainSatellitePane',opacity:1});
 function vworldTileKeyReady(){return !!VWORLD_CLIENT_KEY && !String(VWORLD_CLIENT_KEY).startsWith('__');}
-let openFreeMapLoaded=false,openFreeMapDisabled=false,openFreeMapAttributionAdded=false;
-const OPENFREEMAP_ATTRIBUTION='OpenFreeMap © OpenMapTiles · Data from OpenStreetMap';
-function disableOpenFreeMapFallback(){
-  if(openFreeMapDisabled)return;
-  openFreeMapDisabled=true;
-  try{if(map.hasLayer(mapBaseNormal))map.removeLayer(mapBaseNormal);}catch(e){}
-  try{if(openFreeMapAttributionAdded){map.attributionControl.removeAttribution(OPENFREEMAP_ATTRIBUTION);openFreeMapAttributionAdded=false;}}catch(e){}
-}
-function keepOpenFreeMapPointerTransparent(gl){
-  // MapLibre canvas는 시각적 배경일 뿐이다. 클릭·드래그·Leaflet.Draw·필지선택은 항상 Leaflet이 받는다.
-  try{const el=gl?.getContainer?.();if(el)el.style.pointerEvents='none';}catch(e){}
-  try{const el=gl?.getCanvasContainer?.();if(el)el.style.pointerEvents='none';}catch(e){}
-  try{const el=gl?.getCanvas?.();if(el)el.style.pointerEvents='none';}catch(e){}
-  try{const pane=map.getPane('mainBaseNormalPane');if(pane)pane.style.pointerEvents='none';}catch(e){}
-}
-function bindOpenFreeMapFallback(){
-  if(typeof mapBaseNormal?.getMaplibreMap!=='function')return disableOpenFreeMapFallback();
-  try{
-    const gl=mapBaseNormal.getMaplibreMap();
-    if(!gl)return disableOpenFreeMapFallback();
-    keepOpenFreeMapPointerTransparent(gl);
-    gl.once('load',()=>{openFreeMapLoaded=true;keepOpenFreeMapPointerTransparent(gl);try{map.attributionControl.addAttribution(OPENFREEMAP_ATTRIBUTION);openFreeMapAttributionAdded=true;}catch(e){}});
-    gl.on('error',()=>{if(!openFreeMapLoaded)disableOpenFreeMapFallback();});
-    setTimeout(()=>{keepOpenFreeMapPointerTransparent(gl);if(!openFreeMapLoaded)disableOpenFreeMapFallback();},12000);
-  }catch(e){disableOpenFreeMapFallback();}
-}
-try{mapBaseNormal.addTo(map);bindOpenFreeMapFallback();}catch(e){disableOpenFreeMapFallback();}
 if(vworldTileKeyReady())mapBaseSatellite.addTo(map);
 
 // 경계 작성 전 즉시 확인하는 표시용 도면. '투명 빈 레이어'가 아니라 서울시 GeoServer의 실제 UPIS/연속지적 도면을 요청한다.
@@ -3382,7 +3332,7 @@ function mainMapLayerValue(id,fallback){
 function mainMapLayerChecked(id,fallback=false){const el=document.getElementById(id);return el?!!el.checked:fallback;}
 function mainMapCadastralColor(){
   if(mainMapLayerChecked('mainLayerZoningToggle'))return '#111827';
-  const satVisible=vworldTileKeyReady()&&mainMapLayerChecked('mainLayerSatelliteToggle',true)&&mainMapLayerValue('mainLayerSatelliteOpacity',1)>0;
+  const satVisible=mainMapLayerChecked('mainLayerSatelliteToggle',true)&&mainMapLayerValue('mainLayerSatelliteOpacity',1)>0;
   return satVisible?'#ffffff':'#111827';
 }
 function mainMapZoningStyle(f){
@@ -3432,9 +3382,6 @@ function updateMainMapLayerDataStatus(){
 function syncMainMapLayerVisibility(){
   const satOn=mainMapLayerChecked('mainLayerSatelliteToggle',true),zoneOn=mainMapLayerChecked('mainLayerZoningToggle'),cadOn=mainMapLayerChecked('mainLayerCadastralToggle'),facilityOn=mainMapLayerChecked('mainLayerFacilityToggle'),regulatoryOn=mainMapLayerChecked('mainLayerRegulatoryToggle',true);
   const satOpacity=mainMapLayerValue('mainLayerSatelliteOpacity',1),zoneOpacity=mainMapLayerValue('mainLayerZoningOpacity',.92),cadOpacity=mainMapLayerValue('mainLayerCadastralOpacity',1),facilityOpacity=mainMapLayerValue('mainLayerFacilityOpacity',.88),regulatoryOpacity=mainMapLayerValue('mainLayerRegulatoryOpacity',.72);
-  // OSM은 최하단 비상 fallback으로 항상 유지한다. OpenFreeMap Liberty가 정상일 때 일반지도로 사용하고, 항공사진 토글은 VWorld Satellite만 제어한다.
-  setMainMapLayerVisible(mapBaseFallback,true);
-  setMainMapLayerVisible(mapBaseNormal,!openFreeMapDisabled);
   mapBaseSatellite.setOpacity(satOpacity);
   if(vworldTileKeyReady())setMainMapLayerVisible(mapBaseSatellite,satOn&&satOpacity>0);else setMainMapLayerVisible(mapBaseSatellite,false);
 
@@ -8595,12 +8542,6 @@ function recalcSelectedParcelStats(){
   runSchemeChecksWhenCoreReady();
 }
 async function fetchParcelByPnuBrowser(pnu){
-  if(!VWORLD_CLIENT_KEY){
-    const d=await fetchBackendJson('/api/vworld/parcel-by-pnu',{
-      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pnu:String(pnu)})
-    });
-    return d?.feature||null;
-  }
   const data=await vworldJsonp(VWORLD_DATA_URL,{
     key:VWORLD_CLIENT_KEY,
     domain:VWORLD_CLIENT_DOMAIN,
@@ -16682,15 +16623,20 @@ function fitToSelectedParcels(){
 async function fetchParcelAtMapPoint(latlng){
   const lng=Number(latlng?.lng),lat=Number(latlng?.lat);
   if(!Number.isFinite(lng)||!Number.isFinite(lat))return null;
-  const d=await fetchBackendJson('/api/vworld/parcel-at-point',{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({lat,lon:lng})
-  });
-  return d?.feature||null;
+  const pt=turf.point([lng,lat]);
+  for(const radius of [2,6]){
+    try{
+      const search=turf.buffer(pt,radius,{units:'meters'});
+      const fs=await fetchParcelCandidatesBrowser(search.geometry);
+      const hit=fs.find(f=>{try{return turf.booleanPointInPolygon(pt,turf.feature(f.geometry,f.properties||{}));}catch(e){return false;}});
+      if(hit)return hit;
+    }catch(e){if(radius===6)throw e;}
+  }
+  return null;
 }
 async function handleParcelFindMapClick(e){
   if(boundaryInputMode!=='address'||parcelFindMode!=='click'||parcelClickLookupBusy)return;
+  if(!VWORLD_CLIENT_KEY){updateParcelClickStatus('VWorld API 키가 없어 클릭 지번을 조회할 수 없습니다.');return;}
   parcelClickLookupBusy=true;
   updateParcelClickStatus('클릭한 위치의 지번을 찾는 중...');
   try{
@@ -16736,15 +16682,6 @@ function parseBoundaryAddressInput(text){
 }
 async function resolveSeoulParcelAddress(row){
   const query=`서울특별시 ${row.gu} ${row.dong} ${row.jibun}`;
-  if(!VWORLD_CLIENT_KEY){
-    const d=await fetchBackendJson('/api/vworld/address-parcel',{
-      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({address:query})
-    });
-    if(!d?.feature)return null;
-    const copy=cloneFeature(d.feature);
-    copy.properties=Object.assign({},copy.properties||{},{_input_address:row.label,_input_query:query});
-    return copy;
-  }
   const data=await vworldJsonp('https://api.vworld.kr/req/search',{
     key:VWORLD_CLIENT_KEY,
     domain:VWORLD_CLIENT_DOMAIN,
@@ -16804,6 +16741,10 @@ async function lookupBoundaryAddresses(){
   const rows=parseBoundaryAddressInput(input?.value||'');
   if(!rows.length){
     if(status)status.textContent='입력 형식을 확인하세요. 예: 동대문구, 장안동, 123-4';
+    return;
+  }
+  if(!VWORLD_CLIENT_KEY){
+    if(status)status.textContent='VWorld API 키가 연결되지 않아 주소 필지를 조회할 수 없습니다.';
     return;
   }
   if(status)status.textContent=`${rows.length}필지 주소를 찾는 중...`;
