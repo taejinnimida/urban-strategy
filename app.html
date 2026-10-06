@@ -10,6 +10,8 @@
 <link href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" rel="stylesheet"/>
 <style>
     :root{--bg:#f3f5f7;--card:#fff;--line:#dfe3e8;--text:#16181d;--muted:#667085;--dark:#111827;--green:#067647;--red:#b42318;--amber:#b54708;--blue:#175cd3}
+    /* R66: OpenFreeMap/MapLibre는 배경도 전용. Leaflet의 필지 클릭·그리기 이벤트를 가로채지 않도록 pointer event를 완전히 통과시킨다. */
+    #map .leaflet-maplibre-gl,#map .maplibregl-map,#map .maplibregl-canvas-container,#map .maplibregl-canvas,#map .maplibregl-control-container{pointer-events:none!important}
     *{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,"Noto Sans KR",sans-serif;background:var(--bg);color:var(--text)}
     header{padding:18px 24px;background:#fff;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:20px;align-items:center}
     header h1{font-size:22px;margin:0 0 4px}header .sub{font-size:12px;color:var(--muted)}
@@ -3329,14 +3331,22 @@ function disableOpenFreeMapFallback(){
   try{if(map.hasLayer(mapBaseNormal))map.removeLayer(mapBaseNormal);}catch(e){}
   try{if(openFreeMapAttributionAdded){map.attributionControl.removeAttribution(OPENFREEMAP_ATTRIBUTION);openFreeMapAttributionAdded=false;}}catch(e){}
 }
+function keepOpenFreeMapPointerTransparent(gl){
+  // MapLibre canvas는 시각적 배경일 뿐이다. 클릭·드래그·Leaflet.Draw·필지선택은 항상 Leaflet이 받는다.
+  try{const el=gl?.getContainer?.();if(el)el.style.pointerEvents='none';}catch(e){}
+  try{const el=gl?.getCanvasContainer?.();if(el)el.style.pointerEvents='none';}catch(e){}
+  try{const el=gl?.getCanvas?.();if(el)el.style.pointerEvents='none';}catch(e){}
+  try{const pane=map.getPane('mainBaseNormalPane');if(pane)pane.style.pointerEvents='none';}catch(e){}
+}
 function bindOpenFreeMapFallback(){
   if(typeof mapBaseNormal?.getMaplibreMap!=='function')return disableOpenFreeMapFallback();
   try{
     const gl=mapBaseNormal.getMaplibreMap();
     if(!gl)return disableOpenFreeMapFallback();
-    gl.once('load',()=>{openFreeMapLoaded=true;try{map.attributionControl.addAttribution(OPENFREEMAP_ATTRIBUTION);openFreeMapAttributionAdded=true;}catch(e){}});
+    keepOpenFreeMapPointerTransparent(gl);
+    gl.once('load',()=>{openFreeMapLoaded=true;keepOpenFreeMapPointerTransparent(gl);try{map.attributionControl.addAttribution(OPENFREEMAP_ATTRIBUTION);openFreeMapAttributionAdded=true;}catch(e){}});
     gl.on('error',()=>{if(!openFreeMapLoaded)disableOpenFreeMapFallback();});
-    setTimeout(()=>{if(!openFreeMapLoaded)disableOpenFreeMapFallback();},12000);
+    setTimeout(()=>{keepOpenFreeMapPointerTransparent(gl);if(!openFreeMapLoaded)disableOpenFreeMapFallback();},12000);
   }catch(e){disableOpenFreeMapFallback();}
 }
 try{mapBaseNormal.addTo(map);bindOpenFreeMapFallback();}catch(e){disableOpenFreeMapFallback();}
