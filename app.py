@@ -20,6 +20,7 @@ import sys
 import struct
 import sqlite3
 import shutil
+import traceback
 from array import array
 from collections import deque
 import xml.etree.ElementTree as ET
@@ -272,19 +273,82 @@ SMALL_PARCEL_THRESHOLD_M2 = 90.0
 logger = logging.getLogger("urban_strategy.vworld")
 logging.basicConfig(level=logging.INFO)
 
+# R63 security hardening: server credentials must never be reused as browser credentials
+# or emitted through diagnostics/logs.  A dedicated browser key is optional and, when
+# configured, is expected to be domain-restricted at the provider.
+_SECRET_ENV_NAMES = (
+    "VWORLD_API_KEY", "VWORLD_CLIENT_KEY", "BUILDING_HUB_API_KEY", "ECVAM_API_KEY",
+    "DATA_SEOUL_GO_KR_KEY", "OPENAI_API_KEY", "ADMIN_PASSWORD",
+    "ADMIN_SESSION_SECRET", "DATABASE_URL",
+)
+_SECRET_QUERY_RE = re.compile(
+    r"(?i)([?&](?:key|apikey|api_key|servicekey|service_key|token|access_token|authorization|password|secret)=)([^&\s]+)"
+)
+_BEARER_RE = re.compile(r"(?i)(bearer\s+)([A-Za-z0-9._~+\-/=]{8,})")
+
+
+def _security_secret_values() -> List[str]:
+    values = []
+    for name in _SECRET_ENV_NAMES:
+        value = str(os.getenv(name) or "").strip()
+        if len(value) >= 4:
+            values.append(value)
+    return sorted(set(values), key=len, reverse=True)
+
+
+def _redact_secret_text(value: Any) -> str:
+    text = str(value if value is not None else "")
+    for secret in _security_secret_values():
+        text = text.replace(secret, "***")
+    text = _SECRET_QUERY_RE.sub(lambda m: m.group(1) + "***", text)
+    text = _BEARER_RE.sub(lambda m: m.group(1) + "***", text)
+    return text
+
+
+def _redact_secret_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        out = {}
+        for key, item in value.items():
+            if re.search(r"(?i)(?:^|_)(?:key|token|password|secret|authorization)(?:$|_)", str(key)):
+                out[key] = "***"
+            else:
+                out[key] = _redact_secret_value(item)
+        return out
+    if isinstance(value, list):
+        return [_redact_secret_value(item) for item in value]
+    if isinstance(value, tuple):
+        return [_redact_secret_value(item) for item in value]
+    if isinstance(value, str):
+        return _redact_secret_text(value)
+    return value
+
+
+class _SecretRedactionFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            record.msg = _redact_secret_text(record.getMessage())
+            record.args = ()
+            if record.exc_info:
+                record.exc_text = _redact_secret_text("".join(traceback.format_exception(*record.exc_info)))
+                record.exc_info = None
+        except Exception:
+            pass
+        return True
+
+
+_SECRET_LOG_FILTER = _SecretRedactionFilter()
+logger.addFilter(_SECRET_LOG_FILTER)
+for _handler in logging.getLogger().handlers:
+    _handler.addFilter(_SECRET_LOG_FILTER)
+
 
 def _vworld_key() -> str:
     return (os.getenv("VWORLD_API_KEY") or "").strip()
 
 
 def _vworld_client_key() -> str:
-    """Browser-side VWorld key. Optional dedicated key, otherwise reuse server key.
-
-    The browser key is necessarily visible to the browser. Operators may set
-    VWORLD_CLIENT_KEY to a domain-restricted VWorld key; existing deployments
-    remain compatible because VWORLD_API_KEY is used when it is absent.
-    """
-    return (os.getenv("VWORLD_CLIENT_KEY") or _vworld_key() or "").strip()
+    """Dedicated browser-side VWorld key only. Never fall back to the server key."""
+    return (os.getenv("VWORLD_CLIENT_KEY") or "").strip()
 
 
 def _require_vworld_key() -> str:
@@ -311,23 +375,53 @@ def _vworld_slot_count() -> int:
 
 
 def _normalize_vworld_domain(raw: str) -> str:
-    raw = str(raw or "").strip().rstrip("/")
-    if not raw:
+    """Return a safe origin only; reject paths, credentials, UUID/key-like values and secrets."""
+    value = str(raw or "").strip().rstrip("/")
+    if not value:
         return ""
-    if raw.startswith("http://") or raw.startswith("https://"):
-        return raw
-    if raw == "localhost" or raw.startswith("localhost:"):
-        return "http://" + raw
-    return "https://" + raw
+    if value in _security_secret_values():
+        return ""
+    # A bare UUID is not a valid service domain and is commonly a misplaced API key.
+    if re.fullmatch(r"[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}", value):
+        return ""
+    if not re.match(r"^https?://", value, re.I):
+        value = ("http://" if value == "localhost" or value.startswith("localhost:") else "https://") + value
+    try:
+        parsed = urlparse(value)
+    except Exception:
+        return ""
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        return ""
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        return ""
+    if parsed.path not in {"", "/"}:
+        return ""
+    host = str(parsed.hostname or "").strip().lower()
+    if re.fullmatch(r"[0-9a-f]{32,64}", host, re.I):
+        return ""
+    if host != "localhost" and "." not in host and ":" not in host:
+        return ""
+    try:
+        parsed_port = parsed.port
+    except ValueError:
+        return ""
+    port = f":{parsed_port}" if parsed_port else ""
+    return f"{parsed.scheme.lower()}://{host}{port}"
 
 
 def _vworld_domain() -> str:
-    raw = (
-        (os.getenv("VWORLD_DOMAIN") or "").strip()
-        or (os.getenv("RENDER_EXTERNAL_HOSTNAME") or "").strip()
-        or "localhost"
-    )
-    return _normalize_vworld_domain(raw)
+    # Render's actual service hostname is authoritative in production. A manually supplied
+    # VWORLD_DOMAIN is only a fallback for non-Render deployments and is strictly validated.
+    candidates = [
+        (os.getenv("RENDER_EXTERNAL_HOSTNAME") or "").strip(),
+        (os.getenv("VWORLD_DOMAIN") or "").strip(),
+        "localhost",
+    ]
+    for raw in candidates:
+        normalized = _normalize_vworld_domain(raw)
+        if normalized:
+            return normalized
+    return "http://localhost"
 
 
 def _vworld_referer(domain: Optional[str] = None) -> str:
@@ -7783,11 +7877,48 @@ app = FastAPI(
     title="도시검토 플랫폼 - 서울 재개발 웹 MVP",
     version="2.5.0",
     description="구역계 자동분석 + 서울 정비·개발 13개 독립 사업모듈 + 소규모주택정비 보류 shell",
+    docs_url=None, redoc_url=None, openapi_url=None,
 )
+
+
+@app.middleware("http")
+async def _security_response_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    response.headers.setdefault("Permissions-Policy", "geolocation=(), camera=(), microphone=()")
+    response.headers["X-Urban-Build"] = globals().get("APP_BUILD_MARKER", "R63_SECURITY_HARDENING_20261003")
+    forwarded_proto = str(request.headers.get("x-forwarded-proto") or "").split(",", 1)[0].strip().lower()
+    if request.url.scheme == "https" or forwarded_proto == "https":
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    return response
+
+
+@app.exception_handler(HTTPException)
+async def _redacted_http_exception_handler(request: Request, exc: HTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": _redact_secret_value(exc.detail)},
+        headers=exc.headers or {},
+    )
 
 
 class GeometryInput(BaseModel):
     geometry: Dict[str, Any]
+
+
+class VWorldFeatureInput(BaseModel):
+    geometry: Dict[str, Any]
+    layer_id: str
+
+
+class VWorldPnuInput(BaseModel):
+    pnu: str
+
+
+class VWorldAddressInput(BaseModel):
+    address: str
 
 
 class PlanningLayersInput(BaseModel):
@@ -8672,8 +8803,8 @@ def admin_dashboard(request: Request, _: bool = Depends(_admin_auth_or_session))
 
 @app.get("/", response_class=HTMLResponse)
 def home():
-    # VWorld 공식 웹 샘플처럼 브라우저에서 Data API를 직접 호출한다.
-    # 키는 GitHub 소스에는 없고 Render 환경변수에서 런타임에 주입된다.
+    # Browser VWorld access is allowed only with a dedicated, domain-restricted client key.
+    # VWORLD_API_KEY is server-only and is never injected into HTML.
     html = _index_html().replace("__VWORLD_CLIENT_KEY__", _vworld_client_key())
     return HTMLResponse(
         content=html,
@@ -8718,7 +8849,7 @@ def reference_station_entrances():
 # R22 station-line runtime hotfix.  This block is intentionally backend-only:
 # the existing multi-station frontend already consumes /api/reference/station-lines.
 STATION_RUNTIME_BUILD_MARKER = "R22_STATION_HOTFIX_20260901_0915"
-APP_BUILD_MARKER = "R33_CURRENT_YEAR_SITE_PRICE_2025_SEOUL_AVG_20260928"
+APP_BUILD_MARKER = "R63_SECURITY_HARDENING_20261003"
 _STATION_LINE_CACHE_LOCK = threading.Lock()
 _STATION_LINE_CACHE: Dict[str, Any] = {
     "expires_at": 0.0,
@@ -9058,92 +9189,11 @@ def _reference_data_readiness() -> Dict[str, bool]:
 
 @app.get("/health")
 def health():
-    reference_data = _reference_data_readiness()
+    # Public health endpoint: deployment liveness + build identity only.
     return {
         "ok": True,
         "app": "seoul_urban_renewal_platform_v2.5.0",
-        "engine": "site_fact_store_v2.5.0_r11",
-        "map": "leaflet-draw",
-        "vworld_configured": vworld_ready(),
-        "vworld_client_configured": bool(_vworld_client_key()),
-        "vworld_client_key_source": "VWORLD_CLIENT_KEY" if (os.getenv("VWORLD_CLIENT_KEY") or "").strip() else ("VWORLD_API_KEY" if _vworld_key() else None),
-        "planning_browser_fallback_patch_marker": "R23_SERVER_FIRST_BROWSER_FALLBACK_20260923",
-        "local_first_fact_status_patch_marker": "R25_LOCAL_FIRST_FACT_STATUS_20260923",
-        "land_ledger_local_fallback_patch_marker": "R28_VWORLD_THEN_AL_D003_20260923",
-        "build_marker": APP_BUILD_MARKER,
-        "pipeline_patch_marker": "R18_PIPELINE_STABILIZATION_20260910",
-        "regulatory_disaster_vworld_patch_marker": "R15_DISASTER_BUNDLES_VWORLD_DOMAIN_DIAGNOSTICS_20260921",
-        "urban_regeneration_source_marker": "GIMPO_SHP_INTEGRATED_PROJECT_FACT_R3_20260918",
-        "station_runtime_build_marker": STATION_RUNTIME_BUILD_MARKER,
-        "seoul_open_data_configured": bool(_seoul_open_data_key()),
-        "seoul_open_data_env": _seoul_open_data_key_info()[1] or None,
-        "seoul_env_names_detected": sorted([k for k in os.environ if "seoul" in k.lower() or "data.seoul" in k.lower()]),
-        "analytics_storage": _analytics_storage_mode(),
-        "admin_configured": bool(os.getenv("ADMIN_PASSWORD", "")),
-        "vworld_domain": _vworld_domain() if vworld_ready() else None,
-        "vworld_circuit": _vworld_circuit_snapshot(),
-        "external_circuit_patch_marker": "R22_VWORLD_GLOBAL_CIRCUIT_20260922",
-        "parcel_auto": "browser_direct_ready" if vworld_ready() else "needs_VWORLD_API_KEY",
-        "building_spatial_auto": "LT_C_SPBD_browser_direct_ready" if vworld_ready() else "needs_VWORLD_API_KEY",
-        "building_hub": "ready" if building_hub_ready() else "needs_BUILDING_HUB_API_KEY",
-        "land_ledger": "browser VWorld NED live first; bundled Seoul AL_D003 local snapshot fallback; existing server VWorld remains last fallback",
-        "land_ledger_browser_fallback": True,
-        "land_ledger_local_snapshot": _land_ledger_local_snapshot_status(),
-        "land_price_local_fallback_patch_marker": "R32_VWORLD_THEN_LOCAL_OFFICIAL_LAND_PRICE_20260923",
-        "official_land_price": "VWorld NED live first; bundled Seoul official land-price snapshot exact-year fallback; year mismatch remains REVIEW",
-        "land_price_local_snapshot": _land_price_local_snapshot_status(),
-        "road_access": "bundled TL_SPRD_MANAGE + ROAD_BT first; VWorld browser fallback; missing Fact remains REVIEW",
-        "road_bundled_configured": bool(_road_zip_path()),
-        "reference_data": reference_data,
-        "reference_data_missing": [k for k, v in reference_data.items() if not v],
-        "analysis_reference_ready": all(reference_data.get(k, False) for k in ("stations", "centers", "renewal_legal", "renewal_project")),
-        "analysis_object_model": "parcel/building common ledger retained for station-area/zoning/mixed-use expansion",
-        "redevelopment_strategy": "scheme-specific legal aging facts + area/aging/additional-entry AND-OR gates",
-        "scheme_sheets": ["housing_redevelopment","reconstruction","residential_environment","smallscale_housing_5_routes","general_housing","safe_housing","shared_housing","longterm_lease","public_housing_complex","urban_redevelopment","station_activation","growth_potential","urban_complex_innovation","station_complex_district","prior_negotiation"],
-        "scheme_age_stats": "BuildingHUB raw facts -> urban-planning / urban-renewal / policy-specific derived aging facts; unknowns remain bounded REVIEW",
-        "density_public_contribution": "16 independent scheme modules + three future shells; zoning/FAR/public-contribution review remains scheme-specific",
-        "scheme_ui": "six-family UI; 16 independent modules including smallscale 5-route family and prior negotiation + three future shells",
-        "station_boundary_gis": "embedded MOIS 2026-08 TL_SPSB_STATN + site-centroid 1km multi-station candidates + physical same-name clustering + per-station 250/350/500m facts + spatially filtered VWorld line fallback",
-        "station_fact_engine": "R22_MULTI_STATION_V2; nearest station is display/legacy only, scheme rules select their own qualifying station",
-        "first_screen": "boundary-first manual review trigger + six scheme families + 16 independent modules + three future shells",
-        "location_map": "boundary-only main map; parcel/building diagrams rendered in compact side mini maps",
-        "reconstruction_gate": "requires apartment-complex evidence or explicit reconstruction target confirmation",
-        "site_status_card": "neutral raw land/building facts + visible regime-specific aging facts + scheme-specific supplemental facts",
-        "planning_gis": "VWorld zoning/district/facility/district-unit-plan polygon intersection engine; server first, browser JSONP fallback on server/upstream failure",
-        "vworld_planning_domain_policy": "browser origin accepted only when request Host matches; fallback VWORLD_DOMAIN/RENDER_EXTERNAL_HOSTNAME",
-        "disaster_bundled_landslide_raster": os.path.isfile(LANDSLIDE_RISK_RLE_PATH) and os.path.isfile(LANDSLIDE_RISK_META_PATH),
-        "disaster_bundled_risk_district": os.path.isfile(NATURAL_DISASTER_RISK_DISTRICT_ZIP),
-        "disaster_bundled_flood_trace_2025": os.path.isfile(FLOOD_TRACE_2025_ZIP),
-        "renewal_gis": "server-side UQ181/UQ120 intersection; legal-priority; promotion separate; full matched boundaries returned for status map",
-        "development_gis": "VWorld district-unit plan + bundled Seoul UQ181 legal projects + VWorld LT_C_DAMDAN industrial-park boundaries",
-        "safe_housing_location_paths": "station / arterial-road-side / medical-facility-center evaluated separately; OR combined",
-        "safe_medical_reference": "packaged official TbHospitalInfo monthly snapshot + official Seoul municipal hospitals/25 district health centers; offline 2020-12 representative parcel first; unresolved candidates can use browser VWorld fallback; 350m buffer",
-        "safe_medical_local_first": True,
-        "ecvam_reference": {"configured": _ecvam_configured(), "bootstrap_url": ECVAM_API_CONFIRM_URL, "endpoint_policy": "official apiConfirm bootstrap -> discovered WMS endpoint; compatibility fallback only"},
-        "safe_medical_key_env": _seoul_open_data_key_info()[1] or None,
-        "road_width_gis": "VWorld TL_SPRD_MANAGE ROAD_BT is the sole road-width Fact source",
-        "street_block_gis": "SGIS 2025 basic-unit seed + shared TL_SPRD_MANAGE ROAD_BT geometry with scheme-specific street-block rules: smallscale 6m existing roads + all urban-planning facility roads + statutory facilities, activation/station-complex 4m + nonbuildable facilities, growth-potential all roads + defined facilities; ESTIMATE until authoritative official block data is connected",
-        "street_block_future_interface": "MOIS basic-unit / official street-block or verified planning-road block -> authoritative_street_block=true",
-        "arterial_road_future_interface": "official address-based road function/classification -> road_function / statutory_classification fields; width-only candidates remain REVIEW",
-        "activation_arterial_gis": "Seoul published linear-commercial road list + VWorld LT_C_UQ111 zoning + TL_SPRD_MANAGE road centerlines; dedicated station-activation arterial map",
-        "street_block_basic_unit_configured": bool(_basic_unit_zip_path()),
-        "street_block_basic_unit_file": os.path.basename(_basic_unit_zip_path()) if _basic_unit_zip_path() else None,
-        "responsive_ui": "desktop/tablet/mobile responsive layout with mobile workflow and selected-scheme cards",
-        "smallscale_group": "five user review routes: autonomous / block / small-scale reconstruction / small-scale redevelopment / Moa Town+Moa Housing policy route; Moa is not a fifth statutory project",
-        "workspace_ui": "three-column location/spatial evidence/integrated status layout; all decision facts surface in spatial-status boxes",
-        "boundary_input_ui": "draw polygon / Seoul parcel address / SHP ZIP; normal, satellite, or satellite+planning map mode",
-        "mini_map_hierarchy": "strong in-site features with thin surrounding spatial context",
-        "house_density": "shared factual calculation; redevelopment uses >=60/ha as one additional entry criterion and residential-environment uses >=80/ha as a mandatory non-management criterion",
-        "parcel_boundary_editor": "pnu_list_click_include_exclude_nearby_union",
-        "scheme_architecture": "site facts -> scheme-specific facts -> independent scheme evaluation -> review sheet -> priority comparison",
-        "scheme_module_api": "2026-09-02-r22-station-area-frontage-no-hierarchy",
-        "independent_scheme_modules": "16 independent modules including smallscale 5-route family and prior_negotiation; urban_innovation_zone / facility_complex_zone / mixed_use_zone remain future shells",
-        "scheme_specific_spatial_checks": "scheme module may request additional official spatial facts; missing facts remain REVIEW, never inferred PASS",
-        "hill_terrain_fact": "Seoul 1:5,000 contour + spot-height official source -> platform-derived 20m terrain grid; 40m elevation / 10deg terrain-slope reference layers; not an official hill polygon",
-        "hill_terrain_file": HILL_GRID_META_FILE if reference_data.get("hill_terrain_model") else None,
-        "spatial_evidence_maps": "common cadastral base + colored zoning + scheme-specific road/frontage facts + safe-housing medical reference; map facts and scheme facts share one Fact Store",
-        "purpose_filter": "safe-housing rule module runs only when purpose=housing_rental; other schemes keep existing purpose/candidate logic",
-        "provenance_ui": True,
+        "build": APP_BUILD_MARKER,
     }
 
 
@@ -9550,8 +9600,11 @@ def street_block(inp: StreetBlockInput):
 
 
 @app.get("/api/vworld/test")
-def vworld_test(layer: str = "LT_C_UQ111", lon: float = 126.978, lat: float = 37.566):
-    """Single-layer connection diagnostic; no credentials or raw response body."""
+def vworld_test(
+    layer: str = "LT_C_UQ111", lon: float = 126.978, lat: float = 37.566,
+    _admin: bool = Depends(_admin_auth),
+):
+    """Admin-only single-layer connection diagnostic; no credentials or raw response body."""
     if layer not in {"LT_C_UQ111", VWORLD_LAYER_PARCEL, "TL_SPRD_MANAGE"}:
         raise HTTPException(status_code=422, detail="진단 지원 레이어가 아닙니다.")
     if not (-180 <= lon <= 180 and -90 <= lat <= 90):
@@ -9596,6 +9649,110 @@ def vworld_test(layer: str = "LT_C_UQ111", lon: float = 126.978, lat: float = 37
         return result
     except Exception as exc:
         raise HTTPException(status_code=502, detail={"message": "VWorld 단일 조회 실패 · 미확인", "transport": _last_vworld_diagnostic()}) from exc
+
+_VWORLD_BROWSER_FALLBACK_LAYERS = frozenset({
+    VWORLD_LAYER_PARCEL, "LT_C_SPBD", VWORLD_LAYER_INDUSTRIAL_PARK,
+    "TL_SPRD_MANAGE", "LT_C_SPRD_MANAGE",
+})
+
+
+def _parcel_candidates_for_browser_fallback(geometry: Dict[str, Any]) -> List[Dict[str, Any]]:
+    target = shape(geometry)
+    if target.geom_type not in {"Polygon", "MultiPolygon"} or target.is_empty or not target.is_valid:
+        raise ValueError("유효한 Polygon 또는 MultiPolygon 구역계가 필요합니다.")
+    features = _fetch_vworld_parcel_candidates(target)
+    out = []
+    for feature in features:
+        props = dict(feature.get("properties") or {})
+        try:
+            parcel = shape(feature.get("geometry"))
+            inter = target.intersection(parcel)
+            ia, _ = GEOD.geometry_area_perimeter(inter)
+            pa, _ = GEOD.geometry_area_perimeter(parcel)
+            inter_area = abs(float(ia))
+            parcel_area = abs(float(pa))
+            overlap_pct = min(100.0, inter_area / parcel_area * 100.0) if parcel_area > 0 else 0.0
+            centroid_inside = bool(target.covers(parcel.centroid))
+            props.update({
+                "_boundary_intersection_area_m2": inter_area,
+                "_boundary_overlap_pct": overlap_pct,
+                "_boundary_centroid_inside": centroid_inside,
+                "_auto_include": bool(centroid_inside or overlap_pct >= 50.0),
+                "_boundary_candidate": bool(not (centroid_inside or overlap_pct >= 50.0)),
+            })
+        except Exception:
+            props.update({"_auto_include": False, "_boundary_candidate": True})
+        out.append({"type": "Feature", "id": feature.get("id"), "geometry": feature.get("geometry"), "properties": props})
+    return out
+
+
+@app.post("/api/spatial/vworld-features")
+def vworld_features_for_browser(inp: VWorldFeatureInput):
+    """Restricted server fallback for browser map/context operations; never a generic proxy."""
+    _require_vworld_key()
+    layer_id = str(inp.layer_id or "").strip()
+    if layer_id not in _VWORLD_BROWSER_FALLBACK_LAYERS:
+        raise HTTPException(status_code=422, detail="허용되지 않은 VWorld 보조 레이어입니다.")
+    try:
+        target = shape(inp.geometry)
+        if target.geom_type not in {"Polygon", "MultiPolygon"} or target.is_empty or not target.is_valid:
+            raise ValueError("유효한 Polygon 또는 MultiPolygon 구역계가 필요합니다.")
+        if layer_id == VWORLD_LAYER_PARCEL:
+            features = _parcel_candidates_for_browser_fallback(inp.geometry)
+        else:
+            features = _vworld_features_in_bbox(layer_id, target, size=1000, max_pages=10)
+        return {"layer_id": layer_id, "features": features, "feature_count": len(features)}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("restricted VWorld feature fallback failed layer=%s", layer_id)
+        raise HTTPException(status_code=502, detail=f"VWorld 보조 공간조회 실패: {exc}") from exc
+
+
+@app.post("/api/vworld/parcel-by-pnu")
+def vworld_parcel_by_pnu(inp: VWorldPnuInput):
+    _require_vworld_key()
+    pnu = str(inp.pnu or "").strip()
+    if len(pnu) != 19 or not pnu.isdigit():
+        raise HTTPException(status_code=422, detail="PNU는 19자리 숫자여야 합니다.")
+    params = {
+        "key": _vworld_key(), "domain": _vworld_domain(),
+        "service": "data", "version": "2.0", "request": "getfeature",
+        "format": "json", "size": 10, "page": 1, "geometry": "true",
+        "attribute": "true", "crs": "EPSG:4326", "data": VWORLD_LAYER_PARCEL,
+        "attrfilter": f"pnu:=:{pnu}",
+    }
+    try:
+        resp, _route = _vworld_get(VWORLD_DATA_URL, params=params, timeout=20)
+        payload = resp.json()
+        rsp = payload.get("response") or {}
+        status = str(rsp.get("status") or "").upper()
+        if status == "NOT_FOUND":
+            return {"feature": None}
+        if status != "OK":
+            raise RuntimeError(_response_error_message(payload))
+        features = ((((rsp.get("result") or {}).get("featureCollection") or {}).get("features")) or [])
+        return {"feature": features[0] if features else None}
+    except Exception as exc:
+        logger.exception("VWorld parcel-by-pnu fallback failed pnu=%s", pnu)
+        raise HTTPException(status_code=502, detail=f"PNU 필지조회 실패: {exc}") from exc
+
+
+@app.post("/api/vworld/address-parcel")
+def vworld_address_parcel(inp: VWorldAddressInput):
+    _require_vworld_key()
+    query = re.sub(r"\s+", " ", str(inp.address or "")).strip()
+    if not query or len(query) > 200:
+        raise HTTPException(status_code=422, detail="유효한 주소가 필요합니다.")
+    try:
+        result = _vworld_parcel_by_address(query)
+        if result.get("status") != "resolved":
+            return {"feature": None, "status": result.get("status") or "not_found"}
+        return {"feature": result.get("feature"), "status": "resolved"}
+    except Exception as exc:
+        logger.exception("VWorld address-parcel fallback failed")
+        raise HTTPException(status_code=502, detail=f"주소 필지조회 실패: {exc}") from exc
+
 
 @app.post("/api/parcels/analyze")
 def parcel_analyze(inp: GeometryInput):

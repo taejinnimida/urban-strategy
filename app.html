@@ -3155,7 +3155,12 @@ async function fetchBackendJson(url,options={}){
 }
 
 async function fetchParcelCandidatesBrowser(geometry){
-  if(!VWORLD_CLIENT_KEY) throw new Error('VWorld API 키가 페이지에 주입되지 않았습니다.');
+  if(!VWORLD_CLIENT_KEY){
+    const d=await fetchBackendJson('/api/spatial/vworld-features',{
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry,layer_id:'LP_PA_CBND_BUBUN'})
+    });
+    return Array.isArray(d?.features)?d.features:[];
+  }
   const target=turf.feature(geometry),[minx,miny,maxx,maxy]=turf.bbox(target);
   const collected=[],seen=new Set();
   for(let page=1;page<=10;page++){
@@ -3192,7 +3197,14 @@ async function fetchParcelCandidatesBrowser(geometry){
 
 
 async function fetchSpatialFeaturesBrowser(layerId, geometry, uniqueKeys=[]){
-  if(!VWORLD_CLIENT_KEY) throw new Error('VWorld API 키가 페이지에 주입되지 않았습니다.');
+  if(!VWORLD_CLIENT_KEY){
+    const allowed=new Set(['LT_C_SPBD','LT_C_DAMDAN','TL_SPRD_MANAGE','LT_C_SPRD_MANAGE','LP_PA_CBND_BUBUN']);
+    if(!allowed.has(String(layerId||'')))throw new Error('브라우저 직접 VWorld 보조조회 비활성 · 서버 판정경로를 사용합니다.');
+    const d=await fetchBackendJson('/api/spatial/vworld-features',{
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry,layer_id:String(layerId)})
+    });
+    return Array.isArray(d?.features)?d.features:[];
+  }
   const target=turf.feature(geometry);
   const [minx,miny,maxx,maxy]=turf.bbox(target);
   const collected=[];
@@ -8542,6 +8554,12 @@ function recalcSelectedParcelStats(){
   runSchemeChecksWhenCoreReady();
 }
 async function fetchParcelByPnuBrowser(pnu){
+  if(!VWORLD_CLIENT_KEY){
+    const d=await fetchBackendJson('/api/vworld/parcel-by-pnu',{
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pnu:String(pnu)})
+    });
+    return d?.feature||null;
+  }
   const data=await vworldJsonp(VWORLD_DATA_URL,{
     key:VWORLD_CLIENT_KEY,
     domain:VWORLD_CLIENT_DOMAIN,
@@ -16636,7 +16654,6 @@ async function fetchParcelAtMapPoint(latlng){
 }
 async function handleParcelFindMapClick(e){
   if(boundaryInputMode!=='address'||parcelFindMode!=='click'||parcelClickLookupBusy)return;
-  if(!VWORLD_CLIENT_KEY){updateParcelClickStatus('VWorld API 키가 없어 클릭 지번을 조회할 수 없습니다.');return;}
   parcelClickLookupBusy=true;
   updateParcelClickStatus('클릭한 위치의 지번을 찾는 중...');
   try{
@@ -16682,6 +16699,15 @@ function parseBoundaryAddressInput(text){
 }
 async function resolveSeoulParcelAddress(row){
   const query=`서울특별시 ${row.gu} ${row.dong} ${row.jibun}`;
+  if(!VWORLD_CLIENT_KEY){
+    const d=await fetchBackendJson('/api/vworld/address-parcel',{
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({address:query})
+    });
+    if(!d?.feature)return null;
+    const copy=cloneFeature(d.feature);
+    copy.properties=Object.assign({},copy.properties||{},{_input_address:row.label,_input_query:query});
+    return copy;
+  }
   const data=await vworldJsonp('https://api.vworld.kr/req/search',{
     key:VWORLD_CLIENT_KEY,
     domain:VWORLD_CLIENT_DOMAIN,
@@ -16741,10 +16767,6 @@ async function lookupBoundaryAddresses(){
   const rows=parseBoundaryAddressInput(input?.value||'');
   if(!rows.length){
     if(status)status.textContent='입력 형식을 확인하세요. 예: 동대문구, 장안동, 123-4';
-    return;
-  }
-  if(!VWORLD_CLIENT_KEY){
-    if(status)status.textContent='VWorld API 키가 연결되지 않아 주소 필지를 조회할 수 없습니다.';
     return;
   }
   if(status)status.textContent=`${rows.length}필지 주소를 찾는 중...`;
