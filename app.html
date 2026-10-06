@@ -16682,16 +16682,12 @@ function fitToSelectedParcels(){
 async function fetchParcelAtMapPoint(latlng){
   const lng=Number(latlng?.lng),lat=Number(latlng?.lat);
   if(!Number.isFinite(lng)||!Number.isFinite(lat))return null;
-  const pt=turf.point([lng,lat]);
-  for(const radius of [2,6]){
-    try{
-      const search=turf.buffer(pt,radius,{units:'meters'});
-      const fs=await fetchParcelCandidatesBrowser(search.geometry);
-      const hit=fs.find(f=>{try{return turf.booleanPointInPolygon(pt,turf.feature(f.geometry,f.properties||{}));}catch(e){return false;}});
-      if(hit)return hit;
-    }catch(e){if(radius===6)throw e;}
-  }
-  return null;
+  const d=await fetchBackendJson('/api/vworld/parcel-at-point',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({lat,lon:lng})
+  });
+  return d?.feature||null;
 }
 async function handleParcelFindMapClick(e){
   if(boundaryInputMode!=='address'||parcelFindMode!=='click'||parcelClickLookupBusy)return;

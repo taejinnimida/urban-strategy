@@ -44,7 +44,7 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel, Field
 from pyproj import CRS, Geod, Transformer
 import shapefile
-from shapely.geometry import GeometryCollection, MultiPolygon, Polygon, shape, mapping, box
+from shapely.geometry import GeometryCollection, MultiPolygon, Polygon, Point, shape, mapping, box
 from shapely.ops import transform as geometry_transform, unary_union
 from shapely.prepared import prep
 from shapely.strtree import STRtree
@@ -516,12 +516,13 @@ def _vworld_get(
     proxy_timeout: Optional[Any] = None,
     referer_domain: Optional[str] = None,
     force_retry: bool = False,
+    circuit_isolated: bool = False,
 ):
     """One direct attempt and one fallback with independent route timeouts.
 
     Direct/proxy no longer share the former 24-second total budget. This lets a
     slow direct attempt fall back to the proxy with its full configured timeout.
-    Failed responses are never facts; cooldown remains unless force_retry=True.
+    Failed responses are never facts. Bulk-analysis cooldown remains unless force_retry=True; interactive circuit_isolated calls bypass and do not mutate the shared VWorld circuit.
     """
     started = time.monotonic()
     endpoint = urlparse(url).netloc + urlparse(url).path
@@ -535,6 +536,7 @@ def _vworld_get(
         "direct_error": "", "proxy_error": "",
         "direct_timeout": direct_timeout, "proxy_timeout": proxy_timeout_tuple,
         "force_retry": bool(force_retry),
+        "circuit_isolated": bool(circuit_isolated),
     }
 
     def record():
@@ -542,7 +544,7 @@ def _vworld_get(
         _set_vworld_diagnostic(**diagnostic)
 
     def check_cooldown():
-        if force_retry:
+        if force_retry or circuit_isolated:
             return
         global_state = _vworld_circuit_snapshot()
         if global_state.get("open"):
@@ -593,9 +595,10 @@ def _vworld_get(
                 content_type = str(resp.headers.get("content-type") or "").lower()
                 html_response = "text/html" in content_type or resp.content.lstrip()[:15].lower().startswith((b"<!doctype html", b"<html"))
                 if resp.status_code < 500 and not html_response:
-                    with _VWORLD_FAILURE_LOCK:
-                        _VWORLD_FAILURES.pop(endpoint, None)
-                    _clear_vworld_circuit()
+                    if not circuit_isolated:
+                        with _VWORLD_FAILURE_LOCK:
+                            _VWORLD_FAILURES.pop(endpoint, None)
+                        _clear_vworld_circuit()
                     record()
                     return resp, route
                 diagnostic[prefix + "_error"] = f"HTTP_{resp.status_code}" if resp.status_code >= 500 else "NON_DATA_HTML"
@@ -603,17 +606,21 @@ def _vworld_get(
             except requests.RequestException as exc:
                 diagnostic[prefix + "_error"] = type(exc).__name__
 
-        with _VWORLD_FAILURE_LOCK:
-            state = _VWORLD_FAILURES.setdefault(endpoint, {"count": 0, "until": 0})
-            state["count"] += 1
-            if state["count"] >= 3:
-                state["until"] = time.monotonic() + 30
-        _open_vworld_circuit(
-            endpoint,
-            f"direct={diagnostic['direct_error']} · proxy={diagnostic['proxy_error']}",
-        )
-        diagnostic["global_circuit_opened"] = True
-        diagnostic["global_circuit_seconds"] = VWORLD_GLOBAL_CIRCUIT_SEC
+        if not circuit_isolated:
+            with _VWORLD_FAILURE_LOCK:
+                state = _VWORLD_FAILURES.setdefault(endpoint, {"count": 0, "until": 0})
+                state["count"] += 1
+                if state["count"] >= 3:
+                    state["until"] = time.monotonic() + 30
+            _open_vworld_circuit(
+                endpoint,
+                f"direct={diagnostic['direct_error']} · proxy={diagnostic['proxy_error']}",
+            )
+            diagnostic["global_circuit_opened"] = True
+            diagnostic["global_circuit_seconds"] = VWORLD_GLOBAL_CIRCUIT_SEC
+        else:
+            diagnostic["global_circuit_opened"] = False
+            diagnostic["shared_circuit_unchanged"] = True
         record()
         logger.warning(
             "VWorld transport failed endpoint=%s direct=%s proxy=%s elapsed_ms=%s",
@@ -642,7 +649,7 @@ def _response_error_message(payload: Dict[str, Any]) -> str:
     )
 
 
-def _fetch_vworld_parcel_candidates(target_geom) -> List[Dict[str, Any]]:
+def _fetch_vworld_parcel_candidates(target_geom, *, circuit_isolated: bool = False, timeout: Any = 20) -> List[Dict[str, Any]]:
     """Fetch cadastral features in the target bbox, then exact-filter locally.
 
     VWorld Data API 2.0 uses LP_PA_CBND_BUBUN with geomFilter=BOX(...).
@@ -686,7 +693,7 @@ def _fetch_vworld_parcel_candidates(target_geom) -> List[Dict[str, Any]]:
         }
         safe_params = {k: ("***" if k == "key" else v) for k, v in params.items()}
         logger.info("VWorld parcel request page=%s domain=%s params=%s", page, _vworld_domain(), safe_params)
-        resp, route = _vworld_get(VWORLD_DATA_URL, params=params, timeout=20)
+        resp, route = _vworld_get(VWORLD_DATA_URL, params=params, timeout=timeout, circuit_isolated=circuit_isolated)
         logger.info("VWorld parcel response route=%s status=%s", route, resp.status_code)
         try:
             resp.raise_for_status()
@@ -7888,7 +7895,7 @@ async def _security_response_headers(request: Request, call_next):
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
     response.headers.setdefault("Permissions-Policy", "geolocation=(), camera=(), microphone=()")
-    response.headers["X-Urban-Build"] = globals().get("APP_BUILD_MARKER", "R66_OPENFREEMAP_CLICK_FIX_20261006")
+    response.headers["X-Urban-Build"] = globals().get("APP_BUILD_MARKER", "R67_VWORLD_LIVE_CLICK_ISOLATION_20261006")
     forwarded_proto = str(request.headers.get("x-forwarded-proto") or "").split(",", 1)[0].strip().lower()
     if request.url.scheme == "https" or forwarded_proto == "https":
         response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
@@ -7915,6 +7922,11 @@ class VWorldFeatureInput(BaseModel):
 
 class VWorldPnuInput(BaseModel):
     pnu: str
+
+
+class VWorldParcelPointInput(BaseModel):
+    lat: float = Field(..., ge=33.0, le=39.5)
+    lon: float = Field(..., ge=124.0, le=132.0)
 
 
 class VWorldAddressInput(BaseModel):
@@ -8849,7 +8861,7 @@ def reference_station_entrances():
 # R22 station-line runtime hotfix.  This block is intentionally backend-only:
 # the existing multi-station frontend already consumes /api/reference/station-lines.
 STATION_RUNTIME_BUILD_MARKER = "R22_STATION_HOTFIX_20260901_0915"
-APP_BUILD_MARKER = "R66_OPENFREEMAP_CLICK_FIX_20261006"
+APP_BUILD_MARKER = "R67_VWORLD_LIVE_CLICK_ISOLATION_20261006"
 _STATION_LINE_CACHE_LOCK = threading.Lock()
 _STATION_LINE_CACHE: Dict[str, Any] = {
     "expires_at": 0.0,
@@ -9707,6 +9719,66 @@ def vworld_features_for_browser(inp: VWorldFeatureInput):
     except Exception as exc:
         logger.exception("restricted VWorld feature fallback failed layer=%s", layer_id)
         raise HTTPException(status_code=502, detail=f"VWorld 보조 공간조회 실패: {exc}") from exc
+
+
+def _parcel_point_probe_geometry(lon: float, lat: float, radius_m: float):
+    """Interactive cadastral point lookup probe in a local metric CRS.
+
+    This is used only to ask VWorld live data which current parcel contains a
+    user's click. Bundled cadastral data is intentionally not substituted here
+    because parcel split/merge freshness matters for interactive selection.
+    """
+    to_metric = Transformer.from_crs(4326, 5174, always_xy=True)
+    to_wgs = Transformer.from_crs(5174, 4326, always_xy=True)
+    x, y = to_metric.transform(float(lon), float(lat))
+    probe_metric = box(x - radius_m, y - radius_m, x + radius_m, y + radius_m)
+    return geometry_transform(to_wgs.transform, probe_metric)
+
+
+@app.post("/api/vworld/parcel-at-point")
+def vworld_parcel_at_point(inp: VWorldParcelPointInput):
+    """Live VWorld parcel lookup for one user click.
+
+    Interactive clicks are deliberately isolated from the bulk-analysis VWorld
+    circuit: an earlier analysis failure must not suppress a fresh user click,
+    and a failed click must not open/clear the shared bulk circuit.
+    """
+    _require_vworld_key()
+    point = Point(float(inp.lon), float(inp.lat))
+    try:
+        radius_m = 6.0
+        probe = _parcel_point_probe_geometry(inp.lon, inp.lat, radius_m)
+        features = _fetch_vworld_parcel_candidates(
+            probe,
+            circuit_isolated=True,
+            timeout=(3.0, 5.0),
+        )
+        hits = []
+        for feature in features:
+            try:
+                parcel = shape(feature.get("geometry"))
+                if not parcel.is_empty and parcel.covers(point):
+                    hits.append(feature)
+            except Exception:
+                continue
+        if hits:
+            if len(hits) > 1:
+                def _parcel_area(item):
+                    try:
+                        area, _ = GEOD.geometry_area_perimeter(shape(item.get("geometry")))
+                        return abs(float(area))
+                    except Exception:
+                        return float("inf")
+                hits.sort(key=_parcel_area)
+            return {
+                "feature": hits[0],
+                "source": "vworld_live",
+                "radius_m": radius_m,
+            }
+        return {"feature": None, "source": "vworld_live"}
+    except Exception as exc:
+        logger.warning("interactive VWorld parcel-at-point failed: %s", exc)
+        raise HTTPException(status_code=502, detail="실시간 지번 조회에 실패했습니다. 잠시 후 다시 클릭해 주세요.") from exc
 
 
 @app.post("/api/vworld/parcel-by-pnu")
