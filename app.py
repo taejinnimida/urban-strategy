@@ -8862,7 +8862,7 @@ def reference_station_entrances():
 # R22 station-line runtime hotfix.  This block is intentionally backend-only:
 # the existing multi-station frontend already consumes /api/reference/station-lines.
 STATION_RUNTIME_BUILD_MARKER = "R22_STATION_HOTFIX_20260901_0915"
-APP_BUILD_MARKER = "R79_RESTART_MAP_BACKGROUND_20261007"
+APP_BUILD_MARKER = "R81_VIEW_CORRECTIONS_20261007"
 _STATION_LINE_CACHE_LOCK = threading.Lock()
 _STATION_LINE_CACHE: Dict[str, Any] = {
     "expires_at": 0.0,
@@ -11308,7 +11308,7 @@ def analyze_boundary_contact(geometry):
     return result
 
 
-# R79: bounded VIEW data only. None of these arrays feeds an analysis FACT.
+# R80: bounded VIEW data only. None of these arrays feeds an analysis FACT.
 _VIEW_BACKGROUND_CACHE: Dict[str, Dict[str, Any]] = {}
 _VIEW_BACKGROUND_CACHE_LOCK = threading.Lock()
 _VIEW_BACKGROUND_SLOT = threading.BoundedSemaphore(1)
