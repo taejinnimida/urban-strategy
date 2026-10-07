@@ -287,6 +287,21 @@
   #widthRoadSchemeSummary .station-scheme-row,#frontageSchemeSummary .station-scheme-row,#urbanRenewalFrontageSummary .station-scheme-row{grid-template-columns:minmax(86px,104px) 62px minmax(0,1fr)}
 }
 @media(max-width:640px){.station-scheme-row{grid-template-columns:1fr 82px}.station-scheme-row .station-route,.station-scheme-row .station-evidence{grid-column:1/-1}.station-scheme-row.head{display:none}}
+/* R82: 역세권 사업방식별 판정은 2칸 고정. 좌우 스크롤 없이 경로/근거를 줄바꿈한다. */
+#stationSchemeJudgments{overflow-y:auto;overflow-x:hidden}
+#stationSchemeJudgments .station-scheme-row{grid-template-columns:minmax(135px,.78fr) minmax(0,2.22fr);gap:10px;align-items:start;min-width:0}
+#stationSchemeJudgments .station-scheme-main,#stationSchemeJudgments .station-scheme-result{min-width:0;display:flex;flex-direction:column;gap:3px}
+#stationSchemeJudgments .station-scheme-main b{font-size:9px;line-height:1.35}
+#stationSchemeJudgments .station-route{font-weight:700;color:#667085;white-space:normal;word-break:keep-all;overflow-wrap:anywhere}
+#stationSchemeJudgments .station-scheme-result .scheme-tag{align-self:flex-start;white-space:nowrap}
+#stationSchemeJudgments .station-evidence{white-space:normal;word-break:keep-all;overflow-wrap:anywhere;line-height:1.45}
+#stationSchemeJudgments .station-scheme-row.head{grid-template-columns:minmax(135px,.78fr) minmax(0,2.22fr);align-items:center}
+#stationSchemeJudgments .station-scheme-row.head>span{font-weight:700;color:#344054}
+@media(max-width:640px){
+  #stationSchemeJudgments .station-scheme-row,#stationSchemeJudgments .station-scheme-row.head{grid-template-columns:minmax(110px,.72fr) minmax(0,2.28fr);display:grid}
+  #stationSchemeJudgments .station-scheme-row.head{position:sticky}
+}
+
 @media(max-width:1100px){.station-gis-stats{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:640px){.station-gis-head{align-items:flex-start;flex-direction:column}.station-gis-stats{grid-template-columns:repeat(2,1fr)}}
 
@@ -1724,7 +1739,7 @@ body.service-layout-ready>.shell{display:none!important}
 <header class="cc-header">
 <div>
 <h1>서울 도시정비플랫폼</h1>
-<div class="sub">서울특별시 도시정비·개발 사전검토<span class="drawing-version">도면 R81</span></div>
+<div class="sub">서울특별시 도시정비·개발 사전검토<span class="drawing-version">도면 R82</span></div>
 </div>
 <div class="connection">
 <span class="conn auto">구역면적 AUTO</span>
@@ -1784,17 +1799,13 @@ body.service-layout-ready>.shell{display:none!important}
 </select>
 <small>사업방식 1차 선별용</small>
 </div>
-<div class="cc-decision-input">
-<div class="cc-decision-label">모아타운·관리지역</div>
-<select id="ccMoaStatus" onchange="runSchemeChecksWhenCoreReady()">
+<select id="ccMoaStatus" hidden aria-hidden="true" tabindex="-1">
 <option selected="" value="">모름</option>
 <option value="designated">모아타운(관리지역) 지정·고시</option>
 <option value="planning">관리계획 수립·승인 절차 중</option>
 <option value="candidate">후보지·검토대상</option>
 <option value="none">비해당·미지정</option>
 </select>
-<small>모아타운은 별도 법정사업이 아니라 소규모정비의 정책·관리계획 추진경로</small>
-</div>
 <section class="result-action-panel" id="resultActionPanel">
   <div class="result-action-head">
     <b>결과물 작성</b>
@@ -2302,7 +2313,7 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="station-candidate-list" id="spStationCandidates"><div class="station-candidate-row head"><b>역</b><b>거리</b><b>노선·환승</b><b>250m</b><b>350m</b><b>500m</b></div><div class="station-candidate-row"><b>분석 전</b><span>-</span><span>-</span><span>-</span><span>-</span><span>-</span></div></div>
 <div class="spatial-caption">도면정보 · 대상지 중심 1km 안의 모든 역사를 후보로 수집하고, 역별 거리·노선·환승·250/350/500m 대상지 포함률을 각각 계산합니다. 최근접역은 현황 참고값일 뿐 사업 판정역을 고정하지 않습니다.</div>
 <div class="spatial-module-head"><b>사업방식별 역세권 판정</b><span>독립 Rule Module 요약</span></div>
-<div class="station-scheme-list" id="stationSchemeJudgments"><div class="station-scheme-row head"><b>사업방식</b><span>역세권 경로</span><span>판정</span><span>판정근거</span></div><div class="station-scheme-row"><b>분석 전</b><span class="station-route">-</span><span class="scheme-tag INFO">-</span><span class="station-evidence">구역계를 설정하고 검토하기를 눌러야 각 제도의 역세권 판정이 계산됩니다.</span></div></div>
+<div class="station-scheme-list" id="stationSchemeJudgments"><div class="station-scheme-row head"><b>사업방식 · 역세권 경로</b><span>판정 · 판정근거</span></div><div class="station-scheme-row"><div class="station-scheme-main"><b>분석 전</b><span class="station-route">-</span></div><div class="station-scheme-result"><span class="scheme-tag INFO">-</span><span class="station-evidence">구역계를 설정하고 검토하기를 눌러야 각 제도의 역세권 판정이 계산됩니다.</span></div></div></div>
 <div class="spatial-caption">도면정보 · 이 표는 사업 전체 적합성이 아니라 각 제도의 역세권 입지경로만 검토합니다. 충족(초록)=해당 역세권 경로 충족, 미충족(빨강)=확보된 공식 Fact 기준 해당 역세권 경로 불충족, 확인필요(노랑)=노선·가로구역·포함률 등 필수 Fact 미확정, 역세권 경로 미사용(회색)=같은 사업의 다른 입지경로를 적용한 경우입니다. 성장거점형은 환승결절 500m 경로만 표시하고 중심지+간선도로 경로는 이 표에서 판정하지 않습니다. 최종 인허가 판정이 아니라 초기 검토엔진입니다.</div>
 <div class="spatial-tags"><span class="map-legend-chip" style="--zone-fill:#ffffff;--zone-border:#175cd3">1차 역세권 250m</span><span class="map-legend-chip" style="--zone-fill:#ffffff;--zone-border:#b54708">2차 역세권 350m</span><span>거리 범례 · 사업별 적용조건은 판정표 참조</span></div>
 <div class="spatial-mini-map" id="ccStationMiniMap"></div>
@@ -4830,6 +4841,8 @@ const ccDistrictUnitPlanParcelBase=L.geoJSON(null,{style:compactParcelBaseStyle}
 const ccIndustrialParkParcelBase=L.geoJSON(null,{style:compactParcelBaseStyle}).addTo(ccIndustrialParkMini);
 
 // R80 display-only cadastral WMS base.  It does not feed FACT/RULE calculations.
+// R82: WMS load/tileerror 이벤트가 즉시 발생해도 TDZ가 생기지 않도록 상태를 먼저 초기화한다.
+let miniMapViewRecords=[],miniMapBackgroundTimer=null,miniMapBackgroundEpoch=0,miniMapBackgroundSignature='';
 const miniCadastralWmsState=new WeakMap();
 function miniCadastralWmsNote(mp){const row=miniCadastralWmsState.get(mp);return row?' · 지적 WMS '+row.status:'';}
 function addMiniCadastralWmsBase(mp){
@@ -4846,7 +4859,6 @@ const ccDowntownCharacteristicCadastralWms=addMiniCadastralWmsBase(ccDowntownCha
 const ccStationCadastralWms=addMiniCadastralWmsBase(ccStationMini);
 const ccCenterCadastralWms=addMiniCadastralWmsBase(ccCenterMini);
 const ccActivationArterialCadastralWms=addMiniCadastralWmsBase(ccActivationArterialMini);
-const ccSafeMedicalCadastralWms=addMiniCadastralWmsBase(ccSafeMedicalMini);
 
 const ccZoningMini=L.map('ccZoningMiniMap',{zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,doubleClickZoom:false,boxZoom:false,keyboard:false,touchZoom:false}).setView([37.5665,126.9780],15);
 const ccZoningParcelBase=L.geoJSON(null,{style:compactParcelBaseStyle}).addTo(ccZoningMini);
@@ -4888,6 +4900,7 @@ const ccSafeMedicalFacilitySites=L.geoJSON(null,{style:f=>medicalDrawingStyle(f,
 const ccSafeMedicalPoints=L.geoJSON(null,{pointToLayer:(f,latlng)=>L.marker(latlng,{icon:medicalDrawingIcon(f),interactive:true}),onEachFeature:(f,l)=>{const p=f.properties||{};l.bindTooltip(`${escHtml(p.name||'의료시설')} · ${escHtml(p.category_label||p.category||'')} · 공식 위치점 ${p.distance_point_m==null?'-':Number(p.distance_point_m).toFixed(1)+'m'} · ${escHtml(p.boundary_basis_label||p.boundary_note||'부지경계 미확정')}`);}}).addTo(ccSafeMedicalMini);
 const ccSafeMedicalLabels=L.layerGroup().addTo(ccSafeMedicalMini);
 const ccSafeMedicalBoundary=siteBoundaryGeoJSON(null,{style:{weight:3,color:'#101828',fillOpacity:0}}).addTo(ccSafeMedicalMini);
+const ccSafeMedicalCadastralWms=addMiniCadastralWmsBase(ccSafeMedicalMini);
 
 const ccSchoolAbsoluteMini=L.map('ccSchoolAbsoluteMiniMap',{zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,doubleClickZoom:false,boxZoom:false,keyboard:false,touchZoom:false}).setView([37.5665,126.9780],15);
 const ccSchoolAbsoluteParcelBase=L.geoJSON(null,{style:compactParcelBaseStyle}).addTo(ccSchoolAbsoluteMini);
@@ -5157,7 +5170,7 @@ function syncLocationMiniViews(){
   scheduleMiniMapBackground();
 }
 function toggleArterialStationView(checked){ccActivationArterialStation.clearLayers();if(checked&&activationArterialAnalysis.stationBufferFeature)ccActivationArterialStation.addData(activationArterialAnalysis.stationBufferFeature);}
-let miniMapViewRecords=[],miniMapBackgroundTimer=null,miniMapBackgroundEpoch=0,miniMapBackgroundSignature='';
+
 const miniMapBackgroundCache=new Map(),miniMapBackgroundInflight=new Map(),miniMapBackgroundFailures=new Map();
 let miniMapBackgroundNetwork=Promise.resolve();
 function miniMapViewSpecs(){
@@ -11051,14 +11064,14 @@ function stationSchemeEvidence(name,row){
 function renderStationSchemeJudgments(){
   const root=document.getElementById('stationSchemeJudgments');
   if(!root)return;
-  const head='<div class="station-scheme-row head"><b>사업방식</b><span>역세권 경로</span><span>판정</span><span>판정근거</span></div>';
+  const head='<div class="station-scheme-row head"><b>사업방식 · 역세권 경로</b><span>판정 · 판정근거</span></div>';
   const rows=STATION_SCHEME_DISPLAY_LIST.map(name=>{
     let row;
     try{row=schemeStationRow(name);}catch(e){row={status:'REVIEW',value:'-',note:'판정 요약 중 오류 · 확인 필요'};}
     const meta=stationSchemeStatusMeta(row?.status);
     const evidence=stationSchemeEvidence(name,row);
     const route=stationSchemeRouteLabel(name);
-    return `<div class="station-scheme-row"><b>${escHtml(schemeNames[name]||name)}</b><span class="station-route">${escHtml(route)}</span><span class="scheme-tag ${meta.cls}">${meta.label}</span><span class="station-evidence">${escHtml(evidence)}</span></div>`;
+    return `<div class="station-scheme-row"><div class="station-scheme-main"><b>${escHtml(schemeNames[name]||name)}</b><span class="station-route">${escHtml(route)}</span></div><div class="station-scheme-result"><span class="scheme-tag ${meta.cls}">${meta.label}</span><span class="station-evidence">${escHtml(evidence)}</span></div></div>`;
   }).join('');
   root.innerHTML=head+rows;
 }
@@ -20977,6 +20990,8 @@ function buildServiceLayout(){
   const detailTools=document.querySelector('.workspace-detail-tools');
   const candidate=document.querySelector('.cc-candidate-panel');
   const resultActions=document.getElementById('resultActionPanel');
+  // R82: 운영 UI의 원래 배치를 복원한다. 위치도는 좌측 검토대상지, 결과물은 우측 상단, 사업판정은 그 아래에 둔다.
+  // 모아타운·관리지역은 화면 입력에서 제거하고 내부 상태값만 보존한다.
   const inputs=oldDecision?[...oldDecision.querySelectorAll(':scope > .cc-decision-input')]:[];
   if(!header||!oldDecision||!location||!candidate||!resultActions||inputs.length<3)return;
 
