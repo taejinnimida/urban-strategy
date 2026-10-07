@@ -8862,7 +8862,7 @@ def reference_station_entrances():
 # R22 station-line runtime hotfix.  This block is intentionally backend-only:
 # the existing multi-station frontend already consumes /api/reference/station-lines.
 STATION_RUNTIME_BUILD_MARKER = "R22_STATION_HOTFIX_20260901_0915"
-APP_BUILD_MARKER = "R74_RESTART_RULE_BASIS_LABELS_20261006"
+APP_BUILD_MARKER = "R75_RESTART_CAD_FACILITY_LAYERS_20261006"
 _STATION_LINE_CACHE_LOCK = threading.Lock()
 _STATION_LINE_CACHE: Dict[str, Any] = {
     "expires_at": 0.0,
@@ -10771,3 +10771,395 @@ def regulatory_reference_intersections(inp: GeometryInput):
     except Exception as exc:
         logging.exception('bundled regulatory reference analysis failed')
         raise HTTPException(status_code=502, detail=f"규제 공간자료 분석 실패: {str(exc)[:240]}") from exc
+
+
+# R75: CAD base-map results only. No scheme RULE or source-property dump.
+CAD_FACILITY_LAYERS = {
+    "LT_C_UPISUQ151": "도로", "LT_C_UPISUQ152": "교통시설",
+    "LT_C_UPISUQ153": "공간시설", "LT_C_UPISUQ154": "유통공급시설",
+    "LT_C_UPISUQ155": "공공문화체육시설", "LT_C_UPISUQ156": "방재시설",
+    "LT_C_UPISUQ157": "보건위생시설", "LT_C_UPISUQ158": "환경기초시설",
+    "LT_C_UPISUQ159": "기타시설",
+}
+CAD_FACILITY_TYPES = (
+    ("연결녹지", "UPF_GREEN_LINK"), ("완충녹지", "UPF_GREEN_BUFFER"),
+    ("경관녹지", "UPF_GREEN_LANDSCAPE"), ("공원", "UPF_PARK"),
+    ("녹지", "UPF_GREEN_UNSPECIFIED"), ("주차장", "UPF_PARKING"),
+    ("철도", "UPF_RAIL_FACILITY"), ("궤도", "UPF_RAIL_FACILITY"),
+    ("광장", "UPF_SQUARE"), ("공공공지", "UPF_PUBLIC_OPEN"),
+    ("학교", "UPF_SCHOOL"), ("하천", "UPF_RIVER"),
+    ("저수지", "UPF_RESERVOIR"), ("유수지", "UPF_RETENTION"),
+    ("도로", "UPF_ROAD"),
+)
+
+
+def _cad_facility_type(layer_id, properties):
+    """Only current facility type/name fields; never classify from historical remarks."""
+    p = {str(k).lower(): str(v or "").strip() for k, v in properties.items()}
+    type_text = " ".join(p.get(k, "") for k in (
+        "fclty_ty_nm", "fclty_type_nm", "type_nm", "kind_nm", "fclty_nm", "uname", "dgm_nm"
+    ))
+    name = next((p[k] for k in ("fclty_nm", "uname", "name", "dgm_nm") if p.get(k)), "")
+    if layer_id == "LT_C_UPISUQ151":
+        return "UPF_ROAD", "도로", name or "도로"
+    # Conflicting detailed green types are not resolved by arbitrary precedence.
+    green_types = [x for x in CAD_FACILITY_TYPES[:3] if x[0] in type_text]
+    if len(green_types) > 1:
+        return "UPF_GREEN_UNSPECIFIED", "녹지(세부종류 미확정)", name or "녹지"
+    for label, cad_layer in CAD_FACILITY_TYPES:
+        if label in type_text:
+            return cad_layer, label, name or label
+    code = layer_id[-3:]
+    category = CAD_FACILITY_LAYERS[layer_id]
+    return "UPF_OTHER_" + code, category + "(세부종류 미확정)", name or category
+
+
+def _cad_scope(geometry):
+    # This export never accepts layer IDs, filesystem paths, remote URLs or a radius.
+    try:
+        raw = json.dumps(geometry, allow_nan=False)
+        if len(raw) > 1_000_000:
+            raise ValueError()
+        g = shape(geometry)
+        if g.geom_type not in {"Polygon", "MultiPolygon"} or g.is_empty or not g.is_valid:
+            raise ValueError()
+        minx, miny, maxx, maxy = g.bounds
+        if not (126.7 <= minx <= maxx <= 127.3 and 37.3 <= miny <= maxy <= 37.8):
+            raise ValueError()
+        bbox_area, _ = GEOD.geometry_area_perimeter(box(*g.bounds))
+        if abs(float(bbox_area)) > 10_000_000:
+            raise ValueError()
+        return g
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail="DXF 검토범위는 서울지역의 유효한 구역계이며 조회 BOX 10㎢ 이내여야 합니다.") from exc
+
+
+def _cad_feature(feature, scope, layer, label="", source="", elevation_m=None):
+    g = shape(feature.get("geometry") or {})
+    if g.is_empty:
+        return None
+    if not g.is_valid:
+        g = g.buffer(0)
+    clipped = g.intersection(scope)
+    if clipped.is_empty:
+        return None
+    props = {"cad_layer": layer, "label": str(label)[:160], "source": source}
+    if elevation_m is not None and math.isfinite(float(elevation_m)):
+        props["elevation_m"] = float(elevation_m)
+    return {"type": "Feature", "geometry": mapping(clipped), "properties": props}
+
+
+_CAD_TERRAIN_SOURCE_LOCK = threading.Lock()
+_CAD_TERRAIN_DOWNLOAD_LOCK = threading.Lock()
+_CAD_TERRAIN_DOWNLOAD_RETRY_AT = 0.0
+
+
+def _cad_official_terrain_archive():
+    """Seoul publishes a file source, not a vector OpenAPI. Collect it server-side
+    once and serve only scoped CAD features through our purpose-specific API.
+    The fixed official POST was verified to return the contour/spot-height ZIP.
+    """
+    global _CAD_TERRAIN_DOWNLOAD_RETRY_AT
+    archive = _data_path("source_cad_terrain_seoul.zip")
+    if os.path.isfile(archive):
+        return archive
+    directory = os.path.join("/tmp", "urban_strategy_cad_terrain_official")
+    archive = os.path.join(directory, "seoul_OA22241_seq2.zip")
+    with _CAD_TERRAIN_DOWNLOAD_LOCK:
+        if os.path.isfile(archive):
+            return archive
+        if time.monotonic() < _CAD_TERRAIN_DOWNLOAD_RETRY_AT:
+            raise RuntimeError("Terrain source temporarily unavailable")
+        os.makedirs(directory, exist_ok=True)
+        pending = archive + "." + uuid.uuid4().hex + ".tmp"
+        try:
+            started = time.monotonic()
+            with requests.post(
+                "https://datafile.seoul.go.kr/bigfile/iot/inf/nio_download.do?useCache=false",
+                data={"infId": "OA-22241", "infSeq": "1", "seq": "2", "seqNo": ""},
+                headers={"Referer": "https://data.seoul.go.kr/dataList/OA-22241/F/1/datasetView.do"},
+                timeout=(5, 45), stream=True, allow_redirects=False,
+            ) as response:
+                if response.status_code != 200:
+                    raise RuntimeError("Terrain source HTTP unavailable")
+                total = 0
+                with open(pending, "wb") as dst:
+                    for chunk in response.iter_content(chunk_size=1024 * 1024):
+                        if not chunk:
+                            continue
+                        total += len(chunk)
+                        if total > 64 * 1024 * 1024 or time.monotonic() - started > 90:
+                            raise RuntimeError("Terrain source download limit exceeded")
+                        dst.write(chunk)
+            if not zipfile.is_zipfile(pending):
+                raise RuntimeError("Terrain source is not a ZIP")
+            # Verify required fixed members before caching. Extraction further limits size.
+            with zipfile.ZipFile(pending) as zf:
+                names = {os.path.basename(n.replace('\\', '/')) for n in zf.namelist()}
+                required = {stem + "." + ext for stem in ("N3L_F001", "N3P_F002") for ext in ("shp", "shx", "dbf", "prj")}
+                if not required.issubset(names):
+                    raise RuntimeError("Terrain source members missing")
+            os.replace(pending, archive)
+            _CAD_TERRAIN_DOWNLOAD_RETRY_AT = 0.0
+            return archive
+        except Exception:
+            _CAD_TERRAIN_DOWNLOAD_RETRY_AT = time.monotonic() + 300
+            raise RuntimeError("Official terrain source collection failed") from None
+        finally:
+            if os.path.exists(pending):
+                os.remove(pending)
+
+
+@lru_cache(maxsize=1)
+def _cad_terrain_source_files():
+    archive = _cad_official_terrain_archive()
+    digest = hashlib.sha256()
+    with open(archive, "rb") as fp:
+        for chunk in iter(lambda: fp.read(1024 * 1024), b""):
+            digest.update(chunk)
+    signature = digest.hexdigest()[:16]
+    cache_dir = os.path.join("/tmp", "urban_strategy_cad_terrain_" + signature)
+    with _CAD_TERRAIN_SOURCE_LOCK:
+        os.makedirs(cache_dir, exist_ok=True)
+        with zipfile.ZipFile(archive) as zf:
+            for stem in ("N3L_F001", "N3P_F002"):
+                for ext in ("shp", "shx", "dbf", "prj"):
+                    filename = stem + "." + ext
+                    member = next((x for x in zf.infolist() if os.path.basename(x.filename.replace('\\', '/')) == filename), None)
+                    if member is None or member.file_size > 128 * 1024 * 1024:
+                        raise ValueError("CAD terrain archive incomplete or oversized")
+                    target = os.path.join(cache_dir, filename)
+                    if os.path.isfile(target) and os.path.getsize(target) == member.file_size:
+                        continue
+                    pending = target + "." + uuid.uuid4().hex + ".tmp"
+                    try:
+                        with zf.open(member) as src, open(pending, "wb") as dst:
+                            shutil.copyfileobj(src, dst, length=1024 * 1024)
+                        os.replace(pending, target)
+                    finally:
+                        if os.path.exists(pending):
+                            os.remove(pending)
+    return cache_dir
+
+
+def _cad_source_terrain(scope):
+    directory = _cad_terrain_source_files()
+    if not directory:
+        return None
+    features = []
+    skipped = 0
+    limited = False
+    vertices = 0
+    for stem, point_source in (("N3L_F001", False), ("N3P_F002", True)):
+        base = os.path.join(directory, stem)
+        crs = CRS.from_wkt(Path(base + ".prj").read_text(encoding="utf-8"))
+        to_metric = Transformer.from_crs(4326, crs, always_xy=True).transform
+        to_wgs = Transformer.from_crs(crs, 4326, always_xy=True).transform
+        frame = geometry_transform(to_metric, scope)
+        with shapefile.Reader(base, encoding="cp949", encodingErrors="replace") as reader:
+            fields = [f[0] for f in reader.fields[1:]]
+            for row in reader.iterShapeRecords(bbox=list(frame.bounds)):
+                try:
+                    props = dict(zip(fields, row.record))
+                    value = props.get("HEIGHT")
+                    if value is None or value == "":
+                        value = props.get("NUME") if point_source else props.get("CONT")
+                    e = float(value)
+                    if not math.isfinite(e):
+                        raise ValueError("terrain elevation invalid")
+                    g = shape(row.shape.__geo_interface__)
+                    clipped = g.intersection(frame)
+                    if clipped.is_empty:
+                        continue
+                    vertices += len(row.shape.points)
+                    if len(features) >= 5000 or vertices > 250000:
+                        limited = True
+                        break
+                    layer = "TERRAIN_SPOT_ELEVATION" if point_source else {
+                        "CTD001": "TERRAIN_CONTOUR_INDEX", "CTD002": "TERRAIN_CONTOUR_MAIN", "CTD003": "TERRAIN_CONTOUR_INTERMEDIATE"
+                    }.get(str(props.get("DIVI") or ""), "TERRAIN_CONTOUR_UNSPECIFIED")
+                    clean = _cad_feature({"geometry": mapping(geometry_transform(to_wgs, clipped))}, scope, layer, f"표고 {e:.2f}m" if point_source else f"등고선 {e:g}m", "서울시 1:5000 등고선·표고점(2025-03-18 추출)", e)
+                    if clean:
+                        features.append(clean)
+                except Exception:
+                    skipped += 1
+        if limited:
+            break
+    note = "서울시 1:5000 원본 등고선·표고점 · 공식 파일 자동수집→서버 API · 원자료 표고(Z)"
+    if limited or skipped:
+        note += f" · 일부 누락 {skipped}건" + (" · 도형/좌표 수 제한: 검토범위 축소 필요" if limited else "")
+    return {"key": "terrain", "title": "지형(원본 등고선·표고점)", "status": "PARTIAL" if limited or skipped else "DATA" if features else "EMPTY", "note": note, "features": features}
+
+
+def _cad_terrain(scope):
+    """Scoped elevation points from the existing 20m reference grid, not survey data."""
+    original = _cad_source_terrain(scope)
+    if original is not None:
+        return original
+    meta = _hill_grid_meta()
+    if not meta.get("available"):
+        return {"key": "terrain", "title": "지형", "status": "UNAVAILABLE", "note": "등고선·표고점 기반 지형격자 미설치", "features": []}
+    elev, slope = _hill_grid_arrays()
+    crs = meta.get("grid_crs") or "EPSG:5174"
+    to_metric = Transformer.from_crs(4326, crs, always_xy=True).transform
+    to_wgs = Transformer.from_crs(crs, 4326, always_xy=True).transform
+    metric_scope = geometry_transform(to_metric, scope)
+    r0, r1, c0, c1 = _hill_grid_window(meta, metric_scope)
+    cells = max(0, r1 - r0 + 1) * max(0, c1 - c0 + 1)
+    step = max(1, math.ceil(math.sqrt(cells / 4000)))
+    features = []
+    for row in range(r0, r1 + 1, step):
+        for col in range(c0, c1 + 1, step):
+            e, _ = _hill_grid_values(meta, elev, slope, row, col)
+            if e is None:
+                continue
+            center = _hill_grid_cell(meta, row, col).centroid
+            if not metric_scope.covers(center):
+                continue
+            point = geometry_transform(to_wgs, center)
+            f = _cad_feature({"geometry": mapping(point)}, scope, "TERRAIN_GRID_ELEVATION", f"참조표고 {e:.1f}m", "20m 지형격자 산출값", e)
+            if f:
+                features.append(f)
+    return {"key": "terrain", "title": "지형", "status": "DATA" if features else "EMPTY", "note": "20m격자 기반 참조표고점 · 원본 등고선/측량표고 아님" + (" · 범위에 따라 점 간격 조정" if step > 1 else ""), "features": features}
+
+
+def _cad_local_reference(scope, key, filename, layer, title):
+    # Fixed optional server dataset names; no client-selected file or CRS.
+    path = _data_path(filename)
+    if not os.path.isfile(path):
+        return {"key": key, "title": title, "status": "UNAVAILABLE", "note": "원본 공간자료 미설치", "features": []}
+    if os.path.getsize(path) > 64 * 1024 * 1024:
+        raise ValueError("CAD reference file exceeds server limit")
+    with open(path, encoding="utf-8") as fp:
+        data = json.load(fp)
+    if data.get("type") != "FeatureCollection" or data.get("crs"):
+        raise ValueError("CAD reference must be WGS84 GeoJSON")
+    features = []
+    for f in data.get("features") or []:
+        p = f.get("properties") or {}
+        clean = _cad_feature(f, scope, layer, p.get("name") or p.get("label") or "", "서버 설치 공간자료", p.get("elevation_m") if key == "contours" else None)
+        if clean:
+            features.append(clean)
+        if len(features) > 5000:
+            raise ValueError("CAD reference result limit exceeded")
+    return {"key": key, "title": title, "status": "DATA" if features else "EMPTY", "note": "검토범위 내 설치 원자료", "features": features}
+
+
+class CadContextInput(BaseModel):
+    geometry: Dict[str, Any]
+    client_origin: Optional[str] = Field(None, max_length=250)
+    model_config = {"extra": "forbid"}
+
+
+@app.post("/api/export/cad-context")
+def export_cad_context(inp: CadContextInput, request: Request):
+    scope = _cad_scope(inp.geometry)
+    domain = _validated_planning_client_origin(inp.client_origin, request)
+
+    def facilities(layer_id):
+        _PLANNING_REQUEST_LOCAL.domain = domain
+        _PLANNING_REQUEST_LOCAL.force_retry = False
+        try:
+            # Reuse completed analysis cache; a CAD export does not multiply
+            # each failed transport by the analysis endpoint's outer retries.
+            cache_key = _planning_geometry_signature(mapping(scope)) + ":" + layer_id
+            result = _planning_cache_get(cache_key)
+            if result is None:
+                features, route = _fetch_planning_layer_once(layer_id, mapping(scope))
+                result = {"status": "SUCCESS_DATA" if features else "SUCCESS_EMPTY", "features": features}
+            if result.get("status") not in {"SUCCESS_DATA", "SUCCESS_EMPTY"}:
+                return {"key": layer_id, "title": CAD_FACILITY_LAYERS[layer_id], "status": "ERROR", "note": "도시계획시설 조회 실패 · 재조회 필요", "features": []}
+            output = []
+            skipped = 0
+            for f in result.get("features") or []:
+                try:
+                    layer, kind, name = _cad_facility_type(layer_id, f.get("properties") or {})
+                    clean = _cad_feature(f, scope, layer, kind + " / " + name, "도시계획시설 결정구역")
+                    if clean:
+                        output.append(clean)
+                except Exception:
+                    skipped += 1
+            if len(output) > 5000:
+                return {"key": layer_id, "title": CAD_FACILITY_LAYERS[layer_id], "status": "ERROR", "note": "시설 도형 5,000건 초과 · 검토범위 축소 필요", "features": []}
+            return {"key": layer_id, "title": CAD_FACILITY_LAYERS[layer_id], "status": "PARTIAL" if skipped else "DATA" if output else "EMPTY", "note": f"도형 변환 누락 {skipped}건" if skipped else "결정구역 · 현황 도로/선로와 구분", "features": output}
+        except Exception:
+            return {"key": layer_id, "title": CAD_FACILITY_LAYERS[layer_id], "status": "ERROR", "note": "도시계획시설 조회 실패 · 재조회 필요", "features": []}
+        finally:
+            _PLANNING_REQUEST_LOCAL.domain = ""
+            _PLANNING_REQUEST_LOCAL.force_retry = False
+
+    with ThreadPoolExecutor(max_workers=_vworld_slot_count()) as pool:
+        groups = list(pool.map(facilities, CAD_FACILITY_LAYERS))
+    roads = {"key": "roads", "title": "도로·도로명", "status": "UNAVAILABLE", "note": "도로중심선 자료 미확보", "features": []}
+    try:
+        local = analyze_local_road_facts(mapping(scope), 0)
+        rows = local.get("manage_features") or []
+        if local.get("status") == "unavailable":
+            _PLANNING_REQUEST_LOCAL.domain = domain
+            rows, _ = _fetch_planning_layer_once("TL_SPRD_MANAGE", mapping(scope))
+        output = []
+        for f in rows:
+            p = {str(k).lower(): v for k, v in (f.get("properties") or {}).items()}
+            name = p.get("road_nm") or p.get("rn") or p.get("road_name") or ""
+            clean = _cad_feature(f, scope, "ROAD_CENTERLINE", name, "도로명주소 도로중심선")
+            if clean:
+                output.append(clean)
+        if len(output) > 5000:
+            raise ValueError("road result limit exceeded")
+        roads.update(status="DATA" if output else "EMPTY", note="도로명주소 중심선 · 도로구역/실폭 경계 아님", features=output)
+    except Exception:
+        roads.update(status="ERROR", note="도로중심선 조회 실패 · 재조회 필요")
+    finally:
+        _PLANNING_REQUEST_LOCAL.domain = ""
+        _PLANNING_REQUEST_LOCAL.force_retry = False
+    groups.append(roads)
+    for key, filename, layer, title in (
+        ("railway", "cad_railway.geojson", "RAIL_TRACK", "철도선형"),
+        ("places", "cad_place_names.geojson", "PLACE_NAME", "주요 지명"),
+    ):
+        try:
+            groups.append(_cad_local_reference(scope, key, filename, layer, title))
+        except Exception:
+            groups.append({"key": key, "title": title, "status": "ERROR", "note": "설치 공간자료 읽기 실패", "features": []})
+    # Existing station boundaries and named planning facilities are useful place labels,
+    # but never a substitute for actual railway track lines or a full gazetteer.
+    places = next(g for g in groups if g["key"] == "places")
+    place_features = list(places["features"])
+    reference_notes = []
+    stations = {"key": "stations", "title": "철도역사", "status": "UNAVAILABLE", "note": "역사 원자료 미설치", "features": []}
+    try:
+        station_rows = _station_reference_data().get("features") or []
+        station_output = []
+        for f in station_rows:
+            p = {str(k).lower(): v for k, v in (f.get("properties") or {}).items()}
+            name = p.get("station_name") or p.get("kor_sub_nm") or p.get("name") or ""
+            clean = _cad_feature(f, scope, "RAIL_STATION_BOUNDARY", name, "기존 지하철역사 경계자료")
+            if clean:
+                station_output.append(clean)
+                if name:
+                    anchor = shape(clean["geometry"]).representative_point()
+                    place_features.append(_cad_feature({"geometry": mapping(anchor)}, scope, "PLACE_NAME", name, "철도역명"))
+        stations.update(status="DATA" if station_output else "EMPTY", note="역사 경계 · 선로 선형과 구분", features=station_output)
+    except Exception:
+        reference_notes.append("철도역명 자료 미확보")
+    groups.append(stations)
+    generic_names = set(CAD_FACILITY_LAYERS.values()) | {x[0] for x in CAD_FACILITY_TYPES} | {"기타도시시설", "도시계획시설"}
+    for group in groups[:9]:
+        for f in group["features"]:
+            name = str(f["properties"].get("label") or "").split(" / ", 1)[-1].strip()
+            if not name or name in generic_names:
+                continue
+            anchor = shape(f["geometry"]).representative_point()
+            clean = _cad_feature({"geometry": mapping(anchor)}, scope, "PLACE_NAME", name, "도시계획시설 명칭")
+            if clean:
+                place_features.append(clean)
+    places["features"] = [f for f in place_features if f][:5000]
+    if place_features:
+        places["status"] = "PARTIAL" if len(place_features) > 5000 or places["status"] == "ERROR" else "DATA"
+        places["title"] = "주요 지명(역·시설명 등)"
+        places["note"] = "설치 지명·역명·시설명 표시 · 전체 지명목록을 의미하지 않음" + (" · " + "; ".join(reference_notes) if reference_notes else "")
+    try:
+        groups.append(_cad_terrain(scope))
+    except Exception:
+        groups.append({"key": "terrain", "title": "지형", "status": "ERROR", "note": "지형격자 읽기 실패", "features": []})
+    return {"groups": groups, "coordinate_system": "EPSG:4326", "scope": "선택 검토범위로 도형 자름"}
