@@ -8862,7 +8862,7 @@ def reference_station_entrances():
 # R22 station-line runtime hotfix.  This block is intentionally backend-only:
 # the existing multi-station frontend already consumes /api/reference/station-lines.
 STATION_RUNTIME_BUILD_MARKER = "R22_STATION_HOTFIX_20260901_0915"
-APP_BUILD_MARKER = "R85_UI_STATION_LAYOUT_BOUNDARY_RESTORE_20261007"
+APP_BUILD_MARKER = "R86_WIDE_STATION_ARTERIAL_AGE_20261007"
 _STATION_LINE_CACHE_LOCK = threading.Lock()
 _STATION_LINE_CACHE: Dict[str, Any] = {
     "expires_at": 0.0,

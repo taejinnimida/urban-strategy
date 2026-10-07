@@ -295,6 +295,21 @@
 .station-review-side .spatial-module-head{padding:0;border:0;background:transparent;min-height:auto}
 .station-review-side .spatial-module-head span{font-size:9px}
 #siteDetail_station .station-review-main .spatial-mini-map{height:260px!important}
+#siteDetail_activationArterial{grid-column:span 2!important}
+.arterial-review-grid{display:grid;grid-template-columns:minmax(0,1.08fr) minmax(0,.92fr);gap:8px;align-items:start}
+.arterial-review-main,.arterial-review-side{display:grid;gap:6px;align-content:start;min-width:0}
+.arterial-review-side>.spatial-module-head{margin-top:0}
+.arterial-review-side .station-scheme-list{max-height:430px}
+#siteDetail_activationArterial .arterial-review-main .spatial-mini-map{height:260px!important}
+#siteDetail_age{grid-column:1/-1!important}
+.age-review-grid{display:grid;grid-template-columns:minmax(320px,.9fr) minmax(0,2.1fr);gap:10px;align-items:start}
+.age-review-main,.age-review-side{min-width:0}
+#siteDetail_age .age-review-main .spatial-mini-map{height:270px!important}
+#siteDetail_age .age-review-side .site-analysis-details{margin-top:0}
+#siteDetail_age .age-review-side .spatial-age-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+#siteDetail_age .age-review-side .spatial-age-row{margin:0;min-width:0}
+@media(max-width:1180px) and (min-width:721px){#siteDetail_activationArterial{grid-column:span 2!important}.arterial-review-grid{grid-template-columns:1fr 1fr}#siteDetail_age{grid-column:1/-1!important}.age-review-grid{grid-template-columns:minmax(280px,.9fr) minmax(0,1.6fr)}#siteDetail_age .age-review-side .spatial-age-list{grid-template-columns:1fr}}
+@media(max-width:720px){#siteDetail_activationArterial{grid-column:span 1!important}.arterial-review-grid{grid-template-columns:1fr}#siteDetail_age{grid-column:span 1!important}.age-review-grid{grid-template-columns:1fr}#siteDetail_age .age-review-side .spatial-age-list{grid-template-columns:1fr}}
 @media(max-width:1180px) and (min-width:721px){#siteDetail_station{grid-column:span 2!important}.station-review-grid{grid-template-columns:1fr 1fr}}
 @media(max-width:720px){#siteDetail_station{grid-column:span 1!important}.station-review-grid{grid-template-columns:1fr}}
 /* R85: 역세권 사업방식별 판정은 2칸 고정. 좌우 스크롤 없이 경로/근거를 줄바꿈한다. */
@@ -1728,7 +1743,7 @@ body.service-layout-ready>.shell{display:none!important}
 #ccPlanningFacilityMiniMap,#ccRenewalStatusMiniMap,#ccSmallscaleRenewalMiniMap,#ccUrbanRedevelopmentMiniMap,#ccDevelopmentStatusMiniMap{height:225px!important}
 #siteDetail_planningFacility,#siteDetail_renewal,#siteDetail_smallscaleRenewal,#siteDetail_urbanRedevelopment,#siteDetail_development{grid-column:span 1!important}
 .site-analysis-card .spatial-mini-map{background:#fbfcfd}
-#siteDetail_station,#siteDetail_center,#siteDetail_activationArterial,#siteDetail_safeMedical{grid-column:span 1!important}
+#siteDetail_center,#siteDetail_safeMedical{grid-column:span 1!important}
 #ccStationMiniMap,#ccCenterMiniMap,#ccActivationArterialMiniMap,#ccSafeMedicalMiniMap{height:225px!important}
 .spatial-mini-map .leaflet-control-container{display:block}
 .spatial-mini-map .leaflet-control-scale-line{font-size:8px;background:rgba(255,255,255,.8);border-color:#667085}
@@ -1771,7 +1786,7 @@ body.service-layout-ready>.shell{display:none!important}
 <header class="cc-header">
 <div>
 <h1>서울 도시정비플랫폼</h1>
-<div class="sub">서울특별시 도시정비·개발 사전검토<span class="drawing-version">도면 R85 · 절차 R83</span></div>
+<div class="sub">서울특별시 도시정비·개발 사전검토<span class="drawing-version">도면 R86 · 절차 R83</span></div>
 </div>
 <div class="connection">
 <span class="conn auto">구역면적 AUTO</span>
@@ -2278,18 +2293,24 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="spatial-caption">도면정보 · 구역 내 건축물 진하게 / 구역 밖 주변건축물 얇게 · 법정 노후도 판정은 아래 제도별 현황을 사용</div>
 <div class="spatial-mini-map" id="ccBuildingMiniMap"></div>
 </section>
-<section class="spatial-module site-analysis-card site-analysis-local" id="siteDetail_age">
+<section class="spatial-module site-analysis-card site-analysis-local site-analysis-wide" id="siteDetail_age">
 <div class="spatial-module-head"><b>건축물 노후도</b><span id="spAgeState">건축HUB 조회 전</span></div>
-<div class="spatial-metrics">
-<div><span>분석 건축물</span><b id="spAgeTotal">-</b></div>
-<div><span>20년 경과</span><b id="spAge20">-</b></div>
-<div><span>30년 경과</span><b id="spAge30">-</b></div>
-<div><span>사용승인일 미확인</span><b id="spAgeUnknown">-</b></div>
+<div class="age-review-grid">
+  <div class="age-review-main">
+    <div class="spatial-metrics">
+    <div><span>분석 건축물</span><b id="spAgeTotal">-</b></div>
+    <div><span>20년 경과</span><b id="spAge20">-</b></div>
+    <div><span>30년 경과</span><b id="spAge30">-</b></div>
+    <div><span>사용승인일 미확인</span><b id="spAgeUnknown">-</b></div>
+    </div>
+    <div class="spatial-tags drawing-band-legend" id="spAgeLegend"></div>
+    <div class="spatial-caption">도면정보 · 사용승인 후 경과연수 5년 간격 · 오래될수록 진한 갈색 · 회색 점선은 사용승인일 또는 개별 동 매칭 미확인입니다. 사업별 법정 노후도 판정은 우측 상세기준을 그대로 사용합니다.</div>
+    <div class="spatial-mini-map" id="ccAgeMiniMap"></div>
+  </div>
+  <div class="age-review-side">
+    <details class="site-analysis-details" open><summary>제도별 노후도 판정기준 상세</summary><div class="spatial-age-list" id="spAgeFactList"><div class="spatial-age-row"><div class="spatial-age-name"><b>분석 전</b><span>사업별 노후도 기준</span></div><div class="spatial-age-value"><strong>-</strong><small>건축물 사용승인일·구조·용도를 먼저 조회합니다.</small></div><em class="spatial-age-status REVIEW">확인필요</em></div></div><div class="spatial-age-caption">사업판정은 이 현황 Fact를 그대로 호출합니다. 동일 대상지라도 적용 법령·조례·운영기준에 따라 노후도 결과가 다를 수 있습니다.</div></details>
+  </div>
 </div>
-<div class="spatial-tags drawing-band-legend" id="spAgeLegend"></div>
-<div class="spatial-caption">도면정보 · 사용승인 후 경과연수 5년 간격 · 오래될수록 진한 갈색 · 회색 점선은 사용승인일 또는 개별 동 매칭 미확인입니다. 사업별 법정 노후도 판정은 아래 상세기준을 그대로 사용합니다.</div>
-<div class="spatial-mini-map" id="ccAgeMiniMap"></div>
-<details class="site-analysis-details"><summary>제도별 노후도 판정기준 상세</summary><div class="spatial-age-list" id="spAgeFactList"><div class="spatial-age-row"><div class="spatial-age-name"><b>분석 전</b><span>사업별 노후도 기준</span></div><div class="spatial-age-value"><strong>-</strong><small>건축물 사용승인일·구조·용도를 먼저 조회합니다.</small></div><em class="spatial-age-status REVIEW">확인필요</em></div></div><div class="spatial-age-caption">사업판정은 이 현황 Fact를 그대로 호출합니다. 동일 대상지라도 적용 법령·조례·운영기준에 따라 노후도 결과가 다를 수 있습니다.</div></details>
 </section>
 <section class="spatial-module site-analysis-card site-analysis-local" id="siteDetail_buildingUse">
 <div class="spatial-module-head"><b>건축물 용도</b><span id="spBuildingUseState">건축HUB 조회 전</span></div>
@@ -2369,26 +2390,32 @@ body.service-layout-ready>.shell{display:none!important}
 <div class="spatial-tags" id="spCenterLegend"><span>중심지 유형별 범례</span></div>
 <div class="spatial-mini-map" id="ccCenterMiniMap"></div>
 </section>
-<section class="spatial-module site-analysis-card site-analysis-context" id="siteDetail_activationArterial">
+<section class="spatial-module site-analysis-card site-analysis-context site-analysis-wide" id="siteDetail_activationArterial">
 <div class="spatial-module-head"><b>간선도로</b><span id="spActivationArterialState">자동분석 전</span></div>
-<div class="spatial-metrics">
-<div><span>대상 노선</span><b id="spActivationArterialRoad">-</b></div>
-<div><span>노선형 상업지역 참조도형</span><b id="spActivationArterialZone">-</b></div>
-<div><span>참조도형 좌표계</span><b id="spActivationArterialShapeFiltered">-</b></div>
-<div><span>자료 성격</span><b id="spActivationArterialBothSides">-</b></div>
-<div><span>대상지 편입면적</span><b id="spActivationArterialArea">-</b></div>
-<div><span>대상지 편입률</span><b id="spActivationArterialPct">-</b></div>
-<div><span>가로구역 연계</span><b id="spActivationArterialBlock">-</b></div>
-<div><span>간선가로형 경로</span><b id="spActivationArterialPath">-</b></div>
+<div class="arterial-review-grid">
+  <div class="arterial-review-main">
+    <div class="spatial-metrics">
+    <div><span>대상 노선</span><b id="spActivationArterialRoad">-</b></div>
+    <div><span>노선형 상업지역 참조도형</span><b id="spActivationArterialZone">-</b></div>
+    <div><span>참조도형 좌표계</span><b id="spActivationArterialShapeFiltered">-</b></div>
+    <div><span>자료 성격</span><b id="spActivationArterialBothSides">-</b></div>
+    <div><span>대상지 편입면적</span><b id="spActivationArterialArea">-</b></div>
+    <div><span>대상지 편입률</span><b id="spActivationArterialPct">-</b></div>
+    <div><span>가로구역 연계</span><b id="spActivationArterialBlock">-</b></div>
+    <div><span>간선가로형 경로</span><b id="spActivationArterialPath">-</b></div>
+    </div>
+    <div class="spatial-tags" id="spActivationArterialLegend"><span>판정모형용 노선형 상업지역 참조도형 + 대상지·가로구역 공간관계 분석</span></div>
+    <div class="spatial-caption">도면정보 · 붉은 2점쇄선은 대상지, 주황면은 <b>판정모형용 노선형 상업지역 참조도형</b>, 진한 주황은 대상지 편입부, 붉은선은 주변 도로 문맥입니다. 가로구역 자동분석값이 확보되면 동일 도면에 보라색 점선으로 함께 표시합니다.</div>
+    <div class="spatial-caption"><b>판정 원칙</b> · 역세권활성화 간선도로변 유형은 <b>역세권 외 노선형 상업지역을 포함하는 가로구역 전체 또는 일부</b>를 검토합니다. 여기의 주황면은 서울시 공식 법정도형이 아니라 <b>정비사업플랫폼 내부 판정모형용 참조도형</b>이며, 일반 용도지역 FACT를 대체하지 않습니다. 본 참조도형과 대상지·역세권활성화 전용 가로구역의 중첩관계만 간선가로형 판정에 사용합니다.</div>
+    <div class="spatial-tags"><label><input type="checkbox" id="arterialStationViewToggle" onchange="toggleArterialStationView(this.checked)"> 역세권 경계 보기 (녹색 점선 · 적용 250/350m)</label></div>
+    <div class="spatial-mini-map" id="ccActivationArterialMiniMap"></div>
+  </div>
+  <div class="arterial-review-side">
+    <div class="spatial-module-head"><b>역세권 특례제도 간선도로 검토</b><span>6개 제도 경로 비교 · 활성화는 노선형 상업지역 경로</span></div>
+    <div class="station-scheme-list" id="widthRoadSchemeSummary"><div class="station-scheme-row head"><b>사업방식</b><span>판정</span><span>간선도로 근거</span></div><div class="station-scheme-row"><b>분석 전</b><span class="scheme-tag INFO">-</span><span>구역계를 설정하고 검토하기를 눌러야 계산됩니다.</span></div></div>
+    <div class="spatial-caption">이 표는 역세권 특례제도의 간선도로 관련 경로를 한곳에서 비교합니다. 안심주택·성장잠재권·장기전세·도심복합 유형은 접도현황 엔진의 <b>도로 폭원·접면 공간 Fact</b>를 사용하고, <b>역세권활성화 간선가로형은 도로폭 기준이 아니라 좌측 노선형 상업지역 참조도형과 역세권활성화 전용 가로구역의 관계</b>를 그대로 표시합니다. 도로위계·간선도로 교차지·6m 도로 폐합 등 별도 법정 정의는 각 독립 Rule Module의 판정을 유지합니다.</div>
+  </div>
 </div>
-<div class="spatial-tags" id="spActivationArterialLegend"><span>판정모형용 노선형 상업지역 참조도형 + 대상지·가로구역 공간관계 분석</span></div>
-<div class="spatial-caption">도면정보 · 붉은 2점쇄선은 대상지, 주황면은 <b>판정모형용 노선형 상업지역 참조도형</b>, 진한 주황은 대상지 편입부, 붉은선은 주변 도로 문맥입니다. 가로구역 자동분석값이 확보되면 동일 도면에 보라색 점선으로 함께 표시합니다.</div>
-<div class="spatial-caption"><b>판정 원칙</b> · 역세권활성화 간선도로변 유형은 <b>역세권 외 노선형 상업지역을 포함하는 가로구역 전체 또는 일부</b>를 검토합니다. 여기의 주황면은 서울시 공식 법정도형이 아니라 <b>정비사업플랫폼 내부 판정모형용 참조도형</b>이며, 일반 용도지역 FACT를 대체하지 않습니다. 본 참조도형과 대상지·역세권활성화 전용 가로구역의 중첩관계만 간선가로형 판정에 사용합니다.</div>
-<div class="spatial-tags"><label><input type="checkbox" id="arterialStationViewToggle" onchange="toggleArterialStationView(this.checked)"> 역세권 경계 보기 (녹색 점선 · 적용 250/350m)</label></div>
-<div class="spatial-mini-map" id="ccActivationArterialMiniMap"></div>
-<div class="spatial-module-head" style="margin-top:10px"><b>역세권 특례제도 간선도로 검토</b><span>6개 제도 경로 비교 · 활성화는 노선형 상업지역 경로</span></div>
-<div class="station-scheme-list" id="widthRoadSchemeSummary"><div class="station-scheme-row head"><b>사업방식</b><span>판정</span><span>간선도로 근거</span></div><div class="station-scheme-row"><b>분석 전</b><span class="scheme-tag INFO">-</span><span>구역계를 설정하고 검토하기를 눌러야 계산됩니다.</span></div></div>
-<div class="spatial-caption">이 표는 역세권 특례제도의 간선도로 관련 경로를 한곳에서 비교합니다. 안심주택·성장잠재권·장기전세·도심복합 유형은 접도현황 엔진의 <b>도로 폭원·접면 공간 Fact</b>를 사용하고, <b>역세권활성화 간선가로형은 도로폭 기준이 아니라 위 노선형 상업지역 참조도형과 역세권활성화 전용 가로구역의 관계</b>를 그대로 표시합니다. 도로위계·간선도로 교차지·6m 도로 폐합 등 별도 법정 정의는 각 독립 Rule Module의 판정을 유지합니다.</div>
 </section>
 <section class="spatial-module site-analysis-card site-analysis-context" id="siteDetail_safeMedical">
 <div class="spatial-module-head"><b>의료시설(안심주택)</b><span id="spSafeMedicalState">공식자료 조회 전</span></div>
