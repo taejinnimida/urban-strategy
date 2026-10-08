@@ -5380,6 +5380,22 @@ def _street_block_common_context(
     }
 
 
+def _street_block_contact_components(metric_blocks, barriers, to_wgs):
+    """Refine each candidate with its already-selected boundaries, never merge distinct blocks."""
+    output = []
+    for block, properties in metric_blocks:
+        refined = block.difference(barriers) if barriers is not None and not barriers.is_empty else block
+        parts = [part for part in _polygon_parts(refined) if part.area > 0]
+        groups, _ = _metric_contact_groups(parts, barriers)
+        for indexes in groups:
+            combined = unary_union([parts[i] for i in indexes])
+            output.append({"type": "Feature", "geometry": mapping(geometry_transform(to_wgs, combined)),
+                           "properties": {**properties, "_topology_connected": True,
+                                          "_topology_geometry_parts": len(indexes),
+                                          "_topology_tolerance_m": PARCEL_CONTACT_TOLERANCE_M}})
+    return output
+
+
 def _street_block_apply_rule(
     context: Optional[Dict[str, Any]],
     barrier_features: Optional[List[Dict[str, Any]]] = None,
@@ -5621,7 +5637,7 @@ def _street_block_apply_rule(
             'site_intersection_m2':ia,'block_area_m2':ba,'site_share_of_block_pct':(ia/ba*100.0 if ba>0 else None),
             'block_coverage_of_site_pct':(ia/site_area*100.0 if site_area>0 else None),'merged_basic_units':len(comp)}})
     rule_ms = round((time.perf_counter()-rule_started)*1000.0, 2)
-    return {
+    result = {
         'status': status,
         'block': {'type':'Feature','geometry':mapping(primary_wgs),'properties':{
             'block_area_m2':block_area,'site_intersection_m2':primary_site_area,
@@ -5663,6 +5679,50 @@ def _street_block_apply_rule(
             'neighbor_cache_hits': (neighbor_topology_stats or {}).get('cache_hits'),
         }
     }
+    # Use exactly the roads/facilities adopted by the block engine. Reapplying
+    # every input candidate here would cut isolated internal facilities again.
+    contact_started = time.perf_counter()
+    try:
+        to_contact = Transformer.from_crs(5174, 5186, always_xy=True).transform
+        contact_to_wgs = Transformer.from_crs(5186, 4326, always_xy=True).transform
+        accepted_boundaries = geometry_transform(to_contact, unary_union([road_union, strong_union]))
+        metric_blocks = [(geometry_transform(to_contact, g), {'merged_basic_units': len(comp)})
+                         for comp, g, _, _ in significant[:12]]
+        if not metric_blocks:
+            metric_blocks = [(geometry_transform(to_contact, primary), dict(result['block']['properties']))]
+        refined_blocks = _street_block_contact_components(metric_blocks, accepted_boundaries, contact_to_wgs)
+        usable = []
+        for feature in refined_blocks:
+            metric = geometry_transform(to_metric, shape(feature['geometry']))
+            intersection_area = float(metric.intersection(site_metric).area)
+            if intersection_area < max(1.0, site_area * 0.001) or metric.area <= 1.0:
+                continue
+            feature['properties'].update({
+                'block_area_m2': float(metric.area), 'site_intersection_m2': intersection_area,
+                'site_share_of_block_pct': intersection_area / metric.area * 100.0,
+                'block_coverage_of_site_pct': intersection_area / site_area * 100.0 if site_area else None,
+            })
+            usable.append(feature)
+        if not usable:
+            result['topology_unconfirmed'] = True
+            result['status'] = 'partial'
+            result['metadata'].update({'contact_status': 'UNKNOWN', 'failure_stage': 'boundary_cleanup',
+                                       'failure_code': 'NO_SITE_BLOCK_AFTER_CLEANUP',
+                                       'reason': '경계 정리 후 대상지를 포함하는 구역을 확인하지 못했습니다.'})
+        else:
+            result.update({'topology_refined': True, 'refined_blocks': usable})
+            result['metadata'].update({'contact_status': 'CONFIRMED', 'contact_tolerance_m': PARCEL_CONTACT_TOLERANCE_M,
+                                       'contact_in_generation_request': True, 'original_scope_changed': False})
+    except Exception as exc:
+        # Keep the candidate for display/retry; an unavailable FACT is not a legal FAIL.
+        logging.warning('Street block connection check incomplete (%s)', type(exc).__name__)
+        result['topology_unconfirmed'] = True
+        result['status'] = 'partial'
+        result['metadata'].update({'contact_status': 'UNKNOWN', 'failure_stage': 'contact_check',
+                                   'failure_code': 'CONTACT_CHECK_INCOMPLETE',
+                                   'reason': '후보 구역은 생성됐으나 연결성 확인이 완료되지 않았습니다.'})
+    result['metadata']['contact_elapsed_ms'] = round((time.perf_counter() - contact_started) * 1000.0, 2)
+    return result
 
 
 def _street_block_from_basic_units(
@@ -9064,7 +9124,7 @@ def reference_station_entrances():
 # R22 station-line runtime hotfix.  This block is intentionally backend-only:
 # the existing multi-station frontend already consumes /api/reference/station-lines.
 STATION_RUNTIME_BUILD_MARKER = "R22_STATION_HOTFIX_20260901_0915"
-APP_BUILD_MARKER = "R88_MODULE_FACT_RETRY_20261008"
+APP_BUILD_MARKER = "R89_STREET_BLOCK_BOUNDARY_FIX_20261008"
 _STATION_LINE_CACHE_LOCK = threading.Lock()
 _STATION_LINE_CACHE: Dict[str, Any] = {
     "expires_at": 0.0,
@@ -11736,15 +11796,7 @@ def refine_block_contact(inp):
         block = geometry_transform(to_metric, _topology_geometry(raw["geometry"]))
         local = [cutter_geoms[int(i)] for i in cutter_tree.query(block, predicate='intersects')]
         barriers = unary_union(local) if local else None
-        refined = block.difference(barriers) if barriers is not None else block
-        parts = [p for p in _polygon_parts(refined) if p.area > 0]
-        groups, _ = _metric_contact_groups(parts, barriers)
-        # Group only pieces of the same raw block. Never merge distinct street blocks.
-        for indexes in groups:
-            combined = unary_union([parts[i] for i in indexes])
-            output.append({"type": "Feature", "geometry": mapping(geometry_transform(to_wgs, combined)),
-                           "properties": {**(raw.get("properties") or {}), "_topology_connected": True, "_topology_geometry_parts": len(indexes),
-                                          "_topology_tolerance_m": PARCEL_CONTACT_TOLERANCE_M}})
+        output.extend(_street_block_contact_components([(block, raw.get('properties') or {})], barriers, to_wgs))
     return {"status": "CONFIRMED", "blocks": output, "contact_tolerance_m": PARCEL_CONTACT_TOLERANCE_M,
             "original_scope_changed": False}
 
