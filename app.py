@@ -7172,6 +7172,204 @@ def _district_unit_reference_lookup(hits: List[Dict[str, Any]]) -> Dict[str, Any
     }
 
 
+# R87: district-plan information VIEW only. No geometry, FACT or RULE writes.
+# Official published schemas: OA-20282 upisHistory / OA-20283 upisAnnouncement.
+_DISTRICT_PLAN_INFO_SERVICES = ("upisHistory", "upisAnnouncement")
+_DISTRICT_PLAN_INFO_CACHE: Dict[str, Dict[str, Any]] = {}
+_DISTRICT_PLAN_INFO_LOCKS = {s: threading.Lock() for s in _DISTRICT_PLAN_INFO_SERVICES}
+_DISTRICT_PLAN_INFO_MAX_ROWS = 100000
+
+
+def _district_plan_info_catalog(service: str) -> Dict[str, Any]:
+    """Incrementally read bounded official pages; preserve partial rows on failure.
+
+    Only these two services are allowed. A detail request reads at most three
+    pages per service; later requests resume rather than restart a large table.
+    Raw exceptions/URLs/API messages are never returned or logged here.
+    """
+    if service not in _DISTRICT_PLAN_INFO_SERVICES:
+        raise ValueError("지원하지 않는 지구단위계획 정보자료")
+    key = _seoul_open_data_key()
+    if not key:
+        return {"status": "NO_KEY", "rows": [], "complete": False, "total": None}
+    lock = _DISTRICT_PLAN_INFO_LOCKS[service]
+    if not lock.acquire(blocking=False):
+        cached = _DISTRICT_PLAN_INFO_CACHE.get(service) or {}
+        return {**cached, "rows": list(cached.get("rows") or []), "status": "LOADING", "complete": False}
+    try:
+        now = time.time()
+        data = _DISTRICT_PLAN_INFO_CACHE.get(service)
+        if data is None or now - data["ts"] >= 6 * 60 * 60:
+            data = {"ts": now, "rows": [], "next": 1, "total": None, "complete": False, "status": "PARTIAL"}
+            _DISTRICT_PLAN_INFO_CACHE[service] = data
+        if data["complete"]:
+            return {**data, "rows": list(data["rows"])}
+        deadline = time.monotonic() + 12
+        for _ in range(3):
+            if time.monotonic() >= deadline or data["next"] > _DISTRICT_PLAN_INFO_MAX_ROWS:
+                break
+            start = data["next"]
+            end = min(start + 999, _DISTRICT_PLAN_INFO_MAX_ROWS)
+            try:
+                url = f"{SEOUL_OPEN_DATA_BASE}/{quote(key, safe='')}/json/{service}/{start}/{end}/"
+                response = requests.get(url, timeout=(2, 6), allow_redirects=False)
+                response.raise_for_status()
+                payload = response.json()
+                if not isinstance(payload, dict):
+                    raise ValueError("invalid payload")
+                body = payload.get(service)
+                result = (body.get("RESULT") if isinstance(body, dict) else payload.get("RESULT")) or {}
+                code = str(result.get("CODE") or "") if isinstance(result, dict) else ""
+                if code == "INFO-200":
+                    data.update(complete=True, status="COMPLETE", total=len(data["rows"]))
+                    break
+                if code != "INFO-000" or not isinstance(body, dict):
+                    raise ValueError("invalid service response")
+                page = body.get("row")
+                total = int(body["list_total_count"])
+                if not isinstance(page, list) or total < 0 or not all(isinstance(r, dict) for r in page):
+                    raise ValueError("invalid rows")
+                # Empty/truncated pages before the declared end are incomplete,
+                # not evidence of 'no changes'. Do not skip their missing rows.
+                expected = min(end - start + 1, max(0, total - start + 1))
+                if len(page) != expected:
+                    raise ValueError("incomplete page")
+                data["rows"].extend(page)
+                data.update(next=end + 1, total=total, status="PARTIAL")
+                if end >= total:
+                    data.update(complete=True, status="COMPLETE")
+                    break
+            except Exception:
+                data["status"] = "ERROR"
+                break
+        return {**data, "rows": list(data["rows"])}
+    finally:
+        lock.release()
+
+
+def _district_plan_info_date(value: str) -> Optional[str]:
+    """Normalize an actual ANCMNT_YMD; never infer dates from management codes."""
+    raw = str(value or "").strip()
+    match = re.fullmatch(r"(\d{4})[-./]?(\d{2})[-./]?(\d{2})(?:[ T]00:00:00)?", raw)
+    if not match:
+        return None
+    try:
+        return datetime(int(match[1]), int(match[2]), int(match[3])).strftime("%Y-%m-%d")
+    except ValueError:
+        return None
+
+
+def _district_plan_info_links(rpt: str, ann: str = "", name: str = "") -> Dict[str, str]:
+    # Public navigation parameters verified in the portal's published page JS.
+    links = {"zone": "https://urban.seoul.go.kr/view/map/mapBussInfo.pop?recordCode=" + quote(rpt, safe=""),
+             "search": "https://urban.seoul.go.kr/view/html/PMNU4030200001?searchTxt=" + quote(name, safe="")}
+    if ann and re.fullmatch(r"[A-Za-z0-9_-]{1,80}", ann):
+        links["notice"] = "https://urban.seoul.go.kr/view/html/PMNU4030100001?noticeCode=" + quote(ann, safe="")
+    return links
+
+
+def _district_plan_information(rpt_codes: List[str]) -> Dict[str, Any]:
+    """Join exact official predecessor chains and notices for display only.
+
+    Project-code/name/parent-code alone never pulls in unrelated zone histories.
+    A related notice may concern only part of a zone; it never replaces the
+    effective whole-zone plan or its guidelines in any business calculation.
+    """
+    codes = list(dict.fromkeys(rpt_codes))
+    if any(not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", c) for c in codes):
+        raise ValueError("조서 관리코드 형식 오류")
+    base = {"status": "NO_REFERENCE", "zones": [], "effect_on_scheme_status": "NONE",
+            "source": "서울특별시 열린데이터광장 / 서울도시공간포털",
+            "history_complete": False, "sources": [
+                {"name": "지구단위계획 조서", "url": "https://data.seoul.go.kr/dataList/OA-20280/A/1/datasetView.do"},
+                {"name": "도시계획이력", "url": "https://data.seoul.go.kr/dataList/OA-20282/A/1/datasetView.do"},
+                {"name": "결정고시", "url": "https://data.seoul.go.kr/dataList/OA-20283/A/1/datasetView.do"}],
+            "message": "공식 조서 연결 후 구역정보·변경이력을 조회할 수 있습니다."}
+    tables = _DISTRICT_UNIT_REFERENCE_CACHE.get("data") or {}
+    plans = [r for r in tables.get("plans", []) if _row_value_ci(r, "RPT_MNG_CD") in codes] if tables.get("status") == "OK" else []
+    if not plans:
+        return base
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        snapshots = dict(zip(_DISTRICT_PLAN_INFO_SERVICES, pool.map(_district_plan_info_catalog, _DISTRICT_PLAN_INFO_SERVICES)))
+    history = snapshots["upisHistory"]
+    announcements = snapshots["upisAnnouncement"]
+    by_rpt: Dict[str, List[Dict[str, Any]]] = {}
+    by_ann: Dict[str, List[Dict[str, Any]]] = {}
+    for row in history.get("rows", []):
+        rpt = _row_value_ci(row, "RPT_MNG_CD")
+        if rpt:
+            by_rpt.setdefault(rpt, []).append(row)
+    for row in announcements.get("rows", []):
+        ann = _row_value_ci(row, "ANCMNT_MNG_CD")
+        if ann:
+            by_ann.setdefault(ann, []).append(row)
+    zones = []
+    for code in codes:
+        current = [r for r in plans if _row_value_ci(r, "RPT_MNG_CD") == code]
+        if not current:
+            continue
+        rows = list(current)
+        visited = set()
+        pending = [code]
+        broken = False
+        while pending and len(visited) < 200:
+            rpt = pending.pop()
+            if rpt in visited:
+                continue
+            visited.add(rpt)
+            ancestors = by_rpt.get(rpt, [])
+            if rpt != code and not ancestors:
+                broken = True
+            rows.extend(ancestors)
+            for row in ancestors:
+                previous = _row_value_ci(row, "BFR_RPT_MNG_CD")
+                if previous and previous not in visited:
+                    pending.append(previous)
+        records = []
+        seen = set()
+        for row in rows:
+            ann = _row_value_ci(row, "DCSN_ANCMNT_MNG_CD")
+            identity = (_row_value_ci(row, "RPT_MNG_CD"), ann, _row_value_ci(row, "AREA_CHG_AFTR"))
+            if identity in seen:
+                continue
+            seen.add(identity)
+            notices = by_ann.get(ann, [])
+            notice = notices[0] if len(notices) == 1 else {}
+            date_raw = _row_value_ci(notice, "ANCMNT_YMD")
+            records.append({"rpt_mng_cd": identity[0], "announcement_code": ann,
+                            "date": _district_plan_info_date(date_raw), "date_raw": date_raw,
+                            "notice_number": _row_value_ci(notice, "ANCMNT_NO"),
+                            "notice_agency": _row_value_ci(notice, "ANCMNT_INST"),
+                            "notice_type": _row_value_ci(notice, "ANCMNT_TYPE"),
+                            "title": _row_value_ci(notice, "TTL"), "content": _row_value_ci(notice, "CN")[:12000],
+                            "region_name": _row_value_ci(row, "RGN_NM"), "location_name": _row_value_ci(row, "PSTN_NM"),
+                            "area_existing": _row_value_ci(row, "AREA_EXS"), "area_change": _row_value_ci(row, "AREA_CHG"),
+                            "area_after_change": identity[2],
+                            "notice_status": "LINKED" if len(notices) == 1 else "AMBIGUOUS" if notices else "UNKNOWN",
+                            "links": _district_plan_info_links(identity[0], ann, _row_value_ci(row, "RGN_NM")),
+                            "scope_status": "원문에서 변경 대상·범위 확인 필요"})
+        records.sort(key=lambda r: (r["date"] or "", r["announcement_code"]), reverse=True)
+        name = _row_value_ci(current[0], "RGN_NM")
+        zones.append({"rpt_mng_cd": code, "name": name, "location": _row_value_ci(current[0], "PSTN_NM"),
+                      "area_after_change": _row_value_ci(current[0], "AREA_CHG_AFTR") if len(current) == 1 else "",
+                      "basic_status": "LINKED" if len(current) == 1 else "MULTIPLE_RECORDS",
+                      "first_decision_date": None, "first_decision_status": "UNKNOWN",
+                      "earliest_linked_notice_date": min((r["date"] for r in records if r["date"]), default=None),
+                      "history": records[:200], "history_complete": False,
+                      "history_status": "PARTIAL" if records else "UNKNOWN",
+                      "predecessor_chain_status": "INCOMPLETE" if broken or pending else "LINKED",
+                      "documents_status": "OFFICIAL_PORTAL_CHECK_REQUIRED",
+                      "links": _district_plan_info_links(code, name=name)})
+    catalogs_complete = all(s.get("complete") for s in snapshots.values())
+    status = "PARTIAL" if any(z["history"] for z in zones) else "UNKNOWN"
+    return {**base, "status": status, "zones": zones,
+            "catalogs_complete": catalogs_complete,
+            "can_continue": any(s.get("status") in {"PARTIAL", "LOADING"} and s.get("next", 1) <= _DISTRICT_PLAN_INFO_MAX_ROWS for s in snapshots.values()),
+            "catalogs": {s: {"status": v.get("status"), "loaded": len(v.get("rows", [])), "total": v.get("total"), "complete": bool(v.get("complete")),
+                             "collected_at": datetime.fromtimestamp(v["ts"], ZoneInfo("Asia/Seoul")).isoformat(timespec="seconds") if v.get("ts") else None} for s, v in snapshots.items()},
+            "message": "연결된 조서·고시 이력입니다. 전체 변경연혁, 최초 결정일, 현행 시행지침은 공식 구역정보에서 확인하세요."}
+
+
 @lru_cache(maxsize=8)
 def _seoul_space_catalog_keyword(keyword: str) -> Dict[str, Any]:
     """Search Seoul's spatial-information inventory for a legacy/original layer.
@@ -7941,6 +8139,10 @@ class PlanningLayersInput(BaseModel):
     # 브라우저 origin을 함께 보내 서버 호출의 VWorld domain/referer를 동일하게 맞춘다.
     # 서버는 실제 요청 Host와 일치하는 origin만 허용한다.
     client_origin: Optional[str] = None
+
+
+class DistrictUnitPlanInfoInput(BaseModel):
+    rpt_codes: List[str] = Field(default_factory=list, max_length=20)
 
 
 class DistrictUnitPlanReferenceInput(BaseModel):
@@ -8862,7 +9064,7 @@ def reference_station_entrances():
 # R22 station-line runtime hotfix.  This block is intentionally backend-only:
 # the existing multi-station frontend already consumes /api/reference/station-lines.
 STATION_RUNTIME_BUILD_MARKER = "R22_STATION_HOTFIX_20260901_0915"
-APP_BUILD_MARKER = "R86_WIDE_STATION_ARTERIAL_AGE_20261007"
+APP_BUILD_MARKER = "R88_MODULE_FACT_RETRY_20261008"
 _STATION_LINE_CACHE_LOCK = threading.Lock()
 _STATION_LINE_CACHE: Dict[str, Any] = {
     "expires_at": 0.0,
@@ -9406,6 +9608,19 @@ def development_intersections(inp: GeometryInput):
         raise HTTPException(status_code=500, detail=f"개발사업구역 중첩분석 오류: {exc}") from exc
     finally:
         _release_heavy_analysis_cache("development")
+
+
+@app.post("/api/reference/district-unit-plan-information")
+def district_unit_plan_information(inp: DistrictUnitPlanInfoInput):
+    """District-plan detail VIEW; no writes to existing FACT/RULE/RESULT."""
+    try:
+        return _district_plan_information(list(inp.rpt_codes or []))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="조서 관리코드 형식 오류") from exc
+    except Exception:
+        return {"status": "ERROR", "zones": [], "history_complete": False,
+                "effect_on_scheme_status": "NONE", "can_continue": False,
+                "message": "지구단위계획 상세자료 조회에 실패했습니다. 공식 구역정보에서 확인하거나 다시 조회하세요."}
 
 
 @app.post("/api/reference/district-unit-plan-current")
