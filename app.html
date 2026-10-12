@@ -3880,28 +3880,47 @@ function mainMapCadastralColor(){
   const satVisible=mainMapLayerChecked('mainLayerSatelliteToggle',true)&&mainMapLayerValue('mainLayerSatelliteOpacity',1)>0;
   return satVisible?'#ffffff':'#111827';
 }
+function mainMapLegacyZoningColorSpec(name){
+  const n=String(name||'').replace(/\s+/g,'');
+  if(/자연녹지/.test(n))return {fill:'#b7e4c7',border:'#2d6a4f'};
+  if(/생산녹지/.test(n))return {fill:'#95d5b2',border:'#237a57'};
+  if(/보전녹지/.test(n))return {fill:'#74c69d',border:'#1b6b45'};
+  if(/중심상업/.test(n))return {fill:'#f4a6a6',border:'#a61b1b'};
+  if(/일반상업/.test(n))return {fill:'#f7b7a3',border:'#b54708'};
+  if(/근린상업/.test(n))return {fill:'#ffd6a5',border:'#c06b00'};
+  if(/유통상업/.test(n))return {fill:'#ffc6a8',border:'#b54708'};
+  if(/준공업/.test(n))return {fill:'#cdb4db',border:'#6941c6'};
+  if(/공업/.test(n))return {fill:'#b8a1d9',border:'#5925dc'};
+  if(/준주거/.test(n))return {fill:'#ffe08a',border:'#a15c00'};
+  if(/제3종일반주거/.test(n))return {fill:'#fff0a6',border:'#a67c00'};
+  if(/제2종일반주거/.test(n))return {fill:'#fff5bf',border:'#9a7b00'};
+  if(/제1종일반주거/.test(n))return {fill:'#fff9d6',border:'#8a7300'};
+  if(/전용주거/.test(n))return {fill:'#fffde8',border:'#776b00'};
+  return {fill:'#d1e9ff',border:'#175cd3'};
+}
 function mainMapZoningStyle(f){
-  const spec=zoningColorSpec(planningFeatureName(f)),o=mainMapLayerValue('mainLayerZoningOpacity',.92);
-  return planningPathStyle(spec,{pane:'mainZoningFactPane',weight:1.5,opacity:o,fillOpacity:o*.8});
+  const p=f?.properties||{},spec=mainMapLegacyZoningColorSpec(p._planning_name||p.name||p.zonename||'');
+  const o=mainMapLayerValue('mainLayerZoningOpacity',.92);
+  // 서울시 표시도면 위에 대상지 교차 Fact의 경계를 재확인하는 용도. 면은 약하게 겹쳐 이중착색을 방지한다.
+  return {pane:'mainZoningFactPane',weight:2.1,color:spec.border,opacity:Math.min(1,o+.08),fillColor:spec.fill,fillOpacity:Math.min(.28,o*.30)};
 }
 function mainMapCadastralStyle(){
   const o=mainMapLayerValue('mainLayerCadastralOpacity',1);
   return {pane:'mainCadastralFactPane',weight:1.55,color:mainMapCadastralColor(),opacity:o,fill:false,fillOpacity:0};
 }
-function mainMapFacilityStyle(f){
-  return planningPathStyle(planningFacilityDrawingSpec(f),{pane:'mainFacilityFactPane',opacity:mainMapLayerValue('mainLayerFacilityOpacity',.88)});
+function mainMapFacilityStyle(){
+  const o=mainMapLayerValue('mainLayerFacilityOpacity',.88);
+  return {pane:'mainFacilityFactPane',weight:2.6,color:'#073b8c',opacity:o,fillColor:'#2e90fa',fillOpacity:Math.min(.28,o*.32)};
 }
 function regulatoryMapStyle(f,opacityId='mainLayerRegulatoryOpacity'){
-  const p=f?.properties||{},standard=regulatoryPlanningSpec(p._regulatory_id,p._regulatory_label);
-  if(standard)return planningPathStyle(standard,{pane:'mainRegulatoryFactPane',opacity:mainMapLayerValue(opacityId,.72)});
-  const cat=p._regulatory_category||'PLANNING',o=mainMapLayerValue(opacityId,.72);
+  const p=f?.properties||{},cat=p._regulatory_category||'PLANNING',o=mainMapLayerValue(opacityId,.72);
   const spec={STRONG:['#7a271a','#f97066'],CONDITIONAL:['#b54708','#fec84b'],NATURE:['#067647','#75e0a7'],HERITAGE:['#6938ef','#bdb4fe'],WATER:['#175cd3','#84adff'],DISASTER:['#c4320a','#fdb022'],PLANNING:['#344054','#98a2b3'],DISASTER:['#b42318','#fecdca']}[cat]||['#344054','#98a2b3'];
   return {pane:'mainRegulatoryFactPane',weight:2.2,color:spec[0],opacity:o,fillColor:spec[1],fillOpacity:Math.min(.30,o*.34),dashArray:cat==='PLANNING'?'5,3':null};
 }
-const mainMapZoningLayer=planningGeoJSON(null,{pane:'mainZoningFactPane',style:mainMapZoningStyle});
+const mainMapZoningLayer=L.geoJSON(null,{pane:'mainZoningFactPane',style:mainMapZoningStyle});
 const mainMapCadastralLayer=L.geoJSON(null,{pane:'mainCadastralFactPane',style:mainMapCadastralStyle});
-const mainMapFacilityLayer=planningGeoJSON(null,{pane:'mainFacilityFactPane',style:mainMapFacilityStyle});
-const mainMapRegulatoryLayer=planningGeoJSON(null,{pane:'mainRegulatoryFactPane',style:f=>regulatoryMapStyle(f),onEachFeature:(f,l)=>{const p=f.properties||{};l.bindTooltip(`${escHtml(p._regulatory_label||'규제정보')} · 추가 검토`);}});
+const mainMapFacilityLayer=L.geoJSON(null,{pane:'mainFacilityFactPane',style:mainMapFacilityStyle});
+const mainMapRegulatoryLayer=L.geoJSON(null,{pane:'mainRegulatoryFactPane',style:f=>regulatoryMapStyle(f),onEachFeature:(f,l)=>{const p=f.properties||{};l.bindTooltip(`${escHtml(p._regulatory_label||'규제정보')} · 추가 검토`);}});
 
 function setMainMapLayerVisible(layer,on){if(on){if(!map.hasLayer(layer))layer.addTo(map);}else if(map.hasLayer(layer))map.removeLayer(layer);}
 function updateMainMapLayerPct(id,valueId){const el=document.getElementById(id),out=document.getElementById(valueId);if(el&&out)out.textContent=`${Math.round(Number(el.value)||0)}%`;}
@@ -3915,9 +3934,9 @@ function updateMainMapLayerDataStatus(){
   const dataEl=document.getElementById('mainMapLayerDataStatus');if(!dataEl)return;
   const zc=mainMapZoningLayer.getLayers().length,pc=mainMapCadastralLayer.getLayers().length,fc=mainMapFacilityLayer.getLayers().length,rc=mainMapRegulatoryLayer.getLayers().length;
   const active=[];
-  if(mainMapLayerChecked('mainLayerZoningToggle'))active.push(`용도지역 ${zc?'지침스타일 벡터':mainMapPreviewHealth.zoning+' · 원본 WMS'}`);
+  if(mainMapLayerChecked('mainLayerZoningToggle'))active.push(`용도지역 ${mainMapPreviewHealth.zoning}`);
   if(mainMapLayerChecked('mainLayerCadastralToggle'))active.push(`지적 ${mainMapPreviewHealth.cadastral}`);
-  if(mainMapLayerChecked('mainLayerFacilityToggle'))active.push(`시설 ${fc?'지침스타일 벡터':mainMapPreviewHealth.facility+' · 원본 WMS'}`);
+  if(mainMapLayerChecked('mainLayerFacilityToggle'))active.push(`시설 ${mainMapPreviewHealth.facility}`);
   if(mainMapLayerChecked('mainLayerRegulatoryToggle',true))active.push(`규제 ${rc}건`);
   const preview=active.length?`표시도면 · ${active.join(' · ')}`:'표시도면 OFF';
   const fact=(zc||pc||fc||rc)?`분석 Fact · 용도지역 ${zc} · 지적 ${pc} · 시설 ${fc} · 규제 ${rc}`:'분석 Fact · 검토 전';
@@ -3930,9 +3949,9 @@ function syncMainMapLayerVisibility(){
   if(vworldTileKeyReady())setMainMapLayerVisible(mapBaseSatellite,satOn&&satOpacity>0);else setMainMapLayerVisible(mapBaseSatellite,false);
 
   mainMapZoningPreview.setOpacity(zoneOpacity);mainMapCadastralPreview.setOpacity(cadOpacity);mainMapFacilityPreview.setOpacity(facilityOpacity);
-  setMainMapLayerVisible(mainMapZoningPreview,zoneOn&&zoneOpacity>0&&mainMapZoningLayer.getLayers().length===0);
+  setMainMapLayerVisible(mainMapZoningPreview,zoneOn&&zoneOpacity>0);
   setMainMapLayerVisible(mainMapCadastralPreview,cadOn&&cadOpacity>0);
-  setMainMapLayerVisible(mainMapFacilityPreview,facilityOn&&facilityOpacity>0&&mainMapFacilityLayer.getLayers().length===0);
+  setMainMapLayerVisible(mainMapFacilityPreview,facilityOn&&facilityOpacity>0);
 
   // 분석 후에는 동일 체크박스 아래에 기존 벡터 Fact를 추가로 겹쳐 대상지 교차부를 검증한다.
   setMainMapLayerVisible(mainMapZoningLayer,zoneOn&&zoneOpacity>0&&mainMapZoningLayer.getLayers().length>0);
@@ -20551,13 +20570,26 @@ function analyticsAddressText(){
   }
   return labels.slice(0,20).join(' / ').slice(0,1000);
 }
+function analyticsLegalParcelLabel(pnu,props){
+  // 관리자 장부 표시만 보완: 동일 PNU의 확보된 법정 주소를 재사용한다.
+  const ledger=props.land_ledger||{},hub=hubRecordsByPnu.get(pnu)||[];
+  const values=[ledger.ldCodeNm,...hub.map(r=>r.platPlc),props.jibun_addr,props.addr,props.address,props._input_address,props.jibun_nm,props.jibun].map(v=>String(v||'').replace(/,/g,' ').replace(/\s+/g,' ').trim());
+  const lot=/^\d{19}$/.test(pnu)?((pnu[10]==='2'?'산 ':'')+Number(pnu.slice(11,15))+(Number(pnu.slice(15,19))?'-'+Number(pnu.slice(15,19)):'')):'';
+  for(const text of values){
+    const m=text.match(/(?:^|\s)(\S+구)\s+(\S+(?:동|가))(?=\s|$)/);
+    if(m&&lot)return m[1]+' '+m[2]+' '+lot;
+  }
+  const legal=String(ledger.ldCodeNm||'').trim();
+  if(legal&&lot)return legal+' '+lot;
+  return values.slice(2).find(Boolean)||values.find(Boolean)||'';
+}
 function analyticsParcelEntries(){
   const out=[];
   for(const pnu0 of selectedParcelPnus){
     const pnu=String(pnu0||'').trim();
     if(!pnu)continue;
     const props=parcelFeatureMap.get(pnu)?.properties||{};
-    const label=String(props._input_address||props.jibun_nm||props.jibun||props.addr||props.address||'').trim().slice(0,300);
+    const label=analyticsLegalParcelLabel(pnu,props).slice(0,300);
     out.push({pnu,label});
     if(out.length>=5000)break;
   }

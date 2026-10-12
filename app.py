@@ -8983,6 +8983,38 @@ def admin_include_me(request: Request, response: Response, _: bool = Depends(_ad
     return {"ok": True, "message": "This browser is included in analytics."}
 
 
+def _admin_analysis_location(row: Dict[str, Any]) -> str:
+    """관리자 위치표시 전용. 저장된 PNU/주소만 사용하며 외부 조회하지 않는다."""
+    gu_by_code = dict(zip(
+        "11110 11140 11170 11200 11215 11230 11260 11290 11305 11320 11350 11380 11410 11440 11470 11500 11530 11545 11560 11590 11620 11650 11680 11710 11740".split(),
+        "종로구 중구 용산구 성동구 광진구 동대문구 중랑구 성북구 강북구 도봉구 노원구 은평구 서대문구 마포구 양천구 강서구 구로구 금천구 영등포구 동작구 관악구 서초구 강남구 송파구 강동구".split()))
+    parcels = [p for p in (row.get("parcels") or []) if isinstance(p, dict)]
+    first = parcels[0] if parcels else {}
+    pnu = str(first.get("pnu") or "")
+    valid = bool(re.fullmatch(r"[0-9]{19}", pnu))
+    gu = gu_by_code.get(pnu[:5], "") if valid else ""
+    lot = (("산 " if pnu[10] == "2" else "") + str(int(pnu[11:15])) +
+           ("-" + str(int(pnu[15:19])) if int(pnu[15:19]) else "")) if valid else ""
+    label = re.sub(r"[,\s]+", " ", str(first.get("label") or "")).strip()
+    entered = re.sub(r"[,\s]+", " ", str(row.get("address_text") or "")).strip()
+    # 다른 필지의 입력주소를 대표필지와 결합하지 않는다.
+    candidates = [label] if parcels else [entered.split(" / ")[0]]
+    result = ""
+    for text in candidates:
+        full = re.search(r"(?:^|\s)(\S+구)\s+(\S+(?:동|가))\s+((?:산\s*)?\d+(?:-\d+)?)", text)
+        if full and (not gu or full[1] == gu):
+            result = f"{full[1]} {full[2]} {lot or full[3]}"
+            break
+        dong = re.search(r"(?:^|\s)(\S+(?:동|가))\s+((?:산\s*)?\d+(?:-\d+)?)", text)
+        if dong and gu:
+            result = f"{gu} {dong[1]} {lot or dong[2]}"
+            break
+    if not result:
+        result = f"{gu + ' ' if gu else ''}법정동 미확인 {lot}".strip() if parcels else (entered or "-")
+    count = max(len(parcels), int(row.get("parcel_count") or 0))
+    return result + (f" 외 {count - 1}필지" if count > 1 else "")
+
+
 @app.get("/admin", response_class=HTMLResponse)
 def admin_dashboard(request: Request, _: bool = Depends(_admin_auth_or_session)):
     rows = _analytics_rows(5000)
@@ -9022,9 +9054,7 @@ def admin_dashboard(request: Request, _: bool = Depends(_admin_auth_or_session))
             pnu = str(item.get("pnu") or "")
             label = str(item.get("label") or "").strip()
             parcel_lines.append(f"{html.escape(label) + ' · ' if label else ''}<code>{html.escape(pnu)}</code>")
-        representative = str(r.get("address_text") or "").strip()
-        if not representative and parcels:
-            representative = str((parcels[0] or {}).get("label") or "").strip()
+        representative = _admin_analysis_location(r)
         lat, lng = r.get("centroid_lat"), r.get("centroid_lng")
         map_link = f'<a href="https://map.kakao.com/link/map/{lat},{lng}" target="_blank">지도</a>' if lat is not None and lng is not None else "-"
         status = str(r.get("status") or "running")
