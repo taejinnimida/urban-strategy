@@ -9124,7 +9124,7 @@ def reference_station_entrances():
 # R22 station-line runtime hotfix.  This block is intentionally backend-only:
 # the existing multi-station frontend already consumes /api/reference/station-lines.
 STATION_RUNTIME_BUILD_MARKER = "R22_STATION_HOTFIX_20260901_0915"
-APP_BUILD_MARKER = "R89_STREET_BLOCK_BOUNDARY_FIX_20261008"
+APP_BUILD_MARKER = "R91_CAD_DRAW_NATIONAL_TERRAIN_20261012"
 _STATION_LINE_CACHE_LOCK = threading.Lock()
 _STATION_LINE_CACHE: Dict[str, Any] = {
     "expires_at": 0.0,
@@ -11099,14 +11099,14 @@ def _cad_scope(geometry):
         if g.geom_type not in {"Polygon", "MultiPolygon"} or g.is_empty or not g.is_valid:
             raise ValueError()
         minx, miny, maxx, maxy = g.bounds
-        if not (126.7 <= minx <= maxx <= 127.3 and 37.3 <= miny <= maxy <= 37.8):
+        if not (124.0 <= minx <= maxx <= 132.2 and 32.8 <= miny <= maxy <= 38.8):
             raise ValueError()
         bbox_area, _ = GEOD.geometry_area_perimeter(box(*g.bounds))
         if abs(float(bbox_area)) > 10_000_000:
             raise ValueError()
         return g
     except Exception as exc:
-        raise HTTPException(status_code=422, detail="DXF 검토범위는 서울지역의 유효한 구역계이며 조회 BOX 10㎢ 이내여야 합니다.") from exc
+        raise HTTPException(status_code=422, detail="DXF 검토범위는 대한민국 범위의 유효한 구역계이며 조회 BOX 10㎢ 이내여야 합니다.") from None
 
 
 def _cad_feature(feature, scope, layer, label="", source="", elevation_m=None):
@@ -11266,36 +11266,218 @@ def _cad_source_terrain(scope):
     return {"key": "terrain", "title": "지형(원본 등고선·표고점)", "status": "PARTIAL" if limited or skipped else "DATA" if features else "EMPTY", "note": note, "features": features}
 
 
+_CAD_DEM_CACHE = {}
+_CAD_DEM_CACHE_LOCK = threading.Lock()
+_CAD_DEM_TILE_SLOT = threading.BoundedSemaphore(2)
+_CAD_DEM_EXPORT_SLOT = threading.BoundedSemaphore(1)
+_CAD_DEM_SOURCE = "Mapzen/Tilezen Terrain Tiles · AWS Open Data · USGS SRTM/GMTED2010 · NOAA ETOPO1"
+
+
+def _cad_dem_decode_png(data):
+    """Bounded 256px Terrarium decoding; no image dependency or source dump."""
+    if len(data) > 1_000_000 or not data.startswith(b'\x89PNG\r\n\x1a\n'):
+        raise ValueError("terrain PNG unavailable")
+    offset = 8; channels = None; compressed = []; ended = False
+    while offset + 12 <= len(data):
+        length = struct.unpack('>I', data[offset:offset+4])[0]
+        kind = data[offset+4:offset+8]; end = offset+8+length
+        if length > 1_000_000 or end+4 > len(data):
+            raise ValueError("terrain PNG incomplete")
+        payload = data[offset+8:end]
+        if zlib.crc32(kind+payload) & 0xffffffff != struct.unpack('>I', data[end:end+4])[0]:
+            raise ValueError("terrain PNG checksum")
+        if kind == b'IHDR':
+            if channels is not None or length != 13:
+                raise ValueError("terrain PNG header")
+            width,height,depth,color,compression,filter_method,interlace = struct.unpack('>IIBBBBB', payload)
+            if (width,height,depth,compression,filter_method,interlace) != (256,256,8,0,0,0) or color not in (2,6):
+                raise ValueError("terrain PNG format")
+            channels = 3 if color == 2 else 4
+        elif kind == b'IDAT':
+            if channels is None:
+                raise ValueError("terrain PNG order")
+            compressed.append(payload)
+        elif kind == b'IEND':
+            ended = True; break
+        offset = end+4
+    if not ended or channels is None or not compressed:
+        raise ValueError("terrain PNG incomplete")
+    stride = 256*channels; expected = (stride+1)*256
+    decoder = zlib.decompressobj(); raw = decoder.decompress(b''.join(compressed), expected+1)
+    if len(raw) != expected or not decoder.eof or decoder.unconsumed_tail or decoder.unused_data:
+        raise ValueError("terrain PNG expansion")
+    values = array('f'); previous = bytearray(stride)
+    for row in range(256):
+        base = row*(stride+1); mode = raw[base]; pixels = bytearray(raw[base+1:base+1+stride])
+        if mode not in range(5):
+            raise ValueError("terrain PNG filter")
+        for i in range(stride):
+            left = pixels[i-channels] if i >= channels else 0
+            up = previous[i]; corner = previous[i-channels] if i >= channels else 0
+            if mode == 1: predictor = left
+            elif mode == 2: predictor = up
+            elif mode == 3: predictor = (left+up)//2
+            elif mode == 4:
+                p = left+up-corner; distances = (abs(p-left),abs(p-up),abs(p-corner))
+                predictor = left if distances[0] <= min(distances[1:]) else up if distances[1] <= distances[2] else corner
+            else: predictor = 0
+            pixels[i] = (pixels[i]+predictor)&255
+        for col in range(256):
+            i = col*channels; height = pixels[i]*256+pixels[i+1]+pixels[i+2]/256-32768
+            values.append(height if -500 <= height <= 9000 and (channels == 3 or pixels[i+3]) else math.nan)
+        previous = pixels
+    return values
+
+
+def _cad_dem_tile(zoom, x, y, deadline):
+    if not (10 <= zoom <= 12 and 0 <= x < 2**zoom and 0 <= y < 2**zoom):
+        raise ValueError("terrain tile bounds")
+    key = (zoom,x,y)
+    with _CAD_DEM_CACHE_LOCK:
+        hit = _CAD_DEM_CACHE.get(key)
+        if hit is not None and time.monotonic()-hit[0] < 86400:
+            return hit[1]
+    # Fixed host/path only. The client never supplies a URL, key or source path.
+    url = f"https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{zoom}/{x}/{y}.png"
+    for attempt in range(2):
+        remaining = deadline-time.monotonic()
+        if remaining <= 0:
+            break
+        try:
+            with _CAD_DEM_TILE_SLOT:
+                with requests.get(url, timeout=(3,min(10,remaining)), stream=True, allow_redirects=False) as response:
+                    if response.status_code != 200:
+                        raise ValueError("terrain tile HTTP unavailable")
+                    chunks = []; size = 0
+                    for chunk in response.iter_content(65536):
+                        size += len(chunk)
+                        if size > 1_000_000 or time.monotonic() > deadline:
+                            raise ValueError("terrain tile limit")
+                        chunks.append(chunk)
+            values = _cad_dem_decode_png(b''.join(chunks))
+            with _CAD_DEM_CACHE_LOCK:
+                if key not in _CAD_DEM_CACHE and len(_CAD_DEM_CACHE) >= 32:
+                    _CAD_DEM_CACHE.pop(next(iter(_CAD_DEM_CACHE)))
+                _CAD_DEM_CACHE[key] = (time.monotonic(),values)
+            return values
+        except Exception:
+            if attempt == 0 and time.monotonic()+.2 < deadline:
+                time.sleep(.2)
+    raise ValueError("terrain tile unavailable") from None
+
+
+def _cad_dem_pixel(lon, lat, zoom):
+    total = 256*2**zoom
+    return (lon+180)/360*total, (1-math.asinh(math.tan(math.radians(lat)))/math.pi)/2*total
+
+
+def _cad_dem_lonlat(x, y, zoom):
+    total = 256*2**zoom
+    return round((x+.5)/total*360-180,10), round(math.degrees(math.atan(math.sinh(math.pi*(1-2*(y+.5)/total)))),10)
+
+
+def _cad_dem_contours(grid, zoom, x0, y0, interval):
+    """Piecewise-linear contours on the actual API grid; bounded VIEW output."""
+    segments = {}; count = 0; limited = False
+    height = len(grid); width = len(grid[0]) if height else 0
+    coords = [[_cad_dem_lonlat(x0+c,y0+r,zoom) for c in range(width)] for r in range(height)]
+    for row in range(height-1):
+        for col in range(width-1):
+            points = [coords[row][col],coords[row][col+1],coords[row+1][col+1],coords[row+1][col]]
+            elevations = [grid[row][col],grid[row][col+1],grid[row+1][col+1],grid[row+1][col]]
+            if not all(math.isfinite(v) for v in elevations):
+                continue
+            for indexes in ((0,1,2),(0,2,3)):
+                lo = min(elevations[i] for i in indexes); hi = max(elevations[i] for i in indexes)
+                for level in range(math.ceil(lo/interval)*interval,math.floor(hi/interval)*interval+1,interval):
+                    crossing = []
+                    for a,b in ((indexes[0],indexes[1]),(indexes[1],indexes[2]),(indexes[2],indexes[0])):
+                        if not (min(elevations[a],elevations[b]) < level <= max(elevations[a],elevations[b])):
+                            continue
+                        if points[a] > points[b]: a,b = b,a
+                        fraction = (level-elevations[a])/(elevations[b]-elevations[a])
+                        crossing.append(tuple(round(points[a][k]+fraction*(points[b][k]-points[a][k]),10) for k in (0,1)))
+                    if len(crossing) == 2 and crossing[0] != crossing[1]:
+                        segments.setdefault(level,[]).append(crossing); count += 1
+                        if count >= 120000:
+                            limited = True; break
+                if limited: break
+            if limited: break
+        if limited: break
+    return segments, limited
+
+
+def _cad_api_terrain(scope):
+    from shapely.geometry import Point, MultiLineString
+    from shapely.ops import linemerge
+    result = {"key":"terrain","title":"지형(전국 DEM 산출 참고자료)","status":"ERROR",
+              "note":"전국 지형 API 조회 실패 · 재조회 필요","features":[]}
+    if not _CAD_DEM_EXPORT_SLOT.acquire(blocking=False):
+        result.update(status="UNAVAILABLE",note="지형 조회 중입니다. 잠시 뒤 다시 다운로드하세요."); return result
+    try:
+        minx,miny,maxx,maxy = scope.bounds; zoom = 12
+        while True:
+            left,bottom = _cad_dem_pixel(minx,miny,zoom); right,top = _cad_dem_pixel(maxx,maxy,zoom)
+            x0,x1,y0,y1 = math.floor(left)-1,math.ceil(right)+1,math.floor(top)-1,math.ceil(bottom)+1
+            width,height = x1-x0+1,y1-y0+1
+            if width*height <= 65536 and width <= 2048 and height <= 2048: break
+            zoom -= 1
+            if zoom < 10: return {**result,"note":"지형 조회범위가 너무 넓습니다. 범위를 줄여 다시 다운로드하세요."}
+        keys = [(zoom,x,y) for x in range(x0//256,x1//256+1) for y in range(y0//256,y1//256+1)]
+        if len(keys) > 9: return {**result,"note":"지형 조회범위를 줄여 다시 다운로드하세요."}
+        deadline = time.monotonic()+45; tiles = {}; failed = []
+        def collect(key):
+            try:return key,_cad_dem_tile(*key,deadline)
+            except Exception:return key,None
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            for key,values in pool.map(collect,keys):
+                if values is None: failed.append(key)
+                else: tiles[key] = values
+        if not tiles: return result
+        def value(x,y):
+            values = tiles.get((zoom,x//256,y//256))
+            return values[(y%256)*256+x%256] if values is not None else math.nan
+        grid = [[value(x0+c,y0+r) for c in range(width)] for r in range(height)]
+        finite = [v for row in grid for v in row if math.isfinite(v)]
+        if not finite: return {**result,"note":"전국 지형 API의 유효 표고값이 없습니다. 재조회 필요"}
+        interval = max(10,10*math.ceil((max(finite)-min(finite))/1280))
+        segments,limited = _cad_dem_contours(grid,zoom,x0,y0,interval)
+        features = []; vertices = 0
+        for level,lines in sorted(segments.items()):
+            geometry = linemerge(MultiLineString(lines)); vertices += len(lines)*2
+            if vertices > 250000 or len(features) >= 3000: limited = True; break
+            layer = "TERRAIN_DEM_CONTOUR_INDEX" if level % (interval*5) == 0 else "TERRAIN_DEM_CONTOUR_MAIN"
+            clean = _cad_feature({"geometry":mapping(geometry)},scope,layer,f"DEM 참고 등고선 {level:g}m",_CAD_DEM_SOURCE,level)
+            if clean:features.append(clean)
+        step = max(1,math.ceil(math.sqrt(width*height/1500))); valid_points = 0
+        for row in range(0,height,step):
+            for col in range(0,width,step):
+                elevation = grid[row][col]
+                if not math.isfinite(elevation): continue
+                point = Point(_cad_dem_lonlat(x0+col,y0+row,zoom))
+                clean = _cad_feature({"geometry":mapping(point)},scope,"TERRAIN_DEM_ELEVATION",f"DEM 참고표고 {elevation:.1f}m",_CAD_DEM_SOURCE,elevation)
+                if clean: features.append(clean); valid_points += 1
+        if valid_points == 0:
+            point = scope.representative_point(); px,py = _cad_dem_pixel(point.x,point.y,zoom); elevation = value(math.floor(px),math.floor(py))
+            if math.isfinite(elevation):
+                clean = _cad_feature({"geometry":mapping(point)},scope,"TERRAIN_DEM_ELEVATION",f"DEM 참고표고 {elevation:.1f}m",_CAD_DEM_SOURCE,elevation)
+                if clean: features.append(clean)
+        if not features: return {**result,"note":"검토범위의 유효 지형값을 확보하지 못했습니다. 재조회 필요"}
+        nodata = any(not math.isfinite(grid[r][c]) and scope.covers(Point(_cad_dem_lonlat(x0+c,y0+r,zoom))) for r in range(height) for c in range(width))
+        note = f"전국 공통 공개 DEM API · 산출 참고 등고선 {interval}m 간격 및 표고점 · 원본 측량자료 아님 · {_CAD_DEM_SOURCE}"
+        if failed or nodata or limited:note += " · 일부 자료 미확보/출력제한: 범위 축소 또는 재조회 필요"
+        resolution = 40075016.68557849/(256*2**zoom)*math.cos(math.radians((miny+maxy)/2))
+        return {**result,"status":"PARTIAL" if failed or nodata or limited else "DATA","note":note,"features":features[:5000],
+                "source_type":"PUBLIC_DEM_API_DERIVED","sample_spacing_m":round(resolution,2),"contour_interval_m":interval}
+    except Exception:
+        return result
+    finally:
+        _CAD_DEM_EXPORT_SLOT.release()
+
+
 def _cad_terrain(scope):
-    """Scoped elevation points from the existing 20m reference grid, not survey data."""
-    original = _cad_source_terrain(scope)
-    if original is not None:
-        return original
-    meta = _hill_grid_meta()
-    if not meta.get("available"):
-        return {"key": "terrain", "title": "지형", "status": "UNAVAILABLE", "note": "등고선·표고점 기반 지형격자 미설치", "features": []}
-    elev, slope = _hill_grid_arrays()
-    crs = meta.get("grid_crs") or "EPSG:5174"
-    to_metric = Transformer.from_crs(4326, crs, always_xy=True).transform
-    to_wgs = Transformer.from_crs(crs, 4326, always_xy=True).transform
-    metric_scope = geometry_transform(to_metric, scope)
-    r0, r1, c0, c1 = _hill_grid_window(meta, metric_scope)
-    cells = max(0, r1 - r0 + 1) * max(0, c1 - c0 + 1)
-    step = max(1, math.ceil(math.sqrt(cells / 4000)))
-    features = []
-    for row in range(r0, r1 + 1, step):
-        for col in range(c0, c1 + 1, step):
-            e, _ = _hill_grid_values(meta, elev, slope, row, col)
-            if e is None:
-                continue
-            center = _hill_grid_cell(meta, row, col).centroid
-            if not metric_scope.covers(center):
-                continue
-            point = geometry_transform(to_wgs, center)
-            f = _cad_feature({"geometry": mapping(point)}, scope, "TERRAIN_GRID_ELEVATION", f"참조표고 {e:.1f}m", "20m 지형격자 산출값", e)
-            if f:
-                features.append(f)
-    return {"key": "terrain", "title": "지형", "status": "DATA" if features else "EMPTY", "note": "20m격자 기반 참조표고점 · 원본 등고선/측량표고 아님" + (" · 범위에 따라 점 간격 조정" if step > 1 else ""), "features": features}
+    # R91: one nationwide API and one derivation path for every export location.
+    return _cad_api_terrain(scope)
 
 
 def _cad_local_reference(scope, key, filename, layer, title):
@@ -11367,10 +11549,12 @@ def export_cad_context(inp: CadContextInput, request: Request):
         groups = list(pool.map(facilities, CAD_FACILITY_LAYERS))
     roads = {"key": "roads", "title": "도로·도로명", "status": "UNAVAILABLE", "note": "도로중심선 자료 미확보", "features": []}
     try:
-        local = analyze_local_road_facts(mapping(scope), 0)
-        rows = local.get("manage_features") or []
-        if local.get("status") == "unavailable":
-            _PLANNING_REQUEST_LOCAL.domain = domain
+        _PLANNING_REQUEST_LOCAL.domain = domain
+        _PLANNING_REQUEST_LOCAL.force_retry = False
+        cached = _planning_cache_get(_planning_geometry_signature(mapping(scope)) + ":TL_SPRD_MANAGE")
+        if cached is not None and cached.get("status") in {"SUCCESS_DATA", "SUCCESS_EMPTY"}:
+            rows = cached.get("features") or []
+        else:
             rows, _ = _fetch_planning_layer_once("TL_SPRD_MANAGE", mapping(scope))
         output = []
         for f in rows:
@@ -11436,8 +11620,8 @@ def export_cad_context(inp: CadContextInput, request: Request):
     try:
         groups.append(_cad_terrain(scope))
     except Exception:
-        groups.append({"key": "terrain", "title": "지형", "status": "ERROR", "note": "지형격자 읽기 실패", "features": []})
-    return {"groups": groups, "coordinate_system": "EPSG:4326", "scope": "선택 검토범위로 도형 자름"}
+        groups.append({"key": "terrain", "title": "지형", "status": "ERROR", "note": "전국 지형 API 조회 실패 · 재조회 필요", "features": []})
+    return {"groups": groups, "coordinate_system": "EPSG:4326", "export_coordinate_system": "EPSG:5179", "scope": "선택 검토범위로 도형 자름"}
 
 
 # R76: centimetre-level contact is a FACT; original geometry is never buffered closed.
@@ -11521,9 +11705,10 @@ def _topology_geometry(geometry):
 def _contact_display_boundary(parts, groups, to_wgs):
     """VIEW linework only. Never a replacement for the source analysis geometry.
 
-    Within each confirmed contact group, hide the sub-5cm parcel seam in the
-    display outline. Real separated groups and original holes remain visible.
-    The reference is linework, so it cannot be reused as an area denominator.
+    Treat facing boundaries within 5cm as one contact in the display topology,
+    including seams left inside an already dissolved Polygon. Draw exteriors
+    only; parcel lines and excluded land remain in their original data layers.
+    Keep the existing building-line sampling reference independently unchanged.
     """
     lines = []
     reference = None
@@ -11531,28 +11716,26 @@ def _contact_display_boundary(parts, groups, to_wgs):
     for indexes in groups:
         originals = [parts[i] for i in indexes]
         exact = unary_union(originals)
-        display = exact
+        # R90: a Polygon can still contain a thin slit/hole. Component count
+        # must not bypass contact normalization. Closing is VIEW-only and is
+        # applied separately to each existing <=5cm contact group.
+        display = exact.buffer(radius, join_style=2).buffer(-radius, join_style=2)
+        if display.is_empty or not display.is_valid:
+            raise ValueError("contact outline unavailable")
+        # Preserve the R89 sampling geometry used by other existing features.
+        reference_display = exact
         if len(originals) > 1:
-            display = exact.buffer(radius, join_style=2).buffer(-radius, join_style=2)
-            if display.is_empty or not display.is_valid:
-                raise ValueError("contact outline unavailable")
+            reference_display = display
         display_parts = _polygon_parts(display)
-        if len(groups) == 1 and len(display_parts) == 1:
+        reference_parts = _polygon_parts(reference_display)
+        if len(groups) == 1 and len(reference_parts) == 1:
             # A sampling reference for building-line extraction, not the
             # user's business-area geometry or any area-ratio denominator.
-            shell = Polygon(display_parts[0].exterior.coords)
+            shell = Polygon(reference_parts[0].exterior.coords)
             reference = {"type": "Feature", "geometry": mapping(geometry_transform(to_wgs, shell)),
                          "properties": {"reference_only": True}}
         for p in display_parts:
             lines.append(LineString(p.exterior.coords))
-            lines.extend(LineString(r.coords) for r in p.interiors)
-        # Closing must never erase a genuine original interior ring, including
-        # narrow holes. Also retain collective holes formed by several parcels.
-        for p in originals:
-            for ring in p.interiors:
-                line = LineString(ring.coords)
-                if not any(line.equals(existing) for existing in lines):
-                    lines.append(line)
     linework = unary_union(lines)
     if linework.is_empty or linework.geom_type not in {"LineString", "MultiLineString"}:
         raise ValueError("contact outline unavailable")
