@@ -2069,11 +2069,11 @@ body.service-layout-ready>.shell{display:none!important}
   <div>DXF에는 지적·건축물·도로·도로명과 도시계획시설을 구분해 담습니다. 시설은 도로·공원·연결녹지·완충녹지 등 세부 종류별 레이어와 명칭을 표시합니다. 주요 지명은 역명·시설명을 표시합니다. 지형은 전국 공통 공개 DEM API에서 참고 등고선·표고점을 생성하며 원본 측량자료와 구분합니다. 철도는 선로·역사 경계·시설 결정구역을 구분하고, 미확보 항목은 도면 범례와 다운로드 결과에 표시합니다.</div>
   <div class="boundary-action-row"><button class="boundary-primary" id="downloadBaseDxfBtn" type="button" onclick="downloadReviewBaseDxf()" disabled>현재 검토범위 현황 DXF 다운로드</button><button class="boundary-dxf-draw" id="cadScopePolygonBtn" type="button" onclick="startCadScopeDraw('polygon')">검토구역 자유도형 그리기</button><button class="boundary-dxf-draw" id="cadScopeRectangleBtn" type="button" onclick="startCadScopeDraw('rectangle')">검토구역 사각 그리기</button><button class="boundary-dxf-draw" id="cadScopeCircleBtn" type="button" onclick="startCadScopeDraw('circle')">검토구역 원형 그리기</button><button id="clearCadScopeBtn" type="button" onclick="clearCadScope()" hidden>다운로드 범위 해제</button></div>
   <div class="boundary-dxf-status" id="boundaryDxfStatus">이 탭에서 DXF 다운로드 범위를 그릴 수 있습니다. 전국 공통 좌표계 EPSG:5179(m)로 작성합니다.</div>
-  <div class="boundary-dxf-status">이 DXF로 만든 EPSG:5179 SHP는 좌표계 파일(.prj)을 함께 업로드하세요.</div>
+  <div class="boundary-dxf-status">이 DXF로 만든 EPSG:5179 SHP는 .shp 단독 업로드가 가능합니다. 원본 좌표계 파일(.prj)이 있으면 함께 업로드하세요.</div>
 </div>
 <input class="boundary-shp-input" id="boundaryShpInput" type="file" multiple accept=".zip,.shp,.shx,.dbf,.prj,.cpg,application/zip" onchange="loadBoundaryShp()"/>
 <div class="boundary-action-row"><button onclick="clearBoundaryShp()" type="button">SHP 입력 취소</button></div>
-<div class="boundary-address-status boundary-shp-status" id="boundaryShpStatus">SHP 파일(.shp) 또는 SHP 구성파일 ZIP(.zip)을 업로드하세요. EPSG:5186 SHP는 .shp 단독 업로드가 가능하며, 다른 좌표계는 .prj를 함께 선택하거나 ZIP으로 올리세요. Polygon/MultiPolygon과 폐합된 선형 SHP를 구역계로 사용합니다.</div>
+<div class="boundary-address-status boundary-shp-status" id="boundaryShpStatus">SHP 파일(.shp) 또는 SHP 구성파일 ZIP(.zip)을 업로드하세요. EPSG:5179·5186 좌표범위는 .shp 단독 업로드 시 자동해석합니다. 다른 좌표계는 같은 이름의 .prj를 함께 선택하거나 ZIP으로 올리세요. Polygon/MultiPolygon과 폐합된 선형 SHP를 구역계로 사용합니다.</div>
 </div>
 
 <div class="boundary-common-tools">
@@ -17985,6 +17985,7 @@ runAllSchemeChecks=function(){return runSchemeChecksWhenCoreReady();};
 
 // ---------- Boundary input: draw / Seoul parcel address ----------
 let boundaryEditHistory=[];
+let boundaryShpLoadRevision=0;
 const BOUNDARY_EDIT_HISTORY_MAX=12;
 function boundaryDeepClone(v){
   if(v==null)return v;
@@ -18054,12 +18055,13 @@ async function confirmCurrentBoundary(){
 }
 function restartSiteReviewCompletely(){
   if((activeGeometry||selectedParcelPnus.size) && !window.confirm('현재 대상지와 분석결과를 모두 비우고 처음부터 다시 검토할까요?'))return;
+  boundaryShpLoadRevision++;
   boundaryEditHistory=[];
   clearActiveArea();
   const addr=document.getElementById('boundaryAddressInput');if(addr)addr.value='';
   const shpInput=document.getElementById('boundaryShpInput');if(shpInput)shpInput.value='';
   const addrStatus=document.getElementById('boundaryAddressStatus');if(addrStatus)addrStatus.textContent='서울특별시 지번주소를 기준으로 검색합니다.';
-  const shpStatus=document.getElementById('boundaryShpStatus');if(shpStatus)shpStatus.textContent='SHP 파일(.shp) 또는 SHP 구성파일 ZIP(.zip)을 업로드하세요. EPSG:5186 SHP는 .shp 단독 업로드가 가능하며, 다른 좌표계는 .prj를 함께 선택하거나 ZIP으로 올리세요. Polygon/MultiPolygon과 폐합된 선형 SHP를 구역계로 사용합니다.';
+  const shpStatus=document.getElementById('boundaryShpStatus');if(shpStatus)shpStatus.textContent='SHP 파일(.shp) 또는 SHP 구성파일 ZIP(.zip)을 업로드하세요. EPSG:5179·5186 좌표범위는 .shp 단독 업로드 시 자동해석합니다. 다른 좌표계는 같은 이름의 .prj를 함께 선택하거나 ZIP으로 올리세요. Polygon/MultiPolygon과 폐합된 선형 SHP를 구역계로 사용합니다.';
   const dxfStatus=document.getElementById('boundaryDxfStatus');if(dxfStatus)dxfStatus.textContent='이 탭에서 DXF 다운로드 범위를 그릴 수 있습니다. 전국 공통 좌표계 EPSG:5179(m)로 작성합니다.';
   setBoundaryInputMode('draw');setParcelFindMode('input');
   setSiteReviewStatus('구역계 재검토 · 대상지를 새로 설정하세요.','review');
@@ -18687,8 +18689,9 @@ function boundaryLineClosed(coords){
   const ax=Number(a[0]),ay=Number(a[1]),bx=Number(b[0]),by=Number(b[1]);
   if(![ax,ay,bx,by].every(Number.isFinite))return false;
   const projected=Math.max(Math.abs(ax),Math.abs(ay),Math.abs(bx),Math.abs(by))>1000;
-  const tol=projected?0.05:1e-7;
-  return Math.hypot(ax-bx,ay-by)<=tol;
+  if(projected)return Math.hypot(ax-bx,ay-by)<=0.05+1e-6;
+  const distance=turf.distance(turf.point([ax,ay]),turf.point([bx,by]),{units:'meters'});
+  return Number.isFinite(distance)&&distance<=0.05+1e-6;
 }
 function boundaryClosedLineToPolygon(coords,properties){
   if(!boundaryLineClosed(coords))return null;
@@ -18731,6 +18734,18 @@ function geometryLooksLikeSeoul(geometry){
     return minx>=126.65&&maxx<=127.35&&miny>=37.35&&maxy<=37.80;
   }catch(e){return false;}
 }
+function geometryLooksLikeKoreaBoundary(geometry){
+  try{
+    const b=turf.bbox(turf.feature(geometry));
+    return b.every(Number.isFinite)&&b[0]>=124&&b[2]<=132.2&&b[1]>=32.8&&b[3]<=38.8;
+  }catch(e){return false;}
+}
+function geometryLooksLike5179(geometry){
+  try{
+    const [minx,miny,maxx,maxy]=turf.bbox(turf.feature(geometry));
+    return minx>=500000&&maxx<=1600000&&miny>=1300000&&maxy<=2200000;
+  }catch(e){return false;}
+}
 function geometryLooksLike5186(geometry){
   try{
     const [minx,miny,maxx,maxy]=turf.bbox(turf.feature(geometry));
@@ -18765,6 +18780,59 @@ function transformGeometry5186ToWgs84(geometry){
   };
   walk(clone.coordinates);return clone;
 }
+function dxfUnproject5179(x,y){
+  // EPSG:5179 (Korea 2000 / Unified CS), matching the nationwide DXF output.
+  const a=6378137,invF=298.257222101,f=1/invF,e2=f*(2-f),ep2=e2/(1-e2),k0=.9996;
+  const lon0=127.5*Math.PI/180,lat0=38*Math.PI/180,FE=1000000,FN=2000000;
+  const e4=e2*e2,e6=e4*e2;
+  const M0=a*((1-e2/4-3*e4/64-5*e6/256)*lat0-(3*e2/8+3*e4/32+45*e6/1024)*Math.sin(2*lat0)+(15*e4/256+45*e6/1024)*Math.sin(4*lat0)-(35*e6/3072)*Math.sin(6*lat0));
+  const M=M0+(Number(y)-FN)/k0,mu=M/(a*(1-e2/4-3*e4/64-5*e6/256));
+  const e1=(1-Math.sqrt(1-e2))/(1+Math.sqrt(1-e2)),e12=e1*e1,e13=e12*e1,e14=e13*e1;
+  const phi1=mu+(3*e1/2-27*e13/32)*Math.sin(2*mu)+(21*e12/16-55*e14/32)*Math.sin(4*mu)+(151*e13/96)*Math.sin(6*mu)+(1097*e14/512)*Math.sin(8*mu);
+  const sin1=Math.sin(phi1),cos1=Math.cos(phi1),tan1=Math.tan(phi1);
+  const N1=a/Math.sqrt(1-e2*sin1*sin1),R1=a*(1-e2)/Math.pow(1-e2*sin1*sin1,1.5),T1=tan1*tan1,C1=ep2*cos1*cos1,D=(Number(x)-FE)/(N1*k0);
+  const lat=phi1-(N1*tan1/R1)*(D*D/2-(5+3*T1+10*C1-4*C1*C1-9*ep2)*D**4/24+(61+90*T1+298*C1+45*T1*T1-252*ep2-3*C1*C1)*D**6/720);
+  const lon=lon0+(D-(1+2*T1+C1)*D**3/6+(5-2*C1+28*T1-3*C1*C1+8*ep2+24*T1*T1)*D**5/120)/cos1;
+  const result=[lon*180/Math.PI,lat*180/Math.PI],h=1e-6;
+  // Refine the inverse against the existing forward projection, including the eastern islands.
+  for(let i=0;i<2;i++){
+    const p=dxfProject5179(result[0],result[1]),px=dxfProject5179(result[0]+h,result[1]),py=dxfProject5179(result[0],result[1]+h);
+    const ax=(px[0]-p[0])/h,ay=(px[1]-p[1])/h,bx=(py[0]-p[0])/h,by=(py[1]-p[1])/h,det=ax*by-ay*bx;
+    if(!Number.isFinite(det)||Math.abs(det)<1)break;
+    const dx=Number(x)-p[0],dy=Number(y)-p[1];
+    result[0]+=(dx*by-dy*bx)/det;result[1]+=(ax*dy-ay*dx)/det;
+  }
+  return result;
+}
+function prepareBoundaryShpCoordinates(parsed,allowAssume=true){
+  const assumedCrs=new Set();
+  const geometry=g=>{
+    if(!g)return g;
+    const copy=boundaryDeepClone(g);
+    if(g.type==='GeometryCollection'){copy.geometries=(g.geometries||[]).map(geometry);return copy;}
+    if(!allowAssume||geometryLooksLikeKoreaBoundary(g))return copy;
+    const epsg=geometryLooksLike5179(g)?5179:geometryLooksLike5186(g)?5186:null;
+    if(!epsg)return copy;
+    const walk=v=>{
+      if(Array.isArray(v)&&v.length>=2&&Number.isFinite(Number(v[0]))&&Number.isFinite(Number(v[1]))){
+        const ll=epsg===5179?dxfUnproject5179(Number(v[0]),Number(v[1])):dxfUnproject5186(Number(v[0]),Number(v[1]));
+        v[0]=ll[0];v[1]=ll[1];return;
+      }
+      if(Array.isArray(v))for(const child of v)walk(child);
+    };
+    walk(copy.coordinates);
+    if(!geometryLooksLikeKoreaBoundary(copy))return boundaryDeepClone(g);
+    assumedCrs.add('EPSG:'+epsg);return copy;
+  };
+  const visit=obj=>{
+    if(!obj)return obj;
+    if(Array.isArray(obj))return obj.map(visit);
+    if(obj.type==='FeatureCollection')return {...obj,features:(obj.features||[]).map(visit)};
+    if(obj.type==='Feature')return {...obj,geometry:geometry(obj.geometry),properties:{...(obj.properties||{})}};
+    return geometry(obj);
+  };
+  return {parsed:visit(parsed),assumedCrs:[...assumedCrs]};
+}
 function boundaryShpFileExt(file){
   const m=String(file?.name||'').toLowerCase().match(/(\.[^.]+)$/);return m?m[1]:'';
 }
@@ -18779,7 +18847,7 @@ async function parseBoundaryShpSelection(files){
   const shpFile=selected.find(f=>boundaryShpFileExt(f)==='.shp');
   if(!shpFile)throw new Error('.shp 파일 또는 SHP 구성파일 ZIP을 선택하세요.');
   const base=boundaryShpBaseName(shpFile);
-  const companion=ext=>selected.find(f=>boundaryShpFileExt(f)===ext&&boundaryShpBaseName(f)===base)||selected.find(f=>boundaryShpFileExt(f)===ext);
+  const companion=ext=>selected.find(f=>boundaryShpFileExt(f)===ext&&boundaryShpBaseName(f)===base);
   const dbfFile=companion('.dbf'),prjFile=companion('.prj'),cpgFile=companion('.cpg');
   const obj={shp:await shpFile.arrayBuffer()};
   if(dbfFile)obj.dbf=await dbfFile.arrayBuffer();
@@ -18790,30 +18858,28 @@ async function parseBoundaryShpSelection(files){
 }
 async function loadBoundaryShp(){
   const input=document.getElementById('boundaryShpInput'),status=document.getElementById('boundaryShpStatus');
+  const revision=++boundaryShpLoadRevision;
   const files=Array.from(input?.files||[]);
   if(!files.length){if(status)status.textContent='SHP 파일(.shp) 또는 SHP 구성파일 ZIP(.zip)을 선택하세요.';return;}
   if(typeof shp!=='function'){if(status)status.textContent='SHP 해석 라이브러리를 불러오지 못했습니다. 페이지를 새로고침한 뒤 다시 시도하세요.';return;}
   try{
     if(status)status.textContent=`SHP 구역계를 읽는 중입니다... · 선택 ${files.length}개 파일`;
     const loaded=await parseBoundaryShpSelection(files);
-    let polys=normalizeShpGeojson(loaded.parsed);
+    if(revision!==boundaryShpLoadRevision)return;
+    const prepared=prepareBoundaryShpCoordinates(loaded.parsed,loaded.hasPrj!==true);
+    const polys=normalizeShpGeojson(prepared.parsed);
     if(!polys.length)throw new Error('구역계로 사용할 Polygon/MultiPolygon 또는 폐합된 선형 객체가 없습니다. 열린 선은 구역계로 자동변환하지 않습니다.');
     const polygonizedLineCount=polys.filter(f=>f?.properties?._boundary_polygonized_from_line===true).length;
-    let assumed5186=false;
-    // 플랫폼 DXF에서 작성한 SHP처럼 PRJ가 없더라도 좌표범위가 EPSG:5186에 명확히 해당하면
-    // .shp 단독 업로드와 ZIP 업로드 모두 동일하게 WGS84로 변환한다.
-    // 그 외 투영좌표는 임의 추정하지 않는다.
-    if(polys.every(f=>geometryLooksLike5186(f.geometry))){
-      polys=polys.map(f=>({type:'Feature',properties:Object.assign({},f.properties||{}),geometry:transformGeometry5186ToWgs84(f.geometry)}));
-      assumed5186=true;
-    }
     const merged=mergeFeatureGeometries(polys);
     if(!merged?.geometry)throw new Error('구역계 도형 병합에 실패했습니다.');
-    if(!geometryLooksLikeSeoul(merged.geometry)){
-      if(loaded.mode==='files'&&!loaded.hasPrj)throw new Error('좌표계를 확인할 수 없습니다. EPSG:5186 이외 좌표계라면 .prj를 함께 선택하거나 ZIP으로 올리세요.');
-      throw new Error('서울 범위의 WGS84 좌표로 변환되지 않았습니다. .prj의 좌표계를 확인하세요.');
+    if(!geometryLooksLikeKoreaBoundary(merged.geometry)){
+      if(loaded.mode==='files'&&!loaded.hasPrj)throw new Error('좌표계를 확인할 수 없습니다. EPSG:5179·5186 또는 대한민국 경위도 범위를 확인하거나, 같은 이름의 .prj를 함께 선택하세요.');
+      throw new Error('대한민국 범위의 경위도로 변환되지 않았습니다. SHP와 같은 이름의 .prj 및 원본 좌표계를 확인하세요.');
     }
     pushBoundaryEditHistory('SHP 구역계 적용');
+    // Clear the previous parcel source before exposing the confirm button.
+    // The later boundary-contact request must not allow old parcels to replace this SHP.
+    selectedParcelPnus.clear();parcelFeatureMap.clear();
     activeGeometry=merged.geometry;
     drawnItems.clearLayers();addressPreviewFeatures=[];addressPreviewLayer.clearLayers();
     L.geoJSON(merged,{style:{weight:4,color:'#d92d20',fillColor:'#fecdca',fillOpacity:.04}}).eachLayer(l=>drawnItems.addLayer(l));
@@ -18823,10 +18889,11 @@ async function loadBoundaryShp(){
     renderBoundaryParcelSelectionSummary();
     siteReviewRunning=false;
     setSiteReviewStatus('SHP 구역계 설정 완료 · ‘검토하기’를 눌러 공식 공간분석을 실행하세요.','ready');
-    if(status)status.textContent=`${loaded.label} · 구역계 ${polys.length}개를 설정했습니다.${polygonizedLineCount?` · 폐합선 ${polygonizedLineCount}개를 Polygon으로 자동변환`:''}${assumed5186?' · 좌표범위 EPSG:5186 자동해석':''} ‘구역계 확정’ 또는 ‘검토하기’를 진행하세요.`;
+    if(status)status.textContent=`${loaded.label} · 구역계 ${polys.length}개를 설정했습니다.${polygonizedLineCount?` · 폐합선 ${polygonizedLineCount}개를 Polygon으로 자동변환`:''}${prepared.assumedCrs.length?' · 좌표범위 '+prepared.assumedCrs.join(' / ')+' 자동해석':''} ‘구역계 확정’ 또는 ‘검토하기’를 진행하세요.`;
     try{
       await measureAndSync();
     }catch(syncErr){
+      if(revision!==boundaryShpLoadRevision)return;
       console.warn('[boundary-shp] post-sync',syncErr);
       renderBoundaryParcelSelectionSummary();
       siteReviewRunning=false;
@@ -18834,12 +18901,14 @@ async function loadBoundaryShp(){
       if(status)status.textContent=`${loaded.label} · 구역계 설정 완료 · 부가 화면 동기화 일부 오류: ${String(syncErr?.message||syncErr)}`;
     }
   }catch(e){
+    if(revision!==boundaryShpLoadRevision)return;
     if(status)status.textContent='SHP 적용 실패: '+String(e?.message||e);
   }
 }
 function clearBoundaryShp(){
+  boundaryShpLoadRevision++;
   const input=document.getElementById('boundaryShpInput');if(input)input.value='';
-  const status=document.getElementById('boundaryShpStatus');if(status)status.textContent='SHP 파일(.shp) 또는 SHP 구성파일 ZIP(.zip)을 업로드하세요. EPSG:5186 SHP는 .shp 단독 업로드가 가능하며, 다른 좌표계는 .prj를 함께 선택하거나 ZIP으로 올리세요. Polygon/MultiPolygon과 폐합된 선형 SHP를 구역계로 사용합니다.';
+  const status=document.getElementById('boundaryShpStatus');if(status)status.textContent='SHP 파일(.shp) 또는 SHP 구성파일 ZIP(.zip)을 업로드하세요. EPSG:5179·5186 좌표범위는 .shp 단독 업로드 시 자동해석합니다. 다른 좌표계는 같은 이름의 .prj를 함께 선택하거나 ZIP으로 올리세요. Polygon/MultiPolygon과 폐합된 선형 SHP를 구역계로 사용합니다.';
 }
 
 // ---------- Mobile responsive workflow ----------
