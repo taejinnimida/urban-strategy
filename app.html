@@ -3657,15 +3657,15 @@ if(vworldTileKeyReady())mapBaseSatellite.addTo(map);
 // 경계 작성 전 즉시 확인하는 표시용 도면. '투명 빈 레이어'가 아니라 서울시 GeoServer의 실제 UPIS/연속지적 도면을 요청한다.
 // 이 레이어들은 시각화 전용이며 FACT/RULE/RESULT에는 입력되지 않는다.
 const MAIN_MAP_PREVIEW_WMS='https://map.seoul.go.kr/geoserver/wms';
-const mainMapZoningPreview=L.tileLayer.wms(MAIN_MAP_PREVIEW_WMS,{
-  layers:'tile_map:upis_c_uq111',format:'image/png',transparent:true,version:'1.1.1',pane:'mainZoningPreviewPane',opacity:.92,attribution:'서울시 UPIS'
+// R95: display-only tiles retain official paint and render text using browser Korean fonts.
+const mainMapZoningPreview=L.tileLayer('/api/reference/main-plan-tile/zoning/{z}/{x}/{y}.svg',{
+  tileSize:512,zoomOffset:-1,maxZoom:20,keepBuffer:0,updateWhenIdle:true,bounds:[[37.4,126.75],[37.72,127.2]],pane:'mainZoningPreviewPane',opacity:.92,attribution:'서울시 UPIS'
 });
 const mainMapCadastralPreview=L.tileLayer.wms(MAIN_MAP_PREVIEW_WMS,{
   layers:'tile_map:s_lsmd_cbnd',format:'image/png',transparent:true,version:'1.1.1',pane:'mainCadastralPreviewPane',opacity:1,attribution:'서울시 연속지적'
 });
-const mainMapFacilityPreview=L.tileLayer.wms(MAIN_MAP_PREVIEW_WMS,{
-  layers:'tile_map:upis_c_uq151,tile_map:upis_c_uq152,tile_map:upis_c_uq153',
-  format:'image/png',transparent:true,version:'1.1.1',pane:'mainFacilityPreviewPane',opacity:.88,attribution:'서울시 UPIS'
+const mainMapFacilityPreview=L.tileLayer('/api/reference/main-plan-tile/facility/{z}/{x}/{y}.svg',{
+  tileSize:512,zoomOffset:-1,maxZoom:20,keepBuffer:0,updateWhenIdle:true,bounds:[[37.4,126.75],[37.72,127.2]],pane:'mainFacilityPreviewPane',opacity:.88,attribution:'서울시 UPIS'
 });
 const mainMapPreviewHealth={zoning:'대기',cadastral:'대기',facility:'대기'};
 function bindMainMapPreviewHealth(layer,key){

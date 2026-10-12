@@ -12017,3 +12017,106 @@ def refine_block_contact(inp):
 @app.post("/api/spatial/block-contact")
 def block_contact(inp: BlockContactInput):
     return refine_block_contact(inp)
+
+
+# R95 main-map VIEW only. Never feeds analysis FACT, RULE, or site-panel renderers.
+_MAIN_PLAN_GROUPS = {
+    "zoning": ("tile_map:upis_c_uq111",),
+    "facility": ("tile_map:upis_c_uq151", "tile_map:upis_c_uq152", "tile_map:upis_c_uq153"),
+}
+_MAIN_PLAN_GATE = threading.BoundedSemaphore(3)
+
+@lru_cache(maxsize=3)
+def _main_plan_style(group):
+    layers = ",".join(_MAIN_PLAN_GROUPS[group])
+    r = requests.get("https://map.seoul.go.kr/geoserver/wms", params={
+        "service":"WMS", "request":"GetStyles", "version":"1.1.1", "layers":layers}, timeout=15)
+    r.raise_for_status()
+    root = ET.fromstring(r.content)
+    ns = "{http://www.opengis.net/sld}"
+    if not root.findall(ns + "NamedLayer"):
+        raise ValueError("missing official style")
+    # Preserve every non-text symbolizer, rule filter and scale threshold.
+    for parent in root.iter():
+        for child in list(parent):
+            if child.tag == ns + "TextSymbolizer":
+                parent.remove(child)
+    return ET.tostring(root, encoding="unicode")
+
+@lru_cache(maxsize=128)
+def _main_plan_tile(group, z, x, y, epoch):
+    n = 2 ** z
+    west, east = x / n * 360 - 180, (x + 1) / n * 360 - 180
+    north = math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * y / n))))
+    south = math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * (y + 1) / n))))
+    layers = ",".join(_MAIN_PLAN_GROUPS[group])
+    # Request in web Mercator so raster pixels and browser tile coordinates agree.
+    half = 20037508.342789244
+    bbox_m = [x/n*2*half-half, half-(y+1)/n*2*half, (x+1)/n*2*half-half, half-y/n*2*half]
+    r = requests.post("https://map.seoul.go.kr/geoserver/wms", data={
+        "service":"WMS", "request":"GetMap", "version":"1.1.1", "layers":layers,
+        "styles":"", "srs":"EPSG:3857", "bbox":",".join(map(str,bbox_m)),
+        "width":512,"height":512,"format":"image/png","transparent":"true",
+        "sld_body":_main_plan_style(group)}, timeout=20)
+    r.raise_for_status()
+    if not r.content.startswith(b"\x89PNG"):
+        raise ValueError("invalid map image")
+    labels = []
+    # z is one lower than Leaflet zoom (512px tiles).
+    if z >= 14:
+        label_layer = _MAIN_PLAN_GROUPS[group][0]
+        field = "dgm_nm"
+        rr = requests.get("https://map.seoul.go.kr/geoserver/wfs", params={
+            "service":"WFS","request":"GetFeature","version":"1.0.0",
+            "typeName":label_layer,"outputFormat":"application/json","srsName":"EPSG:4326",
+            "bbox":f"{west},{south},{east},{north},EPSG:4326","maxFeatures":600}, timeout=15)
+        rr.raise_for_status()
+        data = rr.json()
+        if data.get("type") != "FeatureCollection":
+            raise ValueError("invalid map labels")
+        occupied = []
+        clip = box(west,south,east,north)
+        for feature in data.get("features", []):
+            label = str((feature.get("properties") or {}).get(field) or "").strip()
+            if not label or len(label)>80 or not feature.get("geometry"):
+                continue
+            try:
+                geom = shape(feature["geometry"])
+                if not geom.is_valid: geom = geom.buffer(0)
+                geom = geom.intersection(clip)
+                if geom.is_empty: continue
+                pt = geom.representative_point()
+                px = ((pt.x + 180) / 360 * n - x) * 512
+                py = ((1-math.asinh(math.tan(math.radians(pt.y)))/math.pi)/2*n-y)*512
+                size = 13
+                width = sum(size if ord(c)>255 else size*.6 for c in label)
+                if width > 490: continue
+                px = max(width/2+6,min(506-width/2,px)); py=max(16,min(498,py))
+                rect = (px-width/2-4,py-10,px+width/2+4,py+10)
+                if any(rect[0]<q[2] and rect[2]>q[0] and rect[1]<q[3] and rect[3]>q[1] for q in occupied): continue
+                occupied.append(rect)
+                labels.append(f'<text x="{px:.1f}" y="{py:.1f}" font-size="{size}">{html.escape(label)}</text>')
+            except (ValueError,TypeError):
+                continue
+    png = base64.b64encode(r.content).decode("ascii")
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="512" height="512" viewBox="0 0 512 512">'
+        f'<image width="512" height="512" xlink:href="data:image/png;base64,{png}"/>'
+        '<g font-family="Malgun Gothic,Apple SD Gothic Neo,Noto Sans CJK KR,sans-serif" '
+        'text-anchor="middle" fill="#181818" stroke="white" stroke-width="2.5" '
+        'stroke-linejoin="round" paint-order="stroke fill">'+"".join(labels)+'</g></svg>')
+    return svg.encode("utf-8")
+
+@app.get("/api/reference/main-plan-tile/{group}/{z}/{x}/{y}.svg")
+def main_plan_tile(group: str, z: int, x: int, y: int):
+    if group not in _MAIN_PLAN_GROUPS or not 0 <= z <= 19 or not (0 <= x < 2**z and 0 <= y < 2**z):
+        raise HTTPException(status_code=400, detail="Invalid map tile")
+    if not _MAIN_PLAN_GATE.acquire(timeout=60):
+        raise HTTPException(status_code=503, detail="Map tiles busy")
+    try:
+        content = _main_plan_tile(group,z,x,y,int(time.time()//3600))
+        return Response(content, media_type="image/svg+xml", headers={"Cache-Control":"public, max-age=1800", "X-Content-Type-Options":"nosniff", "X-Map-Render":"R95"})
+    except Exception:
+        # Do not silently restore the broken-text raster or expose upstream errors.
+        raise HTTPException(status_code=502, detail="Map display temporarily unavailable")
+    finally:
+        _MAIN_PLAN_GATE.release()
