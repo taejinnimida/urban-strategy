@@ -12979,6 +12979,17 @@ function resolvedSchemeAgeFact(store,scheme,route=''){
   }
   return age||null;
 }
+function activationAgeReview(store){
+  // Reuse the two existing age sub-rules. No building collection or new age formula.
+  const assessments={district:schemeAgeFact(store,'activation','district')||null,redevelopment:schemeAgeFact(store,'activation','redevelopment')||null};
+  const labels={district:'지구단위계획 방식',redevelopment:'도시정비형 재개발 방식'};
+  const statuses=Object.fromEntries(Object.entries(assessments).map(([key,a])=>[key,['PASS','FAIL'].includes(a?.status)?a.status:'REVIEW']));
+  const passed=Object.keys(statuses).filter(key=>statuses[key]==='PASS');
+  const status=passed.length?'PASS':Object.values(statuses).every(value=>value==='FAIL')?'FAIL':'REVIEW';
+  const value=Object.entries(statuses).map(([key,state])=>`${labels[key]} ${ageStatusLabel(state)}`).join(' / ');
+  const note=passed.length===2?'두 방식 모두 노후도 충족':passed.length===1?`${labels[passed[0]]} 노후도 충족`:status==='FAIL'?'두 방식 모두 노후도 미충족':'충족한 방식 없음 · 데이터 부족 또는 판정불가인 방식 확인 필요';
+  return {assessments,summary:{status,value,note,passed_routes:passed,statuses,rule_id:'activation_age_route_any',source_id:'ACTIVATION',source_locator:'2-1-4 다목',scope:'AGING_ONLY'}};
+}
 const AGE_SPATIAL_FACT_META=[
   ['redevelopment','주택재개발','주택재개발 · 미확인 데이터 판정영향 범위판정'],
   ['urban_planning','도시계획계','일반 주택개발 지단 · 역세권활성화(지구단위) · 성장잠재권(지구단위) · 역세권복합지단'],
@@ -14105,6 +14116,7 @@ function activationSpatialFacts(store){
   const characteristicFact=store.site.spatial_evidence?.downtown_characteristic||{known:false,status:'unavailable',hits:[],value:'도심 특성관리 Fact Store 미확보',note:'공통 FACT 미확보'};
   const districtPlanHits=development.district_plans||[];
   const route=effectiveActivationRoute(c);
+  const ageReview=activationAgeReview(store);
   const fact={
     route,
     location:{
@@ -14128,7 +14140,7 @@ function activationSpatialFacts(store){
       planning_facilities:[...(development.planning_facilities||[])],planning_facility_fact:facilityExclusion,
       characteristic_management:characteristicFact,smallscale_hits:smallscaleHits,smallscale_fact:smallscaleExclusion,
       smallscale_approved:smallscaleExclusion.status==='FAIL'?true:smallscaleExclusion.status==='PASS'?false:null,manual_excluded:c.excluded},
-    aging:{route:route.route,assessment:schemeAgeFact(store,'activation',route.route)},
+    aging:{route:route.route,assessment:ageReview.assessments[route.route]||null,...ageReview},
     consent:{owner_pct:c.ownerConsent,land_pct:c.landConsent},
     planning:{target_zoning:targetOrSuggested(c,'activation'),mixed_use:c.activationMixedUse,
       center:c.center||'',center_type:c.centerType||'',center_label:c.centerLabel||''},
@@ -14956,6 +14968,14 @@ function activationStrengthRiskSummary(facts,rows){
   }
   const facility=row('도시계획시설');if(facility?.policyRole==='CONSULTATION')followups.push(facility.note);
   const block=row('가로구역 포함');if(block?.conditional)followups.push(block.caveat);
+  const age=row('노후건축물');
+  if(age?.status==='PASS')strengths.push(facts.aging?.summary?.note||'노후도 충족');
+  else if(age?.status==='FAIL')risks.push('두 사업방식 모두 노후도 미충족');
+  else if(age?.status==='REVIEW')followups.push('사업방식별 노후도 확인 필요');
+  if(facts.route?.age_path_note){
+    if(facts.route.age_path_status==='FAIL')risks.push(facts.route.age_path_note);
+    else followups.push(facts.route.age_path_note);
+  }
   if(facts.exclusions.prior_negotiation===true)risks.push('사전협상 대상요건 해당 → 역세권활성화 대상 제외');
   else if(facts.exclusions.prior_negotiation==null && facts.area.m2>=5000)followups.push('5,000㎡ 이상 사전협상 대상요건 확인');
   if(facts.route.route==='redevelopment')followups.push('도시정비형 재개발 입안대상·노후도 추가 검토');
@@ -16578,13 +16598,20 @@ const SCHEME_MODULES={
     collectFacts:activationSpatialFacts,
     evaluate(store,facts){
       const rows=checkActivationFromFacts(store,facts);
-      const overall=overallScheme(rows),density=activationDensity(store.common),sr=activationStrengthRiskSummary(facts,rows);
+      const baseOverall=overallScheme(rows),density=activationDensity(store.common);
       facts.route=facts.route||{};
       facts.route.selected=facts.route.route||'district';
       facts.route.available={
         district:activationRouteAlternativeStatus(store,rows,'district'),
         redevelopment:activationRouteAlternativeStatus(store,rows,'redevelopment')
       };
+      // An age PASS from one route must not borrow the area eligibility of another route.
+      // Keep all existing route-specific criteria; only guard the new age OR result.
+      const routeStates=Object.values(facts.route.available).map(x=>x.status);
+      const overall=baseOverall==='PASS'&&!routeStates.includes('PASS')?(routeStates.every(x=>x==='FAIL')?'FAIL':'REVIEW'):baseOverall;
+      facts.route.age_path_status=overall;
+      facts.route.age_path_note=baseOverall==='PASS'&&overall!=='PASS'?'노후도 충족방식과 기존 면적·공통요건을 함께 만족하는 추진경로 확인 필요':'';
+      const sr=activationStrengthRiskSummary(facts,rows);
       return {module:'activation',facts,rows,overall,density,...sr};
     }
   },
@@ -17417,9 +17444,21 @@ function checkActivationFromFacts(store,f){
     prior===true?'사전협상 대상요건 해당 · 사용자 확인':prior===false?'사전협상 대상요건 비해당 · 사용자 확인':priorGate.status==='PASS'?'전문가 자동후보 6조건 충족 · 공식 대상지 여부 확인 필요':'전문가 자동후보 미진입',
     priorStatus,prior===true?'운영기준상 배제조건 적용':prior===false?'비해당 확인 입력':priorGate.status==='PASS'?'비법정 전문가 필터 PASS · 역세권활성화와 사전협상 경합 2차검토로만 표시':'자동후보 미진입 · 역세권활성화 1차 적격판정에는 영향 없음',priorRequired,{sourceId:'ACTIVATION',locator:'2-1-4 나목 단서'}));
 
-  const aging=f.aging.assessment;
-  rows.push(schemeRow('노후건축물',f.route.route==='redevelopment'?'도정법·서울시 도시정비조례 노후도 기준':'서울시 도시계획조례 시행규칙 별표1 노후도 기준',
-    ageFactValue(aging),aging?.status||'REVIEW',`${ageFactNote(aging)} · 역세권 활성화 운영기준 2-1-4 다목에서 사업유형별 기준 적용`,true,{sourceId:aging?.source_id||(f.route.route==='redevelopment'?'RENEWAL_AGE':'URBAN_PLANNING_AGE'),locator:aging?.source_locator||'역세권 활성화 운영기준 2-1-4 다목'}));
+  const ageReview=f.aging?.summary?f.aging:activationAgeReview(store);
+  const ageRoutes=[
+    ['district','노후건축물 · 지구단위계획 방식','서울시 도시계획조례 시행규칙 별표1 노후도 기준','URBAN_PLANNING_AGE'],
+    ['redevelopment','노후건축물 · 도시정비형 재개발 방식','도시정비법 시행령 별표1·서울시 정비조례 제4조·제6조 및 별표1 노후도 기준','RENEWAL_AGE']
+  ];
+  for(const [key,item,rule,sourceId] of ageRoutes){
+    const assessment=ageReview.assessments[key];
+    rows.push(schemeRow(item,rule,ageFactValue(assessment),ageReview.summary.statuses[key],
+      `${ageFactNote(assessment)} · 해당 사업방식의 노후도만 평가`,false,{sourceId,locator:assessment?.source_locator||'역세권 활성화 운영기준 2-1-4 다목'}));
+  }
+  rows.push(schemeRow('노후건축물','두 사업방식의 노후도 중 하나 이상 충족 → 충족 / 모두 미충족 → 미충족 / 충족 없이 미확인 포함 → REVIEW',
+    ageReview.summary.value,ageReview.summary.status,`${ageReview.summary.note} · 사업방식별 면적·입지·배제 등 다른 요건은 별도로 충족해야 함`,true,
+    {sourceId:'ACTIVATION',locator:'2-1-4 다목',basisKind:'MIXED',legalRule:'운영기준 2-1-4 다목: 사업유형별 각각의 노후건축물 기준 적용',
+      platformRule:'사업방식 사전검토: 하나 이상 충족 → 충족 / 모두 미충족 → 미충족 / 충족 없이 미확인 포함 → REVIEW',
+      basisNote:'기존 공식 노후도 판정결과를 함께 표시하는 플랫폼의 집계방식이며, 개별 사업방식의 법정 기준을 변경하지 않습니다.'}));
 
   if(f.route.route==='district'){
     rows.push(schemeRow('대상지 선정 동의','대상 토지면적의 2/3 이상 토지소유자 동의',c.landConsent==null?'-':`${c.landConsent}%`,
@@ -22355,11 +22394,12 @@ function renderActivationDetailPopup(){
   const current=f.zoning.current||'-';
   const status=res?.overall||'REVIEW';
   const feasibilityText=status==='PASS'&&rows.find(r=>r.item==='입지유형')?.decisionPath==='block_committee'?'심의경로 검토 가능':activationFeasibilityLabel(status);
-  const statusRows=['승강장 거리','가로구역 포함','역세권','간선도로변','입지유형','용도지역','정비구역 배타관계','재정비촉진지구','도시계획시설','서울도심 특성관리지구','소규모주택정비 인가','배제지역 종합','도로','대상지 면적','사전협상 대상여부','노후건축물'];
+  const statusRows=['승강장 거리','가로구역 포함','역세권','간선도로변','입지유형','용도지역','정비구역 배타관계','재정비촉진지구','도시계획시설','서울도심 특성관리지구','소규모주택정비 인가','배제지역 종합','도로','대상지 면적','사전협상 대상여부','노후건축물 · 지구단위계획 방식','노후건축물 · 도시정비형 재개발 방식','노후건축물'];
   const resultRows=statusRows.map(item=>{
     const r=activationRowByItem(res,item);if(!r)return '';
-    const group=['승강장 거리','가로구역 포함','역세권','간선도로변','입지유형'].includes(item)?'역세권등':['노후건축물'].includes(item)?'노후건축물':['정비구역 배타관계','재정비촉진지구','도시계획시설','서울도심 특성관리지구','소규모주택정비 인가','배제지역 종합'].includes(item)?'배제조건':'대상지 현황';
-    return `<tr><td class="group">${escHtml(group)}</td><td><b>${escHtml(item)}</b></td><td>${schemeRuleBasisCell(r)}</td><td>${escHtml(r.value||'-')}</td><td>${activationStatusCell(r)}<div class="activation-next">${escHtml(r.action||r.note||'-')}</div></td><td>${schemeSheetSourceCell(r)}</td></tr>`;
+    const group=['승강장 거리','가로구역 포함','역세권','간선도로변','입지유형'].includes(item)?'역세권등':item.startsWith('노후건축물')?'노후건축물':['정비구역 배타관계','재정비촉진지구','도시계획시설','서울도심 특성관리지구','소규모주택정비 인가','배제지역 종합'].includes(item)?'배제조건':'대상지 현황';
+    const itemLabel=item==='노후건축물'?'노후도 종합판정':item;
+    return `<tr><td class="group">${escHtml(group)}</td><td><b>${escHtml(itemLabel)}</b></td><td>${schemeRuleBasisCell(r)}</td><td>${escHtml(r.value||'-')}</td><td>${activationStatusCell(r)}<div class="activation-next">${escHtml(r.action||r.note||'-')}</div></td><td>${schemeSheetSourceCell(r)}</td></tr>`;
   }).join('');
   const planRows=activationDensityPlanRowsHtml(res,store,f,range);
   const exclusionHtml=activationExclusionTableHtml(f.exclusions.analysis||activationExclusionAnalysis(store,f.exclusions));
@@ -22378,6 +22418,7 @@ function renderActivationDetailPopup(){
       <tr><th>가능 시행방식</th><td colspan="3">${escHtml(availableRouteText)}</td></tr>
     </tbody></table></section>
     <section class="activation-section"><h4>2. 검토결과</h4><table class="activation-table"><thead><tr><th>구분</th><th>검토항목</th><th>기준</th><th>대상지 현황</th><th>판정·후속</th><th>근거</th></tr></thead><tbody>${resultRows}</tbody></table>
+      <div class="scheme-modal-note">노후도는 두 사업방식을 각각 검토하며, 한 방식 이상 충족하면 노후도 종합판정은 충족입니다. 사업방식 전체 가능 여부는 해당 방식의 면적·입지·배제 등 다른 요건과 함께 판단합니다.</div>
       <div style="padding:8px 10px;font-size:8px;line-height:1.6;color:#475467"><b>강점</b> ${escHtml(strengths)}<br><b>약점</b> ${escHtml(risks)}<br><b>추가확인</b> ${escHtml(follow)}</div></section>
     <section class="activation-section"><h4>역세권활성화 사업 배제지역 분석</h4>${exclusionHtml}</section>
     <section class="activation-section"><h4>3. 역세권활성화사업 운영기준</h4>${planRows}</section>
