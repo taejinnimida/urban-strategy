@@ -31,6 +31,7 @@ from functools import lru_cache
 from pathlib import Path
 
 import requests
+import market_renewal
 try:
     import psycopg
 except ImportError:  # local/offline test without PostgreSQL driver
@@ -8443,6 +8444,13 @@ def _planning_layer_result(layer_id: str, geometry: Dict[str, Any]) -> Dict[str,
         attempts += 1
         try:
             features, route = _fetch_planning_layer_once(layer_id, geometry)
+            if layer_id.startswith('LT_C_UPISUQ15'):
+                for feature in features:
+                    p = feature.setdefault('properties', {})
+                    ft = market_renewal.facility_type(layer_id, p)
+                    p['_facility_group'] = ft['group']
+                    p['_facility_type'] = ft['type']
+                    p['_facility_type_status'] = ft['status']
             diag_getter = globals().get("_last_vworld_diagnostic")
             diag = diag_getter() if callable(diag_getter) else {}
             direct_error = str(diag.get("direct_error") or "")[:300]
@@ -9154,7 +9162,7 @@ def reference_station_entrances():
 # R22 station-line runtime hotfix.  This block is intentionally backend-only:
 # the existing multi-station frontend already consumes /api/reference/station-lines.
 STATION_RUNTIME_BUILD_MARKER = "R22_STATION_HOTFIX_20260901_0915"
-APP_BUILD_MARKER = "R93_ACTIVATION_DUAL_AGE_REVIEW_20261012"
+APP_BUILD_MARKER = "R96_MARKET_RENEWAL_FACTS_20261013"
 _STATION_LINE_CACHE_LOCK = threading.Lock()
 _STATION_LINE_CACHE: Dict[str, Any] = {
     "expires_at": 0.0,
@@ -11114,6 +11122,10 @@ def _cad_facility_type(layer_id, properties):
     for label, cad_layer in CAD_FACILITY_TYPES:
         if label in type_text:
             return cad_layer, label, name or label
+    detail = market_renewal.facility_type(layer_id, properties)
+    if detail['status'] == 'IDENTIFIED':
+        kinds = [t for ts in market_renewal.FACILITY_GROUPS.values() for t in ts]
+        return 'UPF_TYPE_' + str(kinds.index(detail['type']) + 1).zfill(2), detail['type'], name or detail['type']
     code = layer_id[-3:]
     category = CAD_FACILITY_LAYERS[layer_id]
     return "UPF_OTHER_" + code, category + "(세부종류 미확정)", name or category
@@ -12120,3 +12132,22 @@ def main_plan_tile(group: str, z: int, x: int, y: int):
         raise HTTPException(status_code=502, detail="Map display temporarily unavailable")
     finally:
         _MAIN_PLAN_GATE.release()
+
+# R96: independent market-renewal facts/rules. Existing scheme modules unchanged.
+class MarketRenewalInput(BaseModel):
+    geometry: Dict[str, Any]
+    addresses: List[str] = Field(default_factory=list, max_length=5000)
+    buildings: List[Dict[str, Any]] = Field(default_factory=list, max_length=10000)
+    building_summary: Dict[str, Any] = Field(default_factory=dict)
+    facilities: List[Dict[str, Any]] = Field(default_factory=list, max_length=5000)
+    facilities_complete: bool = False
+    plans: List[Dict[str, Any]] = Field(default_factory=list, max_length=1000)
+    plans_complete: bool = False
+    zoning: str = ''
+
+@app.post('/api/rules/market-renewal')
+def market_renewal_rule(inp: MarketRenewalInput):
+    _cad_scope(inp.geometry)
+    if len(json.dumps(inp.model_dump(), ensure_ascii=False)) > 6000000:
+        raise HTTPException(status_code=413, detail='시장정비 분석범위가 너무 큽니다.')
+    return market_renewal.evaluate(inp.model_dump(), _seoul_open_data_key())

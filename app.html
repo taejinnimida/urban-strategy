@@ -1794,6 +1794,10 @@ body.service-layout-ready>.shell{display:none!important}
 .module-retry-all[hidden]{display:none;}.module-retry-all:disabled{cursor:wait;opacity:.7;}
 .module-fact-stale{display:block;padding:3px 6px;color:#85611c;background:#fff6df;font-size:10px;}
 
+
+.scheme-overall.CONDITIONAL,.scheme-tag.CONDITIONAL{background:#fff4e5;color:#9a3412}
+#marketRegistryFacts table,#marketPopulationFacts table,#marketRelaxationFacts table{width:100%;border-collapse:collapse;font-size:12px;text-align:left}
+#marketRegistryFacts td,#marketPopulationFacts td,#marketRelaxationFacts td,#marketRegistryFacts th,#marketPopulationFacts th,#marketRelaxationFacts th{padding:8px;border-bottom:1px solid #e4e7ec;line-height:1.5}
 </style>
 <style>
 /* R87 district-plan information panel only; existing drawing/card layout preserved. */
@@ -1961,6 +1965,7 @@ body.service-layout-ready>.shell{display:none!important}
 <button data-family="special_housing" data-public-complex-route="housing" onclick="showPublicComplexRouteBasis('housing')"><i>▧</i><span>도심공공주택복합(주택공급활성화)</span><em>입력필요</em></button>
 
 <div class="cc-scheme-family-label" data-family="urban_renewal">도심정비사업 <small>도심 고밀복합·정비·역세권 특례</small></div>
+<button data-family="urban_renewal" data-scheme="market_renewal" onclick="showCandidateBasis('market_renewal')"><i>▤</i><span>시장정비사업</span><em>시장 현황 확인</em></button>
 <button data-family="urban_renewal" data-scheme="urban_redevelopment" onclick="showCandidateBasis('urban_redevelopment')"><i>▨</i><span>도시정비형재개발</span><em>진입경로확인</em></button>
 <button data-family="urban_renewal" data-scheme="activation" onclick="showCandidateBasis('activation')"><i>🚉</i><span>역세권활성화</span><em>입력필요</em></button>
 <button data-family="urban_renewal" data-scheme="growth_potential" onclick="showCandidateBasis('growth_potential')"><i>↗</i><span>성장잠재권활성화</span><em>도로확인</em></button>
@@ -2339,6 +2344,9 @@ body.service-layout-ready>.shell{display:none!important}
   </div>
 </div>
 </section>
+<section class="spatial-module site-analysis-card site-analysis-local site-analysis-wide" id="siteDetail_markets"><div class="spatial-module-head"><b>시장 현황 · 등록·인정·도시계획시설</b><button type="button" onclick="retryMarketRenewal()">다시 조회</button></div><div id="marketRegistryFacts" class="spatial-age-caption">분석 전</div></section>
+<section class="spatial-module site-analysis-card site-analysis-local site-analysis-wide" id="siteDetail_marketPopulation"><div class="spatial-module-head"><b>유동인구 현황 · 상권 참고 통계</b><button type="button" onclick="retryMarketRenewal()">다시 조회</button></div><div id="marketPopulationFacts" class="spatial-age-caption">분석 전</div></section>
+<section class="spatial-module site-analysis-card site-analysis-local site-analysis-wide" id="siteDetail_marketRelaxation"><div class="spatial-module-head"><b>시장정비 완화요건 · 지단·재촉</b><button type="button" onclick="retryMarketRenewal()">다시 조회</button></div><div id="marketRelaxationFacts" class="spatial-age-caption">분석 전</div></section>
 <section class="spatial-module site-analysis-card site-analysis-local" id="siteDetail_buildingUse">
 <div class="spatial-module-head"><b>건축물 용도</b><span id="spBuildingUseState">건축HUB 조회 전</span></div>
 <div class="spatial-metrics">
@@ -8634,7 +8642,8 @@ function ingestPlanningResults(results,zoneFeature,{facilityOnly=false}={}){
         planningAnalysis.districts.push({name:baseName||spec.label,area,feature,layer:spec.id});
       }else if(spec.kind==='facility'){
         feature.properties._planning_name=baseName||spec.label;
-        planningAnalysis.facilities.push({name:baseName||spec.label,category:spec.label,area,feature,layer:spec.id});
+        const detail=feature.properties._facility_type;
+        planningAnalysis.facilities.push({name:detail&&detail!=='세부종류 미확인'?`${detail} · ${baseName||spec.label}`:baseName||spec.label,category:spec.label,facility_type:detail||null,area,feature,layer:spec.id});
       }else if(spec.kind==='heritage'){
         feature.properties._planning_name=baseName||spec.label;
         planningAnalysis.heritage.push({name:baseName||spec.label,area,feature,layer:spec.id});
@@ -10669,6 +10678,10 @@ async function retryOneFactModule(label,planningKinds=null,planningLayerIds=null
     analysisStepRegistry.set(label,entry);
     console.info('[MODULE-RETRY]',{module:record.module,started:record.started,previousStatus,finished:record.finished,newStatus:record.status,affectedRules:record.affectedRules,error:record.error,modulesRerun:1,rulesReevaluated:record.affectedRules.length,fullAnalysisRerun:false});
   }
+  if(['COMPLETE','REVIEW'].includes(record.status)&&latestSiteFactStore){
+    const nextStore=buildSiteFactStore();
+    if(marketRenewalState.key!==JSON.stringify(marketRequestPayload(nextStore)))analyzeMarketRenewal(nextStore).then(()=>runSchemeChecksWhenCoreReady());
+  }
   return record;
 }
 function refreshModuleRetryCompletion(){
@@ -11127,6 +11140,9 @@ async function runAllAutoAnalyses(options={}){
   results.push(await safeAnalysisStep('규제 원도형·문화재 보강',()=>analyzeRegulatoryConstraints({retryFailedOnly:analysisRetryState.multiplier>1}),300000,{classify:v=>{const items=v?.items||[],local=items.filter(isLocalRegulatorySource),localKnown=local.filter(x=>x.known).length,external=items.filter(x=>!isLocalRegulatorySource(x)),externalAvail=external.filter(x=>x.known||x.data_status==='MAP_ONLY').length;return {status:v?.loaded?(localKnown===local.length?'fulfilled':localKnown?'partial':'rejected'):'rejected',detail:`보유자료 ${localKnown}/${local.length} 확인 · 외부보강 ${externalAvail}/${external.length}`};}}));
   try{renderPlanningGIS();renderPlanningFacilitySpatialStatus();renderDowntownCharacteristicSpatialStatus();renderSharedConservationSpatialStatus();renderHillSpatialStatus();renderIndependentSpatialStatusMaps();renderSafeMedicalSpatialStatus();renderSchoolAbsoluteProtectionSpatialStatus();renderRegulatoryConstraintSpatialStatus();}catch(e){console.warn('[site-review] 독립 GIS 최종렌더',e);}
 
+  markAnalysisProgress('시장·유동인구','running','시장 명부·노후도·인근 상권 조회');
+  const marketData=await analyzeMarketRenewal(buildSiteFactStore());
+  markAnalysisProgress('시장·유동인구',marketData?'fulfilled':'partial',marketData?.facts?.population?.status==='AVAILABLE'?'시장 현황·상권 참고 통계 조회 완료':'시장 현황 완료 · 유동인구 연결상태 확인');
   markAnalysisProgress('사업판정','running','보강 FACT 반영 최종 판정');
   const schemeRun=runSchemeChecksWhenCoreReady();
   const zoningCoreKnown=schemeRun?.store?.site?.spatial_evidence?.zoning?.known===true;
@@ -12125,7 +12141,68 @@ const SCHEME_AS_OF = seoulTodayForScheme();
 let activeScheme='redevelopment';
 let schemeResults={};
 
+// R96: views consume server market decisions; no market eligibility rule in the browser.
+let marketRenewalState={key:'',data:null,pending:null,error:'',controller:null};
+function marketRequestPayload(store){
+  const s=store?.site||{},dev=s.development||{};
+  return {geometry:s.boundary_geometry||activeGeometry,addresses:(s.land?.rows||[]).map(x=>x.jibun||x.address||'').concat(s.address||''),buildings:s.building?.records||[],building_summary:s.building?.summary||{},zoning:s.zoning||'',
+    facilities:(planningAnalysis.facilities||[]).map(x=>({name:x.feature?.properties?.fclty_nm||x.feature?.properties?.uname||x.name,layer:x.layer,area_m2:x.area,properties:x.feature?.properties||{}})),facilities_complete:dev.planning_facility_loaded===true&&!(dev.planning_facility_errors||[]).length,
+    plans:[...(dev.district_plans||[]).map(x=>({name:x.name,type:'지구단위계획구역',area_m2:x.area_m2})),...(s.renewal?.overlaps||[]).filter(x=>x.type==='promotion').map(x=>({name:x.name,type:'재정비촉진지구',area_m2:x.overlap_area_m2}))],plans_complete:dev.district_plan_loaded===true&&!dev.district_plan_error&&s.renewal?.loaded===true&&!s.renewal?.error};
+}
+function marketResultFor(store){
+  if(!store)return null;
+  return JSON.stringify(marketRequestPayload(store))===marketRenewalState.key?marketRenewalState.data:null;
+}
+function marketPendingResult(){return {module:'market_renewal',overall:'REVIEW',label:'시장 현황 조회 전',facts:{},rows:[],density:{zone:'-',far:'자료 확인',contribution:'자료 확인'},strengths:[],risks:['시장 현황·노후도 자료 조회 필요'],followups:[]};}
+async function analyzeMarketRenewal(store=latestSiteFactStore,force=false){
+  if(!store?.site?.boundary_geometry)return null;
+  const payload=marketRequestPayload(store),key=JSON.stringify(payload);
+  if(!force&&marketRenewalState.key===key){if(marketRenewalState.pending)return marketRenewalState.pending;if(marketRenewalState.data||marketRenewalState.error)return marketRenewalState.data;}
+  marketRenewalState.controller?.abort();
+  const controller=new AbortController();
+  marketRenewalState={key,data:null,pending:null,error:'',controller};
+  renderMarketRenewalFacts();
+  const timer=setTimeout(()=>controller.abort(),85000);
+  const promise=(async()=>{
+    try{
+      const data=await fetchBackendJson('/api/rules/market-renewal',{method:'POST',headers:{'Content-Type':'application/json'},body:key,signal:controller.signal});
+      if(controller.signal.aborted||marketRenewalState.key!==key)return null;
+      if(JSON.stringify(marketRequestPayload(buildSiteFactStore()))!==key)return null;
+      marketRenewalState.data=data;analysisState.market_renewal=data;
+      return data;
+    }catch(e){if(marketRenewalState.key===key){marketRenewalState.error='시장 자료 조회 실패 · 다시 조회해 주세요';}return null;}
+    finally{clearTimeout(timer);if(marketRenewalState.key===key){marketRenewalState.pending=null;renderMarketRenewalFacts();}}
+  })();
+  marketRenewalState.pending=promise;renderMarketRenewalFacts();return promise;
+}
+async function retryMarketRenewal(){
+  await analyzeMarketRenewal(buildSiteFactStore(),true);runSchemeChecksWhenCoreReady();
+  if(analysisModuleRetryState.openScheme==='market_renewal')renderMarketRenewalPopup();
+}
+function marketTable(headers,rows){return `<div style="overflow-x:auto"><table class="scheme-table"><thead><tr>${headers.map(x=>`<th>${escHtml(x)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(x=>`<td>${escHtml(x??'-')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;}
+function renderMarketRenewalFacts(){
+  const d=marketResultFor(latestSiteFactStore),f=d?.facts||{},pop=f.population||{};
+  const put=(id,html)=>{const el=document.getElementById(id);if(el)el.innerHTML=html;};
+  const pending=marketRenewalState.pending?'조회 중…':marketRenewalState.error||'분석 전';
+  const reg=f.registry?.items||[],facility=f.facilities||[];
+  put('marketRegistryFacts',d?marketTable(['구분','시장명·시설명','대조 결과'],[...reg.map(x=>[x.type,x.name,`${x.match} · ${x.jibun_address} · 법정 경계 미확인`]),...facility.map(x=>['도시계획시설 시장',x.name,`대상지 중첩 ${Number(x.area_m2).toLocaleString('ko-KR',{maximumFractionDigits:1})}㎡`]),...(!reg.length?[['등록·인정시장','명부 일치시장 미확인','미검색을 시장 없음으로 확정하지 않음']]:[]),...(!facility.length?[['도시계획시설 시장',f.facilities_complete?'식별된 중첩시장 없음':'시설 조회·세부종류 확인 필요','유통·공급시설의 세부종류 기준']]:[])])+`<div class="spatial-age-caption">${escHtml(f.registry?.note||'')} · 명부 기준 ${escHtml(f.registry?.as_of||'-')}</div>`:escHtml(pending));
+  const pRows=(pop.items||[]).map(x=>[x.name,`${x.type} · 대표점 ${x.distance_m}m`,...(x.series||[]).map(y=>y.value==null?'미확보':Number(y.value).toLocaleString('ko-KR')),x.decline_pct==null?'비교 불가':`${Math.abs(x.decline_pct)}% ${x.decline_pct<0?'증가':'감소'}`]);
+  put('marketPopulationFacts',d?`<p>${escHtml(pop.message||'자료 미확보')}</p>${pRows.length?marketTable(['상권','분석범위',...(pop.periods||[]).map(p=>`${p.slice(0,4)}년 ${p.slice(4)}분기`),'3년 변화'],pRows):''}<div class="spatial-age-caption">${escHtml(pop.note||'')} · 자료: 서울시 상권분석서비스</div>`:escHtml(pending));
+  put('marketRelaxationFacts',d?marketTable(['완화 대상구역','대상지 중첩','시장정비 적용'],(f.plans||[]).map(x=>[`${x.type} · ${x.name}`,`${Number(x.area_m2).toLocaleString('ko-KR',{maximumFractionDigits:1})}㎡`,'시장 자체의 구역 포함범위·노후도·구청장 필요인정 확인']))+`<p>${(f.plans||[]).length?'사업구역 중첩은 확인했으며 시장 전체 포함 여부는 별도 확인합니다.':f.plans_complete?'지구단위계획·재정비촉진지구 중첩 없음':'지구단위계획·재정비촉진지구 자료 확인 필요'}</p><div class="spatial-age-caption">시장정비 완화경로 전용 · 공실·유동인구 감소를 필수조건으로 요구하지 않는 경로 · 안전요건은 별도 충족 필요</div>`:escHtml(pending));
+}
+function marketCandidateContext(){
+  const r=marketResultFor(latestSiteFactStore)||marketPendingResult(),ready=!!activeGeometry;
+  return {ready,state:r.candidate_possible?'on':'review',rank:r.candidate_possible?3:1,label:r.label,regulatory:r.overall,structural:r.overall,areaGate:'PASS',purposeGate:'secondary',stage:r.candidate_possible?'CONDITIONAL':'REGULATION',reasons:[r.route||'',r.note||''],execution:{land:'FIT',actor:'FIT'},relations:[],failReasons:[],reviewReasons:r.candidate_possible?[]:[r.note||'시장 자료 확인'],reviewDetail:r.note||'',failureDetail:'',officialAreaReady:!!latestSiteFactStore?.common?.area};
+}
+function renderMarketRenewalPopup(){
+  const r=marketResultFor(latestSiteFactStore)||marketPendingResult(),f=r.facts||{};
+  const title=document.getElementById('schemeDetailPopupTitle'),body=document.getElementById('schemeDetailPopupBody');if(!body)return;
+  if(title)title.textContent='시장정비사업 기초검토서';
+  body.innerHTML=`<div class="activation-sheet"><div class="activation-sheet-title"><div><h3>시장정비사업</h3><p>${escHtml(r.basis||'서울시 시장정비 운영기준')}</p></div><div class="activation-feasibility"><b>${escHtml(r.label)}</b></div></div><p><b>${escHtml(r.route||'자료 확인')}</b> · ${escHtml(r.note||'')}</p><div class="scheme-modal-note">검토 후보와 법적 요건 충족을 구분합니다. 공실 확인사항은 종합판정에 REVIEW를 발생시키지 않습니다.</div><h4>1. 현황과 적용경로</h4>${marketTable(['항목','기준','현황'],(r.rows||[]).map(x=>[x.item,x.rule,x.value]))}<h4>2. 공실 확인 — 발주처</h4><p>점포수 대비 공실 점포수 30% 이상. 1년 이상 공실·전력 미사용·계약 부재를 필수요건으로 정한 근거는 확인되지 않았습니다. 점포별 현황·현장사진·임대차 및 사용내역 등 증빙을 확보하여 구청의 인정방법을 확인합니다.</p><h4>3. 용적률·공공기여·사업계획</h4>${marketTable(['항목','계획기준','근거'],r.plan_rows||[])}<div class="scheme-modal-note">2025.6.25. 운영기준 수록값. 현행 조례·시설 관리부서 연동기준 전체 대조 미완료: 공공기여율·최대 용적률을 확정 사업성 계산에 사용하지 않습니다.</div><p><a href="https://news.seoul.go.kr/economy/archives/574563" target="_blank" rel="noopener">서울시 시장 명부</a> · <a href="https://data.seoul.go.kr/dataList/OA-15568/S/1/datasetView.do" target="_blank" rel="noopener">유동인구 자료</a> · <a href="https://www.law.go.kr/법령/전통시장및상점가육성을위한특별법" target="_blank" rel="noopener">전통시장법</a></p><h4>4. 추진 전제</h4><p>시장·인접지역별 동의 확보, 시장정비사업 추진계획 및 지구단위계획 수립, 승인·심의와 사업시행인가, 입점상인 보호대책을 별도 이행합니다.</p></div>`;
+}
+
 const schemeNames={
+  market_renewal:'시장정비사업',
   redevelopment:'주택재개발',
   reconstruction:'재건축',
   urban_redevelopment:'도시정비형 재개발사업',
@@ -12152,7 +12229,7 @@ const SCHEME_FAMILY_META={
   smallscale_housing:{label:'소규모주택정비사업',description:'자율·가로·소규모재건축·소규모재개발 4개 법정사업과 모아타운·모아주택 추진경로를 병렬 검토',members:['smallscale']},
   general_housing:{label:'민간주택개발',description:'정비사업 입안요건을 사용하지 않고 주택법·건축법·도시계획 기준으로 독립 검토',members:['general_housing']},
   special_housing:{label:'특례 주택사업',description:'주택공급을 목적으로 하는 서울시·특별법 정책사업',members:['safe','shared_housing','longterm','public_complex']},
-  urban_renewal:{label:'도심정비사업',description:'도심 고밀복합·정비·역세권 특례사업을 각각 독립 판정',members:['urban_redevelopment','activation','growth_potential','innovation_growth','innovation_housing','station_complex']},
+  urban_renewal:{label:'도심정비사업',description:'도심 고밀복합·정비·역세권 특례사업을 각각 독립 판정',members:['market_renewal','urban_redevelopment','activation','growth_potential','innovation_growth','innovation_housing','station_complex']},
   special_development:{label:'특례개발사업',description:'도시계획변경 사전협상과 공간혁신 3종을 구분',members:['prior_negotiation','urban_innovation_zone','facility_complex_zone','mixed_use_zone']}
 };
 const HOUSING_RENEWAL_SCHEMES=new Set(SCHEME_FAMILY_META.housing_renewal.members);
@@ -12173,6 +12250,7 @@ function shellSchemeResult(name){
   };
 }
 const schemeBasis={
+  market_renewal:'전통시장법 제31조 · 서울특별시 시장정비사업 추진계획 수립·운영기준(2025.6.25.)',
   redevelopment:'서울특별시 도시·주거환경정비 기본계획 + 도시정비법·서울시 도시 및 주거환경정비 조례',
   reconstruction:'서울특별시 도시·주거환경정비 기본계획 + 도시정비법·재건축진단 관련 기준',
   urban_redevelopment:'2030 서울특별시 도시·주거환경정비기본계획(변경) [도시정비형 재개발사업 부문, 2026.2.] + 도시정비법',
@@ -12403,6 +12481,7 @@ function schemeDecisionPolicyRole(item,rule='',meta={}){
   return '';
 }
 function schemeRowDisplay(r){
+  if(r?.policyRole==='CLIENT_CHECK')return {cls:'INFO',label:'발주처 확인'};
   if(r?.policyRole==='CONSULTATION')return {cls:'INFO',label:'관련부서 협의'};
   if(r?.decisionPath==='block_committee'&&r?.status==='PASS')return {cls:'PASS',label:'심의경로 검토 가능'};
   if(r?.policyRole==='PREREQUISITE')return {cls:'INFO',label:'사업추진 전제조건'};
@@ -13010,6 +13089,7 @@ function activationAgeReview(store){
   return {assessments,summary:{status,value,note,passed_routes:passed,statuses,rule_id:'activation_age_route_any',source_id:'ACTIVATION',source_locator:'2-1-4 다목',scope:'AGING_ONLY'}};
 }
 const AGE_SPATIAL_FACT_META=[
+  ['market_renewal','시장정비사업','30년 이상 60% · 서버 산정 · 선택구역 참고 / 시장경계 확인'],
   ['redevelopment','주택재개발','주택재개발 · 미확인 데이터 판정영향 범위판정'],
   ['urban_planning','도시계획계','일반 주택개발 지단 · 역세권활성화(지구단위) · 성장잠재권(지구단위) · 역세권복합지단'],
   ['urban_renewal','도정법계','주거환경개선 · 역세권활성화/성장잠재권 도시정비형'],
@@ -14102,6 +14182,8 @@ function buildSiteFactStore(){
   const agePopulationContext={spatial_building_count:Number(ledger.building?.summary?.spatial_building_count||0),query_complete:ledger.building?.summary?.query_complete===true,failed_pnu_count:Number(ledger.building?.summary?.failed_pnu_count||0)};
   store.derived.age=buildAgeDerivedFacts(c,store.site.building.records,agePopulationContext);
   store.family_specific.semiindustrial=buildSemiindustrialDevelopmentFacts(store);
+  const market=marketResultFor(store);
+  if(market)store.derived.age.market_renewal=market.facts.age;
   latestSiteFactStore=store;
   analysisState.fact_store=store;
   analysisState.factory_usage=store.site.factory_usage;
@@ -16606,6 +16688,7 @@ function checkPriorNegotiationFromFacts(store,f){
 }
 
 const SCHEME_MODULES={
+  market_renewal:{id:'market_renewal',version:'2025-06-25',collectFacts(store){return marketResultFor(store)?.facts||{};},evaluate(store,facts){const r=marketResultFor(store)||marketPendingResult();store.scheme_specific.market_renewal=facts;return {...r,facts};}},
   redevelopment:{id:'redevelopment',version:'2026-05-18-seoul-ordinance',collectFacts:redevelopmentSpatialFacts,evaluate(store,facts){const rows=checkRedevelopmentFromFacts(store,facts),overall=overallScheme(rows),density=facts.planning.density,sr=moduleStrengthRisk(rows,['주택접도율은 1차 사업후보 자동판정 변수에서 제외하고 정비계획 단계에서 추후검토']);return {module:'redevelopment',facts,rows,overall,density,...sr};}},
   reconstruction:{id:'reconstruction',version:'2026-07-01-renewal-act',collectFacts:reconstructionSpatialFacts,evaluate(store,facts){const rows=checkReconstructionFromFacts(store,facts),overall=overallScheme(rows),density=facts.planning.density,sr=moduleStrengthRisk(rows,['정비계획 입안대상 세부요건·재건축진단 결과를 결정도서로 확인']);return {module:'reconstruction',facts,rows,overall,density,...sr};}},
   residential_environment:{id:'residential_environment',version:'2026-05-18-seoul-ordinance',collectFacts:residentialEnvironmentSpatialFacts,evaluate(store,facts){const rows=checkResidentialEnvironmentFromFacts(store,facts),overall=overallScheme(rows),density=facts.planning.density,sr=moduleStrengthRisk(rows,['관리형/비관리형 시행방법 확정 · 4~6m 도로 중 35m 이상 막다른도로 경계사례는 공식 도로대장 확인']);return {module:'residential_environment',facts,rows,overall,density,...sr};}},
@@ -16686,7 +16769,7 @@ function overallScheme(rows){
   if(mandatory.some(r=>r.status==='REVIEW'))return 'REVIEW';
   return mandatory.every(r=>r.status==='PASS')?'PASS':'REVIEW';
 }
-function overallLabel(s){return s==='PASS'?'제도요건 충족':s==='FAIL'?'조건미달':'추가확인'}
+function overallLabel(s){if(s==='CONDITIONAL')return '추진 검토 가능 · 확인 전제';return s==='PASS'?'제도요건 충족':s==='FAIL'?'조건미달':'추가확인'}
 function passMeta(rows){
   const mandatory=rows.filter(r=>r.required!==false);
   const p=mandatory.filter(r=>r.status==='PASS').length;
@@ -17726,7 +17809,7 @@ function renderSchemeComparison(){
       <td>${escHtml(schemeNames[name])}</td>
       <td><span class="scheme-compare-status ${dec.state==='on'?'PASS':dec.state==='off'?'FAIL':'REVIEW'}">${escHtml(dec.label)}</span>
         <small class="engine-table-stage">${escHtml(candidateStageLabel(dec.stage))}</small></td>
-      <td>${res.overall==='PASS'
+      <td>${res.overall==='CONDITIONAL'?'추진 검토 가능 · 확인 전제':res.overall==='PASS'
         ? `제도 충족 · ${cnt.pass}/${cnt.fail}/${cnt.review}`
         : res.overall==='FAIL'
           ? `${escHtml(specificRegulatoryLabel(name,'FAIL'))} · ${cnt.pass}/${cnt.fail}/${cnt.review}`
@@ -18018,6 +18101,8 @@ function runAllSchemeChecks(){
     safeSchemeUiStep('safe-medical',()=>renderSafeMedicalSpatialStatus(),uiErrors);
     safeSchemeUiStep('factory-usage',()=>renderFactoryUsageSpatialStatus(),uiErrors);
     safeSchemeUiStep('scheme-spatial',()=>renderSchemeSpecificSpatialStatus(store),uiErrors);
+    safeSchemeUiStep('market-facts',()=>renderMarketRenewalFacts(),uiErrors);
+    if(!siteReviewRunning&&coreFactReadiness().ready&&marketRenewalState.key!==JSON.stringify(marketRequestPayload(store)))analyzeMarketRenewal(store).then(()=>runSchemeChecksWhenCoreReady());
   }
   safeSchemeUiStep('activation-exclusions',()=>renderActivationExclusionSpatialStatus(store),uiErrors);
   safeSchemeUiStep('scheme-competition',()=>renderSchemeCompetitionPanel(),uiErrors);
@@ -19297,6 +19382,7 @@ function candidateStageLabel(stage){
     EXECUTION:'사업구조',
     ALTERNATIVE:'대안',
     SUBTYPE:'세부사업',
+    CONDITIONAL:'확인 전제 검토',
     PASS:'우선검토'
   };
   return m[stage]||stage||'-';
@@ -19456,6 +19542,7 @@ function candidateChangeOpportunity(name,st){
   return labels.length?{possible:true,label:[...new Set(labels)].slice(0,2).join(' · '),kind:area&&labels.length===1?'AREA':'REGULATION'}:null;
 }
 function candidateDisplayState(name,st=safeCandidateState(name)){
+  if(name==='market_renewal'&&st?.ready){const r=marketResultFor(latestSiteFactStore);if(r?.candidate_possible)return {kind:'alternative',css:'candidate-adjustable',label:'추진 검토 가능',action:r.route+' · '+r.note};}
   if(!st?.ready)return {kind:'pending',css:'candidate-review',label:'분석대기',action:'구역계·현황자료 입력 필요'};
   if(SHELL_SCHEMES.has(name))return {kind:'pending',css:'candidate-review',label:'추후보완예정',action:'자동판정 모듈 미구축'};
   const competitionOverride=schemeCompetitionDisplayOverride(name);if(competitionOverride)return competitionOverride;
@@ -19485,6 +19572,7 @@ function candidateDisplayState(name,st=safeCandidateState(name)){
   return {kind:'unavailable',css:'candidate-off',label:st.label||'적용 곤란',action:st.failureDetail||st.areaReason||'조건조정만으로 추진경로를 확인하기 어려움'};
 }
 function ccContextFor(name){
+  if(name==='market_renewal')return marketCandidateContext();
   const purpose=document.getElementById('ccPurpose')?.value||'';
   const land=document.getElementById('ccLandControl')?.value||'';
   const actor=document.getElementById('ccActor')?.value||'';
@@ -20509,6 +20597,7 @@ function stationInfluenceForScheme(name,c){
   return {active:false,level:0,note:'직접 역세권 밀도경로 없음'};
 }
 function densityPotentialForScheme(name,st=null){
+  if(name==='market_renewal')return {tier:0,label:'밀도계획 별도확인',maxFar:null,targetZone:'',station:false,stationNote:'',reason:'시장·인접지역 구분 및 현행 연동기준 확인 후 계획용적률 산정'};
   if(SHELL_SCHEMES.has(name))return {tier:0,label:'추후보완예정',maxFar:null,targetZone:'',station:false,stationNote:'',reason:'공간혁신 3종 자동판정 추후보완예정'};
   const c=latestSiteFactStore?.common||commonSchemeData();
   const den=schemeResults[name]?.density||densityForScheme(name,c,latestSiteFactStore||null)||{};
@@ -21053,7 +21142,7 @@ function renderSchemePopupFallback(name,error=null){
   const title=document.getElementById('schemeDetailPopupTitle'),body=document.getElementById('schemeDetailPopupBody');if(!body)return;
   const res=schemeResults[name]||latestSchemeModuleResults[name]||null,label=schemeNames[name]||name;
   if(title)title.textContent=`${label} 기초검토서`;
-  const rows=(res?.rows||[]).slice(0,8).map(r=>`<tr><th>${escHtml(r.item||'-')}</th><td>${escHtml(r.value??'-')}</td><td>${escHtml(overallLabel(r.status||'REVIEW'))}</td><td>${escHtml(r.note||r.action||'-')}</td></tr>`).join('');
+  const rows=(res?.rows||[]).slice(0,8).map(r=>`<tr><th>${escHtml(r.item||'-')}</th><td>${escHtml(r.value??'-')}</td><td>${escHtml(name==='market_renewal'?schemeRowDisplay(r).label:overallLabel(r.status||'REVIEW'))}</td><td>${escHtml(r.note||r.action||'-')}</td></tr>`).join('');
   body.innerHTML=`<div class="activation-sheet"><div class="activation-sheet-title"><div><h3>${escHtml(label)}</h3><p>사업별 Rule Engine 결과 표시</p></div><div class="activation-feasibility"><span>판정상태</span><b class="${escHtml(res?.overall||'REVIEW')}">${escHtml(schemeSheetFeasibility(res?.overall||'REVIEW'))}</b></div></div>${rows?`<section class="activation-section"><h4>검토결과</h4><table class="activation-table"><tbody>${rows}</tbody></table></section>`:''}<div class="scheme-popup-fallback"><b>${error?'상세검토서 렌더링 일부 오류':'상세 현황 생성 대기'}</b><br>${error?escHtml(String(error?.message||error)):'먼저 검토하기를 실행하면 현황 Fact와 사업별 상세검토서를 표시합니다.'}<br>팝업 표시 자체는 유지하며, 새 현황을 여기서 임의 계산하지 않습니다.</div></div>`;
   appendBaseReviewDisclaimer(name);
 }
@@ -22038,7 +22127,7 @@ function buildServiceLayout(){
   main.innerHTML=`
     <section class="service-page service-review-page" id="serviceReviewPage">
       <div class="service-page-head">
-        <div><h2>사업검토</h2><span>지번 입력·지번 클릭·직접그리기·SHP로 구역계를 설정하면 독립모듈 16개를 자동 검토합니다. 공식 필지분석 전에는 면적조건을 REVIEW로 유지합니다.</span></div>
+        <div><h2>사업검토</h2><span>지번 입력·지번 클릭·직접그리기·SHP로 구역계를 설정하면 독립모듈 17개를 자동 검토합니다. 공식 필지분석 전에는 면적조건을 REVIEW로 유지합니다.</span></div>
       </div>
       <div class="service-review-grid">
         <div class="service-target-box">
@@ -22481,6 +22570,7 @@ function renderPriorityPreview(){
   </tbody></table></div><div class="priority-mass-placeholder"><b>위치기반 매스 이미지</b><span>대상지 형상·도로·계획규모를 반영하는 프로토타입 영역</span><em>초기 사업검토용 · 건축설계 결과 아님</em></div>`;
 }
 function schemeSheetFeasibility(status,conditional=false){
+  if(status==='CONDITIONAL')return '추진 검토 가능 · 확인 전제';
   if(status==='PASS')return conditional?'추진 가능 · 조건부':'추진 가능';
   if(status==='FAIL')return '대상지 요건 미충족';
   return '확인필요';
@@ -24252,6 +24342,7 @@ function appendBaseReviewDisclaimer(name){
   if(!body.querySelector('.base-review-disclaimer'))body.insertAdjacentHTML('beforeend',baseReviewDisclaimerHtml(name));
 }
 function renderSchemeDetailPopup(name){
+  if(name==='market_renewal'){renderMarketRenewalPopup();return;}
   if(name==='smallscale'){renderSmallscaleSchemeDetailPopup();r29ApplyPopup3PlanStandards(name);normalizeSchemeDetailSectionHeadings();appendBaseReviewDisclaimer(name);return;}
   if(['redevelopment','reconstruction','residential_environment','general_housing','prior_negotiation'].includes(name)){renderRemainingSchemeDetailPopup(name);r29ApplyPopup3PlanStandards(name);normalizeSchemeDetailSectionHeadings();appendBaseReviewDisclaimer(name);return;}
   if(name==='activation'){renderActivationDetailPopup();r29ApplyPopup3PlanStandards(name);normalizeSchemeDetailSectionHeadings();appendBaseReviewDisclaimer(name);return;}
@@ -24283,7 +24374,7 @@ function renderSchemeComparePopup(){
     const issue=display.kind==='adjustable'?display.action:display.kind==='unavailable'?(st.failureDetail||st.reasons?.slice(-1)[0]||'적용 곤란'):fail.full||review.full||st.reviewDetail||'주요요건 충족';
     return `<tr onclick="closeReviewModal('schemeCompareModal');showCandidateBasis('${name}')" style="cursor:pointer">
       <td>${i+1}</td><td>${escHtml(schemeFamilyLabel(name))}</td><td><b>${escHtml(schemeNames[name])}</b></td>
-      <td>${escHtml(display.kind==='available'?'현재 추진 가능':display.kind==='alternative'?'현재 추진 가능 · 대안':display.kind==='adjustable'?'조건변경 후 가능':display.kind==='pending'?'판정 유보':'적용 곤란')}</td><td>${escHtml(overallLabel(res.overall||'REVIEW'))}</td>
+      <td>${escHtml(name==='market_renewal'&&res.overall==='CONDITIONAL'?'추진 검토 가능 · 확인 전제':display.kind==='available'?'현재 추진 가능':display.kind==='alternative'?'현재 추진 가능 · 대안':display.kind==='adjustable'?'조건변경 후 가능':display.kind==='pending'?'판정 유보':'적용 곤란')}</td><td>${escHtml(overallLabel(res.overall||'REVIEW'))}</td>
       <td>${escHtml(issue||'-')}</td><td>${escHtml(densityTierLabel(dp.tier))}</td>
       <td>${escHtml((res.density||{}).far||'-')}</td>
     </tr>`;
