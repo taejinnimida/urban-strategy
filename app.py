@@ -2582,6 +2582,7 @@ def _regulatory_land_use_category(name: str) -> Optional[str]:
 
 RENEWAL_LEGAL_ZIP_PATH = _data_path("uq181_legal.zip")
 RENEWAL_PROJECT_ZIP_PATH = _data_path("uq120_project.zip")
+URBAN_REDEVELOPMENT_PLANNED_GEOJSON_PATH = _data_path("urban_redevelopment_planned_2030.geojson")
 
 # INDEX_HTML은 static/app.html에서 읽는다 (_index_html 참조)
 STATION_REFERENCE_PATH = _data_path("stations.json")
@@ -3059,6 +3060,74 @@ def _read_embedded_shapefile(zip_path: str, stem: str):
         )
 
 
+
+
+@lru_cache(maxsize=1)
+def _urban_redevelopment_planned_reference_data() -> Dict[str, Any]:
+    """사용자가 확인한 2030 도시정비형 기본계획 정비예정구역 18개 경계.
+
+    법정 SHP가 아니라 공식 기본계획 도면을 공간화한 사용자 확인 경계이므로
+    정비예정구역 FACT에만 사용하고 UQ181 법정 정비구역과 구분한다.
+    """
+    metadata = {
+        "available": False,
+        "source": "2030 도시정비형 기본계획 정비예정구역 공간화 경계",
+        "source_file": "urban_redevelopment_planned_2030.geojson",
+        "source_type": "USER_CONFIRMED_PLAN_DIGITIZATION",
+        "feature_count": 0,
+        "note": "공식 기본계획 도면을 사용자 확인 DXF로 공간화한 경계 · 법정 SHP 원자료 아님",
+    }
+    if not os.path.isfile(URBAN_REDEVELOPMENT_PLANNED_GEOJSON_PATH):
+        metadata["reason"] = "정비예정구역 공간화 GeoJSON 미설치"
+        return {"type": "FeatureCollection", "features": [], "metadata": metadata}
+    try:
+        with open(URBAN_REDEVELOPMENT_PLANNED_GEOJSON_PATH, encoding="utf-8") as fp:
+            raw = json.load(fp)
+    except Exception as exc:
+        metadata["reason"] = f"정비예정구역 GeoJSON 로딩 실패: {str(exc)[:180]}"
+        return {"type": "FeatureCollection", "features": [], "metadata": metadata}
+
+    features: List[Dict[str, Any]] = []
+    for idx, ft in enumerate(raw.get("features") or [], start=1):
+        try:
+            geom = _polygonal_only(shape(ft.get("geometry")))
+            if geom is None or geom.is_empty:
+                continue
+            if not geom.is_valid:
+                geom = _polygonal_only(geom.buffer(0))
+            if geom is None or geom.is_empty or not geom.is_valid:
+                continue
+        except Exception:
+            continue
+        props = dict(ft.get("properties") or {})
+        props.update({
+            "source": "basic_plan",
+            "source_title": props.get("source_title") or "2030 서울특별시 도시·주거환경정비기본계획(도시정비형 재개발사업 부문) 정비예정구역 · 공간화 경계",
+            "source_layer": props.get("source_layer") or "urban_redevelopment_planned_2030",
+            "source_feature_id": props.get("source_feature_id") or f"URBAN_PLANNED_{idx:02d}",
+            "code": props.get("code") or "URBAN_PLANNED_2030",
+            "renewal_type": "urban_planned",
+            "type_label": "도시정비형 재개발 정비예정구역",
+            "name": props.get("name") or f"정비예정구역 {idx:02d}",
+            "source_type": "USER_CONFIRMED_PLAN_DIGITIZATION",
+        })
+        features.append({"type": "Feature", "geometry": mapping(geom), "properties": props})
+
+    raw_meta = dict(raw.get("metadata") or {})
+    metadata.update({
+        "available": len(features) == 18,
+        "feature_count": len(features),
+        "source_crs": raw_meta.get("source_crs") or "EPSG:5174",
+        "output_crs": raw_meta.get("output_crs") or "EPSG:4326",
+        "excluded_entities": raw_meta.get("excluded_entities") or [],
+    })
+    if len(features) != 18:
+        metadata["quality_warning"] = f"사용자 확인 18개 경계 중 {len(features)}개만 로딩됨"
+        metadata["reason"] = metadata["quality_warning"]
+        features = []
+    return {"type": "FeatureCollection", "features": features, "metadata": metadata}
+
+
 @lru_cache(maxsize=1)
 def _renewal_reference_data():
     """Official Seoul SHPs converted to lightweight WGS84 GeoJSON at runtime."""
@@ -3110,6 +3179,8 @@ def _renewal_reference_data():
             })
 
     append_source(RENEWAL_LEGAL_ZIP_PATH, "UPIS_C_UQ181", "legal", RENEWAL_LEGAL_TYPES, True)
+    planned_reference = _urban_redevelopment_planned_reference_data()
+    features.extend(planned_reference.get("features") or [])
     append_source(RENEWAL_PROJECT_ZIP_PATH, "UPIS_C_UQ120", "project", RENEWAL_PROJECT_TYPES)
     return {
         "type": "FeatureCollection",
@@ -3119,8 +3190,13 @@ def _renewal_reference_data():
             "reference_month": "2026-02",
             "legal_source": "서울 의제처리구역 위치정보(UQ181)",
             "project_source": "서울 도시계획사업 현황(서울플랜+, UQ120)",
+            "planned_source": "2030 도시정비형 기본계획 정비예정구역 · 사용자 확인 공간화 경계",
+            "planned_available": bool(planned_reference.get("metadata", {}).get("available")),
+            "planned_feature_count": int(planned_reference.get("metadata", {}).get("feature_count") or 0),
+            "planned_source_type": planned_reference.get("metadata", {}).get("source_type") or "USER_CONFIRMED_PLAN_DIGITIZATION",
+            "planned_note": planned_reference.get("metadata", {}).get("note") or "",
             "legal_priority": True,
-            "disclaimer": "공개 GIS 중첩은 초기검토용 참고값이며 최종 결정고시·정비계획 도서를 재확인해야 합니다.",
+            "disclaimer": "공개 GIS 및 사용자 확인 기본계획 공간화 경계는 초기검토용 참고값이며 최종 결정고시·정비계획 도서를 재확인해야 합니다.",
         },
     }
 
@@ -3414,7 +3490,7 @@ def analyze_renewal_intersections(geometry: Dict[str, Any]) -> Dict[str, Any]:
         "project_registry_metadata": _planplus_project_reference_data()["metadata"],
         "project_registry_live_metadata": project_registry_live_metadata,
         "metadata": _renewal_reference_data()["metadata"],
-        "selection_rule": "법정 UQ181 우선 → 중첩면적 우선, 재정비촉진지구·구역은 별도 트랙",
+        "selection_rule": "법정 UQ181 우선 → 기본계획 정비예정구역 → UQ120 추진사업 참고, 재정비촉진지구·구역은 별도 트랙",
     }
 
 
@@ -4650,6 +4726,142 @@ def analyze_biotope_intersections(geometry: Dict[str, Any]) -> Dict[str, Any]:
             "geometry_basis": "site_exact_intersection",
         },
     }
+
+
+# R98: 서울시 도시자연공원구역(UQ142)만 법정 용도구역 판정에 사용한다.
+# VWorld LT_C_UQ162는 서울시 공식 포털과 중첩 불일치가 확인되어
+# 원인 검증 전까지 확정 FACT로 사용하거나 fallback하지 않는다.
+SEOUL_UQ142_SOURCE_URL = "https://data.seoul.go.kr/dataList/OA-21135/S/1/datasetView.do"
+SEOUL_UQ142_ARCHIVE_NAME = "seoul_uq142_202609.zip"
+
+
+def _seoul_uq142_path() -> Optional[str]:
+    path = _data_path(SEOUL_UQ142_ARCHIVE_NAME)
+    return path if os.path.isfile(path) and os.path.getsize(path) > 0 else None
+
+
+def _uq142_record_is_park_zone(properties: Dict[str, Any]) -> bool:
+    """Require affirmative UQ142 zone evidence; a generic urban park is NOT enough."""
+    codes = [str(properties.get(k) or '').strip().upper() for k in
+             ('MLSFC_CL', 'SCLAS_CL', 'ATRB_SE', 'DGM_CL', 'SHAPE_CODE', 'DGM_CODE')]
+    names = [str(properties.get(k) or '').strip() for k in
+             ('DGM_NM', 'LABEL_NM', 'LABEL', 'ZONENAME', 'NAME')]
+    # 공식 UQ142 대분류코드는 UQT600; 이름은 산별 '○○ 도시자연공원구역'을 허용한다.
+    # 명백히 불일치하는 코드가 있다면 공원이라는 이름만으로 통과시키지 않는다.
+    asserted_codes = [v for v in codes if v]
+    if asserted_codes and not any(v == 'UQT600' for v in asserted_codes):
+        return False
+    return any(v == 'UQT600' for v in codes) or any('도시자연공원구역' in name for name in names)
+
+
+@lru_cache(maxsize=1)
+def _seoul_uq142_spatial_layers() -> Dict[str, Any]:
+    path = _seoul_uq142_path()
+    if path is None:
+        return {'available': False, 'reason': f'서울시 UQ142 공식 SHP 미설치: {SEOUL_UQ142_ARCHIVE_NAME}',
+                'source_url': SEOUL_UQ142_SOURCE_URL}
+    try:
+        with zipfile.ZipFile(path) as zf:
+            members = {name.lower(): name for name in zf.namelist() if not name.endswith('/')}
+            shp_names = [name for name in zf.namelist() if name.lower().endswith('.shp') and
+                         re.search(r'(?:^|[^a-z0-9])(?:upis_c_)?uq142(?:[^a-z0-9]|$)', os.path.basename(name), re.I)]
+            if len(shp_names) != 1:
+                raise ValueError(f'UQ142 SHP를 하나만 포함해야 합니다(발견 {len(shp_names)}개)')
+            shp_name = shp_names[0]
+            stem = shp_name[:-4].lower()
+            component_names = [members.get(stem + ext) for ext in ('.shp','.shx','.dbf')]
+            if not all(component_names):
+                raise ValueError('UQ142 SHP/SHX/DBF 중 누락된 구성파일이 있습니다')
+            reader = shapefile.Reader(shp=io.BytesIO(zf.read(component_names[0])),
+                                     shx=io.BytesIO(zf.read(component_names[1])),
+                                     dbf=io.BytesIO(zf.read(component_names[2])),
+                                     encoding='cp949', encodingErrors='replace')
+            fields = [f[0] for f in reader.fields[1:]]
+            # 서울시 다운로드 페이지의 명시적인 제공좌표계 EPSG:5174.
+            to_wgs = Transformer.from_crs(5174, 4326, always_xy=True).transform
+            rows=[]; rejected=0; malformed=0
+            for sr in reader.iterShapeRecords():
+                props={k:_json_property(v) for k,v in zip(fields, list(sr.record))}
+                if not _uq142_record_is_park_zone(props):
+                    rejected+=1
+                    continue
+                try:
+                    raw_geom=shape(sr.shape.__geo_interface__)
+                    if not raw_geom.is_valid:
+                        raw_geom=raw_geom.buffer(0)
+                    geom=_polygonal_only(raw_geom)
+                    if geom is None or geom.is_empty:
+                        malformed+=1
+                        continue
+                    geom=geometry_transform(to_wgs, geom)
+                    if geom.is_empty or geom.geom_type not in ('Polygon','MultiPolygon'):
+                        malformed+=1
+                        continue
+                    rows.append({'geometry':geom,'properties':props})
+                except Exception:
+                    malformed+=1
+            if not rows or rejected or malformed:
+                raise ValueError(f'UQ142 검증 불완전: 유효 {len(rows)}, 분류불일치 {rejected}, 도형오류 {malformed} — 일부 자료로 부재를 확정할 수 없습니다')
+            tree=STRtree([r['geometry'] for r in rows])
+            source_sha256=hashlib.sha256(Path(path).read_bytes()).hexdigest()
+            return {'available': True,'rows':rows,'tree':tree,'count':len(rows),
+                    'file':os.path.basename(path),'sha256':source_sha256,
+                    'source':'서울시 도시자연공원구역(UQ142) 2026-09 공식 SHP (참고자료)',
+                    'source_url':SEOUL_UQ142_SOURCE_URL}
+    except Exception as exc:
+        logging.exception('UQ142 source load/validation failed')
+        return {'available':False,'reason':f'UQ142 원도형 검증 실패: {str(exc)[:220]}',
+                'source_url':SEOUL_UQ142_SOURCE_URL}
+
+
+def analyze_seoul_urban_nature_park(geometry: Dict[str, Any]) -> Dict[str, Any]:
+    """UQ142 검증된 원도형만 교차. 미설치/오류 시 절대 '중첩 없음' 판정 금지."""
+    site=shape(geometry)
+    if site.geom_type not in ('Polygon','MultiPolygon') or site.is_empty:
+        raise ValueError('유효한 Polygon 또는 MultiPolygon 구역계가 필요합니다.')
+    if not site.is_valid:
+        site=site.buffer(0)
+    if site.is_empty or not site.is_valid:
+        raise ValueError('유효하지 않은 대상 구역계입니다.')
+    layers=_seoul_uq142_spatial_layers()
+    if not layers.get('available'):
+        return {'status':'UNVERIFIED','known':False,'verified':False,'intersects':None,
+                'overlap_area_m2':None,'overlap_pct':None,
+                'features':{'type':'FeatureCollection','features':[]},
+                'reason':layers.get('reason','UQ142 조회 불가'),
+                'metadata':{'source_url':SEOUL_UQ142_SOURCE_URL,'geometry_basis':'NONE','verified':False}}
+    clipped=[]; shapes=[]
+    try:
+        for idx in layers['tree'].query(site, predicate='intersects'):
+            r=layers['rows'][int(idx)]
+            intersect=site.intersection(r['geometry'])
+            if intersect.is_empty:
+                continue
+            g=_polygonal_only(intersect)
+            if g is None or g.is_empty:
+                continue
+            shapes.append(g)
+            clipped.append({'type':'Feature','geometry':mapping(g),
+                            'properties':{'source_layer':'UQ142',
+                                          'name':str(r['properties'].get('DGM_NM') or '도시자연공원구역')}})
+    except Exception as exc:
+        return {'status':'UNVERIFIED','known':False,'verified':False,'intersects':None,
+                'overlap_area_m2':None,'overlap_pct':None,
+                'features':{'type':'FeatureCollection','features':[]},
+                'reason':f'UQ142 공간중첩 계산 오류: {exc}',
+                'metadata':{'source_url':SEOUL_UQ142_SOURCE_URL,'geometry_basis':'NONE','verified':False}}
+    to_m=Transformer.from_crs(4326,5174,always_xy=True).transform
+    site_area=float(geometry_transform(to_m,site).area)
+    if site_area <= 0:
+        raise ValueError('구역계 면적이 0입니다.')
+    overlap=float(geometry_transform(to_m,unary_union(shapes)).area) if shapes else 0.0
+    return {'status':'VERIFIED','known':True,'verified':True,'intersects':overlap>0.5,
+            'overlap_area_m2':overlap,'overlap_pct':overlap/site_area*100,
+            'features':{'type':'FeatureCollection','features':clipped},
+            'metadata':{'source':layers['source'],'source_url':SEOUL_UQ142_SOURCE_URL,
+                        'file':layers['file'],'sha256':layers['sha256'],'dataset_count':layers['count'],
+                        'geometry_basis':'OFFICIAL_SEOUL_UQ142_SHP','verified':True,
+                        'legal_note':'서울시 공간자료는 참고자료이며 최종 법적 효력은 결정고시 및 지형도면 확인'}}
 
 
 def _forest_classification_zip_path() -> Optional[str]:
@@ -8189,6 +8401,25 @@ class GeometryInput(BaseModel):
     geometry: Dict[str, Any]
 
 
+@app.get('/api/reference/seoul-uq142-status')
+def seoul_uq142_status():
+    layers=_seoul_uq142_spatial_layers()
+    return {'available':bool(layers.get('available')),'dataset_count':layers.get('count',0),
+            'file':layers.get('file'),'sha256':layers.get('sha256'),'reason':layers.get('reason',''),
+            'source_url':SEOUL_UQ142_SOURCE_URL,'reference_only':True}
+
+
+@app.post('/api/spatial/seoul-uq142-intersections')
+def seoul_uq142_intersections(inp: GeometryInput):
+    try:
+        return analyze_seoul_urban_nature_park(inp.geometry)
+    except ValueError as exc:
+        raise HTTPException(status_code=422,detail=str(exc)) from exc
+    except Exception as exc:
+        logging.exception('UQ142 intersection failed')
+        raise HTTPException(status_code=500,detail='서울시 UQ142 공간분석 오류') from exc
+
+
 class ParcelAddressInput(BaseModel):
     address: str = Field(..., min_length=3, max_length=200)
 
@@ -8237,7 +8468,7 @@ def spatial_zoning(inp: GeometryInput):
 # 들어와도 이 세마포어 하나가 서버 프로세스 전체 VWorld 호출을 최대 2개로 제한한다.
 PLANNING_LAYER_IDS = frozenset({
     "LT_C_UQ111", "LT_C_UQ121", "LT_C_UQ123", "LT_C_UQ124", "LT_C_UQ125",
-    "LT_C_UQ126", "LT_C_UQ128", "LT_C_UQ129", "LT_C_UQ130", "LT_C_UQ162",
+    "LT_C_UQ126", "LT_C_UQ128", "LT_C_UQ129", "LT_C_UQ130",
     "LT_C_UD801", "LT_C_UO301", "LT_C_UPISUQ151", "LT_C_UPISUQ152",
     "LT_C_UPISUQ153", "LT_C_UPISUQ154", "LT_C_UPISUQ155", "LT_C_UPISUQ156",
     "LT_C_UPISUQ157", "LT_C_UPISUQ158", "LT_C_UPISUQ159", "LT_C_UPISUQ161",
@@ -9162,7 +9393,7 @@ def reference_station_entrances():
 # R22 station-line runtime hotfix.  This block is intentionally backend-only:
 # the existing multi-station frontend already consumes /api/reference/station-lines.
 STATION_RUNTIME_BUILD_MARKER = "R22_STATION_HOTFIX_20260901_0915"
-APP_BUILD_MARKER = "R97_MARKET_POPUP_UI_20261013"
+APP_BUILD_MARKER = "R98_INTEGRATED_MARKET_UQ142_PLANNED_20261014"
 _STATION_LINE_CACHE_LOCK = threading.Lock()
 _STATION_LINE_CACHE: Dict[str, Any] = {
     "expires_at": 0.0,
@@ -9487,6 +9718,7 @@ def _reference_data_readiness() -> Dict[str, bool]:
         "station_entrances": os.path.isfile(_data_path("station_entrances.json")),
         "renewal_legal": os.path.isfile(_data_path("uq181_legal.zip")),
         "renewal_project": os.path.isfile(_data_path("uq120_project.zip")),
+        "urban_redevelopment_planned": os.path.isfile(_data_path("urban_redevelopment_planned_2030.geojson")),
         "safe_medical": os.path.isfile(_data_path("safe_medical_reference.json")),
         "biotope": os.path.isfile(_data_path("biotope_seoul.zip")),
         "public_forest": os.path.isfile(_data_path("forest_classification_seoul_202608.zip")),
