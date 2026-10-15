@@ -9393,7 +9393,7 @@ def reference_station_entrances():
 # R22 station-line runtime hotfix.  This block is intentionally backend-only:
 # the existing multi-station frontend already consumes /api/reference/station-lines.
 STATION_RUNTIME_BUILD_MARKER = "R22_STATION_HOTFIX_20260901_0915"
-APP_BUILD_MARKER = "R98_INTEGRATED_MARKET_UQ142_PLANNED_20261014"
+APP_BUILD_MARKER = "R99_SEMIINDUSTRIAL_CANDIDATES_20261015"
 _STATION_LINE_CACHE_LOCK = threading.Lock()
 _STATION_LINE_CACHE: Dict[str, Any] = {
     "expires_at": 0.0,
