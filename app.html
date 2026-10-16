@@ -23340,6 +23340,14 @@ function smallscaleDensityPlanRowsForPopup(key,res,store,f){
 
   let out=popupPlanRow('현행 용도지역·조례용적률',base,'특례 적용 전 기준점. 법정사업별 근거가 확인된 특례만 중첩하고 다른 사업의 용적률표를 공용하지 않음',routeSource);
 
+  // R100: 준공업 입지에 주거지역 종상향·역세권 전용 공급비율을 자동 표시하지 않는다.
+  if(key==='redevelopment'&&c.zoning==='준공업'){
+    out+=popupPlanRow('적용 입지경로','준공업지역 소규모재개발','준공업지역 입지로 검토. 역세권 경로의 용도지역 변경표를 자동 적용하지 않음',sourceRedev);
+    out+=popupPlanRow('현 용도지역 법적상한',legalFar!=null?`${legalFar}%`:'확인 필요','용도지역 자체의 법적상한 참고값이며 사업에 적용할 계획용적률 확정값이 아님',sourceAct);
+    out+=popupPlanRow('계획용적률·공공기여','선택한 특례 및 계획조건에 따라 별도 산정','준공업지역이라는 이유만으로 역세권 종상향 특례나 그 공급비율을 적용하지 않음. 적용 특례와 근거가 확정되면 해당 산식으로 산정',`${sourceAct}<br>${sourceOrd}`);
+    return out;
+  }
+
   // 소규모주택정비사업 공통 특례: 법 제49조. 계획변수가 없으므로 자동 적용하지 않고 적용가능 경로만 표시한다.
   if(key!=='moa'){
     out+=popupPlanRow('임대주택 건설 용적률 특례','공공임대·공공지원민간임대 20% 이상 → 법적상한 / 공공임대 10~20% 미만 → 비율연동 상한','소규모주택정비법 제49조의 공통 특례. 실제 임대비율이 계획변수로 입력되기 전에는 자동 용적률로 채택하지 않음. 세대수 기준 적용 시 서울시 조례상 임대주택 평균 전용면적 40㎡ 이상',`${sourceAct}<br>${sourceOrd}`);
@@ -23417,7 +23425,9 @@ function renderSmallscaleSchemeDetailPopup(){
   let key=activeSmallscaleRoute||'block';
   if(!f.routes?.[key])key='block';
   const route=f.routes[key]||{},meta=SMALLSCALE_ROUTE_UI[key]||{label:'소규모주택정비사업',short:'소규모주택정비'};
-  if(title)title.textContent=`${meta.label} 기초검토서`;
+  const isRedev=key==='redevelopment',isSemi=isRedev&&store.common?.zoning==='준공업';
+  const locationLabel=isSemi?'준공업지역 경로':store.common?.zoning?'역세권 경로':'입지경로 미확인';
+  if(title)title.textContent=`${meta.label}${isRedev?' · '+locationLabel:''} 기초검토서`;
   const tabs=legalKeys.map(k=>{
     const rr=f.routes?.[k]||{},mm=SMALLSCALE_ROUTE_UI[k]||{short:k};
     return `<button class="smallscale-route-tab ${escHtml(rr.conditional?'CONDITIONAL':(rr.status||'REVIEW'))} ${k===key?'active':''}" onclick="selectSmallscalePopupRoute('${k}')">${escHtml(mm.short)} · ${escHtml(rr.status==='PASS'?'충족':rr.status==='FAIL'?'불충족':rr.conditional?'조건부':'확인필요')}</button>`;
@@ -23429,8 +23439,8 @@ function renderSmallscaleSchemeDetailPopup(){
   }).join('');
   const criteria=(route.criteria||[]);
   const criterionRows=criteria.map(c=>{
-    const fake={status:c.status||'REVIEW',conditional:c.conditional===true};
-    return `<tr><td><b>${escHtml(c.item||'-')}</b></td><td>${escHtml(c.rule||'-')}</td><td>${escHtml(c.value??'-')}<div class="activation-next">${escHtml(c.note||'')}</div></td><td>${activationStatusCell(fake)}</td><td>${schemeSheetSourceFor('smallscale',c.item,c.source_id||route.source_id||'SMALL_HOUSING',c.locator||'')}</td></tr>`;
+    const fake={...c,status:c.status||'REVIEW',conditional:c.conditional===true};
+    return `<tr><td><b>${escHtml(c.item||'-')}</b></td><td>${escHtml(isSemi&&c.item==='입지유형'?'준공업지역 입지':c.rule||'-')}</td><td>${escHtml(c.value??'-')}<div class="activation-next">${escHtml(c.note||'')}</div></td><td>${c.policyRole==='REFERENCE'?'<span class="scheme-tag INFO">참고 · 후보판정 제외</span>':activationStatusCell(fake)}</td><td>${schemeSheetSourceFor('smallscale',c.item,c.source_id||route.source_id||'SMALL_HOUSING',c.locator||'')}</td></tr>`;
   }).join('');
   const stock=f.stock||{};
   const commonStatus=`단독 ${stock.detached_count??'-'}호 · 다세대/연립 ${stock.multi_row_units==null?'-':stock.multi_row_units+'세대'} · 재건축대상 아파트/연립 ${stock.reconstruction_units==null?'-':stock.reconstruction_units+'세대'}`;
@@ -23441,17 +23451,18 @@ function renderSmallscaleSchemeDetailPopup(){
   
   body.innerHTML=`<div class="activation-sheet">
     <div class="smallscale-route-tabs">${tabs}</div>${policy}
-    <div class="activation-sheet-title"><div><h3>${escHtml(meta.label)}</h3><p>${escHtml(sourceNote)}</p></div><div class="activation-feasibility"><span>${key==='moa'?'정책경로':'사업요건 종합'}</span><b class="${escHtml(routeOverall)}">${escHtml(key==='moa'?(routeOverall==='PASS'?'관리지역 적용':'정책경로 확인'):schemeSheetFeasibility(routeOverall,route.conditional===true))}</b></div></div>
+    <div class="activation-sheet-title"><div><h3>${escHtml(meta.label)}${isRedev?' · '+escHtml(locationLabel):''}</h3><p>${escHtml(sourceNote)}</p></div><div class="activation-feasibility"><span>${key==='moa'?'정책경로':'사업요건 종합'}</span><b class="${escHtml(routeOverall)}">${escHtml(key==='moa'?(routeOverall==='PASS'?'관리지역 적용':'정책경로 확인'):schemeSheetFeasibility(routeOverall,route.conditional===true))}</b></div></div>
     <div class="smallscale-route-summary">${summaries}</div>
     <section class="activation-section"><h4>1. 공통 현황</h4><table class="activation-table"><tbody>
       <tr><th>위치</th><td>${escHtml(store.site.address||'-')}</td><th>사업대상지 면적</th><td>${escHtml(fmtSchemeArea(store.common.area))}</td></tr>
       <tr><th>건축물대장 주택수</th><td>${escHtml(commonStatus)}</td><th>노후도</th><td>${escHtml(ageFactValue(f.aging?.assessment))}</td></tr>
+      ${isRedev?`<tr><th>판정 적용 용도지역</th><td>${escHtml(store.common?.zoning||'미확인')}</td><th>적용 입지경로</th><td>${escHtml(locationLabel)}</td></tr>`:''}
       <tr><th>관리지역</th><td>${escHtml(f.routes?.moa?.value||'-')}</td><th>가로구역</th><td>${escHtml(f.street_block?.analysis_scope_m2==null?'-':fmtSchemeArea(f.street_block.analysis_scope_m2))}</td></tr>
     </tbody></table></section>
     <section class="activation-section"><h4>2. ${escHtml(meta.short)} 사업요건 검토</h4><table class="activation-table smallscale-criterion-table"><thead><tr><th>검토항목</th><th>기준</th><th>대상지 현황</th><th>판정</th><th>근거</th></tr></thead><tbody>${criterionRows}</tbody></table></section>
     <section class="activation-section"><h4>3. 계획기준·용적률·특례·공공부담</h4><table class="activation-table"><thead><tr><th>검토항목</th><th>적용값</th><th>적용조건·해석</th><th>근거</th></tr></thead><tbody>${planRows}</tbody></table></section>
     ${renderSchemeProcedureSection('smallscale',{fact:f,store,route:key})}
-    <div class="scheme-modal-note"><b>판정원칙</b> ${escHtml(routeNote)} 하나의 필수요건이라도 명확히 불충족이면 해당 법정사업은 불충족으로 판정합니다. 건축물대장에 세대수·가구수 자료가 있으면 주택수는 확인필요로 남기지 않습니다.</div>
+    <div class="scheme-modal-note"><b>판정원칙</b> ${escHtml(isSemi?'준공업지역 입지·면적·접도·기존 사업지역 배제를 판정합니다. 노후도 사실값과 법정 기준은 표시하되 초기 후보판정에서 제외합니다.':routeNote)} 하나의 필수요건이라도 명확히 불충족이면 해당 법정사업은 불충족으로 판정합니다. 건축물대장에 세대수·가구수 자료가 있으면 주택수는 확인필요로 남기지 않습니다.</div>
   </div>`;
 }
 
@@ -24365,6 +24376,7 @@ function r29Popup3Html(name){
   return '';
 }
 function r29ApplyPopup3PlanStandards(name){
+  if(name==='smallscale'&&activeSmallscaleRoute==='redevelopment')return; // R100: retain route-specific detailed plan rows
   const html=r29Popup3Html(name);if(!html)return;
   const body=document.getElementById('schemeDetailPopupBody');if(!body)return;
   const sections=[...body.querySelectorAll('section.activation-section')];
