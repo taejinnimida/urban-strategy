@@ -5260,6 +5260,7 @@ function refreshStationCenterMiniMaps(){
   scheduleLocationMiniViews();
 }
 function fitCompactMiniMap(mp,boundaryLayer,fallbackFeatures){
+  if(r101Maps().includes(mp)){r101Schedule();return;}
   // 접힘/펼침·초기 렌더 직후 Leaflet 컨테이너 폭/높이가 0 또는 이전값이면
   // fitBounds가 서울 기본축척에 남아 대상지가 점처럼 보일 수 있다. invalidate 후 다음 tick에서 fit한다.
   const fit=()=>{
@@ -5458,17 +5459,64 @@ function miniViewOutsideBuildings(rows){
 function addMiniViewLabel(layer,feature,label,position='north'){
   try{const b=turf.bbox(feature),lat=position==='south'?b[1]:b[3],lon=(b[0]+b[2])/2;L.marker([lat,lon],{interactive:false,icon:L.divIcon({className:'mini-context-label-anchor',html:`<span>${escHtml(label)}</span>`,iconSize:[150,18],iconAnchor:[75,position==='south'?0:18]})}).addTo(layer);}catch(e){}
 }
-function locationMiniViewBounds(){
-  if(!activeGeometry)return null;const rows=[turf.bbox(turf.feature(activeGeometry))];
-  for(const st of stationFacts())for(const radius of [250,350]){const f=st.buffers?.[radius];if(f)try{rows.push(turf.bbox(f));}catch(e){}}
-  for(const x of safeMedicalAnalysis.items||[]){for(const geometry of [x.geometry,x.facility_boundary_geometry,x.buffer_350_geometry])if(geometry)try{rows.push(turf.bbox({type:'Feature',geometry,properties:{}}));}catch(e){}}
-  for(const f of activationArterialAnalysis.roads||[])try{rows.push(turf.bbox(f));}catch(e){}
-  return miniBoundsUnion(rows);
+// R101: display-only context. Never written to analysis stores or used by RULEs.
+const r101Views=new Map(),r101ContextCache=new Map();
+let r101ViewTimer=null,r101ContextPending='';
+function r101Maps(){return [ccActivationArterialMini,ccSafeMedicalMini,ccSchoolAbsoluteMini,ccNaturalRegulation.map,ccTransportSecurityRegulation.map,ccDisasterRegulation.map];}
+function r101Bounds(geometry=activeGeometry){return geometry?turf.bbox(turf.buffer(turf.feature(geometry),500,{units:'meters'})):null;}
+function r101Clip(features,bounds){return (features||[]).flatMap(f=>{try{if(f.geometry?.type==='Point')return f.geometry.coordinates[0]>=bounds[0]&&f.geometry.coordinates[0]<=bounds[2]&&f.geometry.coordinates[1]>=bounds[1]&&f.geometry.coordinates[1]<=bounds[3]?[cloneFeature(f)]:[];const x=turf.bboxClip(cloneFeature(f),bounds);return x.geometry?.coordinates?.length?[x]:[];}catch(e){return [];}});}
+function r101Record(mp){
+  if(r101Views.has(mp))return r101Views.get(mp);
+  for(const [name,z] of [['r101Base',240],['r101Context',410],['r101Site',640]]){const p=mp.getPane(name)||mp.createPane(name);p.style.zIndex=z;p.style.pointerEvents='none';}
+  const r={map:mp,base:L.geoJSON(null,{pane:'r101Base',interactive:false,style:f=>f.properties?._view_road?{color:'#a4abb5',weight:.7,fillColor:'#e7e9ed',fillOpacity:.65}:{color:'#a4abb5',weight:.6,fill:false,opacity:.65}}).addTo(mp),context:planningGeoJSON(null,{pane:'r101Context',interactive:false,style:mp===ccSchoolAbsoluteMini?{color:'#9333a8',weight:1.5,fillColor:'#e9b7f2',fillOpacity:.25}:regulatoryMiniStyle}).addTo(mp),site:L.geoJSON(null,{pane:'r101Site',interactive:false,style:{color:'#e11d48',weight:2.8,fill:false,dashArray:'8,3,2,3'}}).addTo(mp),labels:L.layerGroup().addTo(mp),full:false};
+  const el=mp.getContainer();el.style.minHeight='320px';
+  const bar=document.createElement('div');bar.className='r101-view-toolbar';bar.style.cssText='display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:11px;padding:6px 0;color:#475467';
+  const text=document.createElement('span');text.textContent='경계 + 500m · 북쪽 ↑ · 붉은 선: 대상지 · 회색 점선: 표시범위';bar.appendChild(text);
+  const button=document.createElement('button');button.type='button';button.textContent='전체보기';button.onclick=()=>{r.full=!r.full;button.textContent=r.full?'500m 기본보기':'전체보기';r101Fit(mp);scheduleMiniMapBackground();};bar.appendChild(button);
+  const retry=document.createElement('button');retry.type='button';retry.textContent='주변도면 재조회';retry.onclick=()=>{r101ContextCache.delete(JSON.stringify(activeGeometry));r101Schedule();};bar.appendChild(retry);
+  r.frame=L.geoJSON(null,{pane:'r101Base',interactive:false,style:{color:'#667085',weight:1,fill:false,dashArray:'4,4'}}).addTo(mp);r.note=document.createElement('span');bar.appendChild(r.note);el.insertAdjacentElement('beforebegin',bar);r101Views.set(mp,r);mp.on('resize',r101Schedule);return r;
 }
+function r101Fit(mp){
+  if(!activeGeometry)return;const r=r101Record(mp),b=r101Bounds();mp.invalidateSize(false);r.frame.clearLayers();r.frame.addData(turf.feature(miniBoundsGeometry(b)));
+  r.site.clearLayers();const original=turf.feature(activeGeometry),outline=siteBoundaryDisplayFeature(original);r.site.addData(outline||original);
+  r.labels.clearLayers();addMiniViewLabel(r.labels,original,'검토구역');
+  const signature=JSON.stringify(activeGeometry);if(r.signature!==signature){r.signature=signature;r.full=false;r.base.clearLayers();r.context.clearLayers();r.note.textContent='주변도면 조회 대기';}
+  let bounds=b;
+  if(r.full){const features=[original];if(mp===ccSafeMedicalMini)for(const x of safeMedicalAnalysis.items||[])for(const geometry of [x.geometry,x.facility_boundary_geometry,x.buffer_350_geometry])if(geometry)features.push(turf.feature(geometry));if(mp===ccActivationArterialMini)features.push(...(activationArterialAnalysis.roads||[]));r.context.eachLayer(l=>{if(l.feature)features.push(l.feature);});bounds=miniBoundsUnion(features.map(f=>turf.bbox(f)));}
+  const target=L.latLngBounds([[bounds[1],bounds[0]],[bounds[3],bounds[2]]]);mp.options.zoomSnap=0;mp.fitBounds(target,{animate:false,padding:[8,8],maxZoom:18});
+  if(mp===ccActivationArterialMini){const fs=r101Clip(activationArterialAnalysis.roads||[],b),seen=new Set();for(const f of fs){const p=f.properties||{},name=p._linear_road_name||p.road_name||p.RN||p.rn||p.name||'',width=p._linear_width_m||p._width_m||p.ROAD_BT||p.road_bt;if(!name&&!width)continue;const label=[name,width?`${width}m`:''].filter(Boolean).join(' · ');if(seen.has(label))continue;seen.add(label);if(seen.size<=8)addMiniViewLabel(r.labels,f,label);}}
+  if(mp===ccSafeMedicalMini){const outside=(safeMedicalAnalysis.items||[]).filter(x=>x.geometry&&!r101Clip([turf.feature(x.geometry)],b).length);const old=mp.getContainer().parentElement.querySelector('.r101-outside');if(old)old.remove();if(outside.length){const el=document.createElement('div');el.className='r101-outside';el.style.cssText='font-size:11px;color:#475467;padding:5px';el.textContent='표시범위 밖: '+outside.map(x=>`${x.name||'의료시설'}${Number.isFinite(x.distance_boundary_m)?' · '+x.distance_boundary_m.toFixed(0)+'m':''}`).join(' / ')+' · 전체보기에서 위치 확인';mp.getContainer().insertAdjacentElement('afterend',el);}}
+}
+function r101Schedule(){clearTimeout(r101ViewTimer);r101ViewTimer=setTimeout(()=>{if(moduleRetryActive()||analysisDrawingState.phase==='collect')return;for(const mp of r101Maps()){const r=r101Record(mp);if(!activeGeometry){for(const k of ['site','base','context','labels','frame'])r[k].clearLayers();r.note.textContent='구역 설정 전';continue;}r101Fit(mp);}if(activeGeometry)r101Fetch();},100);}
+function r101Tagged(data,items,bounds){const out=[];for(const item of items){const keys={disaster_risk_map:'natural_disaster_risk_district'},d=data?.[keys[item.id]||item.id];if(d)out.push(...tagRegulatoryFeatures(r101Clip(d.context_features?.length?d.context_features:d.features||[],bounds),item,'source_zone'));}return out;}
+function r101Paint(payload){const bounds=r101Bounds();if(!bounds)return;const groups=new Map([[ccNaturalRegulation.map,'natural'],[ccTransportSecurityRegulation.map,'transport'],[ccDisasterRegulation.map,'disaster']]);for(const mp of r101Maps()){const r=r101Record(mp);r.base.clearLayers();r.base.addData({type:'FeatureCollection',features:payload.parcels});r.context.clearLayers();let features=[];if(mp===ccSchoolAbsoluteMini)features=r101Clip(payload.school?.features||[],bounds);else if(groups.has(mp)){const items=(regulatoryConstraintAnalysis.items||[]).filter(x=>x.group===groups.get(mp));features=r101Tagged({...payload.bundled,...payload.disaster},items,bounds);}if(features.length)r.context.addData({type:'FeatureCollection',features});r.note.textContent=`${payload.baseComplete?'지적 배경 수신':'지적 배경 일부 미확보'}${mp===ccSchoolAbsoluteMini||groups.has(mp)?' · '+(payload.contextComplete?(features.length?'주변 도형 '+features.length+'건':'확보한 주변자료 내 도형 없음'):'주변자료 일부 미확보'):''}`;}}
+async function r101Fetch(){
+  const signature=JSON.stringify(activeGeometry),bounds=r101Bounds();if(!bounds)return;
+  const cached=r101ContextCache.get(signature);if(cached){r101Paint(cached);return;}if(r101ContextPending===signature)return;r101ContextPending=signature;
+  for(const mp of r101Maps())r101Record(mp).note.textContent='주변도면 조회 중';
+  const payload={parcels:[],baseComplete:true,contextComplete:true};
+  try{
+    const paths=[['school','school-absolute-protection-intersections'],['bundled','regulatory-reference-intersections'],['disaster','local-disaster-reference-intersections']];
+    for(const [key,path] of paths){if(JSON.stringify(activeGeometry)!==signature||analysisDrawingState.phase==='collect')return;const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),45000);try{payload[key]=await fetchBackendJson('/api/spatial/'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry:miniBoundsGeometry(bounds)}),signal:controller.signal});if(payload[key]?.status==='unavailable'||payload[key]?.errors?.length||Object.values(payload[key]||{}).some(x=>x&&typeof x==='object'&&x.known===false))payload.contextComplete=false;}catch(e){payload.contextComplete=false;}finally{clearTimeout(timer);}}
+    // Tile only the VIEW background into <= 500m cells; reuse bounded backend endpoint.
+    const width=turf.distance([bounds[0],bounds[1]],[bounds[2],bounds[1]],{units:'meters'}),height=turf.distance([bounds[0],bounds[1]],[bounds[0],bounds[3]],{units:'meters'}),nx=Math.ceil(width/500),ny=Math.ceil(height/500);
+    if(nx*ny>36)payload.baseComplete=false;else for(let x=0;x<nx;x++)for(let y=0;y<ny;y++){
+      if(JSON.stringify(activeGeometry)!==signature||analysisDrawingState.phase==='collect')return;
+      const b=[bounds[0]+(bounds[2]-bounds[0])*x/nx,bounds[1]+(bounds[3]-bounds[1])*y/ny,bounds[0]+(bounds[2]-bounds[0])*(x+1)/nx,bounds[1]+(bounds[3]-bounds[1])*(y+1)/ny];
+      const d=await requestMiniMapBackground(b,'detail',false,signature);if(d?.parcels?.features)payload.parcels.push(...d.parcels.features);if(d?.parcel_status!=='COMPLETE')payload.baseComplete=false;if(JSON.stringify(activeGeometry)===signature)r101Paint({...payload,baseComplete:false});
+    }
+    payload.parcels=miniViewUnique(payload.parcels);
+    if(JSON.stringify(activeGeometry)!==signature)return;r101ContextCache.set(signature,payload);while(r101ContextCache.size>4)r101ContextCache.delete(r101ContextCache.keys().next().value);r101Paint(payload);
+  }finally{if(r101ContextPending===signature)r101ContextPending='';}
+}
+
+function locationMiniViewBounds(){return r101Bounds();}
+
 let locationMiniViewTimer=null;
 function scheduleLocationMiniViews(){
   if(moduleRetryActive())return;clearTimeout(locationMiniViewTimer);locationMiniViewTimer=setTimeout(syncLocationMiniViews,60);}
 function syncLocationMiniViews(){
+  r101Schedule();
   syncThematicMiniViewSignature();const bounds=locationMiniViewBounds();if(!bounds){ccCenterPolygon.clearLayers();ccCenterInside.clearLayers();return;}
   const maps=[ccStationMini,ccCenterMini,ccActivationArterialMini,ccSafeMedicalMini];if(!applyMiniSharedView(maps,bounds,16))return;
   const displayBounds=miniBoundsUnion(maps.map(miniViewBounds).filter(Boolean))||bounds;
@@ -6056,6 +6104,7 @@ function renderSafeMedicalSpatialStatus(){
   setTimeout(()=>{try{ccSafeMedicalMini.invalidateSize(false);}catch(e){}},0);scheduleLocationMiniViews();
 }
 function renderSchoolAbsoluteProtectionSpatialStatus(){
+  r101Schedule();
   if(deferAnalysisDrawing('renderSchoolAbsoluteProtectionSpatialStatus',()=>renderSchoolAbsoluteProtectionSpatialStatus()))return;
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
   ccSchoolAbsoluteZones.clearLayers();ccSchoolAbsoluteOverlap.clearLayers();ccSchoolAbsoluteBoundary.clearLayers();
@@ -6284,6 +6333,7 @@ function regulatoryFacilityFeatures(){
   return out;
 }
 function renderRegulatoryGroup(group,box,stateId,confirmedId,unknownId,listId,legendId,itemCountId){
+  r101Schedule();
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
   box.parcelBase.clearLayers();box.facility.clearLayers();box.layer.clearLayers();box.boundary.clearLayers();
   const list=document.getElementById(listId),legend=document.getElementById(legendId);
@@ -6297,7 +6347,7 @@ function renderRegulatoryGroup(group,box,stateId,confirmedId,unknownId,listId,le
   const facilities=regulatoryFacilityFeatures();if(facilities.length)box.facility.addData({type:'FeatureCollection',features:facilities});
   box.boundary.addData({type:'Feature',geometry:activeGeometry,properties:{}});
   const a=regulatoryConstraintAnalysis,items=(a.items||[]).filter(x=>x.group===group),confirmed=items.filter(x=>x.present),knownNegative=items.filter(x=>x.known&&!x.present&&x.data_status!=='MAP_ONLY'),noGradeData=items.filter(x=>x.data_status==='NO_GRADE_DATA'),outOfCoverage=items.filter(x=>x.data_status==='OUT_OF_COVERAGE'),mapOnly=items.filter(x=>x.data_status==='MAP_ONLY'),unknown=items.filter(x=>!x.known&&!['MAP_ONLY','NO_GRADE_DATA','OUT_OF_COVERAGE'].includes(x.data_status)),mapFs=[];
-  for(const item of confirmed){mapFs.push(...tagRegulatoryFeatures(item.context_features,item,'source_zone'));mapFs.push(...tagRegulatoryFeatures(item.overlap_features?.length?item.overlap_features:item.features,item,'overlap'));}
+  for(const item of items){mapFs.push(...tagRegulatoryFeatures(r101Clip(item.context_features||[],r101Bounds()),item,'source_zone'));if(item.present)mapFs.push(...tagRegulatoryFeatures(item.overlap_features?.length?item.overlap_features:item.features,item,'overlap'));}
   if(mapFs.length)box.layer.addData({type:'FeatureCollection',features:mapFs});
   set(confirmedId,`${confirmed.length}건`);set(unknownId,`${unknown.length}건`);set(itemCountId,`${items.length}종`);
   set(stateId,a.loading?'규제자료 분석 중':!a.loaded?'분석 전':`분석 완료 · 중첩 ${confirmed.length}건${unknown.length?` · 미확인/오류 ${unknown.length}건`:''}`);
