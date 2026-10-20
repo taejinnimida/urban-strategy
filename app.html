@@ -5896,6 +5896,11 @@ function renderPlanningFacilitySpatialStatus(){
   const union=safeUnionPolygons(out),area=union?Math.max(0,turf.area(union)):0,names=[...new Set((planningAnalysis.facilities||[]).filter(x=>Number(x.area||0)>0.5).map(x=>x.name||x.category).filter(Boolean))];
   set('spPlanningFacilityCount',planningAnalysis.loaded?`${out.length}개`:'미조회');set('spPlanningFacilityArea',planningAnalysis.loaded?`${Math.round(area).toLocaleString('ko-KR')}㎡`:'-');set('spPlanningFacilityNames',names.length?names.slice(0,3).join(' · '):(planningAnalysis.loaded?'중첩 없음':'-'));
   set('spPlanningFacilityQuality',planningAnalysis.facilityErrors?.length?`일부 미응답 ${planningAnalysis.facilityErrors.length}개`:(planningAnalysis.loaded?'완료':'미조회'));set('spPlanningFacilityState',planningAnalysis.facilityErrors?.length?'일부 자료 확인 필요':planningAnalysis.loaded?'GIS 조회 완료':'GIS 미조회');
+  const spatialSource=planningAnalysis.layerStatus?.LT_C_UPISUQ153;
+  const sourceText=spatialSource?.source==='SEOUL_OPEN_DATA_SHP'?'공간시설: 서울시 2026-09':spatialSource?.source==='VWORLD_FALLBACK'?'공간시설: VWorld 대체자료 · 기준일 미확인':'';
+  const parkRows=(planningAnalysis.facilities||[]).filter(x=>x.layer==='LT_C_UPISUQ153'&&Number(x.area||0)>0.5);
+  const mixedPark=parkRows.some(x=>/도시자연공원/.test(x.name||''))&&parkRows.some(x=>/근린공원/.test(x.name||''));
+  if(sourceText||mixedPark){const quality=document.getElementById('spPlanningFacilityQuality');if(quality)quality.textContent += ' · '+[sourceText,mixedPark?'공원 분류가 함께 조회됨 · 결정고시 확인':''].filter(Boolean).join(' · ');}
   scheduleProjectMiniViews();
 }
 
@@ -8608,7 +8613,7 @@ async function fetchPlanningBrowserFallback(spec,geometry,serverMeta={}){
       attempts:Number(serverMeta?.attempts||1)+1,route:'browser_direct_fallback',
       direct_error:serverMeta?.direct_error||'',proxy_status:serverMeta?.proxy_status??null,domain_sent:VWORLD_CLIENT_DOMAIN,
       elapsed_ms:Number(serverMeta?.elapsed_ms||0)+Math.max(0,Math.round(elapsed)),cache_hit:false,
-      fallback_used:true,server_error:serverError
+      fallback_used:true,source:spec.id==='LT_C_UPISUQ153'?'VWORLD_FALLBACK':'',source_date:null,server_error:serverError
     };
   }catch(e){
     const elapsed=((typeof performance!=='undefined'&&performance.now)?performance.now():Date.now())-started;
@@ -8640,7 +8645,7 @@ async function fetchPlanningBatch(specs,geometry,options={}){
   const byId=new Map((data?.results||[]).map(x=>[x.layer_id,x]));
   const rows=specs.map(spec=>{
     const row=byId.get(spec.id)||{status:'ERROR',feature_count:0,features:[],error:'레이어 결과 누락',attempts:1,route:'',elapsed_ms:0};
-    return {spec,features:Array.isArray(row.features)?row.features:[],error:row.status==='ERROR'?(row.error||'조회 실패'):null,errorCode:row.status==='ERROR'?'PLANNING_LAYER_ERROR':'',status:row.status||'ERROR',attempts:Number(row.attempts||1),route:row.route||'',direct_error:row.direct_error||'',proxy_status:row.proxy_status??null,domain_sent:row.domain_sent||data?.client_domain||'',elapsed_ms:Number(row.elapsed_ms||0),cache_hit:!!row.cache_hit};
+    return {spec,features:Array.isArray(row.features)?row.features:[],error:row.status==='ERROR'?(row.error||'조회 실패'):null,errorCode:row.status==='ERROR'?'PLANNING_LAYER_ERROR':'',status:row.status||'ERROR',attempts:Number(row.attempts||1),route:row.route||'',direct_error:row.direct_error||'',proxy_status:row.proxy_status??null,domain_sent:row.domain_sent||data?.client_domain||'',elapsed_ms:Number(row.elapsed_ms||0),cache_hit:!!row.cache_hit,source:row.source||'',source_date:row.source_date||null,source_notice:row.source_notice||'',fallback_used:row.fallback_used===true};
   });
   const fallbackIndexes=[];
   for(let i=0;i<rows.length;i++){if(rows[i]?.status==='ERROR'&&planningServerFailureAllowsBrowserFallback(rows[i]))fallbackIndexes.push(i);}
@@ -8671,7 +8676,7 @@ function planningLayerDisplayStatus(layerId){
 function recordPlanningLayerResults(results){
   for(const row of results||[]){
     const id=row?.spec?.id;if(!id)continue;
-    const next={status:row.status||'ERROR',count:Number(row.features?.length||0),error:row.error||'',attempts:Number(row.attempts||1),route:row.route||'',direct_error:row.direct_error||'',proxy_status:row.proxy_status??null,domain_sent:row.domain_sent||'',elapsed_ms:Number(row.elapsed_ms||0),cache_hit:!!row.cache_hit,fallback_used:row.fallback_used===true,server_error:row.server_error||'',browser_error:row.browser_error||''};
+    const next={status:row.status||'ERROR',count:Number(row.features?.length||0),error:row.error||'',attempts:Number(row.attempts||1),route:row.route||'',direct_error:row.direct_error||'',proxy_status:row.proxy_status??null,domain_sent:row.domain_sent||'',elapsed_ms:Number(row.elapsed_ms||0),cache_hit:!!row.cache_hit,fallback_used:row.fallback_used===true,server_error:row.server_error||'',browser_error:row.browser_error||'',source:row.source||'',source_date:row.source_date||null,source_notice:row.source_notice||''};
     const prev=planningAnalysis.layerStatus?.[id];
     if(next.status==='ERROR'&&['SUCCESS_DATA','SUCCESS_EMPTY'].includes(prev?.status))continue;
     planningAnalysis.layerStatus[id]=next;
@@ -23320,6 +23325,7 @@ function renderUrbanRedevelopmentDetailPopup(){
 
 
 function selectSmallscalePopupRoute(route){
+  window.UIStyleRuntime?.setPopup('smallscale',route);
   activeSmallscaleRoute=route;
   try{renderSmallscaleSchemeDetailPopup();r29ApplyPopup3PlanStandards('smallscale');}catch(e){console.error('[smallscale-popup-route]',e);renderSchemePopupFallback('smallscale',e);}
 }
@@ -24489,6 +24495,7 @@ function appendBaseReviewDisclaimer(name){
   if(!body.querySelector('.base-review-disclaimer'))body.insertAdjacentHTML('beforeend',baseReviewDisclaimerHtml(name));
 }
 function renderSchemeDetailPopup(name){
+  window.UIStyleRuntime?.setPopup(name, name==='smallscale'?activeSmallscaleRoute:name==='public_complex'?activePublicComplexRoute:'');
   if(name==='market_renewal'){renderMarketRenewalPopup();return;}
   if(name==='smallscale'){renderSmallscaleSchemeDetailPopup();r29ApplyPopup3PlanStandards(name);normalizeSchemeDetailSectionHeadings();appendBaseReviewDisclaimer(name);return;}
   if(['redevelopment','reconstruction','residential_environment','general_housing','prior_negotiation'].includes(name)){renderRemainingSchemeDetailPopup(name);r29ApplyPopup3PlanStandards(name);normalizeSchemeDetailSectionHeadings();appendBaseReviewDisclaimer(name);return;}
@@ -24551,5 +24558,6 @@ refreshAdminUi();
 
 </script>
 <!-- R33_CURRENT_YEAR_SITE_PRICE_2025_SEOUL_AVG_20260928 -->
+<script src="/assets/ui-runtime.js" defer></script>
 </body>
 </html>

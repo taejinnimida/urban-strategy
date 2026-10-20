@@ -32,6 +32,7 @@ from pathlib import Path
 
 import requests
 import market_renewal
+import seoul_facilities
 try:
     import psycopg
 except ImportError:  # local/offline test without PostgreSQL driver
@@ -8563,7 +8564,7 @@ def _planning_retry_after(resp: requests.Response) -> Optional[float]:
         return None
 
 
-def _fetch_planning_layer_once(layer_id: str, geometry: Dict[str, Any]) -> tuple[List[Dict[str, Any]], str]:
+def _fetch_planning_layer_vworld(layer_id: str, geometry: Dict[str, Any]) -> tuple[List[Dict[str, Any]], str]:
     if not _vworld_key():
         raise PlanningLayerFetchError("VWORLD_API_KEY가 설정되지 않았습니다.", retryable=False)
     target = shape(geometry)
@@ -8657,6 +8658,19 @@ def _fetch_planning_layer_once(layer_id: str, geometry: Dict[str, Any]) -> tuple
     return all_features, route
 
 
+def _fetch_planning_layer_once(layer_id: str, geometry: Dict[str, Any]) -> tuple[List[Dict[str, Any]], str]:
+    if layer_id == seoul_facilities.LAYER:
+        try:
+            return seoul_facilities.query(geometry), "seoul_official_snapshot"
+        except Exception:
+            # Do not expose filesystem details; preserve the existing fallback transport.
+            features, route = _fetch_planning_layer_vworld(layer_id, geometry)
+            for feature in features:
+                feature.setdefault('properties', {}).update(_source='VWORLD_FALLBACK', _source_date=None)
+            return features, 'vworld_fallback:' + route
+    return _fetch_planning_layer_vworld(layer_id, geometry)
+
+
 def _planning_layer_result(layer_id: str, geometry: Dict[str, Any]) -> Dict[str, Any]:
     started = time.monotonic()
     signature = _planning_geometry_signature(geometry)
@@ -8683,7 +8697,7 @@ def _planning_layer_result(layer_id: str, geometry: Dict[str, Any]) -> Dict[str,
                     p['_facility_type'] = ft['type']
                     p['_facility_type_status'] = ft['status']
             diag_getter = globals().get("_last_vworld_diagnostic")
-            diag = diag_getter() if callable(diag_getter) else {}
+            diag = diag_getter() if callable(diag_getter) and route != "seoul_official_snapshot" else {}
             direct_error = str(diag.get("direct_error") or "")[:300]
             proxy_status = diag.get("proxy_status")
             domain_sent = str(diag.get("domain_sent") or domain_sent)
@@ -8695,6 +8709,12 @@ def _planning_layer_result(layer_id: str, geometry: Dict[str, Any]) -> Dict[str,
                 "proxy_status": proxy_status, "domain_sent": domain_sent,
                 "elapsed_ms": int((time.monotonic() - started) * 1000), "cache_hit": False,
             }
+            if layer_id == seoul_facilities.LAYER:
+                official = route == 'seoul_official_snapshot'
+                result.update(source='SEOUL_OPEN_DATA_SHP' if official else 'VWORLD_FALLBACK',
+                              source_date='2026-09' if official else None,
+                              fallback_used=not official,
+                              source_notice='' if official else '서울 공간시설 자료 사용 불가 · VWorld 대체자료')
             _planning_cache_put(cache_key, result)
             return result
         except PlanningLayerFetchError as exc:
@@ -8722,7 +8742,7 @@ def _planning_layer_result(layer_id: str, geometry: Dict[str, Any]) -> Dict[str,
 
 @app.post("/api/spatial/planning-layers")
 def spatial_planning_layers(inp: PlanningLayersInput, request: Request):
-    _require_vworld_key()
+    # Local official snapshots work without a VWorld key; other layers validate it individually.
     layer_ids = list(dict.fromkeys(str(x or "").strip() for x in inp.layer_ids))
     invalid = [x for x in layer_ids if x not in PLANNING_LAYER_IDS]
     if invalid:
@@ -9393,7 +9413,7 @@ def reference_station_entrances():
 # R22 station-line runtime hotfix.  This block is intentionally backend-only:
 # the existing multi-station frontend already consumes /api/reference/station-lines.
 STATION_RUNTIME_BUILD_MARKER = "R22_STATION_HOTFIX_20260901_0915"
-APP_BUILD_MARKER = "R101_CONTEXT_MAP_VIEW_20261016"
+APP_BUILD_MARKER = "R103_SEOUL_UQ153_20261019"
 _STATION_LINE_CACHE_LOCK = threading.Lock()
 _STATION_LINE_CACHE: Dict[str, Any] = {
     "expires_at": 0.0,
@@ -12383,3 +12403,7 @@ def market_renewal_rule(inp: MarketRenewalInput):
     if len(json.dumps(inp.model_dump(), ensure_ascii=False)) > 6000000:
         raise HTTPException(status_code=413, detail='시장정비 분석범위가 너무 큽니다.')
     return market_renewal.evaluate(inp.model_dump(), _seoul_open_data_key())
+
+# R102 UI settings are isolated from analysis and business RULEs.
+import ui_editor_backend
+ui_editor_backend.install(app, _admin_auth_or_session, BASE_DIR)
