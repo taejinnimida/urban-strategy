@@ -40,6 +40,10 @@ class Site(BaseModel):
 class LayerQuery(Site):
     layer:str
     retry:bool=False
+class ParcelPoint(BaseModel):
+    lon:float=Field(ge=124,le=132,allow_inf_nan=False)
+    lat:float=Field(ge=33,le=39.5,allow_inf_nan=False)
+
 class Address(BaseModel):
     address:str=Field(min_length=5,max_length=200)
 def area(g):
@@ -131,6 +135,42 @@ def register(app,service):
         def diagnostic_report():
             with lock:entries=json.loads(json.dumps(diagnostics))
             return {'server_data_connection_configured':bool(service._vworld_key()),'configured_domain':urlsplit(service._vworld_domain()).hostname,'layers':entries,'note':'키·토큰·원문 오류·요청 URL은 반환하지 않습니다.'}
+    @router.post('/parcel-at-point')
+    def parcel_at_point(data:ParcelPoint):
+        # Point picking is a dedicated input operation, not a business analysis.
+        try:
+            if not service._vworld_key():raise RuntimeError('service not configured')
+            project=Transformer.from_crs(4326,5179,always_xy=True).transform
+            inverse=Transformer.from_crs(5179,4326,always_xy=True).transform
+            point=shape({'type':'Point','coordinates':[data.lon,data.lat]})
+            probe=transform(inverse,transform(project,point).buffer(8))
+            from shapely.geometry import mapping
+            features,route=service._fetch_planning_layer_vworld('LP_PA_CBND_BUBUN',mapping(probe))
+            hits={}
+            for f in features:
+                if not f.get('geometry'):continue
+                try:
+                    polygon=shape(f['geometry'])
+                    if not polygon.is_valid or not polygon.covers(point):continue
+                except Exception:continue
+                props=dict(f.get('properties') or {})
+                low={str(k).lower():v for k,v in props.items()}
+                candidates=[low.get('pnu'),f.get('id')]
+                pnu=next((str(v) for v in candidates if re.fullmatch(r'\d{19}',str(v or ''))),None)
+                if not pnu:continue
+                props['pnu']=pnu
+                if low.get('jibun') is not None:props['jibun']=low['jibun']
+                props['geometry_area_m2']=area(polygon)
+                hits[pnu]={'type':'Feature','id':pnu,'geometry':f['geometry'],'properties':props}
+            with lock:diagnostics['parcel_click']={'status':'COMPLETE','count':len(hits),'route':route,'queried_at':time.time()}
+            if len(hits)>1:return {'status':'AMBIGUOUS','feature':None,'message':'클릭점이 필지 경계에 걸렸습니다. 필지 안쪽을 클릭하세요.'}
+            if not hits:return {'status':'NOT_FOUND','feature':None,'message':'클릭점이 포함된 지적 필지를 확인하지 못했습니다. 필지 안쪽을 다시 클릭하세요.'}
+            feature=next(iter(hits.values()))
+            return {'status':'RESOLVED','feature':feature,'pnu':feature['properties']['pnu']}
+        except Exception as exc:
+            code=failure(exc)
+            with lock:diagnostics['parcel_click']={'status':'UNKNOWN','error_code':code,'exception_type':type(exc).__name__,'queried_at':time.time()}
+            return {'status':'UNKNOWN','feature':None,'error_code':code,'message':'클릭 지적자료를 확보하지 못했습니다.'}
     @router.post('/address')
     def address(data:Address):
         if not re.match(r'^(서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충청|충북|충남|전라|전북|전남|경상|경북|경남|제주)',data.address):raise HTTPException(422,'시·도부터 정식 지번주소를 입력하세요.')

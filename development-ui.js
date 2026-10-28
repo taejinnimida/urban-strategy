@@ -23,7 +23,38 @@ if(devMode!=='seoul'){
  const oldParse=parseBoundaryAddressEntries;
  parseBoundaryAddressEntries=function(text){const rows=[],invalid=[];for(const line of String(text||'').split(/[\n;]/).map(s=>s.trim()).filter(Boolean)){const clean=line.replace(/,/g,' ').replace(/\s+/g,' ');if(/^(서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충청|충북|충남|전라|전북|전남|경상|경북|경남|제주)\S*\s+.+\s+(?:산\s*)?\d+(?:-\d+)?$/.test(clean))rows.push({query:clean,label:clean});else{const v=oldParse(line);rows.push(...v.rows.map(r=>({...r,query:`서울특별시 ${r.gu} ${r.dong} ${r.jibun}`})));invalid.push(...v.invalid);}}return {rows,invalid};};
  resolveSeoulParcelAddress=async function(row){const v=await devApi('address',{address:row.query});if(v.status!=='resolved')throw Error(v.message||'필지 미확보');return v.feature;};
- fetchParcelAtMapPoint=async function(ll){const pt=turf.point([ll.lng,ll.lat]);const v=await devApi('layer',{geometry:turf.buffer(pt,2,{units:'meters'}).geometry,layer:'LP_PA_CBND_BUBUN'});if(v.status!=='COMPLETE')throw Error(v.message);return v.features.find(f=>turf.booleanPointInPolygon(pt,f))||null;};
+ fetchParcelAtMapPoint=async function(ll){
+ const revision=boundaryAddressLookupRevision;
+ const v=await devApi('parcel-at-point',{lon:Number(ll.lng),lat:Number(ll.lat)});
+ if(revision!==boundaryAddressLookupRevision||boundaryInputMode!=='address'||parcelFindMode!=='click')throw Error('입력 상태가 변경되어 이전 클릭 결과를 적용하지 않았습니다.');
+ if(v.status==='RESOLVED')return v.feature;
+ if(v.status==='UNKNOWN')throw Error((devFailureLabels[v.error_code]||v.message)+' · 관리자 연결상태 확인이 필요합니다.');
+ throw Error(v.message||'클릭한 위치의 지적 필지를 확인하지 못했습니다.');
+ };
+}
+let devParcelSelectionLayer=null;
+function devRenderParcelSelection(){
+ if(!devParcelSelectionLayer)return;
+ devParcelSelectionLayer.clearLayers();
+ const features=[];
+ for(const [key,f] of parcelFeatureMap){if(!selectedParcelPnus.has(String(key)))continue;const copy=cloneFeature(f);copy.properties={...copy.properties,pnu:String(key),_included:true};features.push(copy);}
+ if(features.length)devParcelSelectionLayer.addData({type:'FeatureCollection',features});
+ if(features.length&&!map.hasLayer(devParcelSelectionLayer))devParcelSelectionLayer.addTo(map);
+ renderBoundaryParcelSelectionSummary();
+}
+function devInstallParcelSelection(){
+ if(devMode!=='select'||devParcelSelectionLayer)return;
+ const pane=map.getPane('devParcelSelection')||map.createPane('devParcelSelection');pane.style.zIndex='620';
+ devParcelSelectionLayer=L.geoJSON(null,{pane:'devParcelSelection',bubblingMouseEvents:false,style:{color:'#fff',weight:3,fillColor:'#ef4444',fillOpacity:.25},onEachFeature:(f,layer)=>{
+ const label=document.createElement('span');label.textContent=f.properties?.jibun||f.properties?.pnu||'선택필지';layer.bindTooltip(label);
+ layer.on('click',e=>{L.DomEvent.stopPropagation(e);if(boundaryInputMode!=='address'||parcelFindMode!=='click')return;toggleParcelSelection(String(f.properties.pnu));});
+ }}).addTo(map);
+ // Keep site-input selection out of the hidden analysis-layer visibility switches.
+ const originalSync=syncParcelLayerFromState;
+ syncParcelLayerFromState=function(){if(devMode!=='select')return originalSync();devRenderParcelSelection();};
+ const originalMode=setParcelFindMode;
+ setParcelFindMode=function(mode){originalMode(mode);devRenderParcelSelection();if(mode==='click')updateParcelClickStatus('필지 선택 모드 켜짐 · 지도에서 필지 안쪽을 클릭하세요.');};
+ devRenderParcelSelection();
 }
 const devLayerSpecs=[
  ['LP_PA_CBND_BUBUN','연속지적','parcel'],
@@ -78,10 +109,11 @@ function devInstallLayout(){
 
 function devExport(){const blob=new Blob([JSON.stringify({snapshot:devSite,facts:devFacts,rule_status:'NOT_IMPLEMENTED'},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='development-review.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}
 async function devInit(){
- const head=document.querySelector('#serviceReviewPage .service-page-head');if(head){head.replaceChildren();const h=document.createElement('h2');h.textContent=devMode==='select'?'대상지 선정 · 전국 지도 [R105.1 개발본]':devMode==='seoul'?'서울 도시정비 검토 [R105.1 개발본]':'도시개발 검토 · 전국 공간현황 [R105.1 개발본]';head.append(h);}
+ const head=document.querySelector('#serviceReviewPage .service-page-head');if(head){head.replaceChildren();const h=document.createElement('h2');h.textContent=devMode==='select'?'대상지 선정 · 전국 지도 [R105.2 개발본]':devMode==='seoul'?'서울 도시정비 검토 [R105.2 개발본]':'도시개발 검토 · 전국 공간현황 [R105.2 개발본]';head.append(h);}
  const status=document.createElement('p');status.id='devStatus';status.setAttribute('role','status');status.style.cssText='padding:12px;background:#edf6fa;color:#143852';head?.after(status);
- if(devMode!=='seoul'){const h=document.querySelector('.cc-header h1');if(h)h.textContent='도시정비·개발 검토 플랫폼';const sub=document.querySelector('.cc-header .sub');if(sub)sub.textContent='전국 대상지 선정 · R105.1 개발용';document.querySelectorAll('.main-map-layer-note').forEach(e=>e.textContent='전국 VWorld 용도지역·지적·시설 표시용 도면. 확대하여 확인하세요. 자료 미확보는 시설 없음이 아닙니다.');}
+ if(devMode!=='seoul'){const h=document.querySelector('.cc-header h1');if(h)h.textContent='도시정비·개발 검토 플랫폼';const sub=document.querySelector('.cc-header .sub');if(sub)sub.textContent='전국 대상지 선정 · R105.2 개발용';document.querySelectorAll('.main-map-layer-note').forEach(e=>e.textContent='전국 VWorld 용도지역·지적·시설 표시용 도면. 확대하여 확인하세요. 자료 미확보는 시설 없음이 아닙니다.');}
  if(devMode==='select'){
+ devInstallParcelSelection();
  const b=document.createElement('button');b.id='devNational';b.textContent='도시개발 검토 ↗';b.disabled=true;b.onclick=()=>devOpen('development');document.getElementById('siteReviewBtn')?.after(b);
  const input=document.getElementById('boundaryAddressInput');if(input)input.placeholder='정식 시·도명부터 지번까지 · 여러 주소는 줄바꿈';devStatus('기존 지도·지번·SHP로 대상지를 선택한 뒤 구역계를 확정하세요. 검토는 각각 새 창에서 열립니다.');setInterval(devRefresh,600);devRefresh();return;
  }
