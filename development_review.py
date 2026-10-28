@@ -1,8 +1,9 @@
 """Isolated R105 development routes; no changes to the Seoul rule engine."""
 import json, math, re, secrets, threading, time, zlib, base64, hashlib
 from functools import lru_cache
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, quote
 from pathlib import Path
+import requests
 from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
@@ -35,6 +36,52 @@ def offline_region(g):
     except Exception:pass
     return None
 
+class ChannelFailure(RuntimeError):
+    def __init__(self,code):self.code=code;super().__init__(code)
+
+class VWorldChannel:
+    """Independent, bounded transport. Display failures never pause input picking."""
+    def __init__(self,slots):
+        self.slots=threading.BoundedSemaphore(slots);self.lock=threading.Lock();self.until=0.0;self.code=None
+    def request(self,url,params,expected):
+        # Only the two application-owned endpoints may use this helper.
+        if url not in ('https://api.vworld.kr/req/data','https://api.vworld.kr/req/wms'):raise ChannelFailure('REQUEST_FAILED')
+        with self.lock:
+            if time.monotonic()<self.until:raise ChannelFailure('TEMPORARILY_PAUSED')
+        if not self.slots.acquire(timeout=.5):raise ChannelFailure('TEMPORARILY_PAUSED')
+        try:
+            # Recheck after acquiring; concurrent tile requests must honor the pause.
+            with self.lock:
+                if time.monotonic()<self.until:raise ChannelFailure('TEMPORARILY_PAUSED')
+            domain=str(params.get('domain') or '').rstrip('/')
+            headers={'Referer':domain+'/','Accept':'image/png' if expected=='png' else 'application/json','User-Agent':'urban-strategy-development/105.3'}
+            inner=requests.Request('GET',url,params=params).prepare().url
+            routes=[(url,params,'direct'),('https://map.vworld.kr/proxy.do?url='+quote(inner,safe=''),None,'vworld_proxy')]
+            for endpoint,query,route in routes:
+                try:
+                    r=requests.get(endpoint,params=query,headers=headers,timeout=(3,6),allow_redirects=False)
+                except requests.RequestException:continue
+                if r.status_code==429:
+                    r.close();self.pause('RATE_LIMIT');raise ChannelFailure('RATE_LIMIT')
+                if r.status_code in (401,403):
+                    r.close();raise ChannelFailure('PROVIDER_REJECTED')
+                if r.status_code!=200:
+                    r.close();continue
+                if expected=='png':valid=r.content.startswith(b'\x89PNG\r\n\x1a\n')
+                else:
+                    try:valid=isinstance(r.json(),dict)
+                    except Exception:valid=False
+                if valid:
+                    with self.lock:self.until=0.0;self.code=None
+                    return r,route
+                r.close()
+            self.pause('PROVIDER_UNREACHABLE');raise ChannelFailure('PROVIDER_UNREACHABLE')
+        finally:self.slots.release()
+    def pause(self,code):
+        with self.lock:self.until=time.monotonic()+15;self.code=code
+    def snapshot(self):
+        with self.lock:return {'paused':time.monotonic()<self.until,'retry_after_seconds':max(0,math.ceil(self.until-time.monotonic())),'last_error_code':self.code}
+
 class Site(BaseModel):
     geometry:dict
 class LayerQuery(Site):
@@ -62,6 +109,7 @@ def validate(value):
     except Exception:raise HTTPException(422,'대한민국 WGS84 좌표의 유효한 Polygon/MultiPolygon이 필요합니다.')
 def register(app,service):
     router=APIRouter(prefix='/api/development');snapshots={};lock=threading.Lock();diagnostics={}
+    point_channel=VWorldChannel(1);display_channel=VWorldChannel(2)
     def jurisdiction(g):
         local=offline_region(g)
         if local:return local
@@ -96,6 +144,7 @@ def register(app,service):
             return json.loads(json.dumps(p))
     def failure(exc):
         # Categorize locally. Never return exception text or upstream URLs/keys.
+        if isinstance(exc,ChannelFailure):return exc.code
         t=str(exc).lower()
         if not service._vworld_key():return 'SERVICE_NOT_READY'
         if 'circuit' in t or 'cooldown' in t:return 'TEMPORARILY_PAUSED'
@@ -134,7 +183,7 @@ def register(app,service):
         @router.get('/admin/diagnostics',dependencies=[Depends(auth)])
         def diagnostic_report():
             with lock:entries=json.loads(json.dumps(diagnostics))
-            return {'server_data_connection_configured':bool(service._vworld_key()),'configured_domain':urlsplit(service._vworld_domain()).hostname,'layers':entries,'note':'키·토큰·원문 오류·요청 URL은 반환하지 않습니다.'}
+            return {'server_data_connection_configured':bool(service._vworld_key()),'configured_domain':urlsplit(service._vworld_domain()).hostname,'layers':entries,'channels':{'parcel_input':point_channel.snapshot(),'background_display':display_channel.snapshot()},'note':'키·토큰·원문 오류·요청 URL은 반환하지 않습니다.'}
     @router.post('/parcel-at-point')
     def parcel_at_point(data:ParcelPoint):
         # Point picking is a dedicated input operation, not a business analysis.
@@ -145,7 +194,15 @@ def register(app,service):
             point=shape({'type':'Point','coordinates':[data.lon,data.lat]})
             probe=transform(inverse,transform(project,point).buffer(8))
             from shapely.geometry import mapping
-            features,route=service._fetch_planning_layer_vworld('LP_PA_CBND_BUBUN',mapping(probe))
+            a,b,c,e=probe.bounds
+            response,route=point_channel.request('https://api.vworld.kr/req/data',{'key':service._vworld_key(),'domain':service._vworld_domain(),'service':'data','version':'2.0','request':'getfeature','format':'json','size':100,'page':1,'geometry':'true','attribute':'true','crs':'EPSG:4326','data':'LP_PA_CBND_BUBUN','geomfilter':f'BOX({a},{b},{c},{e})'},'json')
+            try:payload=response.json().get('response') or {}
+            finally:response.close()
+            if payload.get('status')=='NOT_FOUND':features=[]
+            elif payload.get('status')=='OK':
+                features=((payload.get('result') or {}).get('featureCollection') or {}).get('features')
+                if not isinstance(features,list) or len(features)>=100:raise ChannelFailure('PROVIDER_FORMAT')
+            else:raise ChannelFailure('PROVIDER_REJECTED')
             hits={}
             for f in features:
                 if not f.get('geometry'):continue
@@ -196,8 +253,9 @@ def register(app,service):
             if not all(math.isfinite(v) for v in bounds) or not (13000000<=a<c<=15000000 and 3000000<=b<d<=5000000 and 1<=w<=1024 and 1<=h<=1024):raise ValueError()
         except Exception:raise HTTPException(422,'지도 요청범위를 확인하세요.')
         try:
-            r,_=service._vworld_get('https://api.vworld.kr/req/wms',params={'key':service._vworld_key(),'domain':service._vworld_domain(),'service':'WMS','request':'GetMap','version':'1.1.1','srs':'EPSG:3857','bbox':','.join(map(str,bounds)),'width':w,'height':h,'layers':groups[kind],'styles':groups[kind],'format':'image/png','transparent':'TRUE'},timeout=(4,15))
+            r,_=display_channel.request('https://api.vworld.kr/req/wms',{'key':service._vworld_key(),'domain':service._vworld_domain(),'service':'WMS','request':'GetMap','version':'1.1.1','srs':'EPSG:3857','bbox':','.join(map(str,bounds)),'width':w,'height':h,'layers':groups[kind],'styles':groups[kind],'format':'image/png','transparent':'TRUE'},'png')
             if r.status_code!=200 or not r.content.startswith(b'\x89PNG\r\n\x1a\n'):raise ValueError()
-            return Response(r.content,media_type='image/png',headers={'Cache-Control':'private,max-age=120'})
+            image=r.content;r.close()
+            return Response(image,media_type='image/png',headers={'Cache-Control':'private,max-age=120'})
         except Exception:raise HTTPException(503,'지도자료 미확보')
     app.include_router(router)

@@ -2,7 +2,11 @@
 const devMode=document.documentElement.dataset.reviewMode;
 let devSite=null,devSignature='',devBusy=false,devFacts=[];
 const devRunOriginal=runSiteReview,devConfirmOriginal=confirmCurrentBoundary,devSummaryOriginal=renderBoundaryParcelSelectionSummary;
-async function devApi(path,data){const r=await fetch('/api/development/'+path,{method:data?'POST':'GET',headers:data?{'Content-Type':'application/json'}:{},body:data?JSON.stringify(data):undefined,cache:'no-store'});const v=await r.json();if(!r.ok)throw Error(typeof v.detail==='string'?v.detail:'요청 처리 실패');return v;}
+async function devApi(path,data,timeoutMs=0){
+ const controller=timeoutMs?new AbortController():null,timer=controller?setTimeout(()=>controller.abort(),timeoutMs):null;
+ try{const r=await fetch('/api/development/'+path,{method:data?'POST':'GET',headers:data?{'Content-Type':'application/json'}:{},body:data?JSON.stringify(data):undefined,cache:'no-store',...(controller?{signal:controller.signal}:{})});const v=await r.json();if(!r.ok)throw Error(typeof v.detail==='string'?v.detail:'요청 처리 실패');return v;}
+ finally{if(timer)clearTimeout(timer);}
+}
 function devStatus(text){const el=document.getElementById('devStatus');if(el)el.textContent=text;}
 function devRefresh(){if(devMode!=='select')return;const same=!!devSite&&devSignature===JSON.stringify(activeGeometry);const a=document.getElementById('siteReviewBtn'),b=document.getElementById('devNational');if(a){a.textContent='서울 도시정비 검토 ↗';a.disabled=!same||devBusy||devSite?.region!=='SEOUL';}if(b)b.disabled=!same||devBusy;if(a)a.title=!same?'먼저 구역계를 확정하세요.':devSite?.region==='SEOUL'?'서울 대상지 확인됨':devSite?.region==='OUTSIDE_OR_MIXED'?'서울 외 또는 경계 혼합 대상지입니다.':'서울 행정경계 확인이 필요합니다.';if(devSite&&!same)devStatus('구역계 변경: 다시 확정하세요. 이전 검토창의 대상지는 유지됩니다.');}
 renderBoundaryParcelSelectionSummary=function(){devSummaryOriginal();devRefresh();};
@@ -25,12 +29,63 @@ if(devMode!=='seoul'){
  resolveSeoulParcelAddress=async function(row){const v=await devApi('address',{address:row.query});if(v.status!=='resolved')throw Error(v.message||'필지 미확보');return v.feature;};
  fetchParcelAtMapPoint=async function(ll){
  const revision=boundaryAddressLookupRevision;
- const v=await devApi('parcel-at-point',{lon:Number(ll.lng),lat:Number(ll.lat)});
- if(revision!==boundaryAddressLookupRevision||boundaryInputMode!=='address'||parcelFindMode!=='click')throw Error('입력 상태가 변경되어 이전 클릭 결과를 적용하지 않았습니다.');
+ const current=()=>revision===boundaryAddressLookupRevision&&boundaryInputMode==='address'&&parcelFindMode==='click';
+ let v;
+ try{v=await devApi('parcel-at-point',{lon:Number(ll.lng),lat:Number(ll.lat)},22000);}
+ catch(e){v={status:'UNKNOWN',error_code:'REQUEST_FAILED'};}
+ if(!current())throw Error('입력 상태가 변경되어 이전 클릭 결과를 적용하지 않았습니다.');
  if(v.status==='RESOLVED')return v.feature;
- if(v.status==='UNKNOWN')throw Error((devFailureLabels[v.error_code]||v.message)+' · 관리자 연결상태 확인이 필요합니다.');
- throw Error(v.message||'클릭한 위치의 지적 필지를 확인하지 못했습니다.');
+ if(v.status==='NOT_FOUND'||v.status==='AMBIGUOUS')throw Error(v.message||'필지 안쪽을 다시 클릭하세요.');
+ // Respect provider rate limits. The CLIENT key is never a server-secret fallback.
+ if(v.error_code==='RATE_LIMIT')throw Error('VWorld 호출 한도에 도달했습니다. 잠시 후 다시 클릭하세요.');
+ if(!devClientReady())throw Error((devFailureLabels[v.error_code]||'서버 지적자료 연결 실패')+' · 브라우저용 연결도 사용할 수 없습니다. 관리자 연결상태를 확인하세요.');
+ updateParcelClickStatus('서버 연결 실패 · VWorld 보조 경로에서 지적 조회 중…');
+ let client;
+ try{client=await devBrowserParcelAtPoint(ll);}
+ catch(e){throw Error('VWorld 지적 연결 실패(서버·브라우저). 잠시 후 다시 시도하거나 관리자 연결상태를 확인하세요.');}
+ if(!current())throw Error('입력 상태가 변경되어 이전 클릭 결과를 적용하지 않았습니다.');
+ if(client.status==='RESOLVED')return client.feature;
+ throw Error(client.message||'클릭점이 포함된 필지를 확인하지 못했습니다.');
  };
+}
+function devClientReady(){return typeof VWORLD_CLIENT_KEY==='string'&&!!VWORLD_CLIENT_KEY&&!VWORLD_CLIENT_KEY.startsWith('__');}
+function devVWorldClientRequest(geometry){
+ if(!devClientReady())return Promise.reject(Error('CLIENT_CONNECTION_UNAVAILABLE'));
+ const [a,b,c,d]=turf.bbox(turf.feature(geometry));
+ // Fixed VWorld endpoint and fixed cadastral layer; this is not a general proxy.
+ return new Promise((resolve,reject)=>{
+ const callback='devParcel_'+Date.now()+'_'+Math.random().toString(36).slice(2),script=document.createElement('script');let settled=false;
+ const cleanup=()=>{clearTimeout(timer);try{delete window[callback];}catch(e){window[callback]=undefined;}script.remove();};
+ const finish=(error,value)=>{if(settled)return;settled=true;cleanup();error?reject(Error(error)):resolve(value);};
+ const timer=setTimeout(()=>finish('CLIENT_TIMEOUT'),8000);
+ window[callback]=payload=>finish(null,payload);script.onerror=()=>finish('CLIENT_NETWORK');script.referrerPolicy='strict-origin-when-cross-origin';
+ const params=new URLSearchParams({key:VWORLD_CLIENT_KEY,domain:VWORLD_CLIENT_DOMAIN,service:'data',version:'2.0',request:'getfeature',format:'json',size:'100',page:'1',geometry:'true',attribute:'true',crs:'EPSG:4326',data:'LP_PA_CBND_BUBUN',geomfilter:`BOX(${a},${b},${c},${d})`,callback});
+ script.src='https://api.vworld.kr/req/data?'+params;document.head.append(script);
+ });
+}
+function devPickClientParcel(payload,ll){
+ const rsp=payload?.response;
+ if(rsp?.status==='NOT_FOUND')return {status:'NOT_FOUND',message:'클릭점의 지적을 찾지 못했습니다. 필지 안쪽을 다시 클릭하세요.'};
+ if(rsp?.status!=='OK')throw Error('CLIENT_PROVIDER_REJECTED');
+ const fs=rsp.result?.featureCollection?.features;
+ if(!Array.isArray(fs)||fs.length>=100)throw Error('CLIENT_PROVIDER_FORMAT');
+ const point=turf.point([Number(ll.lng),Number(ll.lat)]),hits=new Map();
+ for(const f of fs){
+ if(!f.geometry||!['Polygon','MultiPolygon'].includes(f.geometry.type))continue;
+ let inside=false;try{inside=turf.booleanPointInPolygon(point,turf.feature(f.geometry));}catch(e){throw Error('CLIENT_GEOMETRY_FORMAT');}
+ if(!inside)continue;
+ const props={...(f.properties||{})},low=Object.fromEntries(Object.entries(props).map(([k,v])=>[k.toLowerCase(),v]));
+ const pnu=[low.pnu,f.id].map(v=>String(v||'')).find(v=>/^\d{19}$/.test(v));if(!pnu)throw Error('CLIENT_PNU_FORMAT');
+ props.pnu=pnu;if(low.jibun!=null)props.jibun=low.jibun;props._input_lookup_source='VWORLD_BROWSER';
+ hits.set(pnu,{type:'Feature',id:pnu,geometry:f.geometry,properties:props});
+ }
+ if(hits.size>1)return {status:'AMBIGUOUS',message:'클릭점이 필지 경계에 걸렸습니다. 필지 안쪽을 클릭하세요.'};
+ if(!hits.size)return {status:'NOT_FOUND',message:'클릭점이 포함된 필지를 확인하지 못했습니다.'};
+ return {status:'RESOLVED',feature:[...hits.values()][0]};
+}
+async function devBrowserParcelAtPoint(ll){
+ const geometry=turf.buffer(turf.point([Number(ll.lng),Number(ll.lat)]),8,{units:'meters'}).geometry;
+ return devPickClientParcel(await devVWorldClientRequest(geometry),ll);
 }
 let devParcelSelectionLayer=null;
 function devRenderParcelSelection(){
@@ -109,9 +164,9 @@ function devInstallLayout(){
 
 function devExport(){const blob=new Blob([JSON.stringify({snapshot:devSite,facts:devFacts,rule_status:'NOT_IMPLEMENTED'},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='development-review.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}
 async function devInit(){
- const head=document.querySelector('#serviceReviewPage .service-page-head');if(head){head.replaceChildren();const h=document.createElement('h2');h.textContent=devMode==='select'?'대상지 선정 · 전국 지도 [R105.2 개발본]':devMode==='seoul'?'서울 도시정비 검토 [R105.2 개발본]':'도시개발 검토 · 전국 공간현황 [R105.2 개발본]';head.append(h);}
+ const head=document.querySelector('#serviceReviewPage .service-page-head');if(head){head.replaceChildren();const h=document.createElement('h2');h.textContent=devMode==='select'?'대상지 선정 · 전국 지도 [R105.3 개발본]':devMode==='seoul'?'서울 도시정비 검토 [R105.3 개발본]':'도시개발 검토 · 전국 공간현황 [R105.3 개발본]';head.append(h);}
  const status=document.createElement('p');status.id='devStatus';status.setAttribute('role','status');status.style.cssText='padding:12px;background:#edf6fa;color:#143852';head?.after(status);
- if(devMode!=='seoul'){const h=document.querySelector('.cc-header h1');if(h)h.textContent='도시정비·개발 검토 플랫폼';const sub=document.querySelector('.cc-header .sub');if(sub)sub.textContent='전국 대상지 선정 · R105.2 개발용';document.querySelectorAll('.main-map-layer-note').forEach(e=>e.textContent='전국 VWorld 용도지역·지적·시설 표시용 도면. 확대하여 확인하세요. 자료 미확보는 시설 없음이 아닙니다.');}
+ if(devMode!=='seoul'){const h=document.querySelector('.cc-header h1');if(h)h.textContent='도시정비·개발 검토 플랫폼';const sub=document.querySelector('.cc-header .sub');if(sub)sub.textContent='전국 대상지 선정 · R105.3 개발용';document.querySelectorAll('.main-map-layer-note').forEach(e=>e.textContent='전국 VWorld 용도지역·지적·시설 표시용 도면. 확대하여 확인하세요. 자료 미확보는 시설 없음이 아닙니다.');}
  if(devMode==='select'){
  devInstallParcelSelection();
  const b=document.createElement('button');b.id='devNational';b.textContent='도시개발 검토 ↗';b.disabled=true;b.onclick=()=>devOpen('development');document.getElementById('siteReviewBtn')?.after(b);
