@@ -12079,7 +12079,7 @@ def _view_background_scope(bounds, mode):
         x0, y0, x1, y1 = bounds
         if not all(math.isfinite(v) for v in bounds):
             raise ValueError()
-        if not (126.6 <= x0 < x1 <= 127.4 and 37.2 <= y0 < y1 <= 37.9):
+        if not (124 <= x0 < x1 <= 132 and 33 <= y0 < y1 <= 39.5):
             raise ValueError()
         scope = box(x0, y0, x1, y1)
         area, _ = GEOD.geometry_area_perimeter(scope)
@@ -12088,7 +12088,7 @@ def _view_background_scope(bounds, mode):
             raise ValueError()
         return scope
     except Exception:
-        raise HTTPException(status_code=422, detail="서울지역 도면 범위가 필요합니다. 근거리 지적은 1㎢, 도로 지적은 25㎢ 이내로 표시합니다.") from None
+        raise HTTPException(status_code=422, detail="대한민국 도면 범위가 필요합니다. 근거리 지적은 1㎢, 도로 지적은 25㎢ 이내로 표시합니다.") from None
 
 
 def _view_background_is_road(properties):
@@ -12407,3 +12407,8 @@ def market_renewal_rule(inp: MarketRenewalInput):
 # R102 UI settings are isolated from analysis and business RULEs.
 import ui_editor_backend
 ui_editor_backend.install(app, _admin_auth_or_session, BASE_DIR)
+
+# R105 isolated development workflow
+import sys as _dev_sys
+from development_review import register as _dev_register
+_dev_register(app, _dev_sys.modules[__name__])

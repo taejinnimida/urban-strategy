@@ -2,6 +2,13 @@
 
 <html lang="ko">
 <head>
+<script>document.documentElement.dataset.reviewMode=['seoul','development'].includes(new URLSearchParams(location.search).get('review'))?new URLSearchParams(location.search).get('review'):'select';</script>
+<style>
+html:not([data-review-mode="seoul"]) .service-right-box,html:not([data-review-mode="seoul"]) #serviceSitePage,html:not([data-review-mode="seoul"]) .service-condition-box,html:not([data-review-mode="seoul"]) .workspace-detail-tools,html:not([data-review-mode="seoul"]) .mobile-workflow-bar,html:not([data-review-mode="seoul"]) .connection{display:none!important}
+html:not([data-review-mode="seoul"]) .service-review-grid{grid-template-columns:1fr!important}
+html:not([data-review-mode="select"]) .boundary-input-box,html:not([data-review-mode="select"]) .boundary-common-tools,html:not([data-review-mode="select"]) .leaflet-draw{display:none!important}
+#devNational{padding:10px 18px;background:#087f8c;color:white;border:0;border-radius:6px;margin:5px}#devNational:disabled{opacity:.4}
+</style>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1" name="viewport"/>
 <title>서울 도시정비플랫폼</title>
@@ -3666,13 +3673,13 @@ if(vworldTileKeyReady())mapBaseSatellite.addTo(map);
 // 이 레이어들은 시각화 전용이며 FACT/RULE/RESULT에는 입력되지 않는다.
 const MAIN_MAP_PREVIEW_WMS='https://map.seoul.go.kr/geoserver/wms';
 // R95: display-only tiles retain official paint and render text using browser Korean fonts.
-const mainMapZoningPreview=L.tileLayer('/api/reference/main-plan-tile/zoning/{z}/{x}/{y}.svg',{
+const mainMapZoningPreview=document.documentElement.dataset.reviewMode!=='seoul'?L.tileLayer.wms('/api/development/wms/zoning',{layers:'zoning',format:'image/png',transparent:true,version:'1.1.1',minZoom:12,maxZoom:20,pane:'mainZoningPreviewPane',attribution:'VWorld 전국 공간정보'}):L.tileLayer('/api/reference/main-plan-tile/zoning/{z}/{x}/{y}.svg',{
   tileSize:512,zoomOffset:-1,maxZoom:20,keepBuffer:0,updateWhenIdle:true,bounds:[[37.4,126.75],[37.72,127.2]],pane:'mainZoningPreviewPane',opacity:.92,attribution:'서울시 UPIS'
 });
-const mainMapCadastralPreview=L.tileLayer.wms(MAIN_MAP_PREVIEW_WMS,{
+const mainMapCadastralPreview=document.documentElement.dataset.reviewMode!=='seoul'?L.tileLayer.wms('/api/development/wms/cadastral',{layers:'cadastral',format:'image/png',transparent:true,version:'1.1.1',minZoom:12,maxZoom:20,pane:'mainCadastralPreviewPane',attribution:'VWorld 전국 공간정보'}):L.tileLayer.wms(MAIN_MAP_PREVIEW_WMS,{
   layers:'tile_map:s_lsmd_cbnd',format:'image/png',transparent:true,version:'1.1.1',pane:'mainCadastralPreviewPane',opacity:1,attribution:'서울시 연속지적'
 });
-const mainMapFacilityPreview=L.tileLayer('/api/reference/main-plan-tile/facility/{z}/{x}/{y}.svg',{
+const mainMapFacilityPreview=document.documentElement.dataset.reviewMode!=='seoul'?L.tileLayer.wms('/api/development/wms/facility',{layers:'facility',format:'image/png',transparent:true,version:'1.1.1',minZoom:12,maxZoom:20,pane:'mainFacilityPreviewPane',attribution:'VWorld 전국 공간정보'}):L.tileLayer('/api/reference/main-plan-tile/facility/{z}/{x}/{y}.svg',{
   tileSize:512,zoomOffset:-1,maxZoom:20,keepBuffer:0,updateWhenIdle:true,bounds:[[37.4,126.75],[37.72,127.2]],pane:'mainFacilityPreviewPane',opacity:.88,attribution:'서울시 UPIS'
 });
 const mainMapPreviewHealth={zoning:'대기',cadastral:'대기',facility:'대기'};
@@ -18700,7 +18707,7 @@ async function fetchParcelAtMapPoint(latlng){
 }
 async function handleParcelFindMapClick(e){
   if(boundaryInputMode!=='address'||parcelFindMode!=='click'||parcelClickLookupBusy)return;
-  if(!VWORLD_CLIENT_KEY){updateParcelClickStatus('VWorld API 키가 없어 클릭 지번을 조회할 수 없습니다.');return;}
+  if(document.documentElement.dataset.reviewMode==='seoul'&&!VWORLD_CLIENT_KEY){updateParcelClickStatus('VWorld API 키가 없어 클릭 지번을 조회할 수 없습니다.');return;}
   parcelClickLookupBusy=true;
   updateParcelClickStatus('클릭한 위치의 지번을 찾는 중...');
   try{
@@ -24542,7 +24549,11 @@ function openSchemeCompareModal(){
 }
 
 
+</script>
+<script src="/api/development/ui.js"></script>
+<script>
 buildServiceLayout();
+devInit();
 initMiniMapViewBases();
 runSchemeChecksWhenCoreReady();
 updateCompactMapRole();
