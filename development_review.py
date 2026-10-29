@@ -109,7 +109,7 @@ def validate(value):
     except Exception:raise HTTPException(422,'대한민국 WGS84 좌표의 유효한 Polygon/MultiPolygon이 필요합니다.')
 def register(app,service):
     router=APIRouter(prefix='/api/development');snapshots={};lock=threading.Lock();diagnostics={}
-    point_channel=VWorldChannel(1);display_channel=VWorldChannel(2)
+    point_channel=VWorldChannel(1);display_channel=VWorldChannel(2);facts_channel=VWorldChannel(2)
     def jurisdiction(g):
         local=offline_region(g)
         if local:return local
@@ -158,24 +158,39 @@ def register(app,service):
         g=validate(data.geometry)
         if data.layer not in LAYERS:raise HTTPException(422,'지원하지 않는 레이어입니다.')
         base={'source':'VWorld','layer':data.layer,'name':LAYERS[data.layer],'queried_at':time.time()}
-        context=getattr(service,'_PLANNING_REQUEST_LOCAL',None)
-        old_retry=getattr(context,'force_retry',False) if context is not None else False
         try:
             if not service._vworld_key():raise RuntimeError('service not configured')
-            # Only explicit manual retry may probe through the existing cooldown.
-            if context is not None:context.force_retry=data.retry
-            fs,route=service._fetch_planning_layer_vworld(data.layer,data.geometry)
-            intersections=[shape(f['geometry']).intersection(g) for f in fs if f.get('geometry')]
-            result={**base,'status':'COMPLETE','features':fs,'overlap_area_m2':area(unary_union(intersections)) if intersections else 0}
+            # Nationwide facts have their own connection state, separate from map tiles.
+            a,b,c,e=g.bounds;fs=[];seen=set();started=time.monotonic();route='direct'
+            for page in range(1,11):
+                if time.monotonic()-started>22:raise ChannelFailure('PROVIDER_UNREACHABLE')
+                response,route=facts_channel.request('https://api.vworld.kr/req/data',{'key':service._vworld_key(),'domain':service._vworld_domain(),'service':'data','version':'2.0','request':'getfeature','format':'json','size':1000,'page':page,'geometry':'true','attribute':'true','crs':'EPSG:4326','data':data.layer,'geomfilter':f'BOX({a},{b},{c},{e})'},'json')
+                try:payload=response.json().get('response') or {}
+                finally:response.close()
+                if payload.get('status')=='NOT_FOUND':break
+                if payload.get('status')!='OK':raise ChannelFailure('PROVIDER_REJECTED')
+                items=((payload.get('result') or {}).get('featureCollection') or {}).get('features')
+                if not isinstance(items,list):raise ChannelFailure('PROVIDER_FORMAT')
+                for feature in items:
+                    if not feature.get('geometry'):raise ChannelFailure('PROVIDER_FORMAT')
+                    try:
+                        geom=shape(feature['geometry'])
+                        if not geom.is_valid:raise ValueError()
+                        intersects=geom.intersects(g)
+                    except Exception:raise ChannelFailure('PROVIDER_FORMAT')
+                    if not intersects:continue
+                    props=feature.get('properties') or {}
+                    key=str(feature.get('id') or props.get('pnu') or props.get('unq_mnno') or hashlib.sha256(json.dumps(feature['geometry'],sort_keys=True).encode()).hexdigest())
+                    if key not in seen:seen.add(key);fs.append(feature)
+                if len(items)<1000:break
+            else:raise ChannelFailure('PROVIDER_FORMAT')
+            intersections=[shape(f['geometry']).intersection(g) for f in fs]
+            result={**base,'status':'COMPLETE','route':'SERVER','features':fs,'overlap_area_m2':area(unary_union(intersections)) if intersections else 0}
             diagnostic={'status':'COMPLETE','queried_at':base['queried_at'],'route':route,'count':len(fs)}
         except Exception as exc:
             code=failure(exc)
-            try:transport=service._last_vworld_diagnostic()
-            except Exception:transport={}
-            diagnostic={'status':'UNKNOWN','queried_at':base['queried_at'],'error_code':code,'exception_type':type(exc).__name__,'route':transport.get('route'),'direct_status':transport.get('direct_status'),'proxy_status':transport.get('proxy_status')}
+            diagnostic={'status':'UNKNOWN','queried_at':base['queried_at'],'error_code':code,'exception_type':type(exc).__name__}
             result={**base,'status':'UNKNOWN','features':[],'error_code':code,'message':'자료 연결 실패. 사업 적합성은 판정하지 않았습니다.'}
-        finally:
-            if context is not None:context.force_retry=old_retry
         with lock:diagnostics[data.layer]=diagnostic
         return result
     auth=getattr(service,'_admin_auth_or_session',None)
@@ -183,7 +198,7 @@ def register(app,service):
         @router.get('/admin/diagnostics',dependencies=[Depends(auth)])
         def diagnostic_report():
             with lock:entries=json.loads(json.dumps(diagnostics))
-            return {'server_data_connection_configured':bool(service._vworld_key()),'configured_domain':urlsplit(service._vworld_domain()).hostname,'layers':entries,'channels':{'parcel_input':point_channel.snapshot(),'background_display':display_channel.snapshot()},'note':'키·토큰·원문 오류·요청 URL은 반환하지 않습니다.'}
+            return {'server_data_connection_configured':bool(service._vworld_key()),'configured_domain':urlsplit(service._vworld_domain()).hostname,'layers':entries,'channels':{'parcel_input':point_channel.snapshot(),'background_display':display_channel.snapshot(),'national_facts':facts_channel.snapshot()},'note':'키·토큰·원문 오류·요청 URL은 반환하지 않습니다.'}
     @router.post('/parcel-at-point')
     def parcel_at_point(data:ParcelPoint):
         # Point picking is a dedicated input operation, not a business analysis.
