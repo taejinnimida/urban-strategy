@@ -122,20 +122,31 @@ const devLayerSpecs=[
  ...['도시지역','관리지역','농림지역','자연환경보전지역'].map((n,i)=>['LT_C_UQ11'+(i+1),n,'zoning']),
  ...['도로','교통시설','공간시설','유통·공급시설','공공·문화체육시설','방재시설','보건위생시설','환경기초시설','기타 기반시설'].map((n,i)=>['LT_C_UPISUQ15'+(i+1),n,'facility'])];
 const devFailureLabels={SERVICE_NOT_READY:'자료 연결 설정 확인 필요',TEMPORARILY_PAUSED:'외부 연결 재시도 대기',RATE_LIMIT:'제공기관 호출 한도',PROVIDER_REJECTED:'제공기관 요청 거부',PROVIDER_UNREACHABLE:'제공기관 연결 실패',PROVIDER_FORMAT:'자료 응답 형식 확인 필요',REQUEST_FAILED:'자료 조회 실패',DEFERRED:'연결 복구 후 조회',CLIENT_AUTH:'VWorld 인증 또는 허용 도메인 확인 필요',CLIENT_REQUEST:'VWorld 조회 조건 확인 필요',CLIENT_PROVIDER_REJECTED:'VWorld 데이터 요청 거부',CLIENT_TIMEOUT:'브라우저 보조 조회 시간 초과',CLIENT_NETWORK:'브라우저 보조 연결 실패',CLIENT_CONNECTION_UNAVAILABLE:'브라우저용 연결을 사용할 수 없음',CLIENT_PROVIDER_FORMAT:'VWorld 응답 형식 확인 필요'};
-function devOutcome(facts){const complete=facts.filter(v=>v.status==='COMPLETE').length,failed=facts.length-complete;return {complete,failed,text:complete===0?'자료 연결 실패 · 확보된 자료 없음':failed?'일부 자료 확보 · '+failed+'개 항목 미확보':'공간자료 조회 완료'};}
+function devOutcome(facts){
+ const complete=facts.filter(v=>v.status==='COMPLETE').length;
+ const deferred=facts.filter(v=>v.status==='DEFERRED').length;
+ const failed=facts.length-complete-deferred;
+ return {complete,failed,deferred,text:!facts.length?'자료 조회 대기':failed||deferred?`조회 완료 ${complete}개 · 조회 실패 ${failed}개 · 미조회 ${deferred}개`:'공간자료 조회 완료'};
+}
+function devFailureDescription(v){
+ if(v.status==='DEFERRED')return '미조회 · '+(devFailureLabels[v.deferred_reason]||'연결 복구 후 재시도');
+ const server=devFailureLabels[v.error_code]||'자료 조회 실패';
+ const client=v.client_error_code?devFailureLabels[v.client_error_code]:null;
+ return '서버: '+server+(client?' · 보조 연결: '+client:'');
+}
 function devRenderFacts(){
  for(const group of ['parcel','zoning','facility']){
  const host=document.getElementById('devFacts-'+group);if(!host)continue;host.replaceChildren();
  for(const [id,name,g] of devLayerSpecs.filter(v=>v[2]===group)){
  const v=devFacts.find(f=>f.layer===id),row=document.createElement('div');row.className='dev-fact-row';
  const title=document.createElement('strong');title.textContent=name;
- const badge=document.createElement('span');badge.className='dev-state '+(!v?'waiting':v.status==='COMPLETE'?'ok':'failed');badge.textContent=!v?'대기':v.status==='COMPLETE'?(v.features.length?'확보':'조회 0건'):'미확보';row.append(title,badge);
- const desc=document.createElement('p');desc.textContent=!v?'순차 조회 예정':v.status==='COMPLETE'?v.features.length+'건 · 대상지 중첩 '+v.overlap_area_m2.toLocaleString()+'㎡ · '+(v.route==='BROWSER'?'VWorld 보조 조회':'VWorld 서버 조회'):v.client_error_code?(devFailureLabels[v.client_error_code]||'VWorld 보조 연결 실패'):(devFailureLabels[v.error_code]||'자료 연결 실패');row.append(desc);
+ const badge=document.createElement('span');badge.className='dev-state '+(!v?'waiting':v.status==='COMPLETE'?'ok':'failed');badge.textContent=!v?'대기':v.status==='COMPLETE'?(v.features.length?'확보':'조회 0건'):v.status==='DEFERRED'?'미조회':'조회 실패';row.append(title,badge);
+ const desc=document.createElement('p');desc.textContent=!v?'순차 조회 예정':v.status==='COMPLETE'?v.features.length+'건 · 대상지 중첩 '+v.overlap_area_m2.toLocaleString()+'㎡ · '+(v.route==='BROWSER'?'VWorld 보조 조회':'VWorld 서버 조회'):devFailureDescription(v);row.append(desc);
  if(v?.status==='COMPLETE'&&v.features.length){const names=[...new Set(v.features.map(f=>{const p=f.properties||{},lower=Object.fromEntries(Object.entries(p).map(([k,v])=>[k.toLowerCase(),v]));return lower.fclty_nm||lower.uname||lower.name||lower.jibun||lower.dgm_nm||'';}).filter(Boolean))];if(names.length){const line=document.createElement('p');line.className='dev-feature-names';line.textContent=names.slice(0,8).join(' · ')+(names.length>8?' 외 '+(names.length-8)+'건':'');row.append(line);}}
  host.append(row);
  }
  }
- const outcome=devOutcome(devFacts);const summary=document.getElementById('devConnectionSummary');if(summary){summary.textContent=devBusy?'자료 조회 중 · '+outcome.complete+'개 항목 확보 / '+devFacts.length+'개 항목 확인':outcome.text+' · '+outcome.complete+'/'+devLayerSpecs.length+' 항목 확보';summary.className=outcome.failed||outcome.complete===0?'dev-alert':'dev-alert dev-success';}
+ const outcome=devOutcome(devFacts);const summary=document.getElementById('devConnectionSummary');if(summary){summary.textContent=devBusy?'자료 조회 중 · '+outcome.complete+'개 항목 확보 / '+devFacts.length+'개 항목 확인':outcome.text+' · '+outcome.complete+'/'+devLayerSpecs.length+' 항목 확보';summary.className=outcome.failed||outcome.deferred||outcome.complete===0?'dev-alert':'dev-alert dev-success';}
 }
 async function devBrowserLayer(layer,geometry){
  const spec=devLayerSpecs.find(row=>row[0]===layer);if(!spec)throw Error('CLIENT_REQUEST_NOT_ALLOWED');
@@ -160,13 +171,14 @@ async function devBrowserLayer(layer,geometry){
 }
 async function devFetchNationalLayer(layer,geometry,state){
  const name=devLayerSpecs.find(s=>s[0]===layer)?.[1]||layer;
- let server={status:'UNKNOWN',error_code:'TEMPORARILY_PAUSED'};
- if(!state.serverUnavailable){
+ let server={status:'UNKNOWN',error_code:state.serverBlockedReason||'TEMPORARILY_PAUSED'};
+ if(!state.serverBlockedReason){
   try{server=await devApi('layer',{geometry,layer},42000);}catch(e){server={status:'UNKNOWN',error_code:'PROVIDER_UNREACHABLE'};}
   if(server.status==='COMPLETE')return server;
-  if(['SERVICE_NOT_READY','TEMPORARILY_PAUSED','PROVIDER_UNREACHABLE','PROVIDER_REJECTED'].includes(server.error_code))state.serverUnavailable=true;
+  // A rejected layer or one timeout does not establish a service-wide failure.
+  if(server.error_code==='SERVICE_NOT_READY')state.serverBlockedReason=server.error_code;
  }
- if(server.error_code==='RATE_LIMIT')return {...server,layer,name,source:'VWorld',features:[]};
+ if(['RATE_LIMIT','TEMPORARILY_PAUSED'].includes(server.error_code))return {...server,layer,name,source:'VWorld',features:[]};
  if(!devClientReady())return {...server,layer,name,source:'VWorld',features:[],client_error_code:'CLIENT_CONNECTION_UNAVAILABLE'};
  try{return await devBrowserLayer(layer,geometry);}
  catch(e){const code=e.code||e.message;const safe=Object.hasOwn(devFailureLabels,code)?code:'CLIENT_PROVIDER_FORMAT';return {status:'UNKNOWN',layer,name,source:'VWorld',features:[],error_code:server.error_code,client_error_code:safe};}
@@ -175,13 +187,15 @@ async function devLoadFacts(manual=false){
  if(devBusy||!devSite)return;devBusy=true;devFacts=[];devRenderFacts();
  const retry=document.getElementById('devFetch');if(retry)retry.disabled=true;
  if(window.devFactLayer)map.removeLayer(window.devFactLayer);window.devFactLayer=L.layerGroup().addTo(map);
- const state={serverUnavailable:false};let terminalFailure=null;
+ const state={serverBlockedReason:null};let terminalFailure=null;
  try{for(let i=0;i<devLayerSpecs.length;i++){
  const [layer,name]=devLayerSpecs[i];devStatus('공간자료 확인 중 · '+(i+1)+'/'+devLayerSpecs.length);
- if(terminalFailure){devFacts.push({layer,name,status:'UNKNOWN',features:[],error_code:'DEFERRED',client_error_code:terminalFailure});continue;}
+ if(terminalFailure){devFacts.push({layer,name,status:'DEFERRED',features:[],error_code:'DEFERRED',deferred_reason:terminalFailure});continue;}
  try{const v=await devFetchNationalLayer(layer,devSite.geometry,state);devFacts.push(v);
  if(v.status==='COMPLETE')L.geoJSON(v.features,{style:{color:layer==='LP_PA_CBND_BUBUN'?'#64748b':layer.startsWith('LT_C_UQ11')?'#087f8c':'#bd691c',weight:1,fillOpacity:.10},onEachFeature:(f,l)=>{const p=document.createElement('pre');p.textContent=JSON.stringify(f.properties,null,2);l.bindPopup(p);}}).addTo(window.devFactLayer);
- else if(v.error_code==='RATE_LIMIT'||['CLIENT_AUTH','CLIENT_TIMEOUT','CLIENT_NETWORK','CLIENT_CONNECTION_UNAVAILABLE','RATE_LIMIT'].includes(v.client_error_code))terminalFailure=v.client_error_code||v.error_code;
+ // Respect explicit server backoff and rate limits without claiming unqueried layers failed.
+ else if(['RATE_LIMIT','TEMPORARILY_PAUSED'].includes(v.error_code)||v.client_error_code==='RATE_LIMIT')terminalFailure=v.error_code==='RATE_LIMIT'||v.error_code==='TEMPORARILY_PAUSED'?v.error_code:v.client_error_code;
+ else if(state.serverBlockedReason&&v.status!=='COMPLETE')terminalFailure=state.serverBlockedReason;
  }catch(e){devFacts.push({layer,name,status:'UNKNOWN',features:[],error_code:'REQUEST_FAILED'});}
  devRenderFacts();}
  }finally{devBusy=false;if(retry)retry.disabled=false;devRenderFacts();devStatus(devOutcome(devFacts).text+' · 사업 적합성은 별도 검토입니다.');}
