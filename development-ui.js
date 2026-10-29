@@ -123,17 +123,14 @@ const devLayerSpecs=[
  ...['도로','교통시설','공간시설','유통·공급시설','공공·문화체육시설','방재시설','보건위생시설','환경기초시설','기타 기반시설'].map((n,i)=>['LT_C_UPISUQ15'+(i+1),n,'facility'])];
 const devFailureLabels={SERVICE_NOT_READY:'자료 연결 설정 확인 필요',TEMPORARILY_PAUSED:'외부 연결 재시도 대기',RATE_LIMIT:'제공기관 호출 한도',PROVIDER_REJECTED:'제공기관 요청 거부',PROVIDER_UNREACHABLE:'제공기관 연결 실패',PROVIDER_FORMAT:'자료 응답 형식 확인 필요',REQUEST_FAILED:'자료 조회 실패',DEFERRED:'연결 복구 후 조회',CLIENT_AUTH:'VWorld 인증 또는 허용 도메인 확인 필요',CLIENT_REQUEST:'VWorld 조회 조건 확인 필요',CLIENT_PROVIDER_REJECTED:'VWorld 데이터 요청 거부',CLIENT_TIMEOUT:'브라우저 보조 조회 시간 초과',CLIENT_NETWORK:'브라우저 보조 연결 실패',CLIENT_CONNECTION_UNAVAILABLE:'브라우저용 연결을 사용할 수 없음',CLIENT_PROVIDER_FORMAT:'VWorld 응답 형식 확인 필요'};
 function devOutcome(facts){
- const complete=facts.filter(v=>v.status==='COMPLETE').length;
- const deferred=facts.filter(v=>v.status==='DEFERRED').length;
- const failed=facts.length-complete-deferred;
+ const complete=facts.filter(v=>v.status==='COMPLETE').length,deferred=facts.filter(v=>v.status==='DEFERRED').length,failed=facts.length-complete-deferred;
  return {complete,failed,deferred,text:!facts.length?'자료 조회 대기':failed||deferred?`조회 완료 ${complete}개 · 조회 실패 ${failed}개 · 미조회 ${deferred}개`:'공간자료 조회 완료'};
 }
 function devFailureDescription(v){
- if(v.status==='DEFERRED')return '미조회 · '+(devFailureLabels[v.deferred_reason]||'연결 복구 후 재시도');
- const server=devFailureLabels[v.error_code]||'자료 조회 실패';
- const client=v.client_error_code?devFailureLabels[v.client_error_code]:null;
- return '서버: '+server+(client?' · 보조 연결: '+client:'');
+ if(v.status==='DEFERRED')return '미조회 · '+(devFailureLabels[v.deferred_reason]||'재시도 필요');
+ return '서버: '+(devFailureLabels[v.error_code]||'자료 조회 실패')+(v.client_error_code?' · 보조 연결: '+(devFailureLabels[v.client_error_code]||'조회 실패'):'');
 }
+const devRetryWait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 function devRenderFacts(){
  for(const group of ['parcel','zoning','facility']){
  const host=document.getElementById('devFacts-'+group);if(!host)continue;host.replaceChildren();
@@ -171,14 +168,16 @@ async function devBrowserLayer(layer,geometry){
 }
 async function devFetchNationalLayer(layer,geometry,state){
  const name=devLayerSpecs.find(s=>s[0]===layer)?.[1]||layer;
- let server={status:'UNKNOWN',error_code:state.serverBlockedReason||'TEMPORARILY_PAUSED'};
- if(!state.serverBlockedReason){
+ let server={status:'UNKNOWN',error_code:'REQUEST_FAILED'};
+ // Every layer gets its own server request. A bounded wait handles slot contention.
+ for(let attempt=0;attempt<3;attempt++){
   try{server=await devApi('layer',{geometry,layer},42000);}catch(e){server={status:'UNKNOWN',error_code:'PROVIDER_UNREACHABLE'};}
   if(server.status==='COMPLETE')return server;
-  // A rejected layer or one timeout does not establish a service-wide failure.
-  if(server.error_code==='SERVICE_NOT_READY')state.serverBlockedReason=server.error_code;
+  if(server.error_code!=='TEMPORARILY_PAUSED'||attempt===2)break;
+  const seconds=Number(server.retry_after_seconds);
+  await devRetryWait(Math.max(1,Math.min(15,Number.isFinite(seconds)?seconds:1))*1000);
  }
- if(['RATE_LIMIT','TEMPORARILY_PAUSED'].includes(server.error_code))return {...server,layer,name,source:'VWorld',features:[]};
+ if(['RATE_LIMIT','SERVICE_NOT_READY','TEMPORARILY_PAUSED'].includes(server.error_code))return {...server,layer,name,source:'VWorld',features:[]};
  if(!devClientReady())return {...server,layer,name,source:'VWorld',features:[],client_error_code:'CLIENT_CONNECTION_UNAVAILABLE'};
  try{return await devBrowserLayer(layer,geometry);}
  catch(e){const code=e.code||e.message;const safe=Object.hasOwn(devFailureLabels,code)?code:'CLIENT_PROVIDER_FORMAT';return {status:'UNKNOWN',layer,name,source:'VWorld',features:[],error_code:server.error_code,client_error_code:safe};}
@@ -187,15 +186,14 @@ async function devLoadFacts(manual=false){
  if(devBusy||!devSite)return;devBusy=true;devFacts=[];devRenderFacts();
  const retry=document.getElementById('devFetch');if(retry)retry.disabled=true;
  if(window.devFactLayer)map.removeLayer(window.devFactLayer);window.devFactLayer=L.layerGroup().addTo(map);
- const state={serverBlockedReason:null};let terminalFailure=null;
+ const state={};let terminalFailure=null;
  try{for(let i=0;i<devLayerSpecs.length;i++){
  const [layer,name]=devLayerSpecs[i];devStatus('공간자료 확인 중 · '+(i+1)+'/'+devLayerSpecs.length);
  if(terminalFailure){devFacts.push({layer,name,status:'DEFERRED',features:[],error_code:'DEFERRED',deferred_reason:terminalFailure});continue;}
  try{const v=await devFetchNationalLayer(layer,devSite.geometry,state);devFacts.push(v);
  if(v.status==='COMPLETE')L.geoJSON(v.features,{style:{color:layer==='LP_PA_CBND_BUBUN'?'#64748b':layer.startsWith('LT_C_UQ11')?'#087f8c':'#bd691c',weight:1,fillOpacity:.10},onEachFeature:(f,l)=>{const p=document.createElement('pre');p.textContent=JSON.stringify(f.properties,null,2);l.bindPopup(p);}}).addTo(window.devFactLayer);
- // Respect explicit server backoff and rate limits without claiming unqueried layers failed.
- else if(['RATE_LIMIT','TEMPORARILY_PAUSED'].includes(v.error_code)||v.client_error_code==='RATE_LIMIT')terminalFailure=v.error_code==='RATE_LIMIT'||v.error_code==='TEMPORARILY_PAUSED'?v.error_code:v.client_error_code;
- else if(state.serverBlockedReason&&v.status!=='COMPLETE')terminalFailure=state.serverBlockedReason;
+ else if(['RATE_LIMIT','SERVICE_NOT_READY'].includes(v.error_code))terminalFailure=v.error_code;
+ else if(v.client_error_code==='RATE_LIMIT')terminalFailure='RATE_LIMIT';
  }catch(e){devFacts.push({layer,name,status:'UNKNOWN',features:[],error_code:'REQUEST_FAILED'});}
  devRenderFacts();}
  }finally{devBusy=false;if(retry)retry.disabled=false;devRenderFacts();devStatus(devOutcome(devFacts).text+' · 사업 적합성은 별도 검토입니다.');}

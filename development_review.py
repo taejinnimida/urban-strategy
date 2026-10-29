@@ -41,8 +41,9 @@ class ChannelFailure(RuntimeError):
 
 class VWorldChannel:
     """Independent, bounded transport. Display failures never pause input picking."""
-    def __init__(self,slots):
+    def __init__(self,slots,pause_on_transport_error=True):
         self.slots=threading.BoundedSemaphore(slots);self.lock=threading.Lock();self.until=0.0;self.code=None
+        self.pause_on_transport_error=pause_on_transport_error
     def request(self,url,params,expected):
         # Only the two application-owned endpoints may use this helper.
         if url not in ('https://api.vworld.kr/req/data','https://api.vworld.kr/req/wms'):raise ChannelFailure('REQUEST_FAILED')
@@ -75,7 +76,8 @@ class VWorldChannel:
                     with self.lock:self.until=0.0;self.code=None
                     return r,route
                 r.close()
-            self.pause('PROVIDER_UNREACHABLE');raise ChannelFailure('PROVIDER_UNREACHABLE')
+            if self.pause_on_transport_error:self.pause('PROVIDER_UNREACHABLE')
+            raise ChannelFailure('PROVIDER_UNREACHABLE')
         finally:self.slots.release()
     def pause(self,code):
         with self.lock:self.until=time.monotonic()+15;self.code=code
@@ -109,7 +111,7 @@ def validate(value):
     except Exception:raise HTTPException(422,'대한민국 WGS84 좌표의 유효한 Polygon/MultiPolygon이 필요합니다.')
 def register(app,service):
     router=APIRouter(prefix='/api/development');snapshots={};lock=threading.Lock();diagnostics={}
-    point_channel=VWorldChannel(1);display_channel=VWorldChannel(2);facts_channel=VWorldChannel(2)
+    point_channel=VWorldChannel(1);display_channel=VWorldChannel(2);facts_channel=VWorldChannel(2,pause_on_transport_error=False)
     def jurisdiction(g):
         local=offline_region(g)
         if local:return local
@@ -191,6 +193,11 @@ def register(app,service):
             code=failure(exc)
             diagnostic={'status':'UNKNOWN','queried_at':base['queried_at'],'error_code':code,'exception_type':type(exc).__name__}
             result={**base,'status':'UNKNOWN','features':[],'error_code':code,'message':'자료 연결 실패. 사업 적합성은 판정하지 않았습니다.'}
+            state=facts_channel.snapshot()
+            if code=='TEMPORARILY_PAUSED' and state.get('last_error_code')=='RATE_LIMIT':
+                result['error_code']='RATE_LIMIT';diagnostic['error_code']='RATE_LIMIT'
+            if result['error_code'] in ('TEMPORARILY_PAUSED','RATE_LIMIT'):
+                result['retry_after_seconds']=max(1,state['retry_after_seconds'])
         with lock:diagnostics[data.layer]=diagnostic
         return result
     auth=getattr(service,'_admin_auth_or_session',None)
