@@ -132,6 +132,7 @@ function devFailureDescription(v){
 }
 const devRetryWait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 function devRenderFacts(){
+ if(typeof devPlanningMap!=="undefined"&&devPlanningMap){try{devPlanningRefresh();}catch(e){const el=document.getElementById("devPlanningStatus");if(el)el.textContent="일부 도형 표시 오류 · 오른쪽 조회결과를 확인하세요.";}}
  for(const group of ['parcel','zoning','facility']){
  const host=document.getElementById('devFacts-'+group);if(!host)continue;host.replaceChildren();
  for(const [id,name,g] of devLayerSpecs.filter(v=>v[2]===group)){
@@ -198,6 +199,85 @@ async function devLoadFacts(manual=false){
  devRenderFacts();}
  }finally{devBusy=false;if(retry)retry.disabled=false;devRenderFacts();devStatus(devOutcome(devFacts).text+' · 사업 적합성은 별도 검토입니다.');}
 }
+// Display-only map. No extra data requests and no changes to FACT/RULE geometry.
+let devPlanningMap=null,devPlanningGroups=null,devPlanningStamp='',devPlanningLabels=[];
+function devPlanningSymbol(id,feature){
+ const p=Object.fromEntries(Object.entries(feature.properties||{}).map(([k,v])=>[k.toLowerCase(),v]));
+ const name=String(p.fclty_nm||p.uname||p.name||p.jibun||p.dgm_nm||'');
+ if(id==='LP_PA_CBND_BUBUN')return {name:String(p.jibun||''),label:'지적경계',color:'#64748b',fillOpacity:0,weight:1,pane:'devParcel'};
+ if(id.startsWith('LT_C_UQ11')){
+  const palette=[[/주거/,'#eabf43'],[/상업/,'#ef7777'],[/공업/,'#a78bca'],[/녹지/,'#78bb83'],[/관리/,'#d4ae73'],[/농림/,'#9dc66a'],[/자연환경보전/,'#5da884']];
+  const color=palette.find(([re])=>re.test(name))?.[1]||({'LT_C_UQ111':'#ddbd72','LT_C_UQ112':'#d4ae73','LT_C_UQ113':'#9dc66a','LT_C_UQ114':'#5da884'}[id])||'#b8c9d4';
+  return {name,label:name||devLayerSpecs.find(s=>s[0]===id)?.[1]||'용도지역',color,fillOpacity:.38,weight:1.5,pane:'devZone'};
+ }
+ const colors=['#a77756','#7864ae','#419765','#3c9eae','#4878b2','#b36a9c','#b67a37','#568572','#758396'];
+ const i=Number(id.slice(-1))-1;
+ return {name,label:devLayerSpecs.find(s=>s[0]===id)?.[1]||'도시계획시설',color:colors[i]||'#758396',fillOpacity:.2,weight:2,dashArray:'5 3',pane:'devFacility'};
+}
+function devPlanningRefresh(){
+ if(!devPlanningMap)return;
+ const status=document.getElementById('devPlanningStatus');
+ const complete=devFacts.filter(f=>f.status==='COMPLETE').length;
+ status.textContent=`${devBusy?'자료 조회 중':'조회 종료'} · ${complete}/${devLayerSpecs.length}개 항목 조회 완료 · 대상지와 교차하는 확보 도형 표시. 빈 부분은 시설 없음이 아닙니다.`;
+ const stamp=JSON.stringify(devFacts.map(f=>[f.layer,f.status,f.queried_at,f.features?.length]));
+ if(stamp===devPlanningStamp)return;devPlanningStamp=stamp;
+ for(const group of Object.values(devPlanningGroups))group.clearLayers();devPlanningLabels=[];
+ const legend=document.getElementById('devPlanningLegend');legend.replaceChildren();
+ const symbols=new Map([['확정 구역계',{color:'#dc2626'}]]);
+ for(const fact of devFacts){
+  if(fact.status!=='COMPLETE')continue;
+  for(const f of fact.features||[]){
+   if(!f.geometry)continue;
+   const symbol=devPlanningSymbol(fact.layer,f);symbols.set(symbol.label,symbol);
+   const group=fact.layer==='LP_PA_CBND_BUBUN'?'parcel':fact.layer.startsWith('LT_C_UQ11')?'zoning':'facility';
+   L.geoJSON(f,{style:()=>symbol,onEachFeature:(_,layer)=>{
+    const text=document.createElement('span');text.textContent=symbol.name||symbol.label;
+    layer.bindTooltip(text,{direction:'center',className:'dev-plan-label',permanent:false});
+    const popup=document.createElement('div');popup.textContent=`${symbol.label}${symbol.name&&symbol.name!==symbol.label?' · '+symbol.name:''} · VWorld`;
+    layer.bindPopup(popup);
+    if(symbol.name&&layer.getBounds)devPlanningLabels.push({layer,text,symbol,group});
+   }}).addTo(devPlanningGroups[group]);
+  }
+ }
+ for(const [name,symbol] of symbols){const item=document.createElement('span'),swatch=document.createElement('i');swatch.style.backgroundColor=symbol.color;item.append(swatch,document.createTextNode(name));legend.append(item);}
+ devPlanningUpdateLabels();
+}
+function devPlanningUpdateLabels(){
+ if(!devPlanningMap)return;
+ const used=new Set();let shown=0;
+ for(const entry of devPlanningLabels){
+  const {layer,text,group}=entry;
+  const point=layer.getBounds().getCenter(),pixel=devPlanningMap.latLngToContainerPoint(point);
+  const key=Math.floor(pixel.x/110)+':'+Math.floor(pixel.y/28);
+  const visible=devPlanningMap.hasLayer(devPlanningGroups[group])&&devPlanningMap.getBounds().contains(point)&&devPlanningMap.getZoom()>=16&&!used.has(key)&&shown<150;
+  layer.unbindTooltip();layer.bindTooltip(text,{direction:'center',className:'dev-plan-label',permanent:visible});
+  if(visible){used.add(key);shown++;}
+ }
+}
+function devInstallPlanningMap(){
+ if(devMode!=='development'||devPlanningMap)return;
+ const target=document.querySelector('.service-target-box');if(!target)return;
+ const box=document.createElement('section');box.id='devPlanningBox';
+ box.innerHTML='<h3>도시계획정보도 <small>항공사진과 위치·확대 동기화</small></h3><div id="devPlanningMap" aria-label="도시계획정보도"></div><div id="devPlanningLegend"></div><p id="devPlanningStatus" role="status">자료 조회 대기</p><p class="dev-plan-source">자료: VWorld · 색상은 구분용 표현이며 법정 고시도면이 아닙니다. 확대하면 지번·명칭이 표시됩니다.</p>';
+ target.append(box);
+ devPlanningMap=L.map('devPlanningMap',{attributionControl:true,zoomControl:true,crs:map.options.crs,zoomSnap:map.options.zoomSnap,minZoom:map.getMinZoom(),maxZoom:map.getMaxZoom()});
+ for(const [pane,z] of [['devZone',410],['devFacility',420],['devParcel',430],['devBoundary',440]])devPlanningMap.createPane(pane).style.zIndex=z;
+ devPlanningGroups={zoning:L.layerGroup().addTo(devPlanningMap),facility:L.layerGroup().addTo(devPlanningMap),parcel:L.layerGroup().addTo(devPlanningMap)};
+ L.geoJSON(devSite.geometry,{pane:'devBoundary',interactive:false,style:{color:'#dc2626',weight:3,fillOpacity:0}}).addTo(devPlanningMap);
+ L.control.layers(null,{'용도지역':devPlanningGroups.zoning,'도시계획시설':devPlanningGroups.facility,'지적경계':devPlanningGroups.parcel},{collapsed:false}).addTo(devPlanningMap);
+ L.control.scale({imperial:false}).addTo(devPlanningMap);
+ const north=L.control({position:'topright'});north.onAdd=()=>{const el=L.DomUtil.create('div','dev-plan-north');el.textContent='↑ N';return el;};north.addTo(devPlanningMap);
+ devPlanningMap.attributionControl.addAttribution('VWorld 공간정보');
+ let syncing=false;
+ const sync=(from,to)=>{if(syncing)return;syncing=true;try{to.setView(from.getCenter(),from.getZoom(),{animate:false});}finally{syncing=false;}};
+ map.on('moveend',()=>sync(map,devPlanningMap));devPlanningMap.on('moveend',()=>{sync(devPlanningMap,map);devPlanningUpdateLabels();});
+ devPlanningMap.on('overlayadd overlayremove',devPlanningUpdateLabels);
+ const resize=()=>{const original=map.getContainer(),el=document.getElementById('devPlanningMap');el.style.height=original.clientHeight+'px';el.style.width=original.clientWidth+'px';devPlanningMap.invalidateSize({pan:false});sync(map,devPlanningMap);};
+ window.addEventListener('resize',resize);
+ if(typeof ResizeObserver!=='undefined'){const observer=new ResizeObserver(resize);observer.observe(map.getContainer());}
+ setTimeout(resize,0);devPlanningRefresh();
+}
+
 function devInstallLayout(){
  const style=document.createElement('style');style.textContent=`
  #devReview{box-sizing:border-box;padding:22px;background:#fff;border:1px solid #dce4ee;border-radius:12px;color:#172b45;font:14px/1.6 Arial,sans-serif;min-width:0}
@@ -209,7 +289,14 @@ function devInstallLayout(){
  html[data-review-mode="development"] #serviceReviewPage>.service-page-head,html[data-review-mode="development"] #devStatus{grid-column:1/-1;margin:0}
  html[data-review-mode="development"] #map{height:480px!important;min-height:320px!important}
  html[data-review-mode="development"] #ccMapInstruction,html[data-review-mode="development"] .boundary-review-bar,html[data-review-mode="development"] .map-foot .metric:last-child{display:none!important}
- html[data-review-mode="development"] .service-target-box{position:sticky;top:12px}
+ html[data-review-mode="development"] .service-target-box{position:static;align-self:start;min-width:0}
+ #devPlanningBox{margin-top:18px;border-top:1px solid #dce4ee;padding-top:12px}
+ #devPlanningBox h3{margin:0 0 10px;font-size:15px}#devPlanningBox small{font-size:11px;font-weight:400;color:#64748b;margin-left:8px}
+ #devPlanningMap{height:480px;max-width:100%;background:#f9fafb}
+ #devPlanningLegend{display:flex;flex-wrap:wrap;gap:6px 14px;padding:10px 0;font-size:11px}#devPlanningLegend span{display:inline-flex;align-items:center;gap:5px}#devPlanningLegend i{display:inline-block;width:14px;height:10px;border:1px solid #777}
+ #devPlanningStatus,.dev-plan-source{font-size:11px;line-height:1.6;margin:5px 0;color:#64748b}
+ .dev-plan-label{font-size:11px;background:#ffffffd9;border:0;box-shadow:none;padding:1px 3px;color:#1e293b;pointer-events:none}
+ .dev-plan-north{background:white;padding:5px 8px;font-weight:700;border:1px solid #ccc}
  @media(max-width:1000px){html[data-review-mode="development"] #serviceReviewPage{grid-template-columns:1fr}html[data-review-mode="development"] .service-target-box{position:static}html[data-review-mode="development"] #map{height:360px!important}}
  `;document.head.append(style);
 }
@@ -230,6 +317,7 @@ async function devInit(){
  devStatus(`확정 대상지 사본 · ${devSite.area_m2.toLocaleString()}㎡ · 원래 창을 수정해도 이 창의 대상지는 유지됩니다.`);
  if(devMode==='seoul'){await devRunOriginal();return;}
  devInstallLayout();
+ devInstallPlanningMap();
  const section=document.createElement('section');section.id='devReview';section.innerHTML=`
  <h2>전국 도시개발 검토</h2><p>확정된 대상지의 기초 공간현황</p>
  <div class="dev-actions"><button id="devFetch">자료 다시 조회</button><button id="devExport">조회결과 저장</button></div>
