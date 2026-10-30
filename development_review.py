@@ -155,6 +155,54 @@ def register(app,service):
         if any(v in t for v in ('timeout','timed out','transport','connection','연결','외부연결')):return 'PROVIDER_UNREACHABLE'
         if 'json' in t or '파싱' in t:return 'PROVIDER_FORMAT'
         return 'REQUEST_FAILED'
+    # Display-only parcel context. It never writes to snapshots or analysis FACTs.
+    parcel_view_channel=VWorldChannel(1,pause_on_transport_error=False)
+    parcel_view_cache={}
+    @router.post('/parcel-view')
+    def parcel_view(data:Site):
+        g=validate(data.geometry)
+        cache_key=tuple(round(v,7) for v in g.bounds)
+        with lock:
+            hit=parcel_view_cache.get(cache_key)
+            if hit and time.monotonic()-hit[0]<120:return hit[1]
+        try:
+            if not service._vworld_key():raise ChannelFailure('SERVICE_NOT_READY')
+            a,b,c,d=g.bounds
+            response,_=parcel_view_channel.request('https://api.vworld.kr/req/data',{'key':service._vworld_key(),'domain':service._vworld_domain(),'service':'data','version':'2.0','request':'getfeature','format':'json','size':1000,'page':1,'geometry':'true','attribute':'true','crs':'EPSG:4326','data':'LP_PA_CBND_BUBUN','geomfilter':f'BOX({a},{b},{c},{d})'},'json')
+            try:payload=response.json().get('response') or {}
+            finally:response.close()
+            if payload.get('status')=='NOT_FOUND':items=[]
+            elif payload.get('status')=='OK':
+                items=((payload.get('result') or {}).get('featureCollection') or {}).get('features')
+                if not isinstance(items,list):raise ChannelFailure('PROVIDER_FORMAT')
+            else:raise ChannelFailure('PROVIDER_REJECTED')
+            features=[];seen=set()
+            for f in items[:1000]:
+                try:
+                    polygon=shape(f['geometry'])
+                    if polygon.geom_type not in ('Polygon','MultiPolygon') or not polygon.is_valid or not polygon.intersects(g):continue
+                    low={str(k).lower():v for k,v in (f.get('properties') or {}).items()}
+                    pnu=next((str(v) for v in [low.get('pnu'),f.get('id')] if re.fullmatch(r'\d{19}',str(v or ''))),None)
+                    if not pnu or pnu in seen:continue
+                    seen.add(pnu)
+                    jibun=str(low.get('jibun') or '')
+                    if not jibun:
+                        main,sub=int(pnu[11:15]),int(pnu[15:19])
+                        jibun=('산 ' if pnu[10]=='2' else '')+str(main)+(f'-{sub}' if sub else '')
+                    label_point=polygon.intersection(g).representative_point()
+                    features.append({'type':'Feature','id':pnu,'geometry':f['geometry'],'properties':{'pnu':pnu,'jibun':jibun,'label_point':[label_point.x,label_point.y]}})
+                except Exception:continue
+            result={'status':'PARTIAL' if len(items)>=1000 else 'COMPLETE','source':'VWorld','features':features,'display_only':True}
+            with lock:
+                if len(parcel_view_cache)>=32:parcel_view_cache.pop(next(iter(parcel_view_cache)))
+                parcel_view_cache[cache_key]=(time.monotonic(),result)
+            return result
+        except Exception as exc:
+            code=failure(exc)
+            state=parcel_view_channel.snapshot()
+            if code=='TEMPORARILY_PAUSED' and state.get('last_error_code')=='RATE_LIMIT':code='RATE_LIMIT'
+            return {'status':'UNKNOWN','features':[],'display_only':True,'error_code':code,'message':'지적 배경 미확보 · 잠시 후 다시 조회하세요.'}
+
     @router.post('/layer')
     def layer(data:LayerQuery):
         g=validate(data.geometry)

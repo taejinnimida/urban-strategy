@@ -117,6 +117,79 @@ function devInstallParcelSelection(){
  setParcelFindMode=function(mode){originalMode(mode);devRenderParcelSelection();if(mode==='click')updateParcelClickStatus('필지 선택 모드 켜짐 · 지도에서 필지 안쪽을 클릭하세요.');};
  devRenderParcelSelection();
 }
+// Selection context is VIEW only: no writes to selectedParcelPnus or planningAnalysis.
+let devParcelContext=null,devParcelLabels=null,devParcelViewTimer=null,devParcelViewRevision=0,devParcelViewBusy=false,devParcelViewPending=false;
+function devParcelViewGeometry(){
+ const b=map.getBounds();return {type:'Polygon',coordinates:[[[b.getWest(),b.getSouth()],[b.getEast(),b.getSouth()],[b.getEast(),b.getNorth()],[b.getWest(),b.getNorth()],[b.getWest(),b.getSouth()]]]};
+}
+function devParcelViewStatus(text){const el=document.getElementById('devParcelViewStatus');if(el)el.textContent=text;}
+function devParcelViewLabel(f){
+ const p=Object.fromEntries(Object.entries(f.properties||{}).map(([k,v])=>[k.toLowerCase(),v]));
+ if(p.jibun)return String(p.jibun);
+ const pnu=String(p.pnu||f.id||'');if(!/^\d{19}$/.test(pnu))return '';
+ const a=Number(pnu.slice(11,15)),b=Number(pnu.slice(15,19));return (pnu[10]==='2'?'산 ':'')+a+(b?'-'+b:'');
+}
+function devPaintParcelView(features){
+ devParcelContext.clearLayers();devParcelLabels.clearLayers();const occupied=[];
+ const valid=features.filter(f=>['Polygon','MultiPolygon'].includes(f.geometry?.type));
+ devParcelContext.addData({type:'FeatureCollection',features:valid});
+ for(const f of valid){
+  const text=devParcelViewLabel(f);if(!text)continue;
+  let point=f.properties?.label_point;
+  if(!Array.isArray(point)){try{point=turf.pointOnFeature(f).geometry.coordinates;}catch(e){continue;}}
+  const ll=L.latLng(point[1],point[0]);if(!map.getBounds().contains(ll))continue;
+  const xy=map.latLngToContainerPoint(ll),width=Math.min(140,Math.max(36,text.length*8));
+  if(occupied.some(r=>Math.abs(r.x-xy.x)<(r.width+width)/2+5&&Math.abs(r.y-xy.y)<23))continue;
+  occupied.push({x:xy.x,y:xy.y,width});
+  const span=document.createElement('span');span.textContent=text;
+  L.marker(ll,{pane:'devParcelViewLabels',interactive:false,keyboard:false,icon:L.divIcon({className:'dev-parcel-number',html:span,iconSize:[width,22],iconAnchor:[width/2,11]})}).addTo(devParcelLabels);
+ }
+}
+async function devLoadParcelView(){
+ if(devMode!=='select'||!devParcelContext)return;
+ if(devParcelViewBusy){devParcelViewPending=true;return;}
+ const revision=devParcelViewRevision;
+ if(!document.getElementById('devParcelViewToggle')?.checked){devParcelViewStatus('지적선·지번 표시 꺼짐');return;}
+ if(map.getZoom()<16){devParcelViewStatus('지적선·지번을 보려면 지도를 확대하세요.');return;}
+ const geometry=devParcelViewGeometry();
+ if(turf.area(turf.feature(geometry))>10000000){devParcelViewStatus('조회 범위가 넓습니다. 지도를 확대하세요.');return;}
+ devParcelViewBusy=true;devParcelViewPending=false;devParcelViewStatus('주변 지적선·지번 조회 중…');
+ try{
+  let v=await devApi('parcel-view',{geometry},30000);
+  if(revision!==devParcelViewRevision)return;
+  if(v.status==='UNKNOWN'&&!['RATE_LIMIT','TEMPORARILY_PAUSED','SERVICE_NOT_READY'].includes(v.error_code)&&devClientReady()){
+   const r=(await devVWorldClientRequest(geometry,'LP_PA_CBND_BUBUN',1,1000))?.response;
+   if(r?.status==='NOT_FOUND')v={status:'COMPLETE',features:[]};
+   else if(r?.status==='OK'&&Array.isArray(r.result?.featureCollection?.features)){const fs=r.result.featureCollection.features;v={status:fs.length>=1000?'PARTIAL':'COMPLETE',features:fs};}
+  }
+  if(revision!==devParcelViewRevision)return;
+  if(!['COMPLETE','PARTIAL'].includes(v.status))throw Error('지적 배경 미확보 · 다시 조회를 누르세요.');
+  devPaintParcelView(v.features||[]);
+  devParcelViewStatus(v.status==='PARTIAL'?'지적 일부 표시 · 확대하면 나머지 필지를 조회합니다.':v.features?.length?'지적선·지번 표시 · 필지 선택 모드에서 필지 안쪽을 클릭하세요.':'이 범위의 지적 도형을 확보하지 못했습니다.');
+ }catch(e){if(revision===devParcelViewRevision)devParcelViewStatus('지적 배경 연결 실패 · 다시 조회를 누르세요.');}
+ finally{devParcelViewBusy=false;if(devParcelViewPending||revision!==devParcelViewRevision)devScheduleParcelView();}
+}
+function devScheduleParcelView(){
+ ++devParcelViewRevision;clearTimeout(devParcelViewTimer);
+ if(devParcelContext)devParcelContext.clearLayers();if(devParcelLabels)devParcelLabels.clearLayers();
+ devParcelViewTimer=setTimeout(devLoadParcelView,500);
+}
+function devInstallParcelView(){
+ if(devMode!=='select'||devParcelContext)return;
+ for(const [name,z] of [['devParcelViewLines',450],['devParcelViewLabels',610]]){const pane=map.getPane(name)||map.createPane(name);pane.style.zIndex=String(z);pane.style.pointerEvents='none';}
+ devParcelContext=L.geoJSON(null,{pane:'devParcelViewLines',interactive:false,style:{color:'#fff',weight:1.4,opacity:.9,fill:false,interactive:false}}).addTo(map);
+ devParcelLabels=L.layerGroup().addTo(map);
+ const css=document.createElement('style');css.textContent='.dev-parcel-number{pointer-events:none!important;color:#fff;font:bold 12px/22px sans-serif;text-align:center;white-space:nowrap;text-shadow:-1px -1px 2px #111,1px 1px 2px #111,1px -1px 2px #111,-1px 1px 2px #111}.dev-parcel-view-tools{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:8px 12px;background:#f8fafc;font-size:12px;color:#344054}.dev-parcel-view-tools input{width:auto}';document.head.append(css);
+ const bar=document.createElement('div');bar.className='dev-parcel-view-tools';
+ bar.innerHTML='<label><input id="devParcelViewToggle" type="checkbox" checked> 지적선·지번</label><button type="button" id="devParcelViewRetry">다시 조회</button><span id="devParcelViewStatus">지적 배경 준비 중</span>';
+ map.getContainer().before(bar);
+ document.getElementById('devParcelViewToggle').onchange=devScheduleParcelView;
+ document.getElementById('devParcelViewRetry').onclick=devScheduleParcelView;
+ // The existing map click lookup stays authoritative; labels cannot intercept clicks.
+ map.on('movestart',()=>{++devParcelViewRevision;});map.on('moveend resize',devScheduleParcelView);
+ devScheduleParcelView();
+}
+
 const devLayerSpecs=[
  ['LP_PA_CBND_BUBUN','연속지적','parcel'],
  ...['도시지역','관리지역','농림지역','자연환경보전지역'].map((n,i)=>['LT_C_UQ11'+(i+1),n,'zoning']),
@@ -303,11 +376,12 @@ function devInstallLayout(){
 
 function devExport(){const blob=new Blob([JSON.stringify({snapshot:devSite,facts:devFacts,rule_status:'NOT_IMPLEMENTED'},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='development-review.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}
 async function devInit(){
- const head=document.querySelector('#serviceReviewPage .service-page-head');if(head){head.replaceChildren();const h=document.createElement('h2');h.textContent=devMode==='select'?'대상지 선정 · 전국 지도 [R105.4 개발본]':devMode==='seoul'?'서울 도시정비 검토 [R105.4 개발본]':'도시개발 검토 · 전국 공간현황 [R105.4 개발본]';head.append(h);}
+ const head=document.querySelector('#serviceReviewPage .service-page-head');if(head){head.replaceChildren();const h=document.createElement('h2');h.textContent=devMode==='select'?'대상지 선정 · 전국 지도 [R105.5 개발본]':devMode==='seoul'?'서울 도시정비 검토 [R105.5 개발본]':'도시개발 검토 · 전국 공간현황 [R105.5 개발본]';head.append(h);}
  const status=document.createElement('p');status.id='devStatus';status.setAttribute('role','status');status.style.cssText='padding:12px;background:#edf6fa;color:#143852';head?.after(status);
- if(devMode!=='seoul'){const h=document.querySelector('.cc-header h1');if(h)h.textContent='도시정비·개발 검토 플랫폼';const sub=document.querySelector('.cc-header .sub');if(sub)sub.textContent='전국 대상지 선정 · R105.4 개발용';document.querySelectorAll('.main-map-layer-note').forEach(e=>e.textContent='전국 VWorld 용도지역·지적·시설 표시용 도면. 확대하여 확인하세요. 자료 미확보는 시설 없음이 아닙니다.');}
+ if(devMode!=='seoul'){const h=document.querySelector('.cc-header h1');if(h)h.textContent='도시정비·개발 검토 플랫폼';const sub=document.querySelector('.cc-header .sub');if(sub)sub.textContent='전국 대상지 선정 · R105.5 개발용';document.querySelectorAll('.main-map-layer-note').forEach(e=>e.textContent='전국 VWorld 용도지역·지적·시설 표시용 도면. 확대하여 확인하세요. 자료 미확보는 시설 없음이 아닙니다.');}
  if(devMode==='select'){
  devInstallParcelSelection();
+ devInstallParcelView();
  const b=document.createElement('button');b.id='devNational';b.textContent='도시개발 검토 ↗';b.disabled=true;b.onclick=()=>devOpen('development');document.getElementById('siteReviewBtn')?.after(b);
  const input=document.getElementById('boundaryAddressInput');if(input)input.placeholder='정식 시·도명부터 지번까지 · 여러 주소는 줄바꿈';devStatus('기존 지도·지번·SHP로 대상지를 선택한 뒤 구역계를 확정하세요. 검토는 각각 새 창에서 열립니다.');setInterval(devRefresh,600);devRefresh();return;
  }
