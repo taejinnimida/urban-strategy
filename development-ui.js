@@ -410,7 +410,7 @@ async function devInit(){
 let devInventoryBusy=false;
 function devInstallInventory(){
  const box=document.createElement('section');box.id='devInventory';box.className='dev-card';
- box.innerHTML='<h3>토지·건축물 현황조서 · 오전동 보고서 검토항목</h3><div style="padding:14px"><p>확정 구역계에 편입되는 필지를 기준으로 공공 대장을 조회합니다. 건물별 편입 여부는 별도 확인이 필요합니다.</p><div class="dev-actions"><button id="devInventoryLoad">44개 항목 자료 조회 / 미확보 재조회</button><button id="devInventoryDownload" disabled>엑셀 다운로드</button></div><p id="devInventoryStatus" role="status">미조회 · 44개 항목의 분석 완료를 의미하지 않습니다.</p><div id="devInventoryResults"></div></div>';
+ box.innerHTML='<h3>도시계획 현황 분석보고서</h3><div style="padding:14px"><p>확정 구역계에 편입되는 필지를 기준으로 공공 대장을 조회합니다. 건물별 편입 여부는 별도 확인이 필요합니다.</p><div class="dev-actions"><button id="devInventoryLoad">44개 항목 자료 조회 / 미확보 재조회</button><button id="devInventoryDownload" disabled>엑셀 다운로드</button></div><p id="devInventoryStatus" role="status">미조회 · 44개 항목의 분석 완료를 의미하지 않습니다.</p><div id="devInventoryResults"></div></div>';
  document.getElementById('devReview').append(box);
  document.getElementById('devInventoryLoad').onclick=devLoadInventory;
  document.getElementById('devInventoryDownload').onclick=async()=>{
@@ -425,7 +425,7 @@ function devRenderInventory(data){
  function table(title,columns,rows){const details=document.createElement('details');const summary=document.createElement('summary');summary.textContent=title;details.append(summary);const wrap=document.createElement('div');wrap.style.cssText='overflow:auto;max-height:460px';const t=document.createElement('table');t.style.cssText='min-width:650px;width:100%;font-size:12px;border-collapse:collapse';const thead=t.createTHead();const header=thead.insertRow();columns.forEach(([key,label])=>{const th=document.createElement('th');th.textContent=label;th.style.cssText='padding:8px;text-align:left;background:#eaf0f5';header.append(th);});const body=t.createTBody();rows.forEach(r=>{const tr=body.insertRow();columns.forEach(([key])=>{const td=tr.insertCell();td.textContent=r[key]??'미확보';td.style.cssText='padding:8px;border-bottom:1px solid #ddd';});});wrap.append(t);details.append(wrap);root.append(details);}
  table('토지조서 (화면 최대 100필지 · 엑셀 전체)',[['jibun','지번'],['category','지목'],['official_area','공부㎡'],['overlap_area','편입 도형㎡'],['ownership','소유구분'],['zoning','중첩 용도지역'],['price','지가 원/㎡'],['ledger_status','대장 상태']],data.land.slice(0,100));
  table('건축물조서 (화면 최대 100건 · 엑셀 전체)',[['address','소재지'],['use','용도'],['structure','구조'],['floors','층수'],['floor_area','연면적㎡'],['age','경과년'],['scope','편입확인']],data.buildings.slice(0,100));
- table('오전동 보고서 44개 검토항목', [['id','번호'],['group','분류'],['name','항목'],['status','자료 상태'],['detail','내용·한계']],data.items);
+ table('도시계획 현황 분석보고서 · 44개 검토항목', [['id','번호'],['group','분류'],['name','항목'],['status','자료 상태'],['detail','내용·한계']],data.items);
  document.getElementById('devInventoryDownload').disabled=false;
 }
 async function devLoadInventory(){
@@ -439,7 +439,11 @@ async function devLoadInventory(){
   const jobs=await devApi(base+'/source-jobs');let ji=0;
   for(const job of jobs.jobs){ji++;status.textContent=`공공자료 연결 ${ji}/${jobs.jobs.length} · ${job.label}`;try{const r=await devApi(base+'/source-jobs/'+encodeURIComponent(job.id),{});if(r.status==='ERROR')failed++;if(r.error_code==='RATE_LIMIT')throw Error('호출 한도 도달 · 잠시 후 다시 조회하세요.');}catch(e){if(/호출 한도|조회 중/.test(e.message))throw e;failed++;}}
   const result=await devApi(base);devRenderInventory(result);devRenderSourceDetails(result);const missing=result.land.filter(r=>!!r.missing_fields||r.ledger_status!=='확보'||r.price_status!=='확보'||!['확보','대장 응답 0건'].includes(r.building_status)).length;
-  status.textContent=(result.parcel_status==='UNAVAILABLE'?'연속지적 미확보 · 필지별 조서는 보류, 독립 공간자료 조회는 진행했습니다. ':'')+`자료 조회 종료 · ${result.land.length}필지 중 일부 속성 미확보 ${missing}필지 · 요청 실패 ${failed}건. 44개 항목 중 추가 자료가 필요한 항목은 아래 표에 표시됩니다.`;
+  const sourceJobs=result.source_jobs||[];
+  const unconfigured=sourceJobs.filter(j=>['MISSING_SOURCE','MISSING_CREDENTIAL'].includes(j.status)).length;
+  const unavailable=sourceJobs.filter(j=>j.status==='OUTSIDE_COVERAGE').length;
+  const parcelMessage=result.parcel_status==='UNAVAILABLE'?'연속지적 미확보 · 필지 수 미확인 · 토지·건축물 조서 보류':`${result.land.length}필지 · 일부 속성 미확보 ${missing}필지`;
+  status.textContent=`조회 처리 종료 · ${parcelMessage}. 요청 실패 ${failed}건 · 원자료/인증/관측소 설정 필요 ${unconfigured}건 · 자료 수록범위 밖 ${unavailable}건. 건수는 조회 작업 기준이며 44개 검토항목 수와 다릅니다. 항목별 확보 상태는 아래 표에서 확인하세요.`;
  }catch(e){status.textContent=e.message;try{const d=await devApi(base);devRenderInventory(d);devRenderSourceDetails(d);}catch(_){}}
  finally{devInventoryBusy=false;button.disabled=false;}
 }

@@ -67,7 +67,7 @@ def review(report, snapshot):
     out=[]
     for gi,(group,names) in enumerate(GROUPS,1):
         for ni,name in enumerate(names.split('|'),1):
-            key=f'{gi}-{ni}'; status='자료 연결 필요'; detail='원본 공간자료·분석기준 미연결'; source='오전동.pdf 검토항목'
+            key=f'{gi}-{ni}'; status='자료 연결 필요'; detail='원본 공간자료·분석기준 미연결'; source='도시계획 현황 분석보고서 검토항목'
             if key=='1-1':status='기초자료 확보';detail=f"확정 구역계 {snapshot['area_m2']:,.2f}㎡ · 위치는 구역계 좌표 기준";source='확정 구역계'
             if gi==2 and ni in (1,2,3,4):
                 field={1:'ownership',2:'category',3:'official_area',4:'price'}[ni]; known=sum(x.get(field) is not None and x.get(field)!='' for x in land)
