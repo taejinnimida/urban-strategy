@@ -119,7 +119,7 @@ def xlsx(sheets):
 
 def tables(data):
     def table(cols,rows):return [[label for _,label in cols]]+[[r.get(k) for k,_ in cols] for r in rows]
-    sheets=[('요약',[['항목','내용'],['작성 기준시각',data['as_of']],['확정 구역계 면적(㎡)',data['area_m2']],['편입 필지 수',len(data['land'])],['관련 건축물대장 수',len(data['buildings'])],['건축물 범위','편입필지 관련 대장. 건물 도형 편입 여부 미확인'],['미확보 처리','빈 셀은 미확보. 0 또는 해당 없음으로 해석 금지'],['노후도','경과연수는 법정 노후·불량 판정 아님'],['검토 범위','44개 항목 등록. 자료 연결과 법정 분석 완료는 별개']]),('토지조서',table(LAND,data['land'])),('건축물조서',table(BUILDING,data['buildings'])),('검토항목',table([('id','번호'),('group','분류'),('name','검토항목'),('status','자료 상태'),('detail','내용·한계'),('source','출처'),('queried_at','조회시각')],data['items'])),('출처와 미확보',[['PNU','토지대장','공시지가','건축물대장','조회시각','미확보 속성']]+[[r['pnu'],r['ledger_status'],r['price_status'],r['building_status'],r.get('queried_at'),r.get('missing_fields')] for r in data['land']])]
+    sheets=[('요약',[['항목','내용'],['작성 기준시각',data['as_of']],['확정 구역계 면적(㎡)',data['area_m2']],['지적 확보 상태',data.get('parcel_status','UNAVAILABLE')],['편입 필지 수',len(data['land']) if data.get('parcel_status')=='COMPLETE' else '미확보'],['관련 건축물대장 수',len(data['buildings'])],['건축물 범위','편입필지 관련 대장. 건물 도형 편입 여부 미확인'],['미확보 처리','빈 셀은 미확보. 0 또는 해당 없음으로 해석 금지'],['노후도','경과연수는 법정 노후·불량 판정 아님'],['검토 범위','44개 항목 등록. 자료 연결과 법정 분석 완료는 별개']]),('토지조서',table(LAND,data['land'])),('건축물조서',table(BUILDING,data['buildings'])),('검토항목',table([('id','번호'),('group','분류'),('name','검토항목'),('status','자료 상태'),('detail','내용·한계'),('source','출처'),('queried_at','조회시각')],data['items'])),('출처와 미확보',[['PNU','토지대장','공시지가','건축물대장','조회시각','미확보 속성']]+[[r['pnu'],r['ledger_status'],r['price_status'],r['building_status'],r.get('queried_at'),r.get('missing_fields')] for r in data['land']])]
     stats=[['검토항목','분류','건수','면적(㎡)','요약']]
     for key,value in data.get('statistics',{}).items():
         groups=value.get('groups') or []
@@ -163,7 +163,7 @@ def register_report(router, service, snapshots, lock, get_snapshot, fetch_layer,
         for row in r['land'].values():
             row['missing_fields']=' · '.join(label for field,label in [('address','소재지'),('category','지목'),('official_area','공부면적'),('ownership','소유구분'),('price','공시지가'),('zoning','용도지역')] if row.get(field) in (None,''))
         from development_sources import enrich
-        data={'as_of':r['as_of'],'area_m2':s['area_m2'],'land':list(r['land'].values()),'buildings':buildings(r['buildings'],datetime.fromisoformat(r['as_of']).date()),'items':review(r,s)}
+        data={'parcel_status':r.get('parcel_status','UNAVAILABLE'),'parcel_error_code':r.get('parcel_error_code'),'as_of':r['as_of'],'area_m2':s['area_m2'],'land':list(r['land'].values()),'buildings':buildings(r['buildings'],datetime.fromisoformat(r['as_of']).date()),'items':review(r,s)}
         return enrich(data,s,area)
     def state_unlocked(token):
         s=snapshots.get(token)
@@ -172,15 +172,20 @@ def register_report(router, service, snapshots, lock, get_snapshot, fetch_layer,
     @router.post('/reports/{token}/prepare')
     def prepare(token:str):
         s=state(token)
-        if '_report' in s:return output(token)
+        if s.get('_report',{}).get('parcel_status')=='COMPLETE':return output(token)
         if not gate.acquire(False):raise HTTPException(429,'다른 조서를 조회 중입니다. 잠시 후 다시 시도하세요.')
         try:
             fact=s.get('_report_layers',{}).get('LP_PA_CBND_BUBUN')
             if not fact or fact.get('status')!='COMPLETE':fact=fetch_layer(layer_type(geometry=s['geometry'],layer='LP_PA_CBND_BUBUN',snapshot_id=token))
-            if fact.get('status')!='COMPLETE':raise HTTPException(503,'연속지적을 확보하지 못했습니다. 조서를 생성하지 않았습니다.')
+            if fact.get('status')!='COMPLETE':
+                with lock:
+                    r=s.setdefault('_report',{'as_of':now(),'land':{},'buildings':{}})
+                    r['parcel_status']='UNAVAILABLE'
+                    r['parcel_error_code']=fact.get('error_code','REQUEST_FAILED')
+                return output(token)
             rows=parcels(fact['features'],s['geometry'],area)
             if len(rows)>1000:raise HTTPException(422,'개발용 조서는 1,000필지 이하 구역을 지원합니다.')
-            with lock:state_unlocked(token)['_report']={'as_of':now(),'land':rows,'buildings':{}}
+            with lock:state_unlocked(token)['_report']={'as_of':now(),'land':rows,'buildings':{},'parcel_status':'COMPLETE'}
             return output(token)
         finally:gate.release()
     @router.get('/reports/{token}')

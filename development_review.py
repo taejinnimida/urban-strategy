@@ -46,6 +46,7 @@ class VWorldChannel:
     def __init__(self,slots,pause_on_transport_error=True):
         self.slots=threading.BoundedSemaphore(slots);self.lock=threading.Lock();self.until=0.0;self.code=None
         self.pause_on_transport_error=pause_on_transport_error
+        self.attempts=[]
     def request(self,url,params,expected):
         # Only the two application-owned endpoints may use this helper.
         if url not in ('https://api.vworld.kr/req/data','https://api.vworld.kr/req/wms'):raise ChannelFailure('REQUEST_FAILED')
@@ -63,7 +64,12 @@ class VWorldChannel:
             for endpoint,query,route in routes:
                 try:
                     r=requests.get(endpoint,params=query,headers=headers,timeout=(3,6),allow_redirects=False)
-                except requests.RequestException:continue
+                except requests.RequestException as exc:
+                    kind=type(exc).__name__
+                    category={'ConnectTimeout':'CONNECT_TIMEOUT','ReadTimeout':'READ_TIMEOUT','Timeout':'TIMEOUT','SSLError':'TLS_ERROR','ProxyError':'PROXY_ERROR','ConnectionError':'CONNECTION_ERROR'}.get(kind,'TRANSPORT_ERROR')
+                    self.record(route,category)
+                    continue
+                self.record(route,'HTTP_RESPONSE',r.status_code)
                 if r.status_code==429:
                     r.close();self.pause('RATE_LIMIT');raise ChannelFailure('RATE_LIMIT')
                 if r.status_code in (401,403):
@@ -77,14 +83,19 @@ class VWorldChannel:
                 if valid:
                     with self.lock:self.until=0.0;self.code=None
                     return r,route
+                self.record(route,'INVALID_PNG' if expected=='png' else 'INVALID_JSON',r.status_code)
                 r.close()
             if self.pause_on_transport_error:self.pause('PROVIDER_UNREACHABLE')
             raise ChannelFailure('PROVIDER_UNREACHABLE')
         finally:self.slots.release()
     def pause(self,code):
         with self.lock:self.until=time.monotonic()+15;self.code=code
-    def snapshot(self):
-        with self.lock:return {'paused':time.monotonic()<self.until,'retry_after_seconds':max(0,math.ceil(self.until-time.monotonic())),'last_error_code':self.code}
+    def record(self,route,category,status=None):
+        with self.lock:
+            self.attempts.append({'route':route,'category':category,'http_status':status,'queried_at':time.time()})
+            self.attempts=self.attempts[-20:]
+    def snapshot(self,include_diagnostics=False):
+        with self.lock:return {'paused':time.monotonic()<self.until,'retry_after_seconds':max(0,math.ceil(self.until-time.monotonic())),'last_error_code':self.code,**({'recent_attempts':list(self.attempts)} if include_diagnostics else {})}
 
 class Site(BaseModel):
     geometry:dict
@@ -262,7 +273,7 @@ def register(app,service):
         @router.get('/admin/diagnostics',dependencies=[Depends(auth)])
         def diagnostic_report():
             with lock:entries=json.loads(json.dumps(diagnostics))
-            return {'server_data_connection_configured':bool(service._vworld_key()),'configured_domain':urlsplit(service._vworld_domain()).hostname,'layers':entries,'channels':{'parcel_input':point_channel.snapshot(),'background_display':display_channel.snapshot(),'national_facts':facts_channel.snapshot()},'note':'키·토큰·원문 오류·요청 URL은 반환하지 않습니다.'}
+            return {'server_data_connection_configured':bool(service._vworld_key()),'configured_domain':urlsplit(service._vworld_domain()).hostname,'layers':entries,'channels':{'parcel_input':point_channel.snapshot(True),'background_display':display_channel.snapshot(True),'national_facts':facts_channel.snapshot(True)},'note':'키·토큰·원문 오류·요청 URL은 반환하지 않습니다.'}
     @router.post('/parcel-at-point')
     def parcel_at_point(data:ParcelPoint):
         # Point picking is a dedicated input operation, not a business analysis.
