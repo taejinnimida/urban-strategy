@@ -245,7 +245,7 @@ async function devFetchNationalLayer(layer,geometry,state){
  let server={status:'UNKNOWN',error_code:'REQUEST_FAILED'};
  // Every layer gets its own server request. A bounded wait handles slot contention.
  for(let attempt=0;attempt<3;attempt++){
-  try{server=await devApi('layer',{geometry,layer},42000);}catch(e){server={status:'UNKNOWN',error_code:'PROVIDER_UNREACHABLE'};}
+  try{server=await devApi('layer',{geometry,layer,snapshot_id:devSite?.id},42000);}catch(e){server={status:'UNKNOWN',error_code:'PROVIDER_UNREACHABLE'};}
   if(server.status==='COMPLETE')return server;
   if(server.error_code!=='TEMPORARILY_PAUSED'||attempt===2)break;
   const seconds=Number(server.retry_after_seconds);
@@ -376,9 +376,9 @@ function devInstallLayout(){
 
 function devExport(){const blob=new Blob([JSON.stringify({snapshot:devSite,facts:devFacts,rule_status:'NOT_IMPLEMENTED'},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='development-review.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}
 async function devInit(){
- const head=document.querySelector('#serviceReviewPage .service-page-head');if(head){head.replaceChildren();const h=document.createElement('h2');h.textContent=devMode==='select'?'대상지 선정 · 전국 지도 [R105.5 개발본]':devMode==='seoul'?'서울 도시정비 검토 [R105.5 개발본]':'도시개발 검토 · 전국 공간현황 [R105.5 개발본]';head.append(h);}
+ const head=document.querySelector('#serviceReviewPage .service-page-head');if(head){head.replaceChildren();const h=document.createElement('h2');h.textContent=devMode==='select'?'대상지 선정 · 전국 지도 [R105.7 개발본]':devMode==='seoul'?'서울 도시정비 검토 [R105.7 개발본]':'도시개발 검토 · 전국 공간현황 [R105.7 개발본]';head.append(h);}
  const status=document.createElement('p');status.id='devStatus';status.setAttribute('role','status');status.style.cssText='padding:12px;background:#edf6fa;color:#143852';head?.after(status);
- if(devMode!=='seoul'){const h=document.querySelector('.cc-header h1');if(h)h.textContent='도시정비·개발 검토 플랫폼';const sub=document.querySelector('.cc-header .sub');if(sub)sub.textContent='전국 대상지 선정 · R105.5 개발용';document.querySelectorAll('.main-map-layer-note').forEach(e=>e.textContent='전국 VWorld 용도지역·지적·시설 표시용 도면. 확대하여 확인하세요. 자료 미확보는 시설 없음이 아닙니다.');}
+ if(devMode!=='seoul'){const h=document.querySelector('.cc-header h1');if(h)h.textContent='도시정비·개발 검토 플랫폼';const sub=document.querySelector('.cc-header .sub');if(sub)sub.textContent='전국 대상지 선정 · R105.7 개발용';document.querySelectorAll('.main-map-layer-note').forEach(e=>e.textContent='전국 VWorld 용도지역·지적·시설 표시용 도면. 확대하여 확인하세요. 자료 미확보는 시설 없음이 아닙니다.');}
  if(devMode==='select'){
  devInstallParcelSelection();
  devInstallParcelView();
@@ -386,7 +386,7 @@ async function devInit(){
  const input=document.getElementById('boundaryAddressInput');if(input)input.placeholder='정식 시·도명부터 지번까지 · 여러 주소는 줄바꿈';devStatus('기존 지도·지번·SHP로 대상지를 선택한 뒤 구역계를 확정하세요. 검토는 각각 새 창에서 열립니다.');setInterval(devRefresh,600);devRefresh();return;
  }
  try{
- const token=new URLSearchParams(location.search).get('site');if(!token)throw Error('초기 화면에서 대상지를 확정한 뒤 검토창을 여세요.');devSite=await devApi('snapshots/'+encodeURIComponent(token));if(devMode==='seoul'&&devSite.region!=='SEOUL')throw Error('서울 포함 여부가 확인되지 않아 서울 사업검토를 실행할 수 없습니다.');
+ const token=new URLSearchParams(location.search).get('site');if(!token)throw Error('초기 화면에서 대상지를 확정한 뒤 검토창을 여세요.');devSite=await devApi('snapshots/'+encodeURIComponent(token));devSite.id=token;if(devMode==='seoul'&&devSite.region!=='SEOUL')throw Error('서울 포함 여부가 확인되지 않아 서울 사업검토를 실행할 수 없습니다.');
  activeGeometry=JSON.parse(JSON.stringify(devSite.geometry));boundaryReferenceGeometry=JSON.parse(JSON.stringify(activeGeometry));drawnItems.clearLayers();L.geoJSON(activeGeometry,{style:{color:'#dc2626',weight:4,fillOpacity:.04}}).eachLayer(l=>drawnItems.addLayer(l));setBoundaryReferenceMetrics();fitToActiveArea();
  devStatus(`확정 대상지 사본 · ${devSite.area_m2.toLocaleString()}㎡ · 원래 창을 수정해도 이 창의 대상지는 유지됩니다.`);
  if(devMode==='seoul'){await devRunOriginal();return;}
@@ -402,6 +402,71 @@ async function devInit(){
  <div class="dev-scope"><b>검토 범위</b><p>현재는 공간현황 조회 단계입니다. 지방별 법령·조례에 따른 개발사업 자동 판정은 아직 제공하지 않습니다.</p><p>자료 미확보는 시설 없음 또는 사업 부적합을 뜻하지 않습니다.</p><p><a href="/api/development/admin/diagnostics" target="_blank" rel="noopener">관리자 연결상태 확인</a> · <a href="https://www.eum.go.kr" target="_blank" rel="noopener">토지이음</a></p></div>`;
  document.getElementById('serviceReviewPage').append(section);document.getElementById('devFetch').onclick=()=>devLoadFacts(true);document.getElementById('devExport').onclick=devExport;
  const targetTitle=document.querySelector('.service-target-box .service-block-title b');if(targetTitle)targetTitle.textContent='확정 대상지';const targetNote=document.querySelector('.service-target-box .service-block-title span');if(targetNote)targetNote.textContent='이 창에서는 구역계를 수정하지 않습니다.';
- setTimeout(()=>map.invalidateSize(false),0);await devLoadFacts();
+ devInstallInventory();setTimeout(()=>map.invalidateSize(false),0);await devLoadFacts();
  }catch(e){devSite=null;devStatus(e.message);}
+}
+
+// V5 inventories: all collection, clipping, deduplication and XLSX creation are server-side.
+let devInventoryBusy=false;
+function devInstallInventory(){
+ const box=document.createElement('section');box.id='devInventory';box.className='dev-card';
+ box.innerHTML='<h3>토지·건축물 현황조서 · 오전동 보고서 검토항목</h3><div style="padding:14px"><p>확정 구역계에 편입되는 필지를 기준으로 공공 대장을 조회합니다. 건물별 편입 여부는 별도 확인이 필요합니다.</p><div class="dev-actions"><button id="devInventoryLoad">44개 항목 자료 조회 / 미확보 재조회</button><button id="devInventoryDownload" disabled>엑셀 다운로드</button></div><p id="devInventoryStatus" role="status">미조회 · 44개 항목의 분석 완료를 의미하지 않습니다.</p><div id="devInventoryResults"></div></div>';
+ document.getElementById('devReview').append(box);
+ document.getElementById('devInventoryLoad').onclick=devLoadInventory;
+ document.getElementById('devInventoryDownload').onclick=async()=>{
+  const status=document.getElementById('devInventoryStatus');
+  try{const res=await fetch('/api/development/reports/'+encodeURIComponent(devSite.id)+'/xlsx');if(!res.ok)throw Error('다운로드 실패 · 대상지 만료 또는 서버 응답을 확인하세요.');const url=URL.createObjectURL(await res.blob());const a=document.createElement('a');a.href=url;a.download='토지건축물_현황조서.xlsx';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}catch(e){status.textContent=e.message;}
+ };
+ devApi('reports/'+encodeURIComponent(devSite.id)).then(d=>{devRenderInventory(d);devRenderSourceDetails(d);}).catch(()=>{});
+}
+function devRenderInventory(data){
+ const root=document.getElementById('devInventoryResults');root.replaceChildren();
+ const note=document.createElement('p');note.textContent=`${data.land.length}필지 · 관련 건축물대장 ${data.buildings.length}건 · 기준 ${data.as_of} · 빈칸은 미확보입니다.`;root.append(note);
+ function table(title,columns,rows){const details=document.createElement('details');const summary=document.createElement('summary');summary.textContent=title;details.append(summary);const wrap=document.createElement('div');wrap.style.cssText='overflow:auto;max-height:460px';const t=document.createElement('table');t.style.cssText='min-width:650px;width:100%;font-size:12px;border-collapse:collapse';const thead=t.createTHead();const header=thead.insertRow();columns.forEach(([key,label])=>{const th=document.createElement('th');th.textContent=label;th.style.cssText='padding:8px;text-align:left;background:#eaf0f5';header.append(th);});const body=t.createTBody();rows.forEach(r=>{const tr=body.insertRow();columns.forEach(([key])=>{const td=tr.insertCell();td.textContent=r[key]??'미확보';td.style.cssText='padding:8px;border-bottom:1px solid #ddd';});});wrap.append(t);details.append(wrap);root.append(details);}
+ table('토지조서 (화면 최대 100필지 · 엑셀 전체)',[['jibun','지번'],['category','지목'],['official_area','공부㎡'],['overlap_area','편입 도형㎡'],['ownership','소유구분'],['zoning','중첩 용도지역'],['price','지가 원/㎡'],['ledger_status','대장 상태']],data.land.slice(0,100));
+ table('건축물조서 (화면 최대 100건 · 엑셀 전체)',[['address','소재지'],['use','용도'],['structure','구조'],['floors','층수'],['floor_area','연면적㎡'],['age','경과년'],['scope','편입확인']],data.buildings.slice(0,100));
+ table('오전동 보고서 44개 검토항목', [['id','번호'],['group','분류'],['name','항목'],['status','자료 상태'],['detail','내용·한계']],data.items);
+ document.getElementById('devInventoryDownload').disabled=false;
+}
+async function devLoadInventory(){
+ if(devInventoryBusy)return;devInventoryBusy=true;const button=document.getElementById('devInventoryLoad'),status=document.getElementById('devInventoryStatus');button.disabled=true;document.getElementById('devInventoryDownload').disabled=true;
+ const base='reports/'+encodeURIComponent(devSite.id);let failed=0;
+ try{
+  status.textContent='확정 구역계의 지적자료 확인 중';const data=await devApi(base+'/prepare',{});let i=0;
+  for(const row of data.land){i++;status.textContent=`토지·건축물대장 조회 ${i}/${data.land.length}필지 · 창을 유지하세요.`;
+   try{await devApi(base+'/parcel/'+encodeURIComponent(row.pnu),{});}catch(e){failed++;if(/429|조회 중|사용 중/.test(e.message)){throw Error('조서 조회가 사용 중입니다. 잠시 후 미확보 재조회를 누르세요.');}}
+  }
+  const jobs=await devApi(base+'/source-jobs');let ji=0;
+  for(const job of jobs.jobs){ji++;status.textContent=`공공자료 연결 ${ji}/${jobs.jobs.length} · ${job.label}`;try{const r=await devApi(base+'/source-jobs/'+encodeURIComponent(job.id),{});if(r.status==='ERROR')failed++;if(r.error_code==='RATE_LIMIT')throw Error('호출 한도 도달 · 잠시 후 다시 조회하세요.');}catch(e){if(/호출 한도|조회 중/.test(e.message))throw e;failed++;}}
+  const result=await devApi(base);devRenderInventory(result);devRenderSourceDetails(result);const missing=result.land.filter(r=>!!r.missing_fields||r.ledger_status!=='확보'||r.price_status!=='확보'||!['확보','대장 응답 0건'].includes(r.building_status)).length;
+  status.textContent=`조서 조회 종료 · ${result.land.length}필지 중 일부 속성 미확보 ${missing}필지 · 요청 실패 ${failed}건. 44개 항목 중 추가 자료가 필요한 항목은 아래 표에 표시됩니다.`;
+ }catch(e){status.textContent=e.message;try{const d=await devApi(base);devRenderInventory(d);devRenderSourceDetails(d);}catch(_){}}
+ finally{devInventoryBusy=false;button.disabled=false;}
+}
+
+let devSourceDetailMap=null;
+function devRenderSourceDetails(data){
+ if(devSourceDetailMap){devSourceDetailMap.remove();devSourceDetailMap=null;}
+ document.getElementById('devSourceDetail')?.remove();
+ const section=document.createElement('section');section.id='devSourceDetail';section.className='dev-card';
+ const heading=document.createElement('h3');heading.textContent='44개 항목별 자료·통계·도면';section.append(heading);
+ const select=document.createElement('select');select.style.cssText='margin:12px;max-width:90%;padding:8px';
+ for(const item of data.items){const option=document.createElement('option');option.value=item.id;option.textContent=`${item.id} ${item.name} · ${item.status}`;select.append(option);}section.append(select);
+ const info=document.createElement('p');info.style.padding='12px';section.append(info);
+ const mapbox=document.createElement('div');mapbox.id='devSourceMap';mapbox.style.height='360px';section.append(mapbox);
+ const stats=document.createElement('pre');stats.style.cssText='white-space:pre-wrap;max-height:360px;overflow:auto;font-size:12px;padding:12px';section.append(stats);
+ const raw=document.createElement('details'),summary=document.createElement('summary'),rawtext=document.createElement('pre');summary.textContent='필지별 규제 관계 원자료';rawtext.style.cssText='white-space:pre-wrap;max-height:240px;overflow:auto';raw.append(summary,rawtext);section.append(raw);
+ document.getElementById('devReview').append(section);
+ devSourceDetailMap=L.map(mapbox,{scrollWheelZoom:false});let drawn=L.layerGroup().addTo(devSourceDetailMap);
+ function paint(){
+  const item=data.items.find(x=>x.id===select.value);drawn.clearLayers();
+  info.textContent=`${item.detail} · 출처: ${item.source||'미확보'}${item.as_of?' · 자료 기준일: '+item.as_of:''}`;
+  const boundary=L.geoJSON(devSite.geometry,{style:{color:'#dc2626',weight:3,fill:false}}).addTo(drawn);devSourceDetailMap.fitBounds(boundary.getBounds(),{padding:[12,12]});
+  if(item.features?.length)L.geoJSON(item.features,{style:{color:'#126d88',weight:1.5,fillOpacity:.2},onEachFeature:(f,l)=>{const label=document.createElement('span');label.textContent=f.properties?.name||'원자료';l.bindTooltip(label);}}).addTo(drawn);
+  if(item.map_available){const url='/api/development/reports/'+encodeURIComponent(devSite.id)+'/ecvam.png';L.imageOverlay(url,boundary.getBounds(),{opacity:.65}).addTo(drawn);boundary.bringToFront();}
+  stats.textContent=item.statistics?JSON.stringify(item.statistics,null,2):'수치 분석자료 미확보 · 도면만 확보된 경우 면적을 계산하지 않습니다.';
+  rawtext.textContent=item.regulation_rows?.length?JSON.stringify(item.regulation_rows,null,2):'규제 참고행 없음 또는 미조회. 비해당 확정 근거가 아닙니다.';
+  setTimeout(()=>devSourceDetailMap?.invalidateSize(false),0);
+ }
+ select.onchange=paint;paint();
 }

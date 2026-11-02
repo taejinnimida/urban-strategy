@@ -14,6 +14,8 @@ from pyproj import Geod, Transformer
 GEOD=Geod(ellps='WGS84')
 FACILITY_NAMES=['도로','교통시설','공간시설','유통·공급시설','공공·문화체육시설','방재시설','보건위생시설','환경기초시설','기타 기반시설']
 LAYERS={'LP_PA_CBND_BUBUN':'연속지적',**{f'LT_C_UQ11{i}':n for i,n in enumerate(['도시지역','관리지역','농림지역','자연환경보전지역'],1)},**{f'LT_C_UPISUQ15{i}':FACILITY_NAMES[i-1] for i in range(1,10)}}
+from development_sources import EXTRA_LAYERS
+LAYERS.update(EXTRA_LAYERS)
 # Seoul municipal GeoServer: 25 district boundaries, retrieved 2026-10-28.
 # Routing reference only; not a substitute for a legal boundary determination.
 SEOUL_REFERENCE_SOURCE='https://map.seoul.go.kr/geoserver/wfs?service=WFS&version=1.0.0&request=GetFeature&typeName=tile_map:v_tl_scco_sig_tms&outputFormat=application/json&srsName=EPSG:4326&maxFeatures=30'
@@ -89,6 +91,7 @@ class Site(BaseModel):
 class LayerQuery(Site):
     layer:str
     retry:bool=False
+    snapshot_id:str | None=None
 class ParcelPoint(BaseModel):
     lon:float=Field(ge=124,le=132,allow_inf_nan=False)
     lat:float=Field(ge=33,le=39.5,allow_inf_nan=False)
@@ -143,7 +146,7 @@ def register(app,service):
         with lock:
             p=snapshots.get(token)
             if not p or time.time()-p['created_at']>7200:raise HTTPException(404,'대상지가 만료되었습니다. 초기 화면에서 다시 확정하세요.')
-            return json.loads(json.dumps(p))
+            return json.loads(json.dumps({k:v for k,v in p.items() if not k.startswith("_")}))
     def failure(exc):
         # Categorize locally. Never return exception text or upstream URLs/keys.
         if isinstance(exc,ChannelFailure):return exc.code
@@ -206,6 +209,9 @@ def register(app,service):
     @router.post('/layer')
     def layer(data:LayerQuery):
         g=validate(data.geometry)
+        if data.snapshot_id:
+            fixed=get(data.snapshot_id)
+            if fixed['geometry']!=data.geometry:raise HTTPException(409,'확정 구역계와 조회 구역계가 다릅니다.')
         if data.layer not in LAYERS:raise HTTPException(422,'지원하지 않는 레이어입니다.')
         base={'source':'VWorld','layer':data.layer,'name':LAYERS[data.layer],'queried_at':time.time()}
         try:
@@ -246,7 +252,10 @@ def register(app,service):
                 result['error_code']='RATE_LIMIT';diagnostic['error_code']='RATE_LIMIT'
             if result['error_code'] in ('TEMPORARILY_PAUSED','RATE_LIMIT'):
                 result['retry_after_seconds']=max(1,state['retry_after_seconds'])
-        with lock:diagnostics[data.layer]=diagnostic
+        with lock:
+            diagnostics[data.layer]=diagnostic
+            if data.snapshot_id and data.snapshot_id in snapshots:
+                snapshots[data.snapshot_id].setdefault("_report_layers",{})[data.layer]=result
         return result
     auth=getattr(service,'_admin_auth_or_session',None)
     if auth:
@@ -328,4 +337,6 @@ def register(app,service):
             image=r.content;r.close()
             return Response(image,media_type='image/png',headers={'Cache-Control':'private,max-age=120'})
         except Exception:raise HTTPException(503,'지도자료 미확보')
+    from development_report import register_report
+    register_report(router,service,snapshots,lock,get,layer,LayerQuery,area)
     app.include_router(router)
