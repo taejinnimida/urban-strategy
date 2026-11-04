@@ -6,6 +6,7 @@ from pathlib import Path
 import requests
 from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import Response
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from shapely.geometry import shape, box
 from shapely.geometry.polygon import orient
@@ -14,7 +15,7 @@ from pyproj import Geod, Transformer
 GEOD=Geod(ellps='WGS84')
 FACILITY_NAMES=['도로','교통시설','공간시설','유통·공급시설','공공·문화체육시설','방재시설','보건위생시설','환경기초시설','기타 기반시설']
 LAYERS={'LP_PA_CBND_BUBUN':'연속지적',**{f'LT_C_UQ11{i}':n for i,n in enumerate(['도시지역','관리지역','농림지역','자연환경보전지역'],1)},**{f'LT_C_UPISUQ15{i}':FACILITY_NAMES[i-1] for i in range(1,10)}}
-from development_sources import EXTRA_LAYERS
+from development_sources import EXTRA_LAYERS, PublicDataError, safe_failure, ERROR_LABELS, PROVIDER_CODES, acquisition_status
 LAYERS.update(EXTRA_LAYERS)
 # Seoul municipal GeoServer: 25 district boundaries, retrieved 2026-10-28.
 # Routing reference only; not a substitute for a legal boundary determination.
@@ -38,62 +39,76 @@ def offline_region(g):
     except Exception:pass
     return None
 
-class ChannelFailure(RuntimeError):
-    def __init__(self,code):self.code=code;super().__init__(code)
+class ChannelFailure(PublicDataError):
+    pass
 
 class VWorldChannel:
-    """Independent, bounded transport. Display failures never pause input picking."""
+    """Independent transport with bounded retries and sanitized, per-layer traces."""
     def __init__(self,slots,pause_on_transport_error=True):
         self.slots=threading.BoundedSemaphore(slots);self.lock=threading.Lock();self.until=0.0;self.code=None
-        self.pause_on_transport_error=pause_on_transport_error
-        self.attempts=[]
+        self.pause_on_transport_error=pause_on_transport_error;self.attempts=[]
     def request(self,url,params,expected):
-        # Only the two application-owned endpoints may use this helper.
         if url not in ('https://api.vworld.kr/req/data','https://api.vworld.kr/req/wms'):raise ChannelFailure('REQUEST_FAILED')
         with self.lock:
             if time.monotonic()<self.until:raise ChannelFailure('TEMPORARILY_PAUSED')
         if not self.slots.acquire(timeout=.5):raise ChannelFailure('TEMPORARILY_PAUSED')
+        traces=[];last={'error_code':'PROVIDER_UNREACHABLE','stage':'TRANSPORT'}
+        layer=params.get('data') if params.get('data') in LAYERS else 'WMS'
+        def note(route,category,status=None,provider_code=None):
+            row={'route':route,'layer':layer,'category':category,'http_status':status,'queried_at':time.time()}
+            if provider_code:row['provider_code']=provider_code
+            with self.lock:self.attempts=(self.attempts+[row])[-80:]
+            traces.append(row)
+        def failed(info):
+            with self.lock:self.code=info['error_code']
+            error=ChannelFailure(info['error_code'],info.get('stage','TRANSPORT'),info.get('http_status'),info.get('provider_code'))
+            error.attempts=list(traces)
+            return error
         try:
-            # Recheck after acquiring; concurrent tile requests must honor the pause.
             with self.lock:
                 if time.monotonic()<self.until:raise ChannelFailure('TEMPORARILY_PAUSED')
             domain=str(params.get('domain') or '').rstrip('/')
-            headers={'Referer':domain+'/','Accept':'image/png' if expected=='png' else 'application/json','User-Agent':'urban-strategy-development/105.3'}
+            headers={'Referer':domain+'/','Accept':'image/png' if expected=='png' else 'application/json','User-Agent':'urban-strategy-development/105.8'}
             inner=requests.Request('GET',url,params=params).prepare().url
             routes=[(url,params,'direct'),('https://map.vworld.kr/proxy.do?url='+quote(inner,safe=''),None,'vworld_proxy')]
             for endpoint,query,route in routes:
-                try:
-                    r=requests.get(endpoint,params=query,headers=headers,timeout=(3,6),allow_redirects=False)
+                try:r=requests.get(endpoint,params=query,headers=headers,timeout=(3,6),allow_redirects=False)
                 except requests.RequestException as exc:
-                    kind=type(exc).__name__
-                    category={'ConnectTimeout':'CONNECT_TIMEOUT','ReadTimeout':'READ_TIMEOUT','Timeout':'TIMEOUT','SSLError':'TLS_ERROR','ProxyError':'PROXY_ERROR','ConnectionError':'CONNECTION_ERROR'}.get(kind,'TRANSPORT_ERROR')
-                    self.record(route,category)
+                    last=safe_failure(exc,'TRANSPORT');note(route,last['error_code']);continue
+                status=r.status_code
+                if status!=200:
+                    code='RATE_LIMIT' if status==429 else 'PROVIDER_REJECTED' if status in (401,403) else 'PROVIDER_REDIRECT' if 300<=status<400 else 'PROVIDER_HTTP_ERROR'
+                    last={'error_code':code,'stage':'TRANSPORT','http_status':status}
+                    note(route,code,status);r.close()
+                    if code=='RATE_LIMIT':self.pause(code);raise failed(last)
+                    if code=='PROVIDER_REJECTED':raise failed(last)
                     continue
-                self.record(route,'HTTP_RESPONSE',r.status_code)
-                if r.status_code==429:
-                    r.close();self.pause('RATE_LIMIT');raise ChannelFailure('RATE_LIMIT')
-                if r.status_code in (401,403):
-                    r.close();raise ChannelFailure('PROVIDER_REJECTED')
-                if r.status_code!=200:
-                    r.close();continue
-                if expected=='png':valid=r.content.startswith(b'\x89PNG\r\n\x1a\n')
-                else:
-                    try:valid=isinstance(r.json(),dict)
-                    except Exception:valid=False
-                if valid:
-                    with self.lock:self.until=0.0;self.code=None
-                    return r,route
-                self.record(route,'INVALID_PNG' if expected=='png' else 'INVALID_JSON',r.status_code)
-                r.close()
-            if self.pause_on_transport_error:self.pause('PROVIDER_UNREACHABLE')
-            raise ChannelFailure('PROVIDER_UNREACHABLE')
+                try:
+                    if expected=='png':
+                        if not r.content.startswith(b'\x89PNG\r\n\x1a\n'):raise ValueError()
+                    else:
+                        payload=r.json();response=payload.get('response') if isinstance(payload,dict) else None
+                        if not isinstance(response,dict):raise ValueError()
+                        if response.get('status') not in ('OK','NOT_FOUND'):
+                            raw=str((response.get('error') or {}).get('code') or '').upper()
+                            provider=raw if raw in PROVIDER_CODES else 'OTHER'
+                            code='RATE_LIMIT' if provider in ('OVER_QUERY_LIMIT','LIMIT_EXCEEDED','QUOTA_EXCEEDED','TOO_MANY_REQUESTS','LIMIT_REQUEST') else 'PROVIDER_REJECTED'
+                            last={'error_code':code,'stage':'PROVIDER_RESPONSE','http_status':200,'provider_code':provider}
+                            note(route,code,200,provider);r.close()
+                            if code=='RATE_LIMIT':self.pause(code)
+                            raise failed(last)
+                except ChannelFailure:raise
+                except (ValueError,TypeError,AttributeError):
+                    last={'error_code':'PROVIDER_FORMAT','stage':'WMS_IMAGE' if expected=='png' else 'JSON','http_status':200}
+                    note(route,'INVALID_PNG' if expected=='png' else 'INVALID_JSON',200);r.close();continue
+                note(route,'OK',200)
+                with self.lock:self.until=0.0;self.code=None
+                return r,route
+            if self.pause_on_transport_error:self.pause(last['error_code'])
+            raise failed(last)
         finally:self.slots.release()
     def pause(self,code):
         with self.lock:self.until=time.monotonic()+15;self.code=code
-    def record(self,route,category,status=None):
-        with self.lock:
-            self.attempts.append({'route':route,'category':category,'http_status':status,'queried_at':time.time()})
-            self.attempts=self.attempts[-20:]
     def snapshot(self,include_diagnostics=False):
         with self.lock:return {'paused':time.monotonic()<self.until,'retry_after_seconds':max(0,math.ceil(self.until-time.monotonic())),'last_error_code':self.code,**({'recent_attempts':list(self.attempts)} if include_diagnostics else {})}
 
@@ -123,6 +138,62 @@ def validate(value):
         return g
     except HTTPException:raise
     except Exception:raise HTTPException(422,'대한민국 WGS84 좌표의 유효한 Polygon/MultiPolygon이 필요합니다.')
+
+def normalize_browser_fact(layer,features,geometry):
+    """Check structure/spatial scope, not authenticity of a browser response."""
+    if not isinstance(features,list) or len(features)>10000:raise HTTPException(422,'보조자료의 도형 수를 확인하세요.')
+    target=validate(geometry);out=[];seen=set();parts=[];vertices=0
+    fields={'pnu','jibun','uname','name','fclty_nm','dgm_nm','unq_mnno','fig_lclsf_cd',
+            'fig_mclsf_cd','fig_sclsf_cd','dcsn_ancmnt_mng_cd','dcsn_ancmnt_no','dcsn_ancmnt_date'}
+    def check_coords(value):
+        nonlocal vertices
+        if not isinstance(value,list) or not value:raise ValueError()
+        if isinstance(value[0],(int,float)):
+            if len(value)!=2 or any(isinstance(v,bool) or not isinstance(v,(int,float)) or not math.isfinite(v) for v in value):raise ValueError()
+            if not (124<=value[0]<=132 and 33<=value[1]<=39.5):raise ValueError()
+            vertices+=1
+            if vertices>150000:raise ValueError()
+        else:
+            for child in value:check_coords(child)
+    for feature in features:
+        try:
+            if feature.get('type')!='Feature':raise ValueError()
+            raw=feature['geometry']
+            if raw.get('type') not in ('Polygon','MultiPolygon','LineString','MultiLineString','Point','MultiPoint'):raise ValueError()
+            if layer=='LP_PA_CBND_BUBUN' and raw['type'] not in ('Polygon','MultiPolygon'):raise ValueError()
+            check_coords(raw['coordinates']);geom=shape(raw)
+            if geom.is_empty or not geom.is_valid:raise ValueError()
+            props={str(k).lower():v for k,v in (feature.get('properties') or {}).items()}
+            if layer=='LP_PA_CBND_BUBUN':
+                pnu=next((str(v) for v in (props.get('pnu'),feature.get('id')) if re.fullmatch(r'\d{19}',str(v or ''))),None)
+                if not pnu:raise ValueError()
+                props['pnu']=pnu
+            clean={k:str(v)[:500] for k,v in props.items() if k in fields and isinstance(v,(str,int,float))}
+            if not geom.intersects(target):continue
+            item={'type':'Feature','geometry':raw,'properties':clean}
+            digest=hashlib.sha256(json.dumps(item,sort_keys=True).encode()).hexdigest()
+            if digest in seen:continue
+            seen.add(digest);out.append(item);parts.append(geom.intersection(target))
+        except (ValueError,KeyError,TypeError,AttributeError,RecursionError):raise HTTPException(422,'보조자료의 좌표·도형·PNU 검증에 실패했습니다.')
+    return {'status':'REFERENCE','layer':layer,'name':LAYERS[layer],'source':'VWorld 브라우저 보조 수신(출처 재확인 필요)',
+            'route':'BROWSER','provider_verified':False,'features':out,
+            'overlap_area_m2':area(unary_union(parts)) if parts else 0,'queried_at':time.time(),
+            'note':'좌표·도형·PNU·대상지 교차를 검증한 참고자료. 제공기관 원문 진위·전체 수록 여부는 미검증이며 법정 판정 근거로 사용하지 않습니다.'}
+
+def store_layer_unlocked(snapshot,layer,result):
+    facts=snapshot.setdefault('_report_layers',{});old=facts.get(layer,{})
+    if result.get('status') not in ('COMPLETE','REFERENCE') and old.get('status') in ('COMPLETE','REFERENCE'):
+        # A failed refresh must not silently delete an already acquired fact.
+        facts[layer]={**old,'refresh_error_code':result.get('error_code','REQUEST_FAILED'),'refresh_failed_at':result.get('queried_at')}
+        return facts[layer]
+    if result.get('status')=='REFERENCE' and old.get('status')=='COMPLETE':return old
+    result=dict(result)
+    result['fact_revision']=hashlib.sha256(json.dumps({'geometry':snapshot['geometry'],'layer':layer,'status':result.get('status'),'features':result.get('features',[])},sort_keys=True).encode()).hexdigest()
+    if result.get('status')=='COMPLETE':result['provider_verified']=True
+    facts[layer]=result
+    if old.get('fact_revision')!=result['fact_revision']:snapshot.get('_national_sources',{}).pop('vector:'+layer,None)
+    return result
+
 def register(app,service):
     router=APIRouter(prefix='/api/development');snapshots={};lock=threading.Lock();diagnostics={}
     point_channel=VWorldChannel(1);display_channel=VWorldChannel(2);facts_channel=VWorldChannel(2,pause_on_transport_error=False)
@@ -159,16 +230,41 @@ def register(app,service):
             if not p or time.time()-p['created_at']>7200:raise HTTPException(404,'대상지가 만료되었습니다. 초기 화면에서 다시 확정하세요.')
             return json.loads(json.dumps({k:v for k,v in p.items() if not k.startswith("_")}))
     def failure(exc):
-        # Categorize locally. Never return exception text or upstream URLs/keys.
         if isinstance(exc,ChannelFailure):return exc.code
-        t=str(exc).lower()
         if not service._vworld_key():return 'SERVICE_NOT_READY'
-        if 'circuit' in t or 'cooldown' in t:return 'TEMPORARILY_PAUSED'
-        if '429' in t or '호출제한' in t:return 'RATE_LIMIT'
-        if any(v in t for v in ('401','403','인증','domain','invalidkey','apikey')):return 'PROVIDER_REJECTED'
-        if any(v in t for v in ('timeout','timed out','transport','connection','연결','외부연결')):return 'PROVIDER_UNREACHABLE'
-        if 'json' in t or '파싱' in t:return 'PROVIDER_FORMAT'
-        return 'REQUEST_FAILED'
+        return safe_failure(exc)['error_code']
+
+    browser_submit_gate=threading.BoundedSemaphore(1)
+    @router.get('/snapshots/{token}/layers')
+    def stored_layers(token:str):
+        get(token)
+        with lock:return {'layers':json.loads(json.dumps(snapshots[token].get('_report_layers',{})))}
+
+    @router.post('/snapshots/{token}/browser-layer')
+    async def browser_layer(token:str,request:Request):
+        fixed=get(token)
+        origin=request.headers.get('origin')
+        if origin and origin.rstrip('/')!=str(request.base_url).rstrip('/'):raise HTTPException(403,'동일 서비스 화면에서 요청하세요.')
+        chunks=[];size=0
+        async for chunk in request.stream():
+            size+=len(chunk)
+            if size>6000000:raise HTTPException(413,'보조자료의 크기가 지원 한도를 초과합니다.')
+            chunks.append(chunk)
+        try:body=json.loads(b''.join(chunks))
+        except (ValueError,UnicodeError,RecursionError):raise HTTPException(422,'보조자료 형식을 확인하세요.')
+        if not isinstance(body,dict) or body.get('geometry')!=fixed['geometry']:raise HTTPException(409,'확정 구역계와 조회 구역계가 다릅니다.')
+        key=body.get('layer')
+        if not isinstance(key,str) or key not in LAYERS or key in EXTRA_LAYERS:raise HTTPException(422,'지원하지 않는 보조자료입니다.')
+        with lock:
+            previous=snapshots[token].get('_report_layers',{}).get(key,{})
+            if previous.get('status')=='COMPLETE':return previous
+            if not previous or previous.get('error_code') in ('RATE_LIMIT','SERVICE_NOT_READY','PROVIDER_REJECTED','TEMPORARILY_PAUSED'):raise HTTPException(409,'서버 조회 결과를 먼저 확인하세요.')
+        if not browser_submit_gate.acquire(False):raise HTTPException(429,'보조자료 확인 중입니다. 잠시 후 다시 시도하세요.')
+        try:
+            result=await run_in_threadpool(normalize_browser_fact,key,body.get('features'),fixed['geometry'])
+            get(token)
+            with lock:return store_layer_unlocked(snapshots[token],key,result)
+        finally:browser_submit_gate.release()
     # Display-only parcel context. It never writes to snapshots or analysis FACTs.
     parcel_view_channel=VWorldChannel(1,pause_on_transport_error=False)
     parcel_view_cache={}
@@ -226,11 +322,11 @@ def register(app,service):
         if data.layer not in LAYERS:raise HTTPException(422,'지원하지 않는 레이어입니다.')
         base={'source':'VWorld','layer':data.layer,'name':LAYERS[data.layer],'queried_at':time.time()}
         try:
-            if not service._vworld_key():raise RuntimeError('service not configured')
+            if not service._vworld_key():raise ChannelFailure('SERVICE_NOT_READY')
             # Nationwide facts have their own connection state, separate from map tiles.
             a,b,c,e=g.bounds;fs=[];seen=set();started=time.monotonic();route='direct'
             for page in range(1,11):
-                if time.monotonic()-started>22:raise ChannelFailure('PROVIDER_UNREACHABLE')
+                if time.monotonic()-started>22:raise ChannelFailure('TIMEOUT')
                 response,route=facts_channel.request('https://api.vworld.kr/req/data',{'key':service._vworld_key(),'domain':service._vworld_domain(),'service':'data','version':'2.0','request':'getfeature','format':'json','size':1000,'page':page,'geometry':'true','attribute':'true','crs':'EPSG:4326','data':data.layer,'geomfilter':f'BOX({a},{b},{c},{e})'},'json')
                 try:payload=response.json().get('response') or {}
                 finally:response.close()
@@ -256,7 +352,7 @@ def register(app,service):
             diagnostic={'status':'COMPLETE','queried_at':base['queried_at'],'route':route,'count':len(fs)}
         except Exception as exc:
             code=failure(exc)
-            diagnostic={'status':'UNKNOWN','queried_at':base['queried_at'],'error_code':code,'exception_type':type(exc).__name__}
+            diagnostic={'status':'UNKNOWN','queried_at':base['queried_at'],**safe_failure(exc),'error_code':code,'attempts':getattr(exc,'attempts',[])}
             result={**base,'status':'UNKNOWN','features':[],'error_code':code,'message':'자료 연결 실패. 사업 적합성은 판정하지 않았습니다.'}
             state=facts_channel.snapshot()
             if code=='TEMPORARILY_PAUSED' and state.get('last_error_code')=='RATE_LIMIT':
@@ -266,19 +362,31 @@ def register(app,service):
         with lock:
             diagnostics[data.layer]=diagnostic
             if data.snapshot_id and data.snapshot_id in snapshots:
-                snapshots[data.snapshot_id].setdefault("_report_layers",{})[data.layer]=result
+                result=store_layer_unlocked(snapshots[data.snapshot_id],data.layer,result)
         return result
     auth=getattr(service,'_admin_auth_or_session',None)
     if auth:
         @router.get('/admin/diagnostics',dependencies=[Depends(auth)])
-        def diagnostic_report():
-            with lock:entries=json.loads(json.dumps(diagnostics))
-            return {'server_data_connection_configured':bool(service._vworld_key()),'configured_domain':urlsplit(service._vworld_domain()).hostname,'layers':entries,'channels':{'parcel_input':point_channel.snapshot(True),'background_display':display_channel.snapshot(True),'national_facts':facts_channel.snapshot(True)},'note':'키·토큰·원문 오류·요청 URL은 반환하지 않습니다.'}
+        def diagnostic_report(response:Response):
+            response.headers['Cache-Control']='no-store'
+            with lock:
+                entries=json.loads(json.dumps(diagnostics))
+                source_diagnostics=[]
+                for snapshot in snapshots.values():
+                    for job,value in snapshot.get('_national_sources',{}).items():
+                        if value.get('status') in ('ERROR','MISSING_SOURCE','MISSING_CREDENTIAL','OUTSIDE_COVERAGE'):
+                            source_diagnostics.append({'job':job.split(':')[0] if job.startswith(('ned:','characteristics:')) else job,**{k:value[k] for k in ('status','error_code','stage','http_status','provider_code','queried_at') if k in value}})
+                source_diagnostics=sorted(source_diagnostics,key=lambda v:v.get('queried_at',''))[-80:]
+            try:
+                hostname=urlsplit(service._vworld_domain()).hostname
+                if not hostname or not re.fullmatch(r'[A-Za-z0-9.-]+',hostname) or '.' not in hostname or (service._vworld_key() and service._vworld_key() in hostname):hostname=None
+            except (ValueError,TypeError):hostname=None
+            return {'build':'R105.8-connection','acquisition':acquisition_status(),'source_jobs':source_diagnostics,'server_data_connection_configured':bool(service._vworld_key()),'configured_domain':hostname,'layers':entries,'channels':{'parcel_input':point_channel.snapshot(True),'background_display':display_channel.snapshot(True),'national_facts':facts_channel.snapshot(True)},'note':'키·토큰·원문 오류·요청 URL은 반환하지 않습니다.'}
     @router.post('/parcel-at-point')
     def parcel_at_point(data:ParcelPoint):
         # Point picking is a dedicated input operation, not a business analysis.
         try:
-            if not service._vworld_key():raise RuntimeError('service not configured')
+            if not service._vworld_key():raise ChannelFailure('SERVICE_NOT_READY')
             project=Transformer.from_crs(4326,5179,always_xy=True).transform
             inverse=Transformer.from_crs(5179,4326,always_xy=True).transform
             point=shape({'type':'Point','coordinates':[data.lon,data.lat]})
@@ -316,7 +424,7 @@ def register(app,service):
             return {'status':'RESOLVED','feature':feature,'pnu':feature['properties']['pnu']}
         except Exception as exc:
             code=failure(exc)
-            with lock:diagnostics['parcel_click']={'status':'UNKNOWN','error_code':code,'exception_type':type(exc).__name__,'queried_at':time.time()}
+            with lock:diagnostics['parcel_click']={'status':'UNKNOWN',**safe_failure(exc),'error_code':code,'attempts':getattr(exc,'attempts',[]),'queried_at':time.time()}
             return {'status':'UNKNOWN','feature':None,'error_code':code,'message':'클릭 지적자료를 확보하지 못했습니다.'}
     @router.post('/address')
     def address(data:Address):
@@ -332,7 +440,9 @@ def register(app,service):
             if not pnu:raise ValueError()
             v=service._vworld_parcel_by_pnu(pnu,force_retry=True)
             return {'status':v.get('status'),'feature':v.get('feature'),'pnu':pnu,'address':data.address}
-        except Exception:raise HTTPException(502,'주소자료 조회 실패. API 설정 또는 주소를 확인하세요.')
+        except Exception as exc:
+            with lock:diagnostics['address']={'status':'UNKNOWN',**safe_failure(exc),'error_code':failure(exc),'queried_at':time.time()}
+            raise HTTPException(502,'주소자료 조회 실패. 관리자 연결상태를 확인하세요.') from None
     @router.get('/wms/{kind}')
     def wms(kind:str,request:Request):
         groups={'cadastral':'lp_pa_cbnd_bubun','zoning':','.join(f'lt_c_uq11{i}' for i in range(1,5)),'facility':','.join(f'lt_c_upisuq15{i}' for i in range(1,10))}

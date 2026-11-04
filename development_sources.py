@@ -18,7 +18,69 @@ VECTOR_ITEMS={'5-2':[f'LT_C_UQ11{i}' for i in range(1,5)],'5-3':[f'LT_C_UQ{i}' f
 NED_ITEMS={'1-2':r'도시개발|택지개발|공공주택|산업단지|정비구역','5-3':r'지구','5-4':r'구역','5-8':r'지구단위계획','6-1':r'농업진흥|농업보호|초지|농지','6-2':r'산지|보안림|산림|백두대간','6-3':r'하천|홍수|방재|재해|급경사|산사태','6-4':r'문화재|문화유산|국가유산|역사문화|자연유산|천연기념물','6-5':r'교육환경|학교환경|절대보호|상대보호','6-6':r'상수원|수변구역|수질보전','6-7':r'접도구역|도로구역|도로법','6-8':r'.+'}
 FILE_ITEMS={'1-2':'주변 개발사업 경계·명칭·사업기간(대상지 5km)','2-5':'토지특성 형상분류','2-6':'세분류 토지피복도','4-3':'생태자연도 전체 등급 원도형','4-4':'국토환경성평가 등급 원도형','4-5':'임상도 임상·영급·수종·경급','4-6':'유역·수계·홍수 관련 원도형','4-7':'기상청 관측소·기간별 기상통계','5-1':'관할 시군 도시기본계획 토지이용계획도','7-1':'건물별 법정 노후불량 검토자료와 근거','7-2':'사업별 호수 산정자료와 근거','7-3':'건축물 출입구·유효도로·폭원·접도 검토자료','7-4':'사업별 과소·부정형 필지 검토자료'}
 FILE_ITEMS.update({'5-3':'용도지구 공식 결정도형','5-4':'용도구역 공식 결정도형','5-8':'지구단위계획 공식 결정도형',**{f'6-{i}':v for i,v in enumerate(['농지·초지 규제 경계','산지구분·산지규제 경계','하천·방재구역 경계','국가유산·보호구역 경계','절대·상대 교육환경보호구역 경계','상수원보호·수변구역 경계','도로·접도구역 경계','기타 공적규제 경계'],1)}})
-OFFICIAL_LINKS={'2-6':'https://aid.mcee.go.kr/req/intro.do','4-3':'https://www.nie-ecobank.kr/opn/file/list.do','4-4':'https://webgis.neins.go.kr/api/apiGuide.do','4-5':'https://map.forest.go.kr/forest/','4-7':'https://data.kma.go.kr/','4-1':'https://map.ngii.go.kr/','4-2':'https://map.ngii.go.kr/','4-8':'https://map.ngii.go.kr/'}
+OFFICIAL_LINKS={'2-6':'https://aid.mcee.go.kr/req/intro.do','4-3':'https://www.nie-ecobank.kr/opn/file/list.do','4-4':'https://ecvam.neins.go.kr/api/apiGuide.do','4-5':'https://map.forest.go.kr/forest/','4-7':'https://data.kma.go.kr/','4-1':'https://map.ngii.go.kr/','4-2':'https://map.ngii.go.kr/','4-8':'https://map.ngii.go.kr/'}
+
+# Only fixed categories are recorded. Never keep exception text, URLs or keys.
+ERROR_LABELS={
+ 'SERVICE_NOT_READY':'공공 API 인증 설정 필요','PROVIDER_REJECTED':'제공기관 인증 또는 요청 거부',
+ 'RATE_LIMIT':'제공기관 호출 한도 도달','TEMPORARILY_PAUSED':'다른 조회 처리 후 재시도 필요',
+ 'CONNECT_TIMEOUT':'제공기관 연결 시간 초과','READ_TIMEOUT':'제공기관 응답 시간 초과',
+ 'TIMEOUT':'공공자료 조회 시간 초과','TLS_ERROR':'제공기관 보안 연결 실패',
+ 'PROXY_ERROR':'중계 연결 실패','CONNECTION_ERROR':'제공기관 연결 실패',
+ 'PROVIDER_REDIRECT':'제공기관 응답 주소 변경 확인 필요','PROVIDER_HTTP_ERROR':'제공기관 HTTP 오류',
+ 'PROVIDER_FORMAT':'제공기관 응답 형식 오류','PROVIDER_UNREACHABLE':'제공기관 연결 실패',
+ 'PROVIDER_LAYER_MISSING':'요청 자료의 제공 여부 확인 필요',
+ 'VALIDATION_FAILED':'공간자료·속성 검증 실패','SOURCE_FILE_MISSING':'등록된 원자료 파일 없음',
+ 'REQUEST_FAILED':'공공자료 조회 처리 실패'}
+PROVIDER_CODES=frozenset(('INCORRECT_KEY','INVALID_KEY','EXPIRED_KEY','UNAUTHORIZED_KEY',
+ 'INVALID_DOMAIN','INCORRECT_DOMAIN','INVALID_REQUEST','INVALID_PARAMETER','INVALID_RANGE',
+ 'INVALID_DATATYPE','INVALID_DATA','INVALID_SERVICE','INVALID_VERSION','INVALID_FORMAT',
+ 'INVALID_CRS','INVALID_SIZE','INVALID_PAGE','OVER_QUERY_LIMIT','LIMIT_EXCEEDED','QUOTA_EXCEEDED',
+ 'TOO_MANY_REQUESTS','LIMIT_REQUEST','UNKNOWN_ERROR','SERVICE_UNAVAILABLE','OTHER'))
+STAGES=frozenset(('TRANSPORT','PROVIDER_RESPONSE','JSON','WMS_IMAGE','SOURCE_COLLECTION',
+ 'LAND_LEDGER','LAND_PRICE','BUILDING_LEDGER','LAND_CHARACTERISTICS','LAND_USE',
+ 'ECVAM_AUTH','ECVAM_CAPABILITIES','ECVAM_MAP','WEATHER','LOCAL_SOURCE'))
+
+class PublicDataError(RuntimeError):
+    def __init__(self,code,stage='SOURCE_COLLECTION',http_status=None,provider_code=None):
+        self.code=code if code in ERROR_LABELS else 'REQUEST_FAILED'
+        self.stage=stage if stage in STAGES else 'SOURCE_COLLECTION'
+        self.http_status=http_status if isinstance(http_status,int) and 100<=http_status<=599 else None
+        self.provider_code=provider_code if provider_code in PROVIDER_CODES else None
+        super().__init__(self.code)
+
+def safe_failure(exc,stage='SOURCE_COLLECTION'):
+    if isinstance(exc,PublicDataError):
+        return {k:v for k,v in {'error_code':exc.code,'stage':exc.stage,'http_status':exc.http_status,'provider_code':exc.provider_code}.items() if v is not None}
+    status=getattr(getattr(exc,'response',None),'status_code',None)
+    if isinstance(exc,HTTPException):status=exc.status_code
+    code='REQUEST_FAILED'
+    if isinstance(exc,requests.ConnectTimeout):code='CONNECT_TIMEOUT'
+    elif isinstance(exc,requests.ReadTimeout):code='READ_TIMEOUT'
+    elif isinstance(exc,requests.Timeout):code='TIMEOUT'
+    elif isinstance(exc,requests.exceptions.SSLError):code='TLS_ERROR'
+    elif isinstance(exc,requests.exceptions.ProxyError):code='PROXY_ERROR'
+    elif isinstance(exc,requests.ConnectionError):code='CONNECTION_ERROR'
+    elif isinstance(exc,(json.JSONDecodeError,ET.ParseError)):code='PROVIDER_FORMAT'
+    elif isinstance(exc,FileNotFoundError):code='SOURCE_FILE_MISSING'
+    elif isinstance(exc,(ValueError,KeyError,TypeError)):code='VALIDATION_FAILED'
+    if status in (401,403):code='PROVIDER_REJECTED'
+    elif status==429:code='RATE_LIMIT'
+    elif isinstance(status,int) and 300<=status<400:code='PROVIDER_REDIRECT'
+    elif isinstance(status,int) and status>=400:code='PROVIDER_HTTP_ERROR'
+    return {k:v for k,v in {'error_code':code,'stage':stage if stage in STAGES else 'SOURCE_COLLECTION','http_status':status if isinstance(status,int) and 100<=status<=599 else None}.items() if v is not None}
+
+def source_failure(exc,stage='SOURCE_COLLECTION'):
+    diagnosis=safe_failure(exc,stage)
+    return {'status':'ERROR','detail':ERROR_LABELS[diagnosis['error_code']]+' · 자료 없음으로 판단하지 않습니다.',**diagnosis}
+
+def acquisition_status():
+    """Admin only; configuration presence is never a successful connection."""
+    root=source_root()
+    return {'official_files_manifest_present':(root/'manifest.json').is_file(),
+            'weather_station_config_present':(root/'weather.json').is_file(),
+            'weather_key_present':bool(os.environ.get('KMA_PUBLIC_API_KEY','').strip()),
+            'local_only_items':sorted(FILE_ITEMS), 'dem_acquisition':'LOCAL_OFFICIAL_GRID_ONLY'}
 
 def finite(v):
     try:
@@ -71,7 +133,7 @@ def official_features(entry,root):
 
 def official_vector(item,geometry,area):
     entry,root=manifest_entry(item)
-    if not entry:return {'status':'MISSING_SOURCE','detail':FILE_ITEMS.get(item,'공식 원자료')+' 파일 미등록','source':None,'features':[]}
+    if not entry:return {'status':'MISSING_SOURCE','error_code':'AUTOMATIC_ACQUISITION_NOT_IMPLEMENTED','acquisition':'OFFICIAL_FILE','detail':FILE_ITEMS.get(item,'공식 원자료')+' 자동 취득 미구현 · 공식 파일자료 등록 필요','source':None,'features':[]}
     target=shape(geometry)
     if item=='1-2':
         to=Transformer.from_crs(4326,5179,always_xy=True).transform;back=Transformer.from_crs(5179,4326,always_xy=True).transform
@@ -97,7 +159,7 @@ def official_vector(item,geometry,area):
 
 def dem(geometry,area):
     entry,root=manifest_entry('dem')
-    if not entry:return {'status':'MISSING_SOURCE','detail':'공식 DEM 격자 파일 미등록','source':None}
+    if not entry:return {'status':'MISSING_SOURCE','error_code':'AUTOMATIC_ACQUISITION_NOT_IMPLEMENTED','acquisition':'OFFICIAL_FILE','detail':'DEM 자동 취득 미구현 · 공식 DEM 격자 파일 등록 필요','source':None}
     target=shape(geometry)
     if not shape(entry['coverage']).covers(target):return {'status':'OUTSIDE_COVERAGE','detail':'DEM 수록범위 밖'}
     doc=safe_json(local_path(root,entry['file']));values=doc['values'];dx=finite(doc['cell_size_m']);x0=finite(doc['x0']);y0=finite(doc['y0'])
@@ -168,7 +230,7 @@ def characteristics(service,pnu):
 
 def weather(geometry,as_of):
     path=source_root()/'weather.json'
-    if not path.is_file():return {'status':'MISSING_SOURCE','detail':'대상지를 대표하는 기상청 관측소·좌표·적용범위 설정 필요'}
+    if not path.is_file():return {'status':'MISSING_SOURCE','error_code':'STATION_NOT_CONFIGURED','detail':'기상 API 조회 전 대상지 대표 관측소·좌표·적용범위 설정 필요'}
     cfg=safe_json(path,100000);target=shape(geometry)
     if not shape(cfg['coverage']).covers(target):return {'status':'OUTSIDE_COVERAGE','detail':'기상 관측소 적용범위 밖'}
     station=str(cfg['station_id'])
@@ -201,25 +263,44 @@ def weather(geometry,as_of):
     return {'status':'PARTIAL' if len(rows)<expected or len(temps)<expected or len(rain)<expected else 'DATA','detail':f'{year}년 ASOS 관측 일자료. 관측소 대표성 별도 검토. 30년 기후평년값이 아니며 빈 강수량을 0으로 바꾸지 않음.','source':'기상청 ASOS','station_id':station,'station_name':str(cfg['station_name'])[:100],'station_distance_m':distance,'year':year,'expected_days':expected,'received_days':len(rows),'temperature_days':len(temps),'rain_days':len(rain),'mean_temperature_c':sum(temps)/len(temps) if temps else None,'observed_precipitation_sum_mm':sum(rain) if rain else None,'days':days}
 
 def ecvam_map(service,geometry):
-    ready=service._ensure_ecvam_api_ready();url,params=service._ecvam_request_target(ready)
-    u=urlsplit(url)
-    if u.scheme!='https' or u.hostname not in ('ecvam.neins.go.kr','webgis.neins.go.kr') or u.path!='/apicall.do':raise ValueError('WMS host')
-    def get(extra):
-        with requests.get(url,params={**params,**extra},timeout=(4,15),allow_redirects=False,stream=True) as response:
-            if response.status_code!=200:raise ValueError('WMS response')
-            chunks=[];n=0
-            for chunk in response.iter_content(65536):
-                n+=len(chunk)
-                if n>5_000_000:raise ValueError('WMS size')
-                chunks.append(chunk)
-            return b''.join(chunks)
-    caps=ET.fromstring(get({'SERVICE':'WMS','REQUEST':'GetCapabilities','VERSION':'1.1.1'}))
+    # This collector requests the composite map only. It does not require six
+    # unrelated Seoul law layers in the authentication bootstrap.
+    key=service._ecvam_key()
+    if not key:return {'status':'MISSING_CREDENTIAL','error_code':'SERVICE_NOT_READY','stage':'ECVAM_AUTH','detail':'국토환경성평가 API 인증 설정 필요'}
+    referer=service._vworld_referer() if hasattr(service,'_vworld_referer') else service._vworld_domain().rstrip('/')+'/'
+    headers={'Referer':referer,'User-Agent':'urban-strategy-development/105.8'}
+    def get(url,params,stage):
+        u=urlsplit(url)
+        if u.scheme!='https' or u.hostname not in ('ecvam.neins.go.kr','webgis.neins.go.kr') or u.port not in (None,443) or u.username or u.password or u.path not in ('/apiConfirm.do','/apicall.do'):
+            raise PublicDataError('VALIDATION_FAILED',stage)
+        try:
+            with requests.get(url,params=params,headers=headers,timeout=(4,15),allow_redirects=False,stream=True) as response:
+                status=response.status_code
+                if status!=200:
+                    code='RATE_LIMIT' if status==429 else 'PROVIDER_REJECTED' if status in (401,403) else 'PROVIDER_REDIRECT' if 300<=status<400 else 'PROVIDER_HTTP_ERROR'
+                    raise PublicDataError(code,stage,status)
+                chunks=[];n=0
+                for chunk in response.iter_content(65536):
+                    n+=len(chunk)
+                    if n>5_000_000:raise PublicDataError('PROVIDER_FORMAT',stage,200)
+                    chunks.append(chunk)
+                return b''.join(chunks)
+        except requests.RequestException as exc:
+            info=safe_failure(exc,stage);raise PublicDataError(info['error_code'],stage,info.get('http_status')) from None
+    bootstrap=get('https://ecvam.neins.go.kr/apiConfirm.do',{'APIKEY':key},'ECVAM_AUTH').decode('utf-8',errors='replace')
+    if 'ecvamLayerCreate' not in bootstrap:raise PublicDataError('PROVIDER_REJECTED','ECVAM_AUTH',200)
+    wms_url,_=service._ecvam_wms_url_from_bootstrap(bootstrap)
+    url,params=service._ecvam_request_target({'_wms_url':wms_url})
+    try:caps=ET.fromstring(get(url,{**params,'SERVICE':'WMS','REQUEST':'GetCapabilities','VERSION':'1.1.1'},'ECVAM_CAPABILITIES'))
+    except ET.ParseError:raise PublicDataError('PROVIDER_FORMAT','ECVAM_CAPABILITIES',200) from None
     names={e.text for e in caps.iter() if e.tag.split('}')[-1]=='Name'}
-    layer=next((v for v in ('ecvam','nem_ecvam') if v in names),None)
-    if not layer:raise ValueError('ecvam layer not advertised')
+    layer=next((v for v in ('nem_ecvam','ecvam') if v in names),None)
+    if not layer:raise PublicDataError('PROVIDER_LAYER_MISSING','ECVAM_CAPABILITIES',200)
     g=shape(geometry);bbox=g.bounds
-    image=get({'SERVICE':'WMS','REQUEST':'GetMap','VERSION':'1.1.1','SRS':'EPSG:4326','BBOX':','.join(map(str,bbox)),'LAYERS':layer,'STYLES':'','WIDTH':800,'HEIGHT':600,'FORMAT':'image/png','TRANSPARENT':'TRUE'})
-    if not image.startswith(b'\x89PNG\r\n\x1a\n'):raise ValueError('WMS image')
+    tf=Transformer.from_crs(4326,3857,always_xy=True)
+    a,b=tf.transform(bbox[0],bbox[1]);c,d=tf.transform(bbox[2],bbox[3])
+    image=get(url,{**params,'SERVICE':'WMS','REQUEST':'GetMap','VERSION':'1.1.1','SRS':'EPSG:3857','BBOX':','.join(map(str,(a,b,c,d))),'LAYERS':layer,'STYLES':'','WIDTH':800,'HEIGHT':600,'FORMAT':'image/png','TRANSPARENT':'TRUE'},'ECVAM_MAP')
+    if not image.startswith(b'\x89PNG\r\n\x1a\n'):raise PublicDataError('PROVIDER_FORMAT','ECVAM_MAP',200)
     return {'status':'MAP_ONLY','detail':'국토환경성평가 공식 WMS 도면. 픽셀로 등급면적·법정 적합성을 산정하지 않습니다.','source':'한국환경연구원 국토환경성평가지도','source_url':OFFICIAL_LINKS['4-4'],'_image':image,'bounds':bbox}
 
 
@@ -245,8 +326,12 @@ def enrich(data,snapshot,area):
         results[item]={'status':('일부 집계자료' if st['missing'] else '집계자료 확보') if st['known'] else '미확보','detail':f"{st['known']}/{st['total']}건 확보 · 미확보 {st['missing']}건 · 원자료 값별 집계",'source':'토지대장·공시지가' if item in land_fields else '건축HUB'}
         if item=='2-1':results[item]['detail']+=' · 개인별 소유자 분석이 아닌 소유구분'
         if item in building_fields:results[item]['detail']+=' · 편입필지 관련 대장, 건물별 편입 미확인'
+        if data.get('parcel_status')=='REFERENCE':
+            results[item]['detail']+=' · 보조 지적 참고목록 기준이며 대상지 전체 분포를 확정하지 않음'
+            if st['known']:results[item]['status']='참고목록 집계자료'
+            st['scope']='REFERENCE_PARCELS'
     for item,ids in VECTOR_ITEMS.items():
-        done=[layers[k] for k in ids if layers.get(k,{}).get('status')=='COMPLETE'];parts=[];names=defaultdict(list);fs=[]
+        done=[layers[k] for k in ids if layers.get(k,{}).get('status') in ('COMPLETE','REFERENCE')];verified=sum(v.get('status')=='COMPLETE' for v in done);reference=len(done)-verified;parts=[];names=defaultdict(list);fs=[]
         for layer in done:
             for f in layer.get('features',[]):
                 clip=shape(f['geometry']).intersection(shape(snapshot['geometry']))
@@ -254,7 +339,8 @@ def enrich(data,snapshot,area):
                 props={str(k).lower():v for k,v in (f.get('properties') or {}).items()};name=str(props.get('uname') or props.get('fclty_nm') or props.get('dgm_nm') or '명칭 미확보');parts.append(clip);names[name].append(clip);fs.append({'type':'Feature','geometry':mapping(clip),'properties':{'name':name}})
         a=area(unary_union(parts)) if parts else (0 if len(done)==len(ids) else None)
         statistics[item]={'overlap_area_m2':a,'overlap_pct':100*a/data['area_m2'] if a is not None and data['area_m2'] else None,'groups':[{'name':k,'area_m2':area(unary_union(v))} for k,v in names.items()],'note':'서로 다른 분류 간 중첩이 있어 분류별 면적 합계와 전체 union 면적은 다를 수 있음'}
-        results[item]={'status':'공간자료 확보' if len(done)==len(ids) else '일부 확보' if done else '미확보','detail':f'{len(done)}/{len(ids)} 레이어 · 확정구역 교차면적 '+(f'{a:,.2f}㎡' if a is not None else '미확보'),'source':'VWorld','features':fs}
+        results[item]={'status':'보조 조회 참고자료' if reference else '공간자료 확보' if len(done)==len(ids) else '일부 확보' if done else '미확보','detail':f'{len(done)}/{len(ids)} 레이어 · 확정구역 교차면적 '+(f'{a:,.2f}㎡' if a is not None else '미확보'),'source':'VWorld 브라우저 보조 수신 포함(출처 재확인 필요)' if reference else 'VWorld','features':fs,'provider_verified':reference==0 and verified==len(ids)}
+        if reference:results[item]['detail']+=f' · 서버 직접 {verified}개/보조 {reference}개 · 보조자료 원문 진위·수록 완전성 미검증, 법정 판정 미적용'
         if item in ('5-3','5-4','6-4'):results[item]['detail']+=' · 연결된 종류만 조회, 모든 지구·구역·유산 규제 포괄 아님'
     ned=[(p,facts.get('ned:'+p,{})) for p in snapshot.get('_report',{}).get('land',{})]
     for item,pattern in NED_ITEMS.items():
@@ -280,7 +366,7 @@ def enrich(data,snapshot,area):
         if got:statistics[item]={'values':got,'resolution_m':terrain.get('resolution_m'),'elevation_coverage_pct':terrain.get('elevation_coverage_pct'),'slope_coverage_pct':terrain.get('slope_coverage_pct')};results[item]['features']=terrain.get('features',[])
     e=facts.get('ecvam',{})
     if e.get('status')=='MAP_ONLY' and results.get('4-4',{}).get('status') not in ('공식 파일자료 확보','일부 확보'):results['4-4']={'status':'도면 확보','detail':e['detail'],'source':e['source'],'map_available':True}
-    elif e.get('status')=='ERROR' and results.get('4-4',{}).get('status') not in ('공식 파일자료 확보','일부 확보'):results['4-4']={'status':'미확보','detail':'공식 WMS 연결 실패 · 등급 원자료 파일도 필요','source':'국토환경성평가지도'}
+    elif e.get('status')=='ERROR' and results.get('4-4',{}).get('status') not in ('공식 파일자료 확보','일부 확보'):results['4-4']={'status':'미확보','detail':e.get('detail','공식 WMS 연결 실패')+' · 등급별 면적은 원도형 별도 필요','source':'국토환경성평가지도'}
     characteristic_rows=[]
     for row in land:
         rec=facts.get('characteristics:'+row['pnu'],{}).get('record') or {}
@@ -300,7 +386,7 @@ def enrich(data,snapshot,area):
     results['1-3']={'status':'부분 종합','detail':'공간·대장·공식 파일의 확보 결과를 종합. 미확보 항목을 제외하거나 없음 처리하지 않음.','source':'동일 확정 구역계 FACT'}
     for row in data['items']:
         row.update(results.get(row['id'],{}));row['statistics']=statistics.get(row['id']);row['queried_at']=max((v.get('queried_at','') for v in facts.values()),default='')
-    data['statistics']=statistics;data['source_jobs']=[{'id':k,'status':v.get('status'),'detail':v.get('detail'),'source':v.get('source'),'queried_at':v.get('queried_at')} for k,v in facts.items()]
+    data['statistics']=statistics;data['source_jobs']=[{'id':k,'status':v.get('status'),'detail':v.get('detail'),'source':v.get('source'),'queried_at':v.get('queried_at'),'error_code':v.get('error_code'),'stage':v.get('stage')} for k,v in facts.items()]
     return data
 
 
@@ -322,15 +408,17 @@ def register_sources(router,service,snapshots,lock,output,get_snapshot,fetch_lay
             try:
                 if job.startswith('vector:'):
                     k=job.split(':',1)[1];f=s.get('_report_layers',{}).get(k)
-                    if not f or f.get('status')!='COMPLETE':f=fetch_layer(layer_type(geometry=s['geometry'],layer=k,snapshot_id=token))
-                    result={'status':'DATA' if f.get('status')=='COMPLETE' else 'ERROR','detail':'공간레이어 조회 완료' if f.get('status')=='COMPLETE' else '공간레이어 조회 실패','source':'VWorld','error_code':f.get('error_code')}
+                    if not f or f.get('status') not in ('COMPLETE','REFERENCE'):f=fetch_layer(layer_type(geometry=s['geometry'],layer=k,snapshot_id=token))
+                    result={'status':'DATA' if f.get('status')=='COMPLETE' else 'REFERENCE' if f.get('status')=='REFERENCE' else 'ERROR','detail':'공간레이어 조회 완료' if f.get('status')=='COMPLETE' else '보조 조회 참고자료 · 원문 진위·수록 완전성 미검증' if f.get('status')=='REFERENCE' else ERROR_LABELS.get(f.get('error_code'),'공간레이어 조회 실패'),'source':'VWorld','error_code':f.get('error_code')}
                 elif job.startswith('ned:'):result=fetch_ned(service,job.split(':',1)[1])
                 elif job.startswith('characteristics:'):result=characteristics(service,job.split(':',1)[1])
                 elif job=='weather':result=weather(s['geometry'],s['_report']['as_of'])
                 elif job.startswith('file:'):result=official_vector(job.split(':',1)[1],s['geometry'],area)
                 elif job=='dem':result=dem(s['geometry'],area)
                 else:result=ecvam_map(service,s['geometry'])
-            except Exception:result={'status':'ERROR','detail':'공공자료 연결 또는 형식·수록범위 검증 실패. 없음으로 판단하지 않습니다.'}
+            except Exception as exc:
+                stage='LAND_USE' if job.startswith('ned:') else 'LAND_CHARACTERISTICS' if job.startswith('characteristics:') else 'WEATHER' if job=='weather' else 'LOCAL_SOURCE' if job=='dem' or job.startswith('file:') else 'SOURCE_COLLECTION'
+                result=source_failure(exc,stage)
             result['queried_at']=datetime.now(__import__('zoneinfo').ZoneInfo('Asia/Seoul')).isoformat(timespec='seconds')
             with lock:s.setdefault('_national_sources',{})[job]=result
             return {k:v for k,v in result.items() if k not in ('_image','features','rows','profiles')}
