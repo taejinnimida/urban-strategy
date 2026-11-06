@@ -4,11 +4,11 @@ from types import SimpleNamespace
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pyproj import Transformer
-from shapely.geometry import box, shape, mapping
-from shapely.ops import transform
+from shapely.geometry import box, shape, mapping, LineString
+from shapely.ops import transform, unary_union
 import ezdxf
 import pytest
-from development_cad import (_collect_surrounding_cadastre, _drawing_frame,
+from development_cad import (_collect_surrounding_cadastre, _drawing_frame, dxf_bytes,
                              register_cad, CRS, MAX_TILE_AREA_M2)
 
 PROJECT = Transformer.from_crs('EPSG:4326', CRS, always_xy=True).transform
@@ -129,8 +129,17 @@ def test_real_dxf_and_bulk_zip_reopen_cad_layers():
     points=[(row[0],row[1]) for row in frame_polys[0].get_points('xy')]
     assert min(x for x,y in points)==pytest.approx(FRAME.bounds[0],abs=.001)
     assert max(y for x,y in points)==pytest.approx(FRAME.bounds[3],abs=.001)
-    assert len(list(spaces.query('LWPOLYLINE[layer=="CADASTRE"]'))) == 200
-    assert len(list(spaces.query('TEXT[layer=="PARCEL_LABEL"]'))) == 200
+    cadastre=list(spaces.query('LWPOLYLINE[layer=="CADASTRE"]'))
+    linework=[LineString([(p[0],p[1]) for p in ent.get_points('xy')]) for ent in cadastre]
+    # One clean parcel edge, not duplicate shared edges from neighboring polygons.
+    assert sum(edge.length for edge in linework)==pytest.approx(8600.0, abs=0.01)
+    assert sum(edge.length for edge in linework)==pytest.approx(unary_union(linework).length, abs=0.01)
+    assert all(FRAME.bounds[0]-.01 <= p[0] <= FRAME.bounds[2]+.01 and
+               FRAME.bounds[1]-.01 <= p[1] <= FRAME.bounds[3]+.01
+               for ent in cadastre for p in ent.get_points('xy'))
+    labels=list(spaces.query('TEXT[layer=="PARCEL_LABEL"]'))
+    assert len(labels)==200
+    assert all(label.dxf.style=='KOREAN' and label.dxf.height>0 for label in labels)
     assert len(list(spaces.query('LWPOLYLINE[layer=="SITE_BOUNDARY"]'))) == 1
     assert provider.count==4
     zip_resp=client.get('/api/development/reports/test-token/dxf.zip')
@@ -156,3 +165,53 @@ def test_unavailable_item_rejected():
     client,_=make_app(FakeVworld())
     r=client.get('/api/development/reports/test-token/dxf/4-8')
     assert r.status_code==409
+
+
+
+def test_small_parcel_label_is_not_forced_outside_geometry():
+    # A tiny parcel cannot accommodate the former fixed 2.4 m text; suppress it.
+    big=box(CX-100,CY-30,CX-55,CY+15)
+    tiny=box(CX+100,CY+25,CX+100.5,CY+25.5)
+    def feature(g,label):
+        return {'geometry':mapping(transform(INVERSE,g)),'properties':{'jibun':label}}
+    snap={'geometry':SITE,'_cad_background':{'status':'COMPLETE','features':[
+        feature(big,'산 123-4'), feature(tiny,'1-2')]}}
+    metadata={}
+    doc=load_dxf(dxf_bytes({'id':'1-1','features':[]},snap,metadata))
+    texts=list(doc.modelspace().query('TEXT[layer=="PARCEL_LABEL"]'))
+    assert len(texts)==1
+    assert texts[0].dxf.text=='산 123-4'
+    assert texts[0].dxf.style=='KOREAN'
+    assert metadata['labels']==1 and metadata['labels_omitted']==1
+    assert metadata['cadastre_boundary_style']=='shared_edges_merged'
+
+
+def test_duplicate_polygon_boundaries_are_not_doubled():
+    # Even duplicate provider geometry must not produce overlapped cadastral edges.
+    polygon=box(CX-35,CY-20,CX+35,CY+20)
+    feature={'geometry':mapping(transform(INVERSE,polygon)), 'properties':{'jibun':'123'}}
+    snap={'geometry':SITE,'_cad_background':{'status':'COMPLETE','features':[feature,feature]}}
+    doc=load_dxf(dxf_bytes({'id':'1-1','features':[]},snap,{}))
+    entities=list(doc.modelspace().query('LWPOLYLINE[layer=="CADASTRE"]'))
+    total=sum(LineString([(p[0],p[1]) for p in e.get_points('xy')]+
+             ([(e.get_points('xy')[0][0],e.get_points('xy')[0][1])] if e.closed else [])).length for e in entities)
+    assert total == pytest.approx(polygon.length, abs=.001)
+
+
+def test_jibun_labels_clear_highlighted_site_boundary():
+    provider=FakeVworld();client,_=make_app(provider)
+    response=client.get('/api/development/reports/test-token/dxf/1-1')
+    assert response.status_code==200
+    doc=load_dxf(response.content)
+    site_line=transform(PROJECT,shape(SITE)).boundary
+    for t in doc.modelspace().query('TEXT[layer=="PARCEL_LABEL"]'):
+        x,y=t.dxf.align_point.x,t.dxf.align_point.y
+        ems=sum(1.0 if ord(c)>127 else .68 for c in t.dxf.text)
+        width=ems*t.dxf.height/2*1.06
+        height=t.dxf.height*.62
+        from shapely.geometry import box
+        assert box(x-width,y-height,x+width,y+height).distance(site_line)>=max(.5,t.dxf.height*.35)-.01
+    layers={layer.dxf.name:layer for layer in doc.layers}
+    assert layers['CADASTRE'].dxf.lineweight==13
+    assert layers['SITE_BOUNDARY'].dxf.lineweight==50
+    assert layers['DRAWING_FRAME'].dxf.lineweight==25
