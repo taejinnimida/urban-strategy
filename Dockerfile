@@ -13,6 +13,7 @@ RUN pip install --no-cache-dir \
     pyproj \
     pyshp \
     shapely \
+    ezdxf \
     "psycopg[binary]"
 
 COPY . .
