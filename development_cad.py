@@ -18,7 +18,8 @@ from fastapi import HTTPException
 from fastapi.responses import Response
 from pyproj import Transformer
 from shapely.geometry import box, mapping, shape
-from shapely.ops import transform
+from shapely.ops import transform, unary_union
+from ezdxf.enums import TextEntityAlignment
 
 CRS = 'EPSG:5179'
 FRAME_MULTIPLIER = 2.0  # Double projected bbox width and height; drawing footprint = 4x bbox.
@@ -178,12 +179,13 @@ def dxf_bytes(item, snapshot, metadata):
     doc.header['$INSUNITS'] = 6  # metres
     doc.header['$MEASUREMENT'] = 1
     doc.header['$LUPREC'] = 3
-    doc.layers.new('DRAWING_FRAME', dxfattribs={'color': 9})
-    doc.layers.new('SITE_BOUNDARY', dxfattribs={'color': 1})
-    doc.layers.new('CADASTRE', dxfattribs={'color': 8})
-    doc.layers.new('PARCEL_LABEL', dxfattribs={'color': 7})
+    doc.layers.new('DRAWING_FRAME', dxfattribs={'color': 9, 'lineweight': 25})
+    doc.layers.new('SITE_BOUNDARY', dxfattribs={'color': 1, 'lineweight': 50})
+    doc.layers.new('CADASTRE', dxfattribs={'color': 8, 'lineweight': 13})
+    doc.layers.new('PARCEL_LABEL', dxfattribs={'color': 7, 'lineweight': 13})
+    doc.styles.new('KOREAN', dxfattribs={'font': 'malgun.ttf'})
     theme_layer = 'SURVEY_' + item['id'].replace('-', '_')
-    doc.layers.new(theme_layer, dxfattribs={'color': 5})
+    doc.layers.new(theme_layer, dxfattribs={'color': 5, 'lineweight': 25})
     model = doc.modelspace()
     counts = {'polylines': 0, 'points': 0, 'parcels': 0, 'thematic_features': 0}
     _entities(model, frame, 'DRAWING_FRAME', counts)
@@ -191,30 +193,96 @@ def dxf_bytes(item, snapshot, metadata):
     parcels = snapshot.get('_cad_background', {})
     if parcels.get('status') != 'COMPLETE':
         raise HTTPException(503, '확장 도곽의 주변 연속지적 서버조회가 완료되지 않아 불완전한 DXF를 생성하지 않습니다.')
-    if parcels.get('status') == 'COMPLETE':
-        source = parcels.get('features') or []
-        if len(source) > MAX_FEATURES:
-            raise HTTPException(413, '지적도형이 CAD 출력 한도를 초과합니다.')
-        for feature in source:
-            try:
-                geom = shape(feature['geometry'])
-                if not geom.is_valid or geom.is_empty:
-                    raise ValueError('invalid parcel geometry')
-                parcel_clip = transform(convert, geom).intersection(frame)
-                if parcel_clip.is_empty:
+    # Prepare all clipped cadastral polygons first. A topologically united boundary
+    # avoids drawing every shared parcel edge twice in CAD.
+    source = parcels.get('features') or []
+    if len(source) > MAX_FEATURES:
+        raise HTTPException(413, '지적도형이 CAD 출력 한도를 초과합니다.')
+    clipped_parcels = []
+    for feature in source:
+        try:
+            geom = shape(feature['geometry'])
+            if not geom.is_valid or geom.is_empty:
+                raise ValueError('invalid parcel geometry')
+            clipped = transform(convert, geom).intersection(frame)
+            if clipped.is_empty or clipped.area <= 1e-8:
+                continue
+            clipped_parcels.append((clipped, feature.get('properties') or {}))
+        except (ValueError, TypeError, KeyError):
+            raise HTTPException(422, '지적 원자료의 CAD 도형 변환에 실패했습니다.') from None
+    if not clipped_parcels:
+        raise HTTPException(503, '확장 도곽 내의 지적이 없어 CAD 도면을 생성하지 않습니다.')
+    try:
+        cadastral_boundary = unary_union([geom.boundary for geom, _ in clipped_parcels])
+        _entities(model, cadastral_boundary, 'CADASTRE', counts)
+    except (ValueError, TypeError):
+        raise HTTPException(422, '지적 경계 중복 정리 중 공간 위상 오류가 발생했습니다.') from None
+    counts['parcels'] = len(clipped_parcels)
+    counts['labels'] = 0
+    counts['labels_omitted'] = 0
+    # Text sizes reflect the drawing frame and actual interior space of each parcel.
+    # Labels too small to read or colliding with earlier labels are intentionally omitted.
+    frame_short = min(frame.bounds[2] - frame.bounds[0], frame.bounds[3] - frame.bounds[1])
+    target_height = min(6.0, max(0.8, 0.013 * frame_short))
+    occupied = []
+    site_border = projected.boundary
+    for geom, props in clipped_parcels:
+        raw_label = props.get('jibun') or props.get('JIBUN')
+        if not raw_label:
+            continue
+        label = str(raw_label)[:45].strip()
+        if not label:
+            continue
+        try:
+            polygon_parts = ([geom] if geom.geom_type == 'Polygon' else
+                             [g for g in getattr(geom, 'geoms', ()) if g.geom_type == 'Polygon'])
+            if not polygon_parts:
+                counts['labels_omitted'] += 1
+                continue
+            part = max(polygon_parts, key=lambda g: g.area)
+            point = part.representative_point()
+            clearance = point.distance(part.boundary)
+            # Approximate glyph widths: Korean chars ~1 em, Arabic digits ~0.7 em.
+            ems = sum(1.0 if ord(ch) > 127 else 0.68 for ch in label)
+            required_radius = math.hypot(ems / 2, 0.55)
+            font_height = min(target_height, 1.65 * clearance / max(required_radius, 0.7))
+            if font_height < max(0.65, target_height * 0.35):
+                counts['labels_omitted'] += 1
+                continue
+            half_w = ems * font_height / 2 * 1.06
+            half_h = font_height * 0.62
+            padding = 0.2 * font_height
+            selected = None
+            # Move text away from the highlighted site boundary when the parcel
+            # has room. The central position is preferred if already clear.
+            shifts = ((0.0, 0.0), (0.0, 1.7), (0.0, -1.7),
+                      (1.3, 0.0), (-1.3, 0.0),
+                      (1.0, 1.5), (-1.0, 1.5), (1.0, -1.5), (-1.0, -1.5))
+            for sx, sy in shifts:
+                x, y = point.x + sx * font_height, point.y + sy * font_height
+                label_area = box(x - half_w, y - half_h, x + half_w, y + half_h)
+                if not part.covers(label_area):
                     continue
-                _entities(model, parcel_clip, 'CADASTRE', counts)
-                counts['parcels'] += 1
-                props = feature.get('properties') or {}
-                jibun = props.get('jibun') or props.get('JIBUN')
-                if jibun and not parcel_clip.is_empty:
-                    pt = parcel_clip.representative_point()
-                    model.add_text(str(jibun)[:60], dxfattribs={
-                        'layer': 'PARCEL_LABEL', 'height': 2.4,
-                        'insert': (float(pt.x), float(pt.y)),
-                    })
-            except (ValueError, TypeError, KeyError):
-                raise HTTPException(422, '지적 원자료의 CAD 도형 변환에 실패했습니다.') from None
+                if label_area.distance(site_border) < max(0.5, font_height * 0.35):
+                    continue
+                rect = (x - half_w - padding, y - half_h - padding,
+                        x + half_w + padding, y + half_h + padding)
+                if any(rect[0] < other[2] and rect[2] > other[0] and
+                       rect[1] < other[3] and rect[3] > other[1] for other in occupied):
+                    continue
+                selected = (x, y, rect)
+                break
+            if selected is None:
+                counts['labels_omitted'] += 1
+                continue
+            x, y, rect = selected
+            model.add_text(label, dxfattribs={
+                'layer': 'PARCEL_LABEL', 'style': 'KOREAN', 'height': round(font_height, 3)
+            }).set_placement((float(x), float(y)), align=TextEntityAlignment.MIDDLE_CENTER)
+            occupied.append(rect)
+            counts['labels'] += 1
+        except (ValueError, TypeError):
+            counts['labels_omitted'] += 1
     theme = item.get('features') or []
     if len(theme) > MAX_FEATURES:
         raise HTTPException(413, '분석도형이 CAD 출력 한도를 초과합니다.')
@@ -239,6 +307,8 @@ def dxf_bytes(item, snapshot, metadata):
     metadata['frame_bbox_epsg5179'] = [round(v, 3) for v in frame.bounds]
     metadata['frame_width_height_multiplier'] = FRAME_MULTIPLIER
     metadata['cadastre_scope'] = 'expanded_frame'
+    metadata['cadastre_boundary_style'] = 'shared_edges_merged'
+    metadata['parcel_label_placement'] = 'inside_polygon_adaptive_height_collision_avoidance'
     metadata['cadastre_provider_calls'] = parcels.get('request_count')
     metadata['cadastre_duplicate_features_removed'] = parcels.get('duplicates_removed')
     metadata['cadastre_coverage_assurance'] = parcels.get('coverage_assurance') 
