@@ -502,6 +502,29 @@ function devRenderSourceDetails(data){
  const select=document.createElement('select');select.style.cssText='margin:12px;max-width:90%;padding:8px';
  for(const item of data.items){const option=document.createElement('option');option.value=item.id;option.textContent=`${item.id} ${item.name} · ${item.status}`;select.append(option);}section.append(select);
  const info=document.createElement('p');info.style.padding='12px';section.append(info);
+ const cadActions=document.createElement('div');cadActions.className='dev-actions';
+ const cadSingle=document.createElement('button');cadSingle.type='button';cadSingle.textContent='선택 항목 DXF 다운로드';
+ const cadBulk=document.createElement('button');cadBulk.type='button';cadBulk.textContent='공간도면 일괄 ZIP 다운로드';
+ const cadStatus=document.createElement('span');cadStatus.style.cssText='font-size:12px;color:#526174;align-self:center';
+ cadActions.append(cadSingle,cadBulk,cadStatus);section.append(cadActions);
+ async function downloadCad(file,url){
+  cadSingle.disabled=true;cadBulk.disabled=true;cadStatus.textContent='확장 도곽의 주변 지적 확인 및 CAD 생성 중…';
+  try{
+   const response=await fetch(url,{cache:'no-store'});
+   if(!response.ok){
+    let detail='CAD 생성 실패 ('+response.status+')';
+    try{const payload=await response.json();if(typeof payload.detail==='string')detail=payload.detail;}catch(_){}
+    throw Error(detail);
+   }
+   const blob=await response.blob(),objectUrl=URL.createObjectURL(blob),a=document.createElement('a');
+   a.href=objectUrl;a.download=file;document.body.append(a);a.click();a.remove();
+   setTimeout(()=>URL.revokeObjectURL(objectUrl),2000);
+   cadStatus.textContent='다운로드 파일 생성 완료 · CAD에서 도곽과 지적을 확인하세요.';
+  }catch(e){cadStatus.textContent=e.message||'CAD 다운로드 실패';}
+  finally{cadBulk.disabled=false;cadSingle.disabled=!cadSingle.dataset.available;}
+ }
+ cadSingle.onclick=()=>downloadCad('survey_'+select.value.replace('-','_')+'.dxf','/api/development/reports/'+encodeURIComponent(devSite.id)+'/dxf/'+encodeURIComponent(select.value));
+ cadBulk.onclick=()=>downloadCad('survey_cad_bundle.zip','/api/development/reports/'+encodeURIComponent(devSite.id)+'/dxf.zip');
  const mapbox=document.createElement('div');mapbox.id='devSourceMap';mapbox.style.height='360px';section.append(mapbox);
  const stats=document.createElement('pre');stats.style.cssText='white-space:pre-wrap;max-height:360px;overflow:auto;font-size:12px;padding:12px';section.append(stats);
  const raw=document.createElement('details'),summary=document.createElement('summary'),rawtext=document.createElement('pre');summary.textContent='필지별 규제 관계 원자료';rawtext.style.cssText='white-space:pre-wrap;max-height:240px;overflow:auto';raw.append(summary,rawtext);section.append(raw);
@@ -529,6 +552,10 @@ function devRenderSourceDetails(data){
  L.control.layers(null,{'연속지적':parcels,'선택 항목':drawn},{collapsed:true}).addTo(devSourceDetailMap);
  function paint(){
   const item=data.items.find(x=>x.id===select.value);drawn.clearLayers();
+  const available=item.id==='1-1'||(item.provider_verified===true&&['공간자료 확보','일부 확보'].includes(item.status))||(['공식 파일자료 확보','일부 확보'].includes(item.status)&&!!item.features?.length&&item.source!=='VWorld');
+  cadSingle.dataset.available=available?'yes':'';
+  cadSingle.disabled=!available;cadSingle.title=available?'확보된 공간도형 기준 CAD 출력':'검증된 공간도형이 없는 항목은 CAD 출력 불가';
+  cadStatus.textContent=available?'실제 좌표 DXF · 도곽 가로·세로 각각 2배 · 주변 지적 별도 조회':'이 항목은 CAD 도형 미확보 · 일괄 ZIP 목록에 미확보로 기록';
   info.textContent=`${item.detail} · 출처: ${item.source||'미확보'}${item.as_of?' · 자료 기준일: '+item.as_of:''}`;
   const boundary=L.geoJSON(devSite.geometry,{style:{color:'#dc2626',weight:3,fill:false}}).addTo(drawn);devSourceDetailMap.fitBounds(boundary.getBounds(),{padding:[12,12]});
   if(item.features?.length)L.geoJSON(item.features,{style:{color:'#126d88',weight:1.5,fillOpacity:.2},onEachFeature:(f,l)=>{const label=document.createElement('span');label.textContent=f.properties?.name||'원자료';l.bindTooltip(label);}}).addTo(drawn);
