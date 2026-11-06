@@ -489,7 +489,27 @@ function devRenderSourceDetails(data){
  const stats=document.createElement('pre');stats.style.cssText='white-space:pre-wrap;max-height:360px;overflow:auto;font-size:12px;padding:12px';section.append(stats);
  const raw=document.createElement('details'),summary=document.createElement('summary'),rawtext=document.createElement('pre');summary.textContent='필지별 규제 관계 원자료';rawtext.style.cssText='white-space:pre-wrap;max-height:240px;overflow:auto';raw.append(summary,rawtext);section.append(raw);
  document.getElementById('devReview').append(section);
- devSourceDetailMap=L.map(mapbox,{scrollWheelZoom:false});let drawn=L.layerGroup().addTo(devSourceDetailMap);
+ // Reuse the main map's visible base tiles; do not introduce a new map API or key.
+ devSourceDetailMap=L.map(mapbox,{scrollWheelZoom:false,crs:map.options.crs,zoomSnap:map.options.zoomSnap,minZoom:map.getMinZoom(),maxZoom:map.getMaxZoom()});
+ const visibleBases=[];
+ map.eachLayer(layer=>{
+  if(layer instanceof L.TileLayer && map.hasLayer(layer) && (layer.options.pane||'tilePane')==='tilePane' && typeof layer._url==='string')visibleBases.push(layer);
+ });
+ const base=visibleBases[0];
+ if(base){
+  const baseOpts={...base.options};
+  (base instanceof L.TileLayer.WMS?L.tileLayer.wms(base._url,{...baseOpts,...base.wmsParams}):L.tileLayer(base._url,baseOpts)).addTo(devSourceDetailMap);
+ }
+ // The cadastral outline remains visible when switching report items.
+ const parcels=L.layerGroup().addTo(devSourceDetailMap),drawn=L.layerGroup().addTo(devSourceDetailMap);
+ const parcelFact=devFacts.find(v=>v.layer==='LP_PA_CBND_BUBUN'&&devHasFact(v));
+ if(parcelFact?.features?.length){
+  L.geoJSON(parcelFact.features,{style:{color:'#475569',weight:1,opacity:.85,fill:false},onEachFeature:(f,l)=>{
+   const p=f.properties||{},jibun=p.jibun||p.pnu;
+   if(jibun){const label=document.createElement('span');label.textContent=String(jibun);l.bindTooltip(label);}
+  }}).addTo(parcels);
+ }
+ L.control.layers(null,{'연속지적':parcels,'선택 항목':drawn},{collapsed:true}).addTo(devSourceDetailMap);
  function paint(){
   const item=data.items.find(x=>x.id===select.value);drawn.clearLayers();
   info.textContent=`${item.detail} · 출처: ${item.source||'미확보'}${item.as_of?' · 자료 기준일: '+item.as_of:''}`;
