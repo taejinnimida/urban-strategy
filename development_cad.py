@@ -4,6 +4,7 @@ Only confirmed geometry and provider-verified or registered official source laye
 are exported. This is a preliminary survey drawing, not an approved cadastral map.
 """
 import copy
+import hashlib
 import io
 import json
 import math
@@ -22,6 +23,11 @@ from shapely.ops import transform
 CRS = 'EPSG:5179'
 FRAME_MULTIPLIER = 2.0  # Double projected bbox width and height; drawing footprint = 4x bbox.
 MAX_FEATURES = 6000
+MAX_TILE_CALLS = 64  # bounded calls on the shared, rate-limited VWorld channel
+MAX_TILE_AREA_M2 = 4_000_000  # each query well below the 10 sq km request guard
+MAX_TILE_DEPTH = 4
+TILE_OVERLAP_M = 2  # avoid seams from inverse projection and provider geometry tolerances
+CAD_CACHE_VERSION = 2
 MAX_DXF_BYTES = 18_000_000
 MAX_ZIP_BYTES = 28_000_000
 NOTICE = ('기초조사 참고 도면. 원자료 최신성·수록범위·법정 고시도면과의 일치 및 '
@@ -76,6 +82,91 @@ def _drawing_frame(site):
     return box(cx - half_w, cy - half_h, cx + half_w, cy + half_h)
 
 
+def _four_tiles(tile):
+    x0, y0, x1, y1 = tile.bounds
+    mx, my = (x0 + x1) / 2, (y0 + y1) / 2
+    return [box(a, b, c, d) for a, b, c, d in (
+        (x0, y0, mx, my), (mx, y0, x1, my),
+        (x0, my, mx, y1), (mx, my, x1, y1))]
+
+
+def _collect_surrounding_cadastre(frame, fetch_layer, layer_type):
+    """Query the entire 2x drawing frame using bounded, overlapping subareas.
+
+    A complete provider response means the request pages completed, not legal cadastral
+    coverage certification. Tiles with provider errors are never silently omitted.
+    """
+    inverse = Transformer.from_crs(CRS, 'EPSG:4326', always_xy=True).transform
+    project = Transformer.from_crs('EPSG:4326', CRS, always_xy=True).transform
+    found = {}  # (provider identity, geometry hash) -> original feature
+    count = {'requests': 0, 'tiles_complete': 0, 'tiles_empty': 0, 'duplicate_features': 0}
+
+    def get_tile(tile, depth):
+        if tile.area > MAX_TILE_AREA_M2:
+            if depth >= MAX_TILE_DEPTH:
+                raise HTTPException(413, '도곽이 넓어 안전한 분할조회 한도를 초과합니다. 도면 범위를 줄이세요.')
+            for part in _four_tiles(tile):
+                get_tile(part, depth + 1)
+            return
+        if count['requests'] >= MAX_TILE_CALLS:
+            raise HTTPException(413, '주변 지적 수집의 API 요청 한도에 도달했습니다. 도면 범위를 줄이세요.')
+        count['requests'] += 1
+        # Expansion is only for the provider request; CAD output is clipped to frame.
+        query = transform(inverse, tile.buffer(TILE_OVERLAP_M))
+        try:
+            result = fetch_layer(layer_type(geometry=mapping(query), layer='LP_PA_CBND_BUBUN'))
+        except HTTPException:
+            raise
+        except Exception:
+            raise HTTPException(503, '주변 지적 서버 호출 중 오류가 발생했습니다.') from None
+        if result.get('status') != 'COMPLETE':
+            code = str(result.get('error_code') or 'REQUEST_FAILED')
+            # Provider page cap can be resolved by smaller requests; transport/auth errors cannot.
+            if code in ('PROVIDER_FORMAT', 'INVALID_SIZE', 'INVALID_RANGE') and depth < MAX_TILE_DEPTH:
+                for part in _four_tiles(tile):
+                    get_tile(part, depth + 1)
+                return
+            raise HTTPException(503, '주변 지적 분할조회 실패: '+code)
+        items = result.get('features')
+        if not isinstance(items, list):
+            raise HTTPException(503, '주변 지적 서버 응답 형식이 잘못되었습니다.')
+        count['tiles_complete'] += 1
+        if not items:
+            count['tiles_empty'] += 1
+        for feature in items:
+            if not isinstance(feature, dict) or not feature.get('geometry'):
+                raise HTTPException(422, '주변 지적 원자료에 유효하지 않은 도형이 포함되어 있습니다.')
+            try:
+                geom = shape(feature['geometry'])
+                if geom.is_empty or not geom.is_valid:
+                    raise ValueError()
+                if not transform(project, geom).intersects(frame):
+                    continue
+            except (ValueError, TypeError, KeyError):
+                raise HTTPException(422, '주변 지적 원자료의 도형 검증에 실패했습니다.') from None
+            props = feature.get('properties') or {}
+            identity = str(props.get('pnu') or props.get('PNU') or feature.get('id') or '')
+            digest = hashlib.sha256(json.dumps(feature['geometry'], sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+            key = (identity, digest)
+            if key in found:
+                count['duplicate_features'] += 1
+                continue
+            found[key] = feature
+            if len(found) > MAX_FEATURES:
+                raise HTTPException(413, '도곽 주변 필지가 CAD 출력 상한을 초과합니다. 도면 범위를 줄이세요.')
+
+    # Always split the drawing frame into four tiles: avoid one large opaque request.
+    for part in _four_tiles(frame):
+        get_tile(part, 1)
+    if not found:
+        raise HTTPException(503, '확장 도곽의 연속지적 원자료를 확보하지 못했습니다.')
+    return {'status': 'COMPLETE', 'features': list(found.values()),
+            'request_count': count['requests'], 'tile_count': count['tiles_complete'],
+            'empty_tile_count': count['tiles_empty'], 'duplicates_removed': count['duplicate_features'],
+            'coverage_assurance': 'PROVIDER_RESPONSE_ONLY',
+            'cache_version': CAD_CACHE_VERSION}
+
+
 def dxf_bytes(item, snapshot, metadata):
     site = shape(snapshot['geometry'])
     if site.is_empty or not site.is_valid:
@@ -108,7 +199,7 @@ def dxf_bytes(item, snapshot, metadata):
             try:
                 geom = shape(feature['geometry'])
                 if not geom.is_valid or geom.is_empty:
-                    continue
+                    raise ValueError('invalid parcel geometry')
                 parcel_clip = transform(convert, geom).intersection(frame)
                 if parcel_clip.is_empty:
                     continue
@@ -147,7 +238,10 @@ def dxf_bytes(item, snapshot, metadata):
     metadata.update(counts)
     metadata['frame_bbox_epsg5179'] = [round(v, 3) for v in frame.bounds]
     metadata['frame_width_height_multiplier'] = FRAME_MULTIPLIER
-    metadata['cadastre_scope'] = 'expanded_frame' 
+    metadata['cadastre_scope'] = 'expanded_frame'
+    metadata['cadastre_provider_calls'] = parcels.get('request_count')
+    metadata['cadastre_duplicate_features_removed'] = parcels.get('duplicates_removed')
+    metadata['cadastre_coverage_assurance'] = parcels.get('coverage_assurance') 
     metadata['cadastre_coverage_note'] = '조회 완료는 도곽 내부 모든 필지 수록의 최종 검증을 보증하지 않습니다.'
     return content
 
@@ -161,6 +255,7 @@ def manifest_item(item, snapshot, data):
         'cadastral_status': cadastral.get('status', 'UNAVAILABLE'),
         'cadastre_frame_width_height_multiplier': FRAME_MULTIPLIER,
         'cadastre_background_status': snapshot.get('_cad_background', {}).get('status', 'UNAVAILABLE'),
+        'cadastre_coverage_assurance': snapshot.get('_cad_background', {}).get('coverage_assurance', 'UNVERIFIED'),
         'crs': CRS, 'units': 'metres', 'notice': NOTICE,
     }
 
@@ -191,7 +286,7 @@ def register_cad(router, output, snapshots, lock, fetch_layer, layer_type):
         revision = site_fact.get('fact_revision')
         with lock:
             cache = snapshots.get(token, {}).get('_cad_background', {})
-            if cache.get('source_revision') == revision and cache.get('status') == 'COMPLETE':
+            if cache.get('source_revision') == revision and cache.get('status') == 'COMPLETE' and cache.get('cache_version') == CAD_CACHE_VERSION:
                 snapshot['_cad_background'] = copy.deepcopy(cache)
                 return report, snapshot
         if not cad_gate.acquire(False):
@@ -199,19 +294,13 @@ def register_cad(router, output, snapshots, lock, fetch_layer, layer_type):
         try:
             with lock:
                 cache = snapshots.get(token, {}).get('_cad_background', {})
-                if cache.get('source_revision') == revision and cache.get('status') == 'COMPLETE':
+                if cache.get('source_revision') == revision and cache.get('status') == 'COMPLETE' and cache.get('cache_version') == CAD_CACHE_VERSION:
                     snapshot['_cad_background'] = copy.deepcopy(cache)
                     return report, snapshot
             frame = _drawing_frame(shape(snapshot['geometry']))
-            inverse = Transformer.from_crs(CRS, 'EPSG:4326', always_xy=True).transform
-            expanded = transform(inverse, frame)
-            result = fetch_layer(layer_type(geometry=mapping(expanded), layer='LP_PA_CBND_BUBUN'))
-            if result.get('status') != 'COMPLETE':
-                raise HTTPException(503, '주변 지적의 공식 서버조회가 실패했습니다. 도곽을 임의로 채우지 않습니다.')
-            if not result.get('features'):
-                raise HTTPException(503, '확장 도곽의 지적도형이 반환되지 않았습니다.')
-            background = {'status': 'COMPLETE', 'features': result['features'],
-                          'source_revision': revision, 'queried_at': result.get('queried_at')}
+            background = _collect_surrounding_cadastre(frame, fetch_layer, layer_type)
+            background['source_revision'] = revision
+            background['queried_at'] = datetime.now(ZoneInfo('Asia/Seoul')).isoformat(timespec='seconds')
             with lock:
                 live = snapshots.get(token)
                 if live is None or live.get('_report_layers', {}).get('LP_PA_CBND_BUBUN', {}).get('fact_revision') != revision:
@@ -259,6 +348,8 @@ def register_cad(router, output, snapshots, lock, fetch_layer, layer_type):
                 'created_at': created, 'crs': CRS, 'units': 'metres',
                 'site_area_m2': snapshot.get('area_m2'),
                 'frame_width_height_multiplier': FRAME_MULTIPLIER,
+                'cadastre_request_count': snapshot.get('_cad_background', {}).get('request_count'),
+                'cadastre_duplicates_removed': snapshot.get('_cad_background', {}).get('duplicates_removed'),
                 'fact_revisions': report.get('fact_revisions', {}),
                 'notice': NOTICE, 'items': entries,
             }
