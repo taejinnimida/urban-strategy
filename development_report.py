@@ -256,5 +256,8 @@ def register_report(router, service, snapshots, lock, get_snapshot, fetch_layer,
     def download(token:str):
         return Response(xlsx(tables(output(token))),media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',headers={'Content-Disposition':'attachment; filename="land-building-report.xlsx"','Cache-Control':'no-store'})
 
+    from development_cad import register_cad
+    register_cad(router,output,snapshots,lock)
+
     from development_sources import register_sources
     register_sources(router,service,snapshots,lock,output,get_snapshot,fetch_layer,layer_type,area,gate)
