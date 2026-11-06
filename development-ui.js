@@ -399,6 +399,23 @@ function devInstallLayout(){
  `;document.head.append(style);
 }
 
+// Keep the three result actions visually consistent with the boundary controls.
+// This is presentation-only: do not alter button size, status, handlers or RULEs.
+function devNormalizeResultActionFonts(){
+ if(devMode!=='select')return;
+ const id='dev-result-action-font-style';
+ if(!document.getElementById(id)){
+  const style=document.createElement('style');style.id=id;
+  style.textContent='html[data-review-mode="select"] .dev-result-action-font{font-size:14px!important;line-height:1.4!important}';
+  document.head.append(style);
+ }
+ const labels=/^(?:기초현황조사|도시정비검토|도시개발검토|서울도시정보|도시개발정보)$/;
+ document.querySelectorAll('button,a,[role="button"],input[type="button"]').forEach(el=>{
+  const text=String(el.tagName==='INPUT'?el.value:el.textContent||'').replace(/\\s+/g,'').trim();
+  if(el.id==='siteReviewBtn'||el.id==='devNational'||labels.test(text))el.classList.add('dev-result-action-font');
+ });
+}
+
 function devExport(){const blob=new Blob([JSON.stringify({snapshot:devSite,facts:devFacts,rule_status:'NOT_IMPLEMENTED'},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='development-review.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}
 async function devInit(){
  const head=document.querySelector('#serviceReviewPage .service-page-head');if(head){head.replaceChildren();const h=document.createElement('h2');h.textContent=devMode==='select'?'대상지 선정 · 전국 지도 [R105.7 개발본]':devMode==='seoul'?'서울 도시정보':'도시개발정보';head.append(h);if(devMode==='select')head.hidden=true;}
@@ -407,7 +424,7 @@ async function devInit(){
  if(devMode==='select'){
  devInstallParcelSelection();
  devInstallParcelView();
- const b=document.createElement('button');b.id='devNational';b.textContent='도시개발정보';b.disabled=true;b.onclick=()=>devOpen('development');document.getElementById('siteReviewBtn')?.after(b);
+ const b=document.createElement('button');b.id='devNational';b.textContent='도시개발정보';b.disabled=true;b.onclick=()=>devOpen('development');document.getElementById('siteReviewBtn')?.after(b);devNormalizeResultActionFonts();
  const input=document.getElementById('boundaryAddressInput');if(input)input.placeholder='정식 시·도명부터 지번까지 · 여러 주소는 줄바꿈';devStatus('');setInterval(devRefresh,600);devRefresh();return;
  }
  try{
