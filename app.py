@@ -5955,6 +5955,26 @@ def _street_block_from_basic_units(
     )
     return _street_block_apply_rule(context, barrier_features, road_min_width_m, outer_closure_all_roads)
 
+# Shared backend policy for both legacy street-block routes.
+STREET_BLOCK_REVIEW_POLICY = {
+    "mode": "MANUAL_GUIDANCE_ONLY", "auto_extraction": False,
+    "eligibility_gate": False, "ranking_weight": 0,
+}
+
+
+def _manual_street_block_response() -> Dict[str, Any]:
+    result = {"status": "MANUAL_REVIEW_ONLY", "loaded": False,
+              **STREET_BLOCK_REVIEW_POLICY, "block": None,
+              "block_area_m2": None, "site_area_m2": None,
+              "site_intersection_m2": None, "site_share_of_block_pct": None,
+              "block_coverage_of_site_pct": None, "relations": [],
+              "metadata": {**STREET_BLOCK_REVIEW_POLICY,
+                           "reason": "가로구역 법정요건 별도 확인 필요 / 자동검토는 독립요건에 한정"}}
+    for key in ("blocks", "road_barriers", "road_context", "facility_barriers", "basic_unit_context"):
+        result[key] = {"type": "FeatureCollection", "features": []}
+    return result
+
+
 def analyze_street_block(
     geometry: Dict[str, Any],
     barrier_features: Optional[List[Dict[str, Any]]] = None,
@@ -5965,30 +5985,8 @@ def analyze_street_block(
     road_min_width_m: float = 4.0,
     outer_closure_all_roads: bool = False,
 ) -> Dict[str, Any]:
-    """기초단위구 seed + 독립 도로 FACT(TL_SPRD_RW + TL_SPRD_MANAGE ROAD_BT)를 사용한다.
-
-    기초단위구가 없거나 자동확정에 실패하면 자료부족을 명시한다.
-    폭원 근거는 TL_SPRD_MANAGE ROAD_BT이며, 실제 barrier 형상은 RW 실폭면 결합값을 우선한다.
-    """
-    basic = _street_block_from_basic_units(
-        geometry, barrier_features, road_features, max_radius_m, road_surface_features,
-        road_area_features, road_min_width_m, outer_closure_all_roads,
-    )
-    if basic is not None:
-        return basic
-    unit_layers = _basic_unit_spatial_layers()
-    return {
-        'status':'unavailable','block':None,'blocks':{'type':'FeatureCollection','features':[]},
-        'road_barriers':{'type':'FeatureCollection','features':[]},'road_context':{'type':'FeatureCollection','features':[]},
-        'facility_barriers':{'type':'FeatureCollection','features':[]},'basic_unit_context':{'type':'FeatureCollection','features':[]},
-        'metadata':{
-            'method':'sgis_basic_unit_roadbt_merge','preferred_method':'sgis_basic_unit_roadbt_merge',
-            'basic_unit_available':bool(unit_layers.get('available')),
-            'basic_unit_reason':None if unit_layers.get('available') else unit_layers.get('reason'),
-            'road_feature_count':len(road_features or []),'fallback_used':False,
-            'reason':'기초단위구 자료가 없거나 가로구역 후보를 자동확정하지 못했습니다. TL_SPRD_MANAGE ROAD_BT 자료를 확인하세요.'
-        }
-    }
+    """Compatibility response: street blocks require expert review; no GIS is run."""
+    return _manual_street_block_response()
 
 
 # ---------------------------------------------------------------------------
@@ -6098,64 +6096,10 @@ def analyze_street_block_batch(
     schemes: Optional[Dict[str, Dict[str, Any]]] = None,
     max_radius_m: float = 500.0,
 ) -> Dict[str, Any]:
-    """R14: 동일 대상지의 제도별 가로구역을 공통 공간전처리 1회 후 순차 Rule 적용한다.
-
-    병렬화하지 않는다. Render 소형 인스턴스에서 대형 공간연산 동시실행을 피하면서
-    제도별로 중복되던 좌표변환·로컬 STRtree·도로 geometry 파싱만 제거한다.
-    """
-    started = time.perf_counter()
-    scheme_map = schemes or {}
-    if not scheme_map:
-        raise ValueError('가로구역 batch에는 최소 1개 제도 Rule이 필요합니다.')
-    if len(scheme_map) > 6:
-        raise ValueError('가로구역 batch는 최대 6개 제도까지 허용합니다.')
-    context = _street_block_common_context(
-        geometry, road_features, max_radius_m, road_surface_features, road_area_features,
-    )
-    prep_ms = None if context is None else context.get('common_prep_ms')
-    results: Dict[str, Any] = {}
-    rule_ms: Dict[str, float] = {}
-    for key, rule in scheme_map.items():
-        t0 = time.perf_counter()
-        result = _street_block_apply_rule(
-            context,
-            (rule or {}).get('barrier_features') or [],
-            float((rule or {}).get('road_min_width_m') or 0.0),
-            bool((rule or {}).get('outer_closure_all_roads', False)),
-        )
-        if result is None:
-            unit_layers = _basic_unit_spatial_layers()
-            result = {
-                'status':'unavailable','block':None,'blocks':{'type':'FeatureCollection','features':[]},
-                'road_barriers':{'type':'FeatureCollection','features':[]},'road_context':{'type':'FeatureCollection','features':[]},
-                'facility_barriers':{'type':'FeatureCollection','features':[]},'basic_unit_context':{'type':'FeatureCollection','features':[]},
-                'metadata':{
-                    'method':'sgis_basic_unit_roadbt_merge','preferred_method':'sgis_basic_unit_roadbt_merge',
-                    'basic_unit_available':bool(unit_layers.get('available')),
-                    'basic_unit_reason':None if unit_layers.get('available') else unit_layers.get('reason'),
-                    'road_feature_count':len(road_features or []),'fallback_used':False,
-                    'reason':'기초단위구 자료가 없거나 가로구역 후보를 자동확정하지 못했습니다. TL_SPRD_MANAGE ROAD_BT 자료를 확인하세요.'
-                }
-            }
-        elapsed = round((time.perf_counter()-t0)*1000.0, 2)
-        if isinstance(result.get('metadata'), dict):
-            result['metadata']['batch_rule_ms'] = elapsed
-            result['metadata']['batch_shared_context'] = True
-        results[str(key)] = result
-        rule_ms[str(key)] = elapsed
-    return {
-        'status':'ok',
-        'results':results,
-        'shared_meta':{
-            'analysis_radius_m':float(max_radius_m),
-            'common_prep_ms':prep_ms,
-            'rule_ms':rule_ms,
-            'scheme_count':len(results),
-            'batch_total_ms':round((time.perf_counter()-started)*1000.0, 2),
-            'common_context_reused':True,
-            'execution_mode':'sequential_rules_shared_context',
-        },
-    }
+    """Compatibility batch; input geometries and cached block results are ignored."""
+    return {**_manual_street_block_response(),
+            "results": {str(key): _manual_street_block_response() for key in (schemes or {})},
+            "shared_meta": {"mode": STREET_BLOCK_REVIEW_POLICY["mode"], "common_prep_ms": 0, "rule_ms": {}, "total_ms": 0}}
 
 def _database_url() -> str:
     return os.getenv("DATABASE_URL", "").strip()
@@ -8900,12 +8844,48 @@ def _compact_text(value: Any, limit: int = 280) -> str:
     return text[:limit]
 
 
+def _street_block_safe_summary(summary: Dict[str, Any]) -> Dict[str, Any]:
+    """Never explain cached block-derived decisions as current recommendations.
+
+    This is an explanation boundary, not a replacement eligibility engine.
+    Unversioned clients must recompute their decisions; independent raw facts
+    remain available, and no FAIL/REVIEW or new ranking is invented here.
+    """
+    result = json.loads(json.dumps(summary, ensure_ascii=False))
+    policy = result.get("analysis_policy") or {}
+    current = (policy.get("street_block") or {}).get("mode") == STREET_BLOCK_REVIEW_POLICY["mode"]
+    spatial = result.setdefault("spatial_facts", {})
+    spatial["street_block"] = _manual_street_block_response()
+    spatial.pop("street_blocks", None)
+    block_text = re.compile(r"가로구역|도로\s*폐합|6m\s*도로지구|도로로\s*둘러싸인")
+    def independent(item):
+        text = str(item.get("item") or item.get("text") or "") if isinstance(item, dict) else str(item)
+        return not block_text.search(text)
+    result["unknown_items"] = [x for x in result.get("unknown_items", []) if independent(x)]
+    if not current:
+        # The old summary contains final ranks only; it cannot be safely
+        # re-evaluated without the original independent FACTs.
+        result["business_results"] = []
+        result["recommended_business"] = None
+        result["alternative_businesses"] = []
+        result["scheme_competition"] = None
+        result["decision_refresh_required"] = True
+    else:
+        for business in result.get("business_results", []):
+            for key in ("gaps", "strengths", "risks", "followups"):
+                business[key] = [x for x in business.get(key, []) if independent(x)]
+    result["analysis_policy"] = {**policy, "street_block": dict(STREET_BLOCK_REVIEW_POLICY),
+        "street_block_notice": "가로구역 법정요건 별도 확인 필요 / 자동검토는 독립요건에 한정"}
+    return result
+
+
 def _fallback_ai_comprehensive_sentences(summary: Dict[str, Any]) -> List[str]:
     """AI 키가 없거나 호출이 실패했을 때 FACT/RULE 요약만으로 만드는 안전한 설명.
 
     이 함수는 새 판정을 하지 않고 입력 JSON의 값·판정·추천순서만 문장화한다.
     UI에서는 반드시 '판정엔진 요약'으로 표시한다.
     """
+    summary = _street_block_safe_summary(summary)
     site = summary.get("site_summary") or {}
     spatial = summary.get("spatial_facts") or {}
     businesses = summary.get("business_results") or []
@@ -8937,14 +8917,11 @@ def _fallback_ai_comprehensive_sentences(summary: Dict[str, Any]) -> List[str]:
     s3 = ("역세권·중심지 FACT는 " + " · ".join(station_bits + ([f"중심지 {center_text}"] if center_text else [])) + "로 정리됩니다.") if (station_bits or center_text) else "역세권·중심지 FACT는 현재 자료만으로 확정하기 어려워 추가 확인이 필요합니다."
 
     road = spatial.get("road") or {}
-    sb = spatial.get("street_block") or {}
     road_bits = []
     if isinstance(road.get("max_width_m"), (int, float)): road_bits.append(f"최대 확인 도로폭 {road.get('max_width_m'):g}m")
     if isinstance(road.get("face_count"), (int, float)): road_bits.append(f"접도면 {int(road.get('face_count'))}면")
-    if sb.get("loaded") is True:
-        cnt = sb.get("block_count")
-        road_bits.append(f"가로구역 {int(cnt)}개" if isinstance(cnt, (int, float)) else "가로구역 FACT 확보")
-    s4 = ("도로·가로구역 현황은 " + " · ".join(road_bits) + "로 확인됩니다.") if road_bits else "도로·가로구역 자료는 REVIEW 항목을 포함해 후속 확인이 필요합니다."
+    s4 = ("도로 현황은 " + " · ".join(road_bits) + "입니다. ") if road_bits else "도로·접도 FACT는 별도 확인이 필요합니다. "
+    s4 += "가로구역 법정요건 별도 확인 필요 / 자동검토는 독립요건에 한정."
 
     overlaps = spatial.get("overlaps") or {}
     overlap_names = []
@@ -8986,10 +8963,14 @@ def _fallback_ai_comprehensive_sentences(summary: Dict[str, Any]) -> List[str]:
         if t and t not in unknown_texts: unknown_texts.append(t)
     s11 = f"추가 확인이 필요한 항목은 {', '.join(unknown_texts[:3])} 등이며, 이 항목은 충족 또는 미충족으로 단정하지 않습니다." if unknown_texts else "API 실패나 미확보 자료가 새로 발생하면 해당 항목은 충족·미충족이 아니라 추가 확인 필요로 처리해야 합니다."
     s12 = "본 결과는 초기 사업전략 비교용이며 대지형상·문화재·높이·경관·건축배치 등 설계·인허가 변수는 별도 전문검토가 필요합니다."
+    if summary.get("decision_refresh_required"):
+        s6 = "과거 자동판정의 추천·등급은 재사용하지 않습니다. 현재 대상지의 독립요건으로 다시 검토해 주세요."
+        s7 = "가로구역 기준은 전문가 정성검토 안내로만 제공하며 사업 적합성·추천순위에 반영하지 않습니다."
     return [s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,s11,s12]
 
 
 def _openai_ai_comprehensive(summary: Dict[str, Any]) -> Dict[str, Any]:
+    summary = _street_block_safe_summary(summary)
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
     if not api_key:
         return {"mode": "rules_fallback", "model": "", "sentences": _fallback_ai_comprehensive_sentences(summary), "note": "OPENAI_API_KEY 미설정"}
@@ -9003,6 +8984,8 @@ def _openai_ai_comprehensive(summary: Dict[str, Any]) -> Dict[str, Any]:
     instructions = (
         "당신은 서울 정비·개발사업 초기검토 플랫폼의 설명 전용 AI다. "
         "사업을 새로 판정하지 말고, 입력 JSON에 이미 존재하는 FACT와 RULE 결과와 추천순서만 설명한다. "
+        "가로구역 성립·폐합·전체면적·점유율·역세권 교집합비율은 자동판정과 추천에서 제외한다. "
+        "관련 사업에는 가로구역 법정요건 별도 확인 필요 / 자동검토는 독립요건에 한정이라고 명시한다. "
         "입력에 없는 법적 기준·수치·현황·사실을 절대 추가하거나 추정하지 않는다. "
         "REVIEW 또는 UNKNOWN은 충족/미충족으로 단정하지 말고 '추가 확인 필요'로 표현한다. "
         "PASS도 인허가 확정으로 표현하지 말고 '초기 검토상 적용 가능성이 높음' 또는 '법·제도상 우선 검토 가능'처럼 표현한다. "
@@ -10130,7 +10113,7 @@ def road_facts(inp: RoadFactInput):
 
 @app.post("/api/spatial/street-block-batch")
 def street_block_batch(inp: StreetBlockBatchInput):
-    """동일 도로 FACT를 공유하는 여러 제도 가로구역을 공통 전처리 1회로 순차 산정한다."""
+    """구버전 호환: GIS 호출 없이 제도별 정성검토 안내 응답을 반환한다."""
     try:
         scheme_dict = {
             key: {
@@ -10155,11 +10138,7 @@ def street_block_batch(inp: StreetBlockBatchInput):
 
 @app.post("/api/spatial/street-block")
 def street_block(inp: StreetBlockInput):
-    """선택 사업지를 seed로 주변 기초단위구를 확장해 제도별 가로구역 후보를 찾습니다.
-
-    내부도로의 분리 임계값(4m/6m)은 요청별로 받고, outer_closure_all_roads=True이면
-    1차 제도별 블록 외곽경계에 실제로 닿는 TL_SPRD_RW 도로면은 폭원과 무관하게 2차 폐합경계로 사용합니다.
-    """
+    """구버전 호환: 가로구역 자동추출·판정을 하지 않는 중립 응답."""
     try:
         return analyze_street_block(
             inp.geometry, inp.barrier_features, inp.road_features, inp.max_radius_m,
@@ -12255,26 +12234,8 @@ def boundary_contact(inp: BoundaryContactInput):
 
 
 def refine_block_contact(inp):
-    _topology_geometry(inp.geometry)
-    to_metric = Transformer.from_crs(4326, 5186, always_xy=True).transform
-    to_wgs = Transformer.from_crs(5186, 4326, always_xy=True).transform
-    try:
-        input_size = len(json.dumps({"blocks": inp.blocks, "cutters": inp.cutters}, allow_nan=False))
-    except (ValueError, TypeError):
-        raise HTTPException(status_code=422, detail="유효한 공간 후처리 입력이 필요합니다.") from None
-    if input_size > 10_000_000:
-        raise HTTPException(status_code=422, detail="공간 후처리 입력 크기를 초과했습니다.")
-    cutter_geoms = [geometry_transform(to_metric, _topology_geometry(f["geometry"])) for f in inp.cutters if f.get("geometry")]
-    cutter_tree = STRtree(cutter_geoms)
-    output = []
-    for raw in inp.blocks:
-        if not raw.get("geometry"):
-            continue
-        block = geometry_transform(to_metric, _topology_geometry(raw["geometry"]))
-        local = [cutter_geoms[int(i)] for i in cutter_tree.query(block, predicate='intersects')]
-        barriers = unary_union(local) if local else None
-        output.extend(_street_block_contact_components([(block, raw.get('properties') or {})], barriers, to_wgs))
-    return {"status": "CONFIRMED", "blocks": output, "contact_tolerance_m": PARCEL_CONTACT_TOLERANCE_M,
+    """Retired block-only topology path, kept for legacy clients."""
+    return {**_manual_street_block_response(), "blocks": [], "contact_tolerance_m": None,
             "original_scope_changed": False}
 
 
