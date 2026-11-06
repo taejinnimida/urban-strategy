@@ -98,8 +98,15 @@ class Store:
         return self.read()
 
 def install(app,auth,base_dir):
-    root=Path(base_dir)/'ui_editor'
-    def asset(name):return Response((root/name).read_text(),media_type='application/javascript',headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'})
+    # The deployed assets live in the repository root (runtime.js, editor.js).
+    root=Path(base_dir)
+    def asset(name):
+        if name not in ('runtime.js', 'editor.js'):
+            raise HTTPException(404, '지원하지 않는 UI 파일입니다.')
+        path=root/name
+        if not path.is_file():
+            raise HTTPException(503, 'UI 파일이 배포되지 않았습니다.')
+        return Response(path.read_text(encoding='utf-8'), media_type='application/javascript', headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'})
     def csrf():return hmac.new(os.getenv('ADMIN_PASSWORD','').encode(),b'urban-ui-editor-csrf-v1',hashlib.sha256).hexdigest()
     def guard(request):
         token=request.headers.get('X-UI-CSRF','')
