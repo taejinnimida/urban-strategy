@@ -411,7 +411,7 @@ function devNormalizeResultActionFonts(){
  }
  const labels=/^(?:기초현황조사|도시정비검토|도시개발검토|서울도시정보|도시개발정보)$/;
  document.querySelectorAll('button,a,[role="button"],input[type="button"]').forEach(el=>{
-  const text=String(el.tagName==='INPUT'?el.value:el.textContent||'').replace(/\\s+/g,'').trim();
+  const text=String(el.tagName==='INPUT'?el.value:el.textContent||'').replace(/\s+/g,'').trim();
   if(el.id==='siteReviewBtn'||el.id==='devNational'||labels.test(text))el.classList.add('dev-result-action-font');
  });
 }
