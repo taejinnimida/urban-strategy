@@ -283,7 +283,60 @@ def dxf_bytes(item, snapshot, metadata):
             counts['labels'] += 1
         except (ValueError, TypeError):
             counts['labels_omitted'] += 1
-    theme = item.get('features') or []
+    # Jimok (2-2) uses the same PNU-joined polygons and color codes as the
+    # report map. All fills are editable native DXF hatches, not images.
+    if item.get('thematic_type') == 'jimok':
+        if item['id'] != '2-2' or not item.get('provider_verified'):
+            raise HTTPException(409, '검증된 지목 공간도형을 확보하지 못했습니다.')
+        from ezdxf.colors import rgb2int
+        for group in item.get('legend') or []:
+            code = str(group.get('class_code') or '')
+            color = str(group.get('color') or '')
+            if not re.fullmatch(r'C[0-9]{2}', code) or not re.fullmatch(r'#[0-9a-fA-F]{6}', color):
+                raise HTTPException(422, '지목 분류색 및 레이어 형식 오류')
+            layer_name = theme_layer + '_' + code
+            rgb = rgb2int(tuple(int(color[i:i+2], 16) for i in (1, 3, 5)))
+            if layer_name not in doc.layers:
+                doc.layers.new(layer_name, dxfattribs={'color': 7, 'true_color': rgb})
+        for feature in item.get('features') or []:
+            try:
+                props = feature.get('properties') or {}
+                code = str(props.get('class_code') or '')
+                layer_name = theme_layer + '_' + code
+                if layer_name not in doc.layers:
+                    raise ValueError('unknown jimok category')
+                geom = shape(feature['geometry'])
+                if geom.is_empty or not geom.is_valid:
+                    raise ValueError('invalid jimok geometry')
+                clipped = transform(convert, geom.intersection(site))
+                polygons = [clipped] if clipped.geom_type == 'Polygon' else [
+                    x for x in getattr(clipped, 'geoms', ()) if x.geom_type == 'Polygon'
+                ]
+                rgb = doc.layers.get(layer_name).dxf.true_color
+                for polygon in polygons:
+                    if polygon.area <= 1e-8:
+                        continue
+                    hatch = model.add_hatch(color=7, dxfattribs={'layer': layer_name, 'true_color': rgb})
+                    hatch.set_solid_fill(color=7)
+                    hatch.dxf.true_color = rgb
+                    hatch.paths.add_polyline_path(
+                        [(float(x), float(y)) for x, y in list(polygon.exterior.coords)[:-1]],
+                        is_closed=True, flags=1
+                    )
+                    for interior in polygon.interiors:
+                        hatch.paths.add_polyline_path(
+                            [(float(x), float(y)) for x, y in list(interior.coords)[:-1]],
+                            is_closed=True, flags=0
+                        )
+                    _entities(model, polygon.boundary, layer_name, counts)
+                    counts['thematic_features'] += 1
+            except (KeyError, TypeError, ValueError, AttributeError):
+                raise HTTPException(422, '지목 주제도 해치 생성 오류') from None
+        metadata['thematic_legend'] = item.get('legend') or []
+        # Do not append the plain single-color theme, which would duplicate lines.
+        theme = []
+    else:
+        theme = item.get('features') or []
     if len(theme) > MAX_FEATURES:
         raise HTTPException(413, '분석도형이 CAD 출력 한도를 초과합니다.')
     for feature in theme:
