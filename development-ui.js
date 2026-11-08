@@ -559,7 +559,7 @@ function devRenderSourceDetails(data){
   cadStatus.textContent=available?'실제 좌표 DXF · 도곽 가로·세로 각각 2배 · 주변 지적 별도 조회':'이 항목은 CAD 도형 미확보 · 일괄 ZIP 목록에 미확보로 기록';
   info.textContent=`${item.detail} · 출처: ${item.source||'미확보'}${item.as_of?' · 자료 기준일: '+item.as_of:''}`;
   const boundary=L.geoJSON(devSite.geometry,{style:{color:'#dc2626',weight:3,fill:false}}).addTo(drawn);devSourceDetailMap.fitBounds(boundary.getBounds(),{padding:[12,12]});
-  if(item.features?.length)L.geoJSON(item.features,{style:f=>({color:item.thematic_type==='jimok'?'#526174':'#126d88',weight:item.thematic_type==='jimok'?0.8:1.5,fillColor:item.thematic_type==='jimok'?(f.properties?.color||'#cccccc'):'#126d88',fillOpacity:item.thematic_type==='jimok'?.68:.2}),onEachFeature:(f,l)=>{const label=document.createElement('span');label.textContent=f.properties?.name||'원자료';l.bindTooltip(label);}}).addTo(drawn);
+  if(item.features?.length)L.geoJSON(item.features,{style:f=>({color:item.thematic_type==='jimok'?'#526174':'#126d88',weight:item.thematic_type==='jimok'?0.8:1.5,fillColor:item.thematic_type==='jimok'?(f.properties?.color||'#cccccc'):'#126d88',fillOpacity:item.thematic_type==='jimok'?0.68:0.2}),onEachFeature:(f,l)=>{const label=document.createElement('span');label.textContent=f.properties?.name||'원자료';l.bindTooltip(label);}}).addTo(drawn);
   if(Array.isArray(item.legend))for(const entry of item.legend){
    const row=document.createElement('span');row.style.cssText='display:inline-flex;align-items:center;gap:5px';
    const chip=document.createElement('span');chip.style.cssText='display:inline-block;width:14px;height:14px;border:1px solid #64748b;background-color:'+entry.color;
