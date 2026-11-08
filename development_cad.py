@@ -332,6 +332,11 @@ def dxf_bytes(item, snapshot, metadata):
                     counts['thematic_features'] += 1
             except (KeyError, TypeError, ValueError, AttributeError):
                 raise HTTPException(422, '지목 주제도 해치 생성 오류') from None
+        # Put filled HATCH entities below the pre-existing cadastral and site
+        # outlines in CAD redraw order (without duplicating source boundaries).
+        draw_order = sorted(list(model), key=lambda e: 0 if e.dxftype() == 'HATCH' else 1)
+        model.set_redraw_order([(entity.dxf.handle, f'{i+1:X}') for i, entity in enumerate(draw_order)])
+        doc.header['$SORTENTS'] = int(doc.header.get('$SORTENTS', 0)) | 16
         metadata['thematic_legend'] = item.get('legend') or []
         # Do not append the plain single-color theme, which would duplicate lines.
         theme = []
