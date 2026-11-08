@@ -188,7 +188,10 @@ def register_report(router, service, snapshots, lock, get_snapshot, fetch_layer,
         if data['parcel_note']:
             for row in data['buildings']:row['scope']='보조 지적 필지목록 기반 · '+row['scope']
         data['fact_revisions']={k:v.get('fact_revision') for k,v in layers.items()}
-        return enrich(data,s,area)
+        data=enrich(data,s,area)
+        from development_jimok import attach_jimok_theme
+        attach_jimok_theme(data,s,area)
+        return data
     def state_unlocked(token):
         s=snapshots.get(token)
         if not s or time.time()-s['created_at']>7200:raise HTTPException(404,'대상지가 만료되었습니다.')
