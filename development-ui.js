@@ -605,7 +605,7 @@ function devRenderSourceDetails(data){
  function paint(){
   const item=data.items.find(x=>x.id===select.value);drawn.clearLayers();legendbox.replaceChildren();
   sheetPreview.style.display='none';sheetPreview.removeAttribute('src');mapbox.style.display='block';legendbox.style.display='flex';
-  const available=item.id==='1-1'||(item.provider_verified===true&&['공간자료 확보','일부 확보'].includes(item.status))||(['공식 파일자료 확보','일부 확보'].includes(item.status)&&!!item.features?.length&&item.source!=='VWorld');
+  const available=item.id==='1-1'||(item.provider_verified===true&&['공간자료 확보','일부 확보'].includes(item.status))||(['공식 파일자료 확보','일부 확보'].includes(item.status)&&!!item.features?.length&&item.source!=='VWorld'&&item.thematic_type!=='ecobank');
   cadSingle.dataset.available=available?'yes':'';
   cadSingle.disabled=!available;cadSingle.title=available?'확보된 공간도형 기준 CAD 출력':'검증된 공간도형이 없는 항목은 CAD 출력 불가';
   cadStatus.textContent=available?'실제 좌표 DXF · 도곽 가로·세로 각각 2배 · 주변 지적 별도 조회':'이 항목은 CAD 도형 미확보 · 일괄 ZIP 목록에 미확보로 기록';
