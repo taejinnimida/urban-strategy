@@ -636,6 +636,39 @@ function devRenderSourceDetails(data){
  function renderSurveyTable(item){
   surveyTable.replaceChildren();
   const t=item.survey_table;
+  if(/^4-[1-8]$/.test(item.id)){
+   surveyTable.style.display='block';
+   const title=document.createElement('div');
+   title.textContent=t?.title||('표 '+item.id+' 자연환경현황');
+   title.style.cssText='font-size:13px;font-weight:700;color:#243e7a;margin:0 0 6px';
+   surveyTable.append(title);
+   if(!t?.rows?.length||!t?.columns?.length){
+    const empty=document.createElement('div');
+    empty.textContent='자연환경 현황표 미확보 · 공식 원자료 및 분류별 분석값 필요 (0으로 간주하지 않음) · '+(t?.notes||[]).join(' · ');
+    empty.style.cssText='padding:12px;border:1px solid #d9e2ed;background:#f8fafc;font-size:12px';
+    surveyTable.append(empty);return;
+   }
+   const table=document.createElement('table');
+   table.style.cssText='width:100%;border-collapse:collapse;font-size:12px;min-width:510px;font-variant-numeric:tabular-nums';
+   const thead=document.createElement('thead'),hr=document.createElement('tr');
+   for(const [,label] of t.columns){
+    const th=document.createElement('th');th.textContent=label;
+    th.style.cssText='padding:7px 5px;border:1px solid #9ca9bf;background:#dfe7f6;color:#21376d;text-align:center';hr.append(th);
+   }
+   thead.append(hr);table.append(thead);
+   const tbody=document.createElement('tbody');
+   for(const row of t.rows){const tr=document.createElement('tr');
+    for(const [field] of t.columns){const td=document.createElement('td'),v=row[field];
+     td.textContent=v===undefined||v===null?'–':typeof v==='number'?v.toLocaleString('ko-KR',{maximumFractionDigits:2}):String(v);
+     td.style.cssText='border-bottom:1px '+(row.kind==='category'?'dotted':'solid')+' #9ca9bf;padding:5px 8px;text-align:'+(typeof v==='number'?'right':'center');
+     if(row.kind==='total')td.style.fontWeight='700';if(row.kind==='warning')td.style.background='#fff8e6';tr.append(td);
+    }tbody.append(tr);
+   }table.append(tbody);surveyTable.append(table);
+   if(t.analysis_text){const prose=document.createElement('p');prose.style.cssText='font-size:12px;line-height:1.55;margin:9px 2px;color:#1e293b';prose.textContent=t.analysis_text;surveyTable.append(prose);}
+   const note=document.createElement('div');note.style.cssText='font-size:11px;color:#526174;line-height:1.5;padding:6px 2px';
+   note.textContent=(t.status==='COMPLETE'?'원자료 집계 확인':'부분·잠정자료 또는 미확보')+' · '+(t.notes||[]).join(' · ');surveyTable.append(note);
+   return;
+  }
   const isBuilding=/^3-[1-7]$/.test(item.id);
   if(!/^2-[1-6]$/.test(item.id)&&!isBuilding){surveyTable.style.display='none';return;}
   surveyTable.style.display='block';
