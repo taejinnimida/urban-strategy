@@ -57,7 +57,11 @@ def _fill_terrain(table, info, key, status):
     if covered is None or covered > 100.01:
         table['notes'].append('DEM 유효격자 면적 범위 확인 불가. 통계표를 작성하지 않습니다.')
         return
-    table['columns'] = NUMERIC_COLUMNS
+    band_info=(info or {}).get('bands') or {}
+    classes=band_info.get('groups') or []
+    table['columns'] = [
+        ('label','구분'),('value','지표값'),('unit','단위'),
+        ('area_m2','면적(㎡)'),('pct','구성비(%)'),('note','비고')]
     table['rows'] = [
         _row('최저'+metric, values[0], unit),
         _row('최고'+metric, values[1], unit),
@@ -65,13 +69,30 @@ def _fill_terrain(table, info, key, status):
         _row('유효격자 면적비율', covered, '%', '유효격자 면적 / 구역계 면적'),
         _row('DEM 격자 크기', info.get('resolution_m'), 'm', '원자료 격자해상도'),
     ]
-    table['status'] = 'COMPLETE' if status == 'DATA' and covered >= 99.9 else 'PARTIAL'
+    if classes:
+        for entry in classes:
+            table['rows'].append({'kind':'category','label':entry['name'],
+                'value':None,'unit':None,'area_m2':entry['area_m2'],
+                'pct':entry['pct'],'count':entry['count'],
+                'note':'동일 DEM 유효격자·설명용 구간'})
+        table['rows'].append({'kind':'total','label':'유효격자 면적 계',
+            'value':None,'unit':None,
+            'area_m2':band_info.get('valid_area_m2'),
+            'pct':round(float(band_info.get('coverage_pct') or 0),1),
+            'count':None,'note':'구역계 전체면적이 아닌 유효격자 면적'})
+        table['notes'].append('표고·경사 구간은 설명용이며, DEM 원본 셀 경계에서 절단한 유효격자 면적입니다.')
+    else:
+        table['notes'].append('표고·경사 등급별 공간집계 미확보. 평균값만으로 면적 구성을 추정하지 않습니다.')
+    table['status'] = 'COMPLETE' if status == 'DATA' and covered >= 99.9 and classes else 'PARTIAL'
     table['analysis_text'] = (
         f'확보된 DEM 유효격자 기준 {metric}은 최저 {values[0]:,.2f}{unit}, '
         f'최고 {values[1]:,.2f}{unit}, 면적가중 평균 {values[2]:,.2f}{unit}로 분석된다. '
         f'{metric} 통계 산정에 사용된 격자의 면적비율은 {covered:.1f}%이다. '
         '이 수치는 원자료 해상도와 확보범위에 따른 기초조사 참고값이며 법적 판정 결과가 아니다.'
     )
+    if classes:
+        dominant=max(classes,key=lambda row: row['area_m2'])
+        table['analysis_text']+=f" 유효격자 중 주요 분류는 {dominant['name']}으로 대상지 면적 대비 {dominant['pct']:.1f}%이다."
     table['notes'].append('최소·최대는 유효격자의 관측값이며 평균만 면적가중 수치입니다.')
     if covered < 99.9:
         table['notes'].append('유효격자 미확보 면적이 있어 구역계 전체의 대표값으로 확정할 수 없습니다.')
