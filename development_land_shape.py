@@ -57,6 +57,20 @@ def attach_land_shape_theme(data, snapshot, area):
         if isinstance(name, str) and name.strip():
             known[pnu] = name.strip()[:80]
     if not known:
+        # A blank thematic result must report whether VWorld returned a
+        # characteristic record or the request itself failed.
+        counts = defaultdict(int)
+        for pnu in land:
+            entry = facts.get('characteristics:' + pnu, {})
+            counts[entry.get('status') or 'NOT_QUERIED'] += 1
+        item.update({
+            'status':'미확보',
+            'detail':f'지형형상명 0/{len(land)}필지 · VWorld 토지특성 원문 유효값 미확보 · '
+                     + ', '.join(f'{k} {v}건' for k,v in sorted(counts.items()))
+                     + ' · 토지형상을 임의 분류하지 않습니다.',
+            'source':'VWorld 토지특성정보',
+            'provider_verified':False,
+        })
         return
     names = sorted(set(known.values()))
     if len(names) > 95:
