@@ -636,11 +636,11 @@ function devRenderSourceDetails(data){
   if(!cadReady&&!cadAutoAttempted&&item.id==='1-1'){
    cadAutoAttempted=true;prepareCadBackground().catch(()=>{});
   }
-  const available=item.id==='1-1'||(item.provider_verified===true&&['공간자료 확보','일부 확보'].includes(item.status))||(['공식 파일자료 확보','일부 확보'].includes(item.status)&&!!item.features?.length&&item.source!=='VWorld'&&item.thematic_type!=='ecobank');
+  const available=item.id==='1-1'||(item.id==='2-6' ? item.thematic_type==='landcover'&&item.provider_verified===true : (item.provider_verified===true&&['공간자료 확보','일부 확보'].includes(item.status))||(['공식 파일자료 확보','일부 확보'].includes(item.status)&&!!item.features?.length&&item.source!=='VWorld'&&item.thematic_type!=='ecobank'));
   cadSingle.dataset.available=available?'yes':'';
   cadSingle.disabled=!available;cadSingle.title=available?'확보된 공간도형 기준 CAD 출력':'검증된 공간도형이 없는 항목은 CAD 출력 불가';
   if(!cadPreparing)cadStatus.textContent=available?(cadReady?'표준 도면 배경자료 준비 완료':'표준 도면 배경자료 준비 필요 · 준비 버튼을 누르거나 자동 조회를 확인하세요'):'이 항목은 CAD 도형 미확보 · 일괄 ZIP 목록에 미확보로 기록';
-  if(available&&cadReady&&['1-1','2-1','2-2','2-3','2-4','5-2','4-3'].includes(item.id)){
+  if(available&&cadReady&&['1-1','2-1','2-2','2-3','2-4','2-5','2-6','5-2','4-3'].includes(item.id)){
    const selected=item.id;
    sheetPreview.onload=()=>{
     if(select.value!==selected)return;
@@ -656,12 +656,26 @@ function devRenderSourceDetails(data){
   }
   info.textContent=`${item.detail} · 출처: ${item.source||'미확보'}${item.as_of?' · 자료 기준일: '+item.as_of:''}`;
   const boundary=L.geoJSON(devSite.geometry,{style:{color:'#dc2626',weight:3,fill:false}}).addTo(drawn);devSourceDetailMap.fitBounds(boundary.getBounds(),{padding:[12,12]});
-  if(item.features?.length)L.geoJSON(item.features,{style:f=>({color:['ownership','jimok','land_numeric','ecobank'].includes(item.thematic_type)?'#526174':'#126d88',weight:['ownership','jimok','land_numeric','ecobank'].includes(item.thematic_type)?0.8:1.5,fillColor:['ownership','jimok','land_numeric','ecobank'].includes(item.thematic_type)?(f.properties?.color||'#cccccc'):'#126d88',fillOpacity:['ownership','jimok','land_numeric','ecobank'].includes(item.thematic_type)?0.68:0.2}),onEachFeature:(f,l)=>{const label=document.createElement('span');label.textContent=f.properties?.name||'원자료';l.bindTooltip(label);}}).addTo(drawn);
+  if(item.features?.length)L.geoJSON(item.features,{style:f=>({color:['ownership','jimok','land_numeric','land_shape','landcover','ecobank'].includes(item.thematic_type)?'#526174':'#126d88',weight:['ownership','jimok','land_numeric','land_shape','landcover','ecobank'].includes(item.thematic_type)?0.8:1.5,fillColor:['ownership','jimok','land_numeric','land_shape','landcover','ecobank'].includes(item.thematic_type)?(f.properties?.color||'#cccccc'):'#126d88',fillOpacity:['ownership','jimok','land_numeric','land_shape','landcover','ecobank'].includes(item.thematic_type)?0.68:0.2}),onEachFeature:(f,l)=>{const label=document.createElement('span');label.textContent=f.properties?.name||'원자료';l.bindTooltip(label);}}).addTo(drawn);
   if(Array.isArray(item.legend))for(const entry of item.legend){
    const row=document.createElement('span');row.style.cssText='display:inline-flex;align-items:center;gap:5px';
    const chip=document.createElement('span');chip.style.cssText='display:inline-block;width:14px;height:14px;border:1px solid #64748b;background-color:'+entry.color;
    const title=document.createElement('span');title.textContent=entry.name+' ('+entry.count+'필지 · '+entry.area_m2.toLocaleString()+'㎡)';
    row.append(chip,title);legendbox.append(row);
+  }
+  if(item.id==='2-6'&&item.landcover_wms&&!item.features?.length){
+   // WMS-only map is a provider image, never editable polygons or area FACT.
+   const sourceLabel=document.createElement('div');
+   sourceLabel.style.cssText='font-size:12px;padding:7px;background:#fff4d6;color:#694900';
+   sourceLabel.textContent='토지피복 WMS 참고영상 (2025년 세분류) · 면적통계·CAD 미확보 · 공식 원본과 대조 필요';
+   legendbox.append(sourceLabel);
+   const cover=L.tileLayer.wms('https://api.mcee.go.kr/geoserver/gwc/service/wms',{
+      layers:'EGIS:lv3_2025y',format:'image/png',transparent:true,
+      version:'1.1.1',opacity:0.72,attribution:'환경공간정보서비스 · 2025년 세분류 토지피복지도'
+   });
+   cover.on('tileerror',()=>{if(select.value==='2-6')cadStatus.textContent='토지피복 WMS 영상 수신 오류 · 원자료 벡터 미확보';});
+   cover.addTo(drawn);
+   boundary.bringToFront();
   }
   if(item.map_available){const url='/api/development/reports/'+encodeURIComponent(devSite.id)+'/ecvam.png';L.imageOverlay(url,boundary.getBounds(),{opacity:.65}).addTo(drawn);boundary.bringToFront();}
   stats.textContent=item.statistics?JSON.stringify(item.statistics,null,2):'수치 분석자료 미확보 · 도면만 확보된 경우 면적을 계산하지 않습니다.';
