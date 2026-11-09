@@ -549,6 +549,9 @@ function devRenderSourceDetails(data){
  const select=document.createElement('select');select.style.cssText='margin:12px;max-width:90%;padding:8px';
  for(const item of data.items){const option=document.createElement('option');option.value=item.id;option.textContent=`${item.id} ${item.name} · ${item.status}`;select.append(option);}section.append(select);
  const info=document.createElement('p');info.style.padding='12px';section.append(info);
+ const surveyTable=document.createElement('div');
+ surveyTable.style.cssText='display:none;margin:0 0 14px;overflow-x:auto';
+ section.append(surveyTable);
  const cadActions=document.createElement('div');cadActions.className='dev-actions';
  const cadPrepare=document.createElement('button');cadPrepare.type='button';cadPrepare.textContent='표준 도면 배경자료 준비';
  const cadSingle=document.createElement('button');cadSingle.type='button';cadSingle.textContent='선택 항목 DXF 다운로드';
@@ -630,8 +633,55 @@ function devRenderSourceDetails(data){
   }}).addTo(parcels);
  }
  L.control.layers(null,{'연속지적':parcels,'선택 항목':drawn},{collapsed:true}).addTo(devSourceDetailMap);
+ function renderSurveyTable(item){
+  surveyTable.replaceChildren();
+  const t=item.survey_table;
+  if(!/^2-[1-6]$/.test(item.id)){surveyTable.style.display='none';return;}
+  surveyTable.style.display='block';
+  const title=document.createElement('div');
+  title.textContent=t?.title||('표 '+item.id+' 토지현황');
+  title.style.cssText='font-size:13px;font-weight:700;color:#243e7a;margin:0 0 6px';
+  surveyTable.append(title);
+  if(!t?.rows?.length){
+   const empty=document.createElement('div');
+   empty.textContent='현황표 미확보 · 분류별 공간도형과 면적 자료 확인 필요 (0㎡로 간주하지 않음)';
+   empty.style.cssText='padding:12px;border:1px solid #d9e2ed;background:#f8fafc;font-size:12px';
+   surveyTable.append(empty);
+   return;
+  }
+  const tab=document.createElement('table');
+  tab.style.cssText='width:100%;border-collapse:collapse;font-size:12px;min-width:510px;font-variant-numeric:tabular-nums';
+  const header=document.createElement('thead'),hrow=document.createElement('tr');
+  for(const text of ['구분','면적(㎡)','구성비(%)',t.count_header||'필지수(필지)','비고']){
+   const th=document.createElement('th');th.textContent=text;
+   th.style.cssText='padding:7px 5px;border:1px solid #9ca9bf;background:#dfe7f6;color:#21376d;text-align:center';
+   hrow.append(th);
+  }
+  header.append(hrow);tab.append(header);
+  const body=document.createElement('tbody');
+  for(const row of t.rows){
+   const tr=document.createElement('tr');
+   const cells=[row.label,row.area_m2,row.pct,row.count,row.note||''];
+   for(let i=0;i<cells.length;i++){
+    const td=document.createElement('td');
+    const v=cells[i];
+    td.textContent=v===null||v===undefined?'–':i===1&&typeof v==='number'?v.toLocaleString('ko-KR',{minimumFractionDigits:1,maximumFractionDigits:2}):i===2&&typeof v==='number'?v.toFixed(1):String(v);
+    td.style.cssText='border-bottom:1px '+(row.kind==='category'?'dotted':'solid')+' #9ca9bf;padding:5px 8px;text-align:'+(i===1||i===2||i===3?'right':'center');
+    if(row.kind==='total')td.style.fontWeight='700';
+    if(row.kind==='boundary')td.style.background='#f4f6fb';
+    tr.append(td);
+   }
+   body.append(tr);
+  }
+  tab.append(body);surveyTable.append(tab);
+  const note=document.createElement('div');
+  note.style.cssText='font-size:11px;color:#526174;line-height:1.5;padding:6px 2px';
+  note.textContent=(t.status==='COMPLETE'?'확인된 공간자료 기준':'잠정·부분집계 · 원자료 검증 필요')+' · '+(t.notes||[]).join(' · ');
+  surveyTable.append(note);
+ }
  function paint(){
   const item=data.items.find(x=>x.id===select.value);drawn.clearLayers();legendbox.replaceChildren();
+  renderSurveyTable(item);
   sheetPreview.style.display='none';sheetPreview.removeAttribute('src');mapbox.style.display='block';legendbox.style.display='flex';
   if(!cadReady&&!cadAutoAttempted&&item.id==='1-1'){
    cadAutoAttempted=true;prepareCadBackground().catch(()=>{});
