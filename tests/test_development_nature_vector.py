@@ -90,5 +90,35 @@ class NatureVectorTest(unittest.TestCase):
         self.assertNotIn('nature_vector_summary',data['items'][0])
         self.assertFalse(data['items'][0]['table_available'])
 
+
+    def test_complete_vector_produces_real_dxf_and_svg(self):
+        from development_cad import _exportable, dxf_bytes
+        from development_survey_sheet import make_sheet, svg_sheet
+        site = box(127, 37, 127.01, 37.01)
+        data, snapshot = scenario('4-6', 'DATA', [
+            feature(box(127.002,37.002,127.005,37.005), '하천구역', 'zone'),
+            feature(LineString([(127.001,37.001),(127.009,37.009)]), '하천중심선', 'line'),
+            feature(Point(127.006,37.006), '관측지점', 'point'),
+        ], site=site)
+        attach_nature_vector_themes(data, snapshot)
+        item=data['items'][0]
+        self.assertTrue(_exportable(item, snapshot))
+        snapshot['_cad_background'] = {
+            'status':'COMPLETE','features':[feature(site, '지적')],
+            'request_count':1,'coverage_assurance':'PROVIDER_RESPONSE_ONLY',
+        }
+        payload=dxf_bytes(item, snapshot, {})
+        self.assertIn(b'SURVEY_4_6',payload)
+        svg=svg_sheet(make_sheet(item,snapshot))
+        self.assertIn(b'<svg',svg)
+        self.assertIn(b'<circle',svg)
+
+    def test_wms_only_not_exportable(self):
+        from development_cad import _exportable
+        data, snapshot = scenario('4-4', 'MAP_ONLY', [])
+        attach_nature_vector_themes(data, snapshot)
+        self.assertFalse(_exportable(data['items'][0], snapshot))
+
+
 if __name__ == '__main__':
     unittest.main()
