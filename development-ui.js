@@ -525,6 +525,10 @@ function devRenderSourceDetails(data){
  }
  cadSingle.onclick=()=>downloadCad('survey_'+select.value.replace('-','_')+'.dxf','/api/development/reports/'+encodeURIComponent(devSite.id)+'/dxf/'+encodeURIComponent(select.value));
  cadBulk.onclick=()=>downloadCad('survey_cad_bundle.zip','/api/development/reports/'+encodeURIComponent(devSite.id)+'/dxf.zip');
+ const sheetPreview=document.createElement('img');
+ sheetPreview.alt='현황도 표준 도곽 미리보기';
+ sheetPreview.style.cssText='display:none;width:100%;height:auto;border:1px solid #cbd5e1;background:#fff;object-fit:contain';
+ section.append(sheetPreview);
  const mapbox=document.createElement('div');mapbox.id='devSourceMap';mapbox.style.height='360px';section.append(mapbox);
  const legendbox=document.createElement('div');legendbox.style.cssText='display:flex;flex-wrap:wrap;gap:8px;padding:8px 12px;font-size:12px';section.append(legendbox);
  const stats=document.createElement('pre');stats.style.cssText='white-space:pre-wrap;max-height:360px;overflow:auto;font-size:12px;padding:12px';section.append(stats);
@@ -553,10 +557,25 @@ function devRenderSourceDetails(data){
  L.control.layers(null,{'연속지적':parcels,'선택 항목':drawn},{collapsed:true}).addTo(devSourceDetailMap);
  function paint(){
   const item=data.items.find(x=>x.id===select.value);drawn.clearLayers();legendbox.replaceChildren();
+  sheetPreview.style.display='none';sheetPreview.removeAttribute('src');mapbox.style.display='block';legendbox.style.display='flex';
   const available=item.id==='1-1'||(item.provider_verified===true&&['공간자료 확보','일부 확보'].includes(item.status))||(['공식 파일자료 확보','일부 확보'].includes(item.status)&&!!item.features?.length&&item.source!=='VWorld');
   cadSingle.dataset.available=available?'yes':'';
   cadSingle.disabled=!available;cadSingle.title=available?'확보된 공간도형 기준 CAD 출력':'검증된 공간도형이 없는 항목은 CAD 출력 불가';
   cadStatus.textContent=available?'실제 좌표 DXF · 도곽 가로·세로 각각 2배 · 주변 지적 별도 조회':'이 항목은 CAD 도형 미확보 · 일괄 ZIP 목록에 미확보로 기록';
+  if(available&&['2-2','5-2'].includes(item.id)){
+   const selected=item.id;
+   sheetPreview.onload=()=>{
+    if(select.value!==selected)return;
+    sheetPreview.style.display='block';mapbox.style.display='none';legendbox.style.display='none';
+   };
+   sheetPreview.onerror=()=>{
+    if(select.value!==selected)return;
+    sheetPreview.style.display='none';mapbox.style.display='block';legendbox.style.display='flex';
+    cadStatus.textContent+=' · 표준 인쇄도면 미리보기는 미확보(기존 공간지도로 표시)';
+    setTimeout(()=>devSourceDetailMap?.invalidateSize(false),0);
+   };
+   sheetPreview.src='/api/development/reports/'+encodeURIComponent(devSite.id)+'/sheet/'+encodeURIComponent(item.id)+'.svg';
+  }
   info.textContent=`${item.detail} · 출처: ${item.source||'미확보'}${item.as_of?' · 자료 기준일: '+item.as_of:''}`;
   const boundary=L.geoJSON(devSite.geometry,{style:{color:'#dc2626',weight:3,fill:false}}).addTo(drawn);devSourceDetailMap.fitBounds(boundary.getBounds(),{padding:[12,12]});
   if(item.features?.length)L.geoJSON(item.features,{style:f=>({color:['jimok','land_numeric'].includes(item.thematic_type)?'#526174':'#126d88',weight:['jimok','land_numeric'].includes(item.thematic_type)?0.8:1.5,fillColor:['jimok','land_numeric'].includes(item.thematic_type)?(f.properties?.color||'#cccccc'):'#126d88',fillOpacity:['jimok','land_numeric'].includes(item.thematic_type)?0.68:0.2}),onEachFeature:(f,l)=>{const label=document.createElement('span');label.textContent=f.properties?.name||'원자료';l.bindTooltip(label);}}).addTo(drawn);
