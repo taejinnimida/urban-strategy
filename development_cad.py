@@ -283,10 +283,9 @@ def dxf_bytes(item, snapshot, metadata):
             counts['labels'] += 1
         except (ValueError, TypeError):
             counts['labels_omitted'] += 1
-    # PNU-joined land themes (jimok, registered area, price) share the same
-    # verified class codes, geometry and editable native-DXF hatch renderer.
-    if item.get('thematic_type') in ('jimok', 'land_numeric'):
-        if item['id'] not in ('2-2', '2-3', '2-4') or not item.get('provider_verified'):
+    # Land and zoning themes use the identical source category colors in SVG and DXF.
+    if item.get('thematic_type') in ('jimok', 'land_numeric', 'zoning'):
+        if item['id'] not in ('2-2', '2-3', '2-4', '5-2') or not item.get('provider_verified'):
             raise HTTPException(409, '검증된 토지 주제도 공간도형을 확보하지 못했습니다.')
         if len(item.get('features') or []) > MAX_FEATURES:
             raise HTTPException(413, '토지 주제도 도형이 CAD 출력 상한을 초과했습니다.')
@@ -300,7 +299,8 @@ def dxf_bytes(item, snapshot, metadata):
             rgb = rgb2int(tuple(int(color[i:i+2], 16) for i in (1, 3, 5)))
             if layer_name not in doc.layers:
                 doc.layers.new(layer_name, dxfattribs={'color': 7, 'true_color': rgb})
-        for feature in item.get('features') or []:
+        sheet_theme = (snapshot.get('_cad_zone_background', {}).get('features') or item.get('features') or []) if item.get('thematic_type') == 'zoning' else (item.get('features') or [])
+        for feature in sheet_theme:
             try:
                 props = feature.get('properties') or {}
                 code = str(props.get('class_code') or '')
@@ -310,7 +310,7 @@ def dxf_bytes(item, snapshot, metadata):
                 geom = shape(feature['geometry'])
                 if geom.is_empty or not geom.is_valid:
                     raise ValueError('invalid land-theme geometry')
-                clipped = transform(convert, geom.intersection(site))
+                clipped = transform(convert, geom).intersection(frame if item.get('thematic_type') == 'zoning' else projected)
                 polygons = [clipped] if clipped.geom_type == 'Polygon' else [
                     x for x in getattr(clipped, 'geoms', ()) if x.geom_type == 'Polygon'
                 ]
@@ -358,6 +358,11 @@ def dxf_bytes(item, snapshot, metadata):
             counts['thematic_features'] += 1
         except (ValueError, KeyError, TypeError):
             raise HTTPException(422, '검토항목 공간자료의 CAD 변환에 실패했습니다.') from None
+    if item['id'] in ('2-2','5-2') and item.get('provider_verified') is True:
+        from development_survey_sheet import make_sheet, dxf_paper_sheet
+        dxf_paper_sheet(doc, make_sheet(item, snapshot))
+        metadata['print_layout'] = 'SURVEY_A3'
+        metadata['paper_size'] = 'A3_420x297mm'
     stream = io.StringIO()
     doc.write(stream)
     content = stream.getvalue().encode('utf-8')
@@ -441,6 +446,64 @@ def register_cad(router, output, snapshots, lock, fetch_layer, layer_type):
         finally:
             cad_gate.release()
 
+    def sheet_context(token, report, snapshot, item):
+        # The report's clipped official FACT is not replaced by the wider
+        # surrounding zoning backdrop. The surrounding query is display-only.
+        if item.get('id') != '5-2':
+            return item
+        from development_survey_sheet import zoning_context
+        classified = zoning_context(item.get('features') or [])
+        item['features'] = classified['features']
+        item['legend'] = classified['legend']
+        item['thematic_type'] = 'zoning'
+        frame = _drawing_frame(shape(snapshot['geometry']))
+        if frame.area > 9_000_000:
+            return item
+        with lock:
+            cached = snapshots.get(token, {}).get('_cad_zone_background')
+        if cached and cached.get('status') == 'COMPLETE' and cached.get('source_revision') == snapshot.get('_report_layers', {}).get('LP_PA_CBND_BUBUN', {}).get('fact_revision'):
+            snapshot['_cad_zone_background'] = copy.deepcopy(cached)
+            item['legend'] = cached['legend']
+            return item
+        inverse = Transformer.from_crs(CRS, 'EPSG:4326', always_xy=True).transform
+        frame_geo = mapping(transform(inverse, frame))
+        features = []
+        for code in ('LT_C_UQ111', 'LT_C_UQ112', 'LT_C_UQ113', 'LT_C_UQ114'):
+            try:
+                result = fetch_layer(layer_type(geometry=frame_geo, layer=code))
+            except Exception:
+                return item
+            if result.get('status') != 'COMPLETE':
+                return item
+            features.extend(result.get('features') or [])
+            if len(features) > MAX_FEATURES:
+                return item
+        background = zoning_context(features)
+        background['source_revision'] = snapshot.get('_report_layers', {}).get('LP_PA_CBND_BUBUN', {}).get('fact_revision')
+        snapshot['_cad_zone_background'] = background
+        item['legend'] = background['legend']
+        with lock:
+            live = snapshots.get(token)
+            if live and live.get('_report_layers', {}).get('LP_PA_CBND_BUBUN', {}).get('fact_revision') == background['source_revision']:
+                live['_cad_zone_background'] = copy.deepcopy(background)
+        return item
+
+    @router.get('/reports/{token}/sheet/{item_id}.svg')
+    def download_sheet(token: str, item_id: str):
+        if item_id not in ('2-2', '5-2'):
+            raise HTTPException(404, '표준 도면 미리보기를 지원하지 않는 항목입니다.')
+        report, snapshot = context(token)
+        item = next((copy.deepcopy(x) for x in report['items'] if x['id'] == item_id), None)
+        if item is None or not _exportable(item, snapshot):
+            raise HTTPException(409, '검증된 주제도형이 없어 표준 도면을 생성하지 않습니다.')
+        item = sheet_context(token, report, snapshot, item)
+        from development_survey_sheet import make_sheet, svg_sheet
+        try:
+            payload = svg_sheet(make_sheet(item, snapshot))
+        except (ValueError, KeyError, TypeError):
+            raise HTTPException(422, '표준 도면 구성에 실패했습니다.') from None
+        return Response(payload, media_type='image/svg+xml', headers={'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff'})
+
     @router.get('/reports/{token}/dxf/{item_id}')
     def download_dxf(token: str, item_id: str):
         report, snapshot = context(token)
@@ -449,6 +512,7 @@ def register_cad(router, output, snapshots, lock, fetch_layer, layer_type):
             raise HTTPException(404, '등록되지 않은 검토항목입니다.')
         if not _exportable(item, snapshot):
             raise HTTPException(409, '이 항목의 검증된 공간도형이 없어 CAD를 생성하지 않습니다.')
+        item = sheet_context(token, report, snapshot, copy.deepcopy(item))
         details = manifest_item(item, snapshot, report)
         payload = dxf_bytes(item, snapshot, details)
         return Response(payload, media_type='application/dxf', headers={
@@ -468,7 +532,8 @@ def register_cad(router, output, snapshots, lock, fetch_layer, layer_type):
                 record['filename'] = None
                 if record['exportable']:
                     name = 'survey_' + item['id'].replace('-', '_') + '.dxf'
-                    payload = dxf_bytes(item, snapshot, record)
+                    themed = sheet_context(token, report, snapshot, copy.deepcopy(item)) if item['id'] in ('2-2','5-2') else item
+                    payload = dxf_bytes(themed, snapshot, record)
                     bundle.writestr(name, payload)
                     record['filename'] = name
                 entries.append(record)
