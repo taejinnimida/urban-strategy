@@ -664,33 +664,21 @@ function devRenderSourceDetails(data){
    row.append(chip,title);legendbox.append(row);
   }
   if(item.id==='2-6'&&item.landcover_wms&&!item.features?.length){
-   // WMS-only map is a provider image, never editable polygons or area FACT.
+   // Use the backend-validated official WMS PNG, not unverified client-side
+   // tiles. The image is WMS-only and cannot enter CAD or area statistics.
    const sourceLabel=document.createElement('div');
    sourceLabel.style.cssText='font-size:12px;padding:7px;background:#fff4d6;color:#694900';
-   sourceLabel.textContent='토지피복 WMS 참고영상 (2025년 세분류) · 면적통계·CAD 미확보 · 공식 원본과 대조 필요';
+   sourceLabel.textContent=item.landcover_map_available
+      ?'환경부 2025년 세분류 토지피복 WMS 원영상 확보 · 면적·CAD 원도형 미확보'
+      :'토지피복 WMS 영상 미확보 · 제공기관 수신 상태를 확인하세요. 면적·CAD 불가';
    legendbox.append(sourceLabel);
-   const cover=L.tileLayer.wms('https://api.mcee.go.kr/geoserver/gwc/service/wms',{
-      layers:'EGIS:lv3_2025y',format:'image/png',transparent:true,
-      tiled:true,version:'1.1.1',styles:'',
-      opacity:0.82,attribution:'환경공간정보서비스 · 2025년 세분류 토지피복지도'
-   });
-   // The official GeoWebCache example uses TILED=true / EPSG:3857.
-   // A tile request completing is NOT evidence of valid landcover coverage.
-   let tileErrors=0,tileLoaded=0;
-   cover.on('tileerror',()=>{
-     tileErrors++;
-     if(select.value==='2-6'){
-       cadStatus.textContent='2-6 WMS 타일 오류 '+tileErrors+'건 · 외부 지도 서버/요청 형식 점검 필요 · CAD 불가';
-     }
-   });
-   cover.on('tileload',()=>{
-     tileLoaded++;
-     if(select.value==='2-6'&&tileErrors===0){
-       cadStatus.textContent='2-6 WMS 영상 '+tileLoaded+'타일 응답 · 실제 토지피복 채색·수록범위 확인 필요 · CAD 불가';
-     }
-   });
-   cover.addTo(drawn);
-   boundary.bringToFront();
+   if(item.landcover_map_available&&item.landcover_map_bounds?.length===2){
+    const img='/api/development/reports/'+encodeURIComponent(devSite.id)+'/landcover.png';
+    const cover=L.imageOverlay(img,item.landcover_map_bounds,{opacity:0.9,interactive:false});
+    cover.on('error',()=>{if(select.value==='2-6')cadStatus.textContent='2-6 토지피복 WMS 이미지 다운로드 실패 · 서버 로그 확인';});
+    cover.addTo(drawn);
+    boundary.bringToFront();
+   }
   }
   if(item.map_available){const url='/api/development/reports/'+encodeURIComponent(devSite.id)+'/ecvam.png';L.imageOverlay(url,boundary.getBounds(),{opacity:.65}).addTo(drawn);boundary.bringToFront();}
   stats.textContent=item.statistics?JSON.stringify(item.statistics,null,2):'수치 분석자료 미확보 · 도면만 확보된 경우 면적을 계산하지 않습니다.';
