@@ -151,6 +151,22 @@ def tables(data):
                                     row.get('area_m2'),row.get('pct'),row.get('count'),
                                     row.get('note'),t.get('source'),t.get('as_of')])
     sheets.append(('토지현황표',land_table_rows))
+    building_table_rows=[['검토항목','자료상태','행구분','구분','대장 건수(건)','구성비(%)','비고','분석문','자료출처','자료기준일']]
+    for item in data['items']:
+        if not re.fullmatch(r'3-[1-7]', str(item.get('id', ''))):
+            continue
+        t=item.get('survey_table')
+        if not t:
+            continue
+        if not t.get('rows'):
+            building_table_rows.append([item['id'],t['status'],'미확보','건축물현황표 미확보',None,None,
+                                        ' / '.join(t.get('notes') or []),None,t.get('source'),t.get('as_of')])
+        for row in t.get('rows') or []:
+            building_table_rows.append([item['id'],t['status'],row.get('kind'),row.get('label'),
+                                        row.get('count'),row.get('pct'),row.get('note'),
+                                        t.get('analysis_text') if row.get('kind')=='total' else None,
+                                        t.get('source'),t.get('as_of')])
+    sheets.append(('건축물현황표',building_table_rows))
     regulations=[['PNU','검토항목','규제명','관계코드','관계명','관리번호','갱신일']]
     for item in data['items']:
         for row in item.get('regulation_rows',[]):regulations.append([row.get('pnu'),item['id'],row.get('prposAreaDstrcCodeNm'),row.get('cnflcAt'),row.get('cnflcAtNm'),row.get('manageNo'),row.get('lastUpdtDt')])
@@ -225,6 +241,8 @@ def register_report(router, service, snapshots, lock, get_snapshot, fetch_layer,
         attach_landcover_theme(data,s,area)
         from development_land_tables import attach_land_survey_tables
         attach_land_survey_tables(data,s,area)
+        from development_building_tables import attach_building_survey_tables
+        attach_building_survey_tables(data)
         return data
     def state_unlocked(token):
         s=snapshots.get(token)
