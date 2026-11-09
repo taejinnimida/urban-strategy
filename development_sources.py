@@ -441,7 +441,9 @@ def enrich(data,snapshot,area):
                 results[item]['features']=features
                 results[item]['legend']=band.get('groups') or []
                 results[item]['thematic_type']='nature_dem'
-                results[item]['provider_verified']=bool(terrain.get('status')=='DATA' and not terrain.get('map_truncated') and features and len(features)<=5000)
+                results[item]['provider_verified']=bool(terrain.get('status') in ('DATA','PARTIAL') and not terrain.get('map_truncated') and features and len(features)<=5000 and band.get('coverage_pct',0)>0)
+                if terrain.get('status')=='PARTIAL':
+                    results[item]['detail']+=' · 부분 확보 DEM: 결측면적은 별도 표기하며 전체 구역계 분포로 확정하지 않음'
                 if terrain.get('map_truncated'):
                     results[item]['detail']+=' · 등급별 전체 통계만 확보, 지도용 DEM 셀 5,000개 상한 초과로 주제도 보류'
             else:
