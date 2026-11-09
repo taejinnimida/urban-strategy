@@ -260,6 +260,8 @@ def register_report(router, service, snapshots, lock, get_snapshot, fetch_layer,
         from development_building_tables import attach_building_survey_tables
         attach_building_survey_tables(data)
         from development_nature_tables import attach_nature_survey_tables
+        from development_nature_vector import attach_nature_vector_themes
+        attach_nature_vector_themes(data,s)
         attach_nature_survey_tables(data,s)
         return data
     def state_unlocked(token):
