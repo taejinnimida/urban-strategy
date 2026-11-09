@@ -158,7 +158,17 @@ def make_sheet(item, snapshot):
         primitive('rect', x=PANEL_X, y=322, w=PANEL_W, h=54, fill='#ffffff', stroke='#aaa', weight=0.8),
     ])
     legend = list(zone_context.get('legend') or item.get('legend') or []) if use_zone_context else list(item.get('legend') or [])
-    if not legend and not display_features:
+    if item.get('id') == '1-1':
+        # 1-1 is a location/boundary map, not an absent thematic polygon.
+        # Explain the real geometry already printed on the paper sheet.
+        ops.append(primitive('polyline', points=[(497, 69), (504, 69)],
+                             stroke='#fa3737', weight=1.6, dash='7,4',
+                             layer='SHEET_DECOR'))
+        ops.append(primitive('text', x=507, y=71.2, text='확정 대상지', size=6.9))
+        ops.append(primitive('polyline', points=[(497, 81), (504, 81)],
+                             stroke='#cbcbcb', weight=0.7, layer='SHEET_DECOR'))
+        ops.append(primitive('text', x=507, y=83.2, text='주변 연속지적', size=6.9))
+    elif not legend and not display_features:
         ops.append(primitive('text', x=497, y=73, text='주제도형 미확보', size=7.3))
     for i, entry in enumerate(legend[:27]):
         y = 66 + i * 9.0
