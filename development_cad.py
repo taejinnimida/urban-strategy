@@ -358,7 +358,7 @@ def dxf_bytes(item, snapshot, metadata):
             counts['thematic_features'] += 1
         except (ValueError, KeyError, TypeError):
             raise HTTPException(422, '검토항목 공간자료의 CAD 변환에 실패했습니다.') from None
-    if item['id'] in ('2-2','5-2','4-3') and item.get('provider_verified') is True:
+    if (item['id'] == '1-1' or (item['id'] in ('2-2','5-2','4-3') and item.get('provider_verified') is True)):
         from development_survey_sheet import make_sheet, dxf_paper_sheet
         dxf_paper_sheet(doc, make_sheet(item, snapshot))
         metadata['print_layout'] = 'SURVEY_A3'
@@ -606,7 +606,7 @@ def register_cad(router, output, snapshots, lock, fetch_layer, layer_type):
 
     @router.get('/reports/{token}/sheet/{item_id}.svg')
     def download_sheet(token: str, item_id: str):
-        if item_id not in ('2-2', '5-2', '4-3'):
+        if item_id not in ('1-1', '2-2', '5-2', '4-3'):
             raise HTTPException(404, '표준 도면 미리보기를 지원하지 않는 항목입니다.')
         report, snapshot = context(token)
         item = next((copy.deepcopy(x) for x in report['items'] if x['id'] == item_id), None)
@@ -648,7 +648,7 @@ def register_cad(router, output, snapshots, lock, fetch_layer, layer_type):
                 record['filename'] = None
                 if record['exportable']:
                     name = 'survey_' + item['id'].replace('-', '_') + '.dxf'
-                    themed = sheet_context(token, report, snapshot, copy.deepcopy(item)) if item['id'] in ('2-2','5-2','4-3') else item
+                    themed = sheet_context(token, report, snapshot, copy.deepcopy(item)) if item['id'] in ('1-1','2-2','5-2','4-3') else item
                     payload = dxf_bytes(themed, snapshot, record)
                     bundle.writestr(name, payload)
                     record['filename'] = name
