@@ -159,3 +159,109 @@ def _fill_vector(table, item, st, raw, site_area):
     if item['id'] == '4-6':
         table['notes'].append('수리·수문 원도형 교차현황이며 홍수위·침수위험의 법정 판정은 수행하지 않습니다.')
 
+
+def _fill_weather(table, st, status):
+    if not isinstance(st, dict) or status not in ('DATA', 'PARTIAL'):
+        table['notes'].append('대표 관측소·기간·일별 기상자료 미확보. 기후평년값을 대체하지 않습니다.')
+        return
+    received = _n(st.get('received_days'), 0)
+    total = _n(st.get('expected_days'), 1)
+    temp_days = _n(st.get('temperature_days'), 0)
+    rain_days = _n(st.get('rain_days'), 0)
+    if total is None or received is None or temp_days is None or rain_days is None:
+        table['notes'].append('관측일수 검증 실패. 요약 통계를 작성하지 않습니다.')
+        return
+    year = st.get('year')
+    table['columns'] = NUMERIC_COLUMNS
+    table['rows'] = [
+        _row('관측기준 연도', year, '년'),
+        _row('기대 관측일수', total, '일'),
+        _row('실제 수신일수', received, '일'),
+        _row('평균기온 유효일수', temp_days, '일'),
+        _row('강수량 유효일수', rain_days, '일'),
+        _row('유효일 평균기온', st.get('mean_temperature_c'), '℃', '기후평년값 아님'),
+        _row('유효일 강수량 합계', st.get('observed_precipitation_sum_mm'), 'mm', '결측일을 0mm로 환산하지 않음'),
+        _row('관측소 거리', st.get('station_distance_m'), 'm', '대상지 대표점과의 대권거리'),
+    ]
+    table['status'] = ('COMPLETE' if status == 'DATA' and received == total
+                       and temp_days == total and rain_days == total else 'PARTIAL')
+    name = st.get('station_name') or st.get('station_id') or '관측소 미상'
+    table['analysis_text'] = (
+        f"{year}년 기상청 ASOS {name} 관측자료를 확인하였다. "
+        f'수신 일수는 {int(received)}/{int(total)}일이며, '
+        f'평균기온 유효일수는 {int(temp_days)}일, 강수량 유효일수는 {int(rain_days)}일이다. '
+        '해당 기간의 관측값은 관측소의 대상지 대표성 검토가 필요하고 30년 기후평년값이 아니다.'
+    )
+    table['notes'].append('부분 기간의 평균기온이나 강수량 누계는 완전한 연평균·연강수량으로 표현하지 않습니다.')
+    table['notes'].append('결측된 강수량은 0mm로 보정하지 않으며 대표 관측소 적정성은 별도 확인이 필요합니다.')
+
+
+def _fill_profile(table, info, status):
+    profiles = (info or {}).get('values')
+    if not isinstance(profiles, list) or not profiles:
+        table['notes'].append('DEM 자동단면 원자료 미확보. 단면 높이값을 임의 생성하지 않습니다.')
+        return
+    table['columns'] = PROFILE_COLUMNS
+    summaries = []
+    for row in profiles:
+        axis = row.get('axis')
+        points = row.get('points')
+        if axis not in ('동서', '남북') or not isinstance(points, list):
+            continue
+        elevations = [_n(x.get('elevation_m')) for x in points if isinstance(x, dict)]
+        elevations = [x for x in elevations if x is not None]
+        if not elevations:
+            continue
+        summaries.append({'kind': 'profile', 'label': axis, 'count': len(elevations),
+                          'min_m': round(min(elevations), 2), 'max_m': round(max(elevations), 2),
+                          'note': f'원본 {len(points)} 표본점 중 유효표고 표본'})
+    if not summaries:
+        table['notes'].append('유효표고 표본점이 없어 단면 요약을 작성하지 않습니다.')
+        return
+    table['rows'] = summaries
+    table['status'] = 'COMPLETE' if status == 'DATA' and len(summaries) == 2 else 'PARTIAL'
+    table['analysis_text'] = (
+        '확보된 DEM 격자로부터 대상지 대표점을 기준으로 동서·남북 자동단면을 작성하였으며, '
+        '본 표는 각 단면에서 유효표고가 확보된 표본점의 최소·최대값을 요약한 것이다. '
+        '단면은 실제 도로·하천 횡단면이나 측량 성과가 아니다.'
+    )
+    table['notes'].append('표본점 중 구역계 밖 또는 DEM 결측 지점은 산정에서 제외했습니다.')
+    table['notes'].append('실측 단면과 달리 격자보간·대표선 위치에 따른 오차가 있을 수 있습니다.')
+
+
+def attach_nature_survey_tables(data, snapshot):
+    """Attach per-item table and text using existing item statistics/source facts."""
+    stats = data.get('statistics') or {}
+    facts = snapshot.get('_national_sources') or {}
+    site_area = _n(data.get('area_m2'), 0)
+    for item in data.get('items') or []:
+        key = item.get('id')
+        if key not in NATURE:
+            continue
+        rawkey = ('dem' if key in ('4-1', '4-2', '4-8')
+                  else 'weather' if key == '4-7'
+                  else 'ecobank' if key == '4-3' and facts.get('ecobank', {}).get('status') in ('DATA', 'PARTIAL')
+                  else 'ecvam' if key == '4-4' and facts.get('ecvam', {}).get('status') == 'MAP_ONLY'
+                  and facts.get('file:4-4', {}).get('status') not in ('DATA', 'PARTIAL')
+                  else 'file:' + key)
+        raw = facts.get(rawkey) or {}
+        table = {
+            'item_id': key, 'title': f'표 {key} {NATURE[key]} 현황',
+            'status': 'MISSING', 'columns': [], 'rows': [], 'notes': [], 'analysis_text': '',
+            'source': item.get('source'), 'source_as_of': item.get('as_of') or raw.get('as_of'),
+            'prepared_at': data.get('as_of'),
+        }
+        item['survey_table'] = table
+        st = stats.get(key)
+        if key in ('4-1', '4-2'):
+            _fill_terrain(table, st, key, raw.get('status'))
+        elif key in ('4-3', '4-4', '4-5', '4-6'):
+            vector_site_area = (_n((st or {}).get('site_area_m2_epsg5186'), 0)
+                                if key == '4-3' and rawkey == 'ecobank' else site_area)
+            _fill_vector(table, item, st, raw, vector_site_area)
+        elif key == '4-7':
+            _fill_weather(table, st, raw.get('status'))
+        elif key == '4-8':
+            _fill_profile(table, st, raw.get('status'))
+        if table['status'] == 'MISSING':
+            table['notes'].append('자료 미확보는 분석상 비해당 또는 면적·건수 0을 의미하지 않습니다.')
