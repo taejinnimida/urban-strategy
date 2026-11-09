@@ -39,7 +39,7 @@ PROVIDER_CODES=frozenset(('INCORRECT_KEY','INVALID_KEY','EXPIRED_KEY','UNAUTHORI
  'TOO_MANY_REQUESTS','LIMIT_REQUEST','UNKNOWN_ERROR','SERVICE_UNAVAILABLE','OTHER'))
 STAGES=frozenset(('TRANSPORT','PROVIDER_RESPONSE','JSON','WMS_IMAGE','SOURCE_COLLECTION',
  'LAND_LEDGER','LAND_PRICE','BUILDING_LEDGER','LAND_CHARACTERISTICS','LAND_USE',
- 'ECVAM_AUTH','ECVAM_CAPABILITIES','ECVAM_MAP','WEATHER','LOCAL_SOURCE'))
+ 'ECVAM_AUTH','ECVAM_CAPABILITIES','ECVAM_MAP','WEATHER','LOCAL_SOURCE','ECOBANK_WFS'))
 
 class PublicDataError(RuntimeError):
     def __init__(self,code,stage='SOURCE_COLLECTION',http_status=None,provider_code=None):
@@ -50,6 +50,9 @@ class PublicDataError(RuntimeError):
         super().__init__(self.code)
 
 def safe_failure(exc,stage='SOURCE_COLLECTION'):
+    from development_ecobank import EcoBankError
+    if isinstance(exc,EcoBankError):
+        return {k:v for k,v in {'error_code':exc.code,'stage':'ECOBANK_WFS','http_status':exc.http_status}.items() if v is not None}
     if isinstance(exc,PublicDataError):
         return {k:v for k,v in {'error_code':exc.code,'stage':exc.stage,'http_status':exc.http_status,'provider_code':exc.provider_code}.items() if v is not None}
     status=getattr(getattr(exc,'response',None),'status_code',None)
@@ -80,6 +83,7 @@ def acquisition_status():
     return {'official_files_manifest_present':(root/'manifest.json').is_file(),
             'weather_station_config_present':(root/'weather.json').is_file(),
             'weather_key_present':bool(os.environ.get('KMA_PUBLIC_API_KEY','').strip()),
+            'ecobank_key_present':bool(os.environ.get('ECOBANK_API_KEY','').strip()),
             'local_only_items':sorted(FILE_ITEMS), 'dem_acquisition':'LOCAL_OFFICIAL_GRID_ONLY'}
 
 def finite(v):
@@ -360,6 +364,48 @@ def enrich(data,snapshot,area):
             results[item]={'status':'공식 파일자료 확보' if f['status']=='DATA' else '일부 확보','detail':f['detail'],'source':f['source'],'features':f.get('features',[]),'as_of':f.get('as_of'),'source_url':f.get('source_url')};statistics[item]={'groups':f.get('rows',[]),'overlap_area_m2':f.get('overlap_area_m2')}
             if item.startswith('7-'):results[item]['status']='검토자료 확보';results[item]['detail']+=' · 자동 법정 판정은 적용하지 않음'
         elif item not in results:results[item]={'status':'자료 필요' if f.get('status')=='MISSING_SOURCE' else '미확보','detail':f.get('detail','조회 실패'),'source':f.get('source') or '공공 원자료','source_url':OFFICIAL_LINKS.get(item)}
+    # API WFS is preferred for 4-3; registered source files remain a
+    # fallback only when live API is not verified. Never replace an existing
+    # complete official file with a failed or empty API response.
+    eco=facts.get('ecobank',{})
+    registered=facts.get('file:4-3',{})
+    if eco.get('status') in ('DATA','PARTIAL'):
+        eco_full=eco['status']=='DATA'
+        results['4-3']={
+            'status':'공간자료 확보' if eco_full else '일부 확보',
+            'detail':eco['detail'],
+            'source':eco['source'],
+            'source_url':eco.get('source_url'),
+            'features':eco.get('features',[]),
+            'legend':eco.get('legend',[]),
+            'thematic_type':'ecobank',
+            'provider_verified':eco_full,
+            'queried_at':eco.get('queried_at'),
+            'as_of':eco.get('as_of'),
+        }
+        statistics['4-3']={
+            'groups':eco.get('legend',[]),
+            'mapped_groups':eco.get('legend',[]),
+            'overlap_area_m2':eco.get('overlap_area_m2'),
+            'mapped_area_m2':eco.get('overlap_area_m2'),
+            'site_area_m2_epsg5186':eco.get('site_area_m2_epsg5186'),
+            'unclassified_count':eco.get('unclassified_count'),
+            'overlap_warning_m2':eco.get('overlap_warning_m2'),
+            'source_layer':eco.get('source_layer'),
+            'provider_calls':eco.get('provider_calls'),
+            'note':'WFS 공간등급 참고자료. 최신 생태·자연도 고시 원본과의 일치 여부 별도 검증 필요.',
+        }
+    elif registered is None or registered.get('status') not in ('DATA','PARTIAL'):
+        if eco:
+            code=eco.get('status')
+            results['4-3']={
+                'status':'자료 필요' if code in ('MISSING_CREDENTIAL','EMPTY') else '미확보',
+                'detail':eco.get('detail','생태·자연도 WFS 원자료 미확보'),
+                'source':'국립생태원 EcoBank',
+                'source_url':eco.get('source_url') or OFFICIAL_LINKS['4-3'],
+                'error_code':eco.get('error_code'),
+                'provider_verified':False,
+            }
     terrain=facts.get('dem',{})
     for item,key in [('4-1','elevation'),('4-2','slope'),('4-8','profiles')]:
         got=terrain.get(key);results[item]={'status':'참고 분석자료' if got else '자료 필요','detail':terrain.get('detail','공식 DEM 자료 미조회'),'source':terrain.get('source') or '국토지리정보원 등 공공 DEM','source_url':OFFICIAL_LINKS[item]}
@@ -396,7 +442,7 @@ def register_sources(router,service,snapshots,lock,output,get_snapshot,fetch_lay
     def jobs(token:str):
         s=fixed(token)
         if '_report' not in s:raise HTTPException(409,'조서 조회를 먼저 실행하세요.')
-        return {'jobs':[{'id':'vector:'+k,'label':v} for k,v in {**{f'LT_C_UQ11{i}':'용도지역' for i in range(1,5)},**{f'LT_C_UPISUQ15{i}':'도시계획시설' for i in range(1,10)},**EXTRA_LAYERS}.items()]+[{'id':'ned:'+p,'label':'필지 토지이용계획 '+p} for p in s['_report']['land']]+[{'id':'characteristics:'+p,'label':'토지특성 '+p} for p in s['_report']['land']]+[{'id':'file:'+k,'label':v} for k,v in FILE_ITEMS.items()]+[{'id':'weather','label':'기상청 관측 일자료'},{'id':'dem','label':'표고·경사·단면'},{'id':'ecvam','label':'국토환경성평가 WMS'}]}
+        return {'jobs':[{'id':'vector:'+k,'label':v} for k,v in {**{f'LT_C_UQ11{i}':'용도지역' for i in range(1,5)},**{f'LT_C_UPISUQ15{i}':'도시계획시설' for i in range(1,10)},**EXTRA_LAYERS}.items()]+[{'id':'ned:'+p,'label':'필지 토지이용계획 '+p} for p in s['_report']['land']]+[{'id':'characteristics:'+p,'label':'토지특성 '+p} for p in s['_report']['land']]+[{'id':'file:'+k,'label':v} for k,v in FILE_ITEMS.items() if k!='4-3']+[{'id':'ecobank','label':'생태·자연도 WFS 원도형'},{'id':'weather','label':'기상청 관측 일자료'},{'id':'dem','label':'표고·경사·단면'},{'id':'ecvam','label':'국토환경성평가 WMS'}]}
     @router.post('/reports/{token}/source-jobs/{job}')
     def collect(token:str,job:str):
         s=fixed(token);allowed={v['id'] for v in jobs(token)['jobs']}
@@ -413,11 +459,14 @@ def register_sources(router,service,snapshots,lock,output,get_snapshot,fetch_lay
                 elif job.startswith('ned:'):result=fetch_ned(service,job.split(':',1)[1])
                 elif job.startswith('characteristics:'):result=characteristics(service,job.split(':',1)[1])
                 elif job=='weather':result=weather(s['geometry'],s['_report']['as_of'])
+                elif job=='ecobank':
+                    from development_ecobank import collect_ecobank
+                    result=collect_ecobank(s['geometry'])
                 elif job.startswith('file:'):result=official_vector(job.split(':',1)[1],s['geometry'],area)
                 elif job=='dem':result=dem(s['geometry'],area)
                 else:result=ecvam_map(service,s['geometry'])
             except Exception as exc:
-                stage='LAND_USE' if job.startswith('ned:') else 'LAND_CHARACTERISTICS' if job.startswith('characteristics:') else 'WEATHER' if job=='weather' else 'LOCAL_SOURCE' if job=='dem' or job.startswith('file:') else 'SOURCE_COLLECTION'
+                stage='LAND_USE' if job.startswith('ned:') else 'LAND_CHARACTERISTICS' if job.startswith('characteristics:') else 'WEATHER' if job=='weather' else 'ECOBANK_WFS' if job=='ecobank' else 'LOCAL_SOURCE' if job=='dem' or job.startswith('file:') else 'SOURCE_COLLECTION'
                 result=source_failure(exc,stage)
             result['queried_at']=datetime.now(__import__('zoneinfo').ZoneInfo('Asia/Seoul')).isoformat(timespec='seconds')
             with lock:s.setdefault('_national_sources',{})[job]=result
