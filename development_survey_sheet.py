@@ -29,7 +29,9 @@ def _title(item):
     return {'1-1': '위치 및 면적', '2-1': '소유별', '2-2': '지목별',
             '2-3': '면적별', '2-4': '공시지가별',
             '2-5': '토지형상별', '2-6': '토지피복별',
-            '5-2': '용도지역 현황도'}.get(item.get('id'),
+            '5-2': '용도지역 현황도',
+            '4-3':'생태자연도 현황도','4-4':'국토환경성평가 현황도',
+            '4-5':'임상도 현황도','4-6':'수리·수문 현황도'}.get(item.get('id'),
             str(item.get('name') or '현황도')[:16])
 
 
@@ -110,6 +112,23 @@ def make_sheet(item, snapshot):
             for poly in _geometry_parts(cut):
                 ops.append(primitive('polygon', rings=_poly_points(poly, xy), fill=color,
                                      stroke='#a5a5a5', weight=0.32, layer='SHEET_THEME_' + cls))
+            if item.get('id')=='4-6':
+                def lines_and_points(g):
+                    if g.is_empty:
+                        return
+                    if g.geom_type in ('LineString','LinearRing'):
+                        coords=list(g.coords)
+                        if len(coords)>1:
+                            ops.append(primitive('polyline',points=[xy(x,y) for x,y,*_ in coords],
+                                stroke=color,weight=1.8,layer='SHEET_THEME_'+cls))
+                    elif g.geom_type=='Point':
+                        x,y=xy(g.x,g.y)
+                        ops.append(primitive('circle',x=x,y=y,r=2.4,stroke=color,
+                            weight=1.4,layer='SHEET_THEME_'+cls))
+                    elif hasattr(g,'geoms'):
+                        for child in g.geoms:
+                            lines_and_points(child)
+                lines_and_points(cut)
         except (KeyError, TypeError, ValueError):
             continue
 
