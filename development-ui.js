@@ -640,7 +640,7 @@ function devRenderSourceDetails(data){
   cadSingle.dataset.available=available?'yes':'';
   cadSingle.disabled=!available;cadSingle.title=available?'확보된 공간도형 기준 CAD 출력':'검증된 공간도형이 없는 항목은 CAD 출력 불가';
   if(!cadPreparing)cadStatus.textContent=available?(cadReady?'표준 도면 배경자료 준비 완료':'표준 도면 배경자료 준비 필요 · 준비 버튼을 누르거나 자동 조회를 확인하세요'):'이 항목은 CAD 도형 미확보 · 일괄 ZIP 목록에 미확보로 기록';
-  if(available&&cadReady&&['1-1','2-2','5-2','4-3'].includes(item.id)){
+  if(available&&cadReady&&['1-1','2-1','2-2','2-3','2-4','5-2','4-3'].includes(item.id)){
    const selected=item.id;
    sheetPreview.onload=()=>{
     if(select.value!==selected)return;
@@ -656,7 +656,7 @@ function devRenderSourceDetails(data){
   }
   info.textContent=`${item.detail} · 출처: ${item.source||'미확보'}${item.as_of?' · 자료 기준일: '+item.as_of:''}`;
   const boundary=L.geoJSON(devSite.geometry,{style:{color:'#dc2626',weight:3,fill:false}}).addTo(drawn);devSourceDetailMap.fitBounds(boundary.getBounds(),{padding:[12,12]});
-  if(item.features?.length)L.geoJSON(item.features,{style:f=>({color:['jimok','land_numeric','ecobank'].includes(item.thematic_type)?'#526174':'#126d88',weight:['jimok','land_numeric','ecobank'].includes(item.thematic_type)?0.8:1.5,fillColor:['jimok','land_numeric','ecobank'].includes(item.thematic_type)?(f.properties?.color||'#cccccc'):'#126d88',fillOpacity:['jimok','land_numeric','ecobank'].includes(item.thematic_type)?0.68:0.2}),onEachFeature:(f,l)=>{const label=document.createElement('span');label.textContent=f.properties?.name||'원자료';l.bindTooltip(label);}}).addTo(drawn);
+  if(item.features?.length)L.geoJSON(item.features,{style:f=>({color:['ownership','jimok','land_numeric','ecobank'].includes(item.thematic_type)?'#526174':'#126d88',weight:['ownership','jimok','land_numeric','ecobank'].includes(item.thematic_type)?0.8:1.5,fillColor:['ownership','jimok','land_numeric','ecobank'].includes(item.thematic_type)?(f.properties?.color||'#cccccc'):'#126d88',fillOpacity:['ownership','jimok','land_numeric','ecobank'].includes(item.thematic_type)?0.68:0.2}),onEachFeature:(f,l)=>{const label=document.createElement('span');label.textContent=f.properties?.name||'원자료';l.bindTooltip(label);}}).addTo(drawn);
   if(Array.isArray(item.legend))for(const entry of item.legend){
    const row=document.createElement('span');row.style.cssText='display:inline-flex;align-items:center;gap:5px';
    const chip=document.createElement('span');chip.style.cssText='display:inline-block;width:14px;height:14px;border:1px solid #64748b;background-color:'+entry.color;
