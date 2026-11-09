@@ -62,6 +62,29 @@ class SurveySheetTest(unittest.TestCase):
         self.assertTrue(any(o.get('layer') == 'SHEET_SITE' for o in ops))
         self.assert_editable(ops)
 
+    def test_ownership_area_price_share_jimok_sheet_geometry_and_editable_cad(self):
+        # No separately invented sheet for other land themes: all use the
+        # same source classes, legend, red boundary and A3 CAD primitives.
+        for item_id, label, class_name, color in (
+            ('2-1', '소유자별', '국유', '#7fa9d4'),
+            ('2-3', '면적별', '100㎡ 이하', '#c5e0ef'),
+            ('2-4', '공시지가별', '1,000,000원/㎡ 이하', '#8bc6e0')):
+            with self.subTest(item=item_id):
+                item = {'id': item_id, 'name': label,
+                        'features': [{'type': 'Feature',
+                                      'geometry': polygon(953000,1950000,953110,1950110),
+                                      'properties': {'name': class_name, 'color': color,
+                                                     'class_code': 'C01'}}],
+                        'legend': [{'name': class_name, 'class_code': 'C01', 'color': color,
+                                    'count': 1, 'area_m2': 12100}]}
+                ops = make_sheet(item, self.snapshot)
+                fills = {op['fill'] for op in ops if op.get('layer') == 'SHEET_THEME_C01'}
+                self.assertEqual(fills, {color})
+                self.assertTrue(any(op.get('layer') == 'SHEET_SITE' for op in ops))
+                self.assertTrue(any(op.get('text') == '범 례' for op in ops))
+                svg = self.assert_editable(ops)
+                self.assertIn(class_name.encode('utf-8'), svg)
+
     def test_zoning_surrounding_context(self):
         zone = zoning_context([
             {'geometry': polygon(952800, 1949800, 953055, 1950300),
