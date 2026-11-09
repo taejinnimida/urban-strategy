@@ -156,6 +156,8 @@ def official_vector(item,geometry,area):
         props=f.get('properties') or {};name=str(props.get(label) or '분류 미확보')[:250]
         if name=='분류 미확보':missing+=1
         values={str(k):str(props.get(v) or '')[:250] for k,v in fields.items()}
+        if item in ('4-4','4-5','4-6'):
+            values['source_layer']=str(props.get(entry.get('layer_field')) or entry.get('layer_name') or item)[:100]
         a=area(clip);parts.append(clip);rows.append({'name':name,'area_m2':a,**values})
         if len(out)>=5000:raise ValueError('feature limit')
         out.append({'type':'Feature','geometry':mapping(clip),'properties':{'name':name,**values}})
