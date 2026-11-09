@@ -283,17 +283,19 @@ def dxf_bytes(item, snapshot, metadata):
             counts['labels'] += 1
         except (ValueError, TypeError):
             counts['labels_omitted'] += 1
-    # Jimok (2-2) uses the same PNU-joined polygons and color codes as the
-    # report map. All fills are editable native DXF hatches, not images.
-    if item.get('thematic_type') == 'jimok':
-        if item['id'] != '2-2' or not item.get('provider_verified'):
-            raise HTTPException(409, '검증된 지목 공간도형을 확보하지 못했습니다.')
+    # PNU-joined land themes (jimok, registered area, price) share the same
+    # verified class codes, geometry and editable native-DXF hatch renderer.
+    if item.get('thematic_type') in ('jimok', 'land_numeric'):
+        if item['id'] not in ('2-2', '2-3', '2-4') or not item.get('provider_verified'):
+            raise HTTPException(409, '검증된 토지 주제도 공간도형을 확보하지 못했습니다.')
+        if len(item.get('features') or []) > MAX_FEATURES:
+            raise HTTPException(413, '토지 주제도 도형이 CAD 출력 상한을 초과했습니다.')
         from ezdxf.colors import rgb2int
         for group in item.get('legend') or []:
             code = str(group.get('class_code') or '')
             color = str(group.get('color') or '')
             if not re.fullmatch(r'C[0-9]{2}', code) or not re.fullmatch(r'#[0-9a-fA-F]{6}', color):
-                raise HTTPException(422, '지목 분류색 및 레이어 형식 오류')
+                raise HTTPException(422, '토지 주제도 분류색 및 레이어 형식 오류')
             layer_name = theme_layer + '_' + code
             rgb = rgb2int(tuple(int(color[i:i+2], 16) for i in (1, 3, 5)))
             if layer_name not in doc.layers:
@@ -304,10 +306,10 @@ def dxf_bytes(item, snapshot, metadata):
                 code = str(props.get('class_code') or '')
                 layer_name = theme_layer + '_' + code
                 if layer_name not in doc.layers:
-                    raise ValueError('unknown jimok category')
+                    raise ValueError('unknown land category')
                 geom = shape(feature['geometry'])
                 if geom.is_empty or not geom.is_valid:
-                    raise ValueError('invalid jimok geometry')
+                    raise ValueError('invalid land-theme geometry')
                 clipped = transform(convert, geom.intersection(site))
                 polygons = [clipped] if clipped.geom_type == 'Polygon' else [
                     x for x in getattr(clipped, 'geoms', ()) if x.geom_type == 'Polygon'
@@ -331,7 +333,7 @@ def dxf_bytes(item, snapshot, metadata):
                     _entities(model, polygon.boundary, layer_name, counts)
                     counts['thematic_features'] += 1
             except (KeyError, TypeError, ValueError, AttributeError):
-                raise HTTPException(422, '지목 주제도 해치 생성 오류') from None
+                raise HTTPException(422, '토지 주제도 해치 생성 오류') from None
         # Put filled HATCH entities below the pre-existing cadastral and site
         # outlines in CAD redraw order (without duplicating source boundaries).
         draw_order = sorted(list(model), key=lambda e: 0 if e.dxftype() == 'HATCH' else 1)
