@@ -38,6 +38,10 @@ NOTICE = ('기초조사 참고 도면. 원자료 최신성·수록범위·법정
 def _exportable(item, snapshot):
     if item['id'] == '1-1':
         return True
+    if item['id'] in ('4-1','4-2'):
+        return (item.get('thematic_type')=='nature_dem' and
+                item.get('provider_verified') is True and bool(item.get('features')) and
+                bool(item.get('legend')))
     # WMS-only cover and geometrically incomplete cover are NOT exportable.
     # An officially registered vector source with PARTIAL status must not
     # bypass the strict 2-6 coverage/classification test.
@@ -299,8 +303,8 @@ def dxf_bytes(item, snapshot, metadata):
         except (ValueError, TypeError):
             counts['labels_omitted'] += 1
     # Land and zoning themes use the identical source category colors in SVG and DXF.
-    if item.get('thematic_type') in ('ownership', 'jimok', 'land_numeric', 'land_shape', 'landcover', 'zoning', 'ecobank'):
-        if item['id'] not in ('2-1', '2-2', '2-3', '2-4', '2-5', '2-6', '5-2', '4-3') or not item.get('provider_verified'):
+    if item.get('thematic_type') in ('ownership', 'jimok', 'land_numeric', 'land_shape', 'landcover', 'zoning', 'ecobank', 'nature_dem'):
+        if item['id'] not in ('2-1', '2-2', '2-3', '2-4', '2-5', '2-6', '5-2', '4-3', '4-1', '4-2') or not item.get('provider_verified'):
             raise HTTPException(409, '검증된 토지 주제도 공간도형을 확보하지 못했습니다.')
         if len(item.get('features') or []) > MAX_FEATURES:
             raise HTTPException(413, '토지 주제도 도형이 CAD 출력 상한을 초과했습니다.')
@@ -373,7 +377,7 @@ def dxf_bytes(item, snapshot, metadata):
             counts['thematic_features'] += 1
         except (ValueError, KeyError, TypeError):
             raise HTTPException(422, '검토항목 공간자료의 CAD 변환에 실패했습니다.') from None
-    if (item['id'] == '1-1' or (item['id'] in ('2-1','2-2','2-3','2-4','2-5','2-6','5-2','4-3') and item.get('provider_verified') is True)):
+    if (item['id'] == '1-1' or (item['id'] in ('2-1','2-2','2-3','2-4','2-5','2-6','5-2','4-3','4-1','4-2') and item.get('provider_verified') is True)):
         from development_survey_sheet import make_sheet, dxf_paper_sheet
         dxf_paper_sheet(doc, make_sheet(item, snapshot))
         metadata['print_layout'] = 'SURVEY_A3'
@@ -621,7 +625,7 @@ def register_cad(router, output, snapshots, lock, fetch_layer, layer_type):
 
     @router.get('/reports/{token}/sheet/{item_id}.svg')
     def download_sheet(token: str, item_id: str):
-        if item_id not in ('1-1', '2-1', '2-2', '2-3', '2-4', '2-5', '2-6', '5-2', '4-3'):
+        if item_id not in ('1-1', '2-1', '2-2', '2-3', '2-4', '2-5', '2-6', '5-2', '4-3', '4-1', '4-2'):
             raise HTTPException(404, '표준 도면 미리보기를 지원하지 않는 항목입니다.')
         report, snapshot = context(token)
         item = next((copy.deepcopy(x) for x in report['items'] if x['id'] == item_id), None)
@@ -663,7 +667,7 @@ def register_cad(router, output, snapshots, lock, fetch_layer, layer_type):
                 record['filename'] = None
                 if record['exportable']:
                     name = 'survey_' + item['id'].replace('-', '_') + '.dxf'
-                    themed = sheet_context(token, report, snapshot, copy.deepcopy(item)) if item['id'] in ('1-1','2-1','2-2','2-3','2-4','2-5','2-6','5-2','4-3') else item
+                    themed = sheet_context(token, report, snapshot, copy.deepcopy(item)) if item['id'] in ('1-1','2-1','2-2','2-3','2-4','2-5','2-6','5-2','4-3','4-1','4-2') else item
                     payload = dxf_bytes(themed, snapshot, record)
                     bundle.writestr(name, payload)
                     record['filename'] = name
