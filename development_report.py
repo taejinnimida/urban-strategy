@@ -127,6 +127,17 @@ def tables(data):
         for row in groups:stats.append([key,row.get('name'),row.get('count'),row.get('area_m2'),json.dumps({k:v for k,v in row.items() if k not in ('name','count','area_m2')},ensure_ascii=False)])
         stats.append([key,'전체',value.get('known'),value.get('overlap_area_m2'),json.dumps({k:v for k,v in value.items() if k!='groups'},ensure_ascii=False)])
     sheets.append(('분류별 통계',stats))
+    # Thematic map/CAD/XLSX share the exact same classified area/count FACT.
+    # Raw distribution remains available separately above.
+    theme_rows=[['검토항목','등급코드','분류명','필지수','대상지 편입 도형면적(㎡)','표시색상']]
+    for item in data['items']:
+        if item.get('thematic_type') not in ('jimok','land_numeric'):
+            continue
+        for cls in item.get('legend') or []:
+            theme_rows.append([item['id'],cls.get('class_code'),cls.get('name'),
+                               cls.get('count'),cls.get('area_m2'),cls.get('color')])
+    if len(theme_rows)>1:
+        sheets.append(('현황도 분류별 통계',theme_rows))
     regulations=[['PNU','검토항목','규제명','관계코드','관계명','관리번호','갱신일']]
     for item in data['items']:
         for row in item.get('regulation_rows',[]):regulations.append([row.get('pnu'),item['id'],row.get('prposAreaDstrcCodeNm'),row.get('cnflcAt'),row.get('cnflcAtNm'),row.get('manageNo'),row.get('lastUpdtDt')])
