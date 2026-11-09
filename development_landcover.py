@@ -30,6 +30,12 @@ def attach_landcover_theme(data, snapshot, area):
         item['landcover_map_available'] = True
         item['landcover_map_bounds'] = wms.get('bounds')
     source = sources.get('file:2-6', {})
+    official_wfs = (wfs.get('verified_feature_type') is True
+                    and wfs.get('complete_page') is True
+                    and wfs.get('layer') == WMS_LAYER
+                    and wfs.get('status') == 'PARTIAL')
+    if source.get('status') not in ('DATA', 'PARTIAL') and official_wfs:
+        source = wfs
     if source.get('status') not in ('DATA', 'PARTIAL'):
         wfs_state = wfs.get('status') or 'NOT_QUERIED'
         wms_state = wms.get('status') or 'NOT_QUERIED'
@@ -80,8 +86,8 @@ def attach_landcover_theme(data, snapshot, area):
     overlaid = max(0.0,sum(area(unary_union(gs)) for gs in geoms.values())-covered_area)
     coverage_ok=abs(covered_area-site_area)<=max(1.0,site_area*.001)
     overlap_ok=overlaid<=max(1.0,site_area*.001)
-    complete = (source['status']=='DATA' and coverage_ok and overlap_ok
-                and MISSING not in geoms)
+    complete = ((source['status']=='DATA' or (source is wfs and official_wfs))
+                and coverage_ok and overlap_ok and MISSING not in geoms)
     item.update({
         'status':'공간자료 확보' if complete else '일부 확보',
         'detail':f'토지피복 등록 벡터 {len(features)}도형 · 실제 편입 {covered_area:,.2f}㎡ / '
