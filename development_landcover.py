@@ -23,13 +23,21 @@ def attach_landcover_theme(data, snapshot, area):
     item['landcover_wms'] = True
     item['wms_layer'] = WMS_LAYER
     item['wms_source_url'] = WMS_SOURCE
-    source = snapshot.get('_national_sources', {}).get('file:2-6', {})
+    sources = snapshot.get('_national_sources', {})
+    wms = sources.get('landcover_wms', {})
+    wfs = sources.get('landcover_wfs', {})
+    if wms.get('status') == 'MAP_ONLY':
+        item['landcover_map_available'] = True
+        item['landcover_map_bounds'] = wms.get('bounds')
+    source = sources.get('file:2-6', {})
     if source.get('status') not in ('DATA', 'PARTIAL'):
+        wfs_state = wfs.get('status') or 'NOT_QUERIED'
+        wms_state = wms.get('status') or 'NOT_QUERIED'
         item.update({
-            'status':'WMS 참고도 안내',
-            'detail':'토지피복지도 WMS 참고표시만 가능 · 원본 벡터 미등록 · '
-                     '유형별 면적·구성비 및 편집 가능한 CAD 생성 불가. '
-                     'WMS 연결 및 서비스 수록범위는 지도에서 별도 확인 필요',
+            'status':'WMS 참고도 확보' if wms_state == 'MAP_ONLY' else 'WMS 미확보',
+            'detail':f'2025년 세분류 토지피복 WMS: {wms_state} · '
+                     f'벡터 WFS 제공 상태: {wfs_state} · '
+                     '공식 벡터 원자료의 면적·분류 완전성 미검증 · CAD 및 유형별 면적 산출 불가',
             'source':'환경공간정보서비스 WMS',
             'source_url':WMS_SOURCE,
             'provider_verified':False,
