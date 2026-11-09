@@ -103,11 +103,41 @@ def test_page_cap_recovery_by_subdivision():
     assert len(out['features'])==200
 
 
+def prepare_background(client, expected_requests=4):
+    url='/api/development/reports/test-token/cad-background'
+    initial=client.get(url+'/status')
+    assert initial.status_code==200
+    assert initial.json()['ready'] is False
+    assert client.get('/api/development/reports/test-token/dxf/1-1').status_code==409
+    for _ in range(64):
+        response=client.post(url+'/next')
+        assert response.status_code==200,response.text[:240]
+        if response.json()['ready']:
+            break
+    else:
+        pytest.fail('surrounding cadastre never completed')
+    state=client.get(url+'/status').json()
+    assert state['ready'] is True
+    assert state['request_count']==expected_requests
+    return state
+
+
 def test_provider_error_never_generates_partial_cad():
     client,_=make_app(FakeVworld('rate_limit'))
-    response=client.get('/api/development/reports/test-token/dxf/1-1')
+    response=client.post('/api/development/reports/test-token/cad-background/next')
     assert response.status_code==503
     assert 'RATE_LIMIT' in response.text
+    assert client.get('/api/development/reports/test-token/dxf/1-1').status_code==409
+    state=client.get('/api/development/reports/test-token/cad-background/status').json()
+    assert state['ready'] is False and state['done']==0
+
+
+def test_staged_provider_truncation_recovers_without_discarding_tiles():
+    provider=FakeVworld('truncated')
+    client,_=make_app(provider)
+    state=prepare_background(client,expected_requests=8)
+    assert state['done']==7  # four first-level tiles, first divided into four.
+    assert provider.count==8
 
 
 def test_oversize_frame_subdivides_by_area():
@@ -120,9 +150,13 @@ def test_oversize_frame_subdivides_by_area():
 
 def test_real_dxf_and_bulk_zip_reopen_cad_layers():
     provider=FakeVworld();client,snapshots=make_app(provider)
+    prepare_background(client)
     response=client.get('/api/development/reports/test-token/dxf/1-1')
     assert response.status_code==200,response.text[:200]
     doc=load_dxf(response.content)
+    assert 'SURVEY_A3' in doc.layouts
+    layout=doc.layouts.get('SURVEY_A3')
+    assert len(list(layout.query('TEXT'))) > 1
     spaces=doc.modelspace()
     frame_polys=list(spaces.query('LWPOLYLINE[layer=="DRAWING_FRAME"]'))
     assert len(frame_polys)==1
@@ -157,8 +191,11 @@ def test_real_dxf_and_bulk_zip_reopen_cad_layers():
 
 def test_no_fake_success_with_blank_cadastre():
     client,_=make_app(FakeVworld('blank'))
-    r=client.get('/api/development/reports/test-token/dxf/1-1')
+    for _ in range(3):
+        assert client.post('/api/development/reports/test-token/cad-background/next').status_code==200
+    r=client.post('/api/development/reports/test-token/cad-background/next')
     assert r.status_code==503
+    assert client.get('/api/development/reports/test-token/dxf/1-1').status_code==409
 
 
 def test_unavailable_item_rejected():
@@ -200,6 +237,7 @@ def test_duplicate_polygon_boundaries_are_not_doubled():
 
 def test_jibun_labels_clear_highlighted_site_boundary():
     provider=FakeVworld();client,_=make_app(provider)
+    prepare_background(client)
     response=client.get('/api/development/reports/test-token/dxf/1-1')
     assert response.status_code==200
     doc=load_dxf(response.content)
