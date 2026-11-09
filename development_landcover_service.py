@@ -194,7 +194,9 @@ def fetch_landcover_wfs(geometry):
         # The survey FACT layer independently validates spatial coverage,
         # class coverage, topology and official provenance before CAD.
         return {**source, "status": "PARTIAL", "features": clipped,
-                "detail": "WFS GeoJSON 수신. 공간 수록범위·분류·고시 기준일은 미검증이며 정식 CAD 여부는 후속 검증 필요."}
+                "verified_feature_type": True, "complete_page": True,
+                "layer": LAYER, "as_of": "2025",
+                "detail": "공식 GeoServer WFS FeatureType 확인 후 GeoJSON 수신. 면적 수록범위·중첩 검증을 통과해야 CAD 가능."}
     except (requests.RequestException, ET.ParseError, TypeError, ValueError, KeyError):
         return {**source, "status": "WFS_UNVERIFIED", "error_code": "PROVIDER_RESPONSE",
                 "detail": "WFS 연결/응답 검증에 실패했습니다."}
