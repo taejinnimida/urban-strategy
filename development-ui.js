@@ -723,7 +723,7 @@ function devRenderSourceDetails(data){
   if(!cadReady&&!cadAutoAttempted&&item.id==='1-1'){
    cadAutoAttempted=true;prepareCadBackground().catch(()=>{});
   }
-  const available=item.id==='1-1'||(item.id==='4-3'&&item.thematic_type==='ecobank'&&item.provider_verified===true&&!!item.features?.length)||(item.thematic_type==='nature_vector'&&item.provider_verified===true&&!!item.features?.length)||(item.thematic_type==='nature_dem'&&item.provider_verified===true&&!!item.features?.length)||(item.id==='2-6' ? item.thematic_type==='landcover'&&item.provider_verified===true : (item.provider_verified===true&&['공간자료 확보','일부 확보'].includes(item.status))||(['공식 파일자료 확보','일부 확보'].includes(item.status)&&!!item.features?.length&&item.source!=='VWorld'&&item.thematic_type!=='ecobank'));
+  const available=['4-3','4-4','4-5','4-6'].includes(item.id)?(item.provider_verified===true&&['ecobank','nature_vector'].includes(item.thematic_type)&&!!item.features?.length&&!!item.legend?.length):(item.id==='1-1'||(item.thematic_type==='nature_dem'&&item.provider_verified===true&&!!item.features?.length)||(item.id==='2-6'?item.thematic_type==='landcover'&&item.provider_verified===true:(item.provider_verified===true&&['공간자료 확보','일부 확보'].includes(item.status))||(['공식 파일자료 확보','일부 확보'].includes(item.status)&&!!item.features?.length&&item.source!=='VWorld'&&item.thematic_type!=='ecobank')));
   cadSingle.dataset.available=available?'yes':'';
   cadSingle.disabled=!available;cadSingle.title=available?'확보된 공간도형 기준 CAD 출력':'검증된 공간도형이 없는 항목은 CAD 출력 불가';
   if(!cadPreparing)cadStatus.textContent=available?(cadReady?'표준 도면 배경자료 준비 완료':'표준 도면 배경자료 준비 필요 · 준비 버튼을 누르거나 자동 조회를 확인하세요'):'이 항목은 CAD 도형 미확보 · 일괄 ZIP 목록에 미확보로 기록';
