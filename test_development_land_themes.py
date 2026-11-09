@@ -92,6 +92,31 @@ class LandThemeTest(unittest.TestCase):
         self.assertEqual(sum(x['area_m2'] for x in item['legend']),200)
         self.render(item)
 
+    def test_verified_wfs_with_complete_site_coverage_enables_cad(self):
+        self.snapshot['_national_sources']['landcover_wfs']={
+            'status':'PARTIAL','verified_feature_type':True,'complete_page':True,
+            'layer':'EGIS:lv3_2025y','features':[
+                {'geometry':f['geometry'],
+                 'properties':{'name':'침엽수림' if i==0 else '활엽수림'}}
+                for i,f in enumerate(self.features)],
+            'as_of':'2025'}
+        attach_landcover_theme(self.data,self.snapshot,self.area)
+        item=self.data['items'][1]
+        self.assertTrue(item['provider_verified'])
+        self.assertTrue(_exportable(item,self.snapshot))
+        self.render(item)
+
+    def test_unverified_wfs_cannot_enable_cad(self):
+        self.snapshot['_national_sources']['landcover_wfs']={
+            'status':'PARTIAL','features':[
+                {'geometry':f['geometry'],'properties':{'name':'활엽수림'}}
+                for f in self.features],
+            'as_of':'2025'}
+        attach_landcover_theme(self.data,self.snapshot,self.area)
+        item=self.data['items'][1]
+        self.assertFalse(item['provider_verified'])
+        self.assertFalse(_exportable(item,self.snapshot))
+
     def test_incomplete_vector_cannot_export_even_with_official_partial_source(self):
         self.snapshot['_national_sources']['file:2-6']={
             'status':'PARTIAL','features':[{'geometry':self.features[0]['geometry'],
