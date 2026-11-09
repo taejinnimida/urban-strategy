@@ -671,9 +671,24 @@ function devRenderSourceDetails(data){
    legendbox.append(sourceLabel);
    const cover=L.tileLayer.wms('https://api.mcee.go.kr/geoserver/gwc/service/wms',{
       layers:'EGIS:lv3_2025y',format:'image/png',transparent:true,
-      version:'1.1.1',opacity:0.72,attribution:'환경공간정보서비스 · 2025년 세분류 토지피복지도'
+      tiled:true,version:'1.1.1',styles:'',
+      opacity:0.82,attribution:'환경공간정보서비스 · 2025년 세분류 토지피복지도'
    });
-   cover.on('tileerror',()=>{if(select.value==='2-6')cadStatus.textContent='토지피복 WMS 영상 수신 오류 · 원자료 벡터 미확보';});
+   // The official GeoWebCache example uses TILED=true / EPSG:3857.
+   // A tile request completing is NOT evidence of valid landcover coverage.
+   let tileErrors=0,tileLoaded=0;
+   cover.on('tileerror',()=>{
+     tileErrors++;
+     if(select.value==='2-6'){
+       cadStatus.textContent='2-6 WMS 타일 오류 '+tileErrors+'건 · 외부 지도 서버/요청 형식 점검 필요 · CAD 불가';
+     }
+   });
+   cover.on('tileload',()=>{
+     tileLoaded++;
+     if(select.value==='2-6'&&tileErrors===0){
+       cadStatus.textContent='2-6 WMS 영상 '+tileLoaded+'타일 응답 · 실제 토지피복 채색·수록범위 확인 필요 · CAD 불가';
+     }
+   });
    cover.addTo(drawn);
    boundary.bringToFront();
   }
