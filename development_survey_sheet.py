@@ -292,3 +292,31 @@ def dxf_paper_sheet(doc, ops):
     layout.set_redraw_order([(e.dxf.handle, f'{i+1:X}') for i, e in enumerate(ordered)])
     doc.header['$SORTENTS'] = int(doc.header.get('$SORTENTS', 0)) | 16
     return layout
+
+
+# Display-only palette for zones fetched in the expanded cadastral frame.
+# NOT an official statutory zoning color standard.
+ZONE_COLORS = ('#fff0b2', '#ffe18a', '#ffc372', '#f2ad6c',
+               '#e4dc9c', '#daeba5', '#b9d8b3', '#c6dbef')
+
+
+def zoning_context(features):
+    """Prepare display classes without changing the clipped site zoning FACT."""
+    clean = []
+    for feature in features:
+        props = {str(k).lower(): v for k, v in (feature.get('properties') or {}).items()}
+        name = str(props.get('uname') or props.get('name') or props.get('dgm_nm') or '').strip()
+        if not name or not feature.get('geometry'):
+            name = '명칭 미확보'
+        clean.append((name, feature))
+    classes = {name: (f'C{index+1:02d}', ZONE_COLORS[index % len(ZONE_COLORS)])
+               for index, name in enumerate(sorted(set(name for name, _ in clean)))}
+    mapped = []
+    for name, feature in clean:
+        code, color = classes[name]
+        mapped.append({'type': 'Feature', 'geometry': feature['geometry'],
+                       'properties': {'name': name, 'class_code': code, 'color': color}})
+    legend = [{'name': name, 'class_code': code, 'color': color}
+              for name, (code, color) in classes.items()]
+    return {'status': 'COMPLETE', 'features': mapped, 'legend': legend,
+            'note': '주변 용도지역 도형 참고자료. 색상은 표시용이며 법정 지정색 아님.'}
