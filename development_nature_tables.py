@@ -276,7 +276,17 @@ def attach_nature_survey_tables(data, snapshot):
         st = stats.get(key)
         if key in ('4-1', '4-2'):
             _fill_terrain(table, st, key, raw.get('status'))
-        elif key in ('4-3', '4-4', '4-5', '4-6'):
+        elif key in ('4-4', '4-5', '4-6'):
+            summary=item.get('nature_vector_summary')
+            if item.get('table_available') and summary:
+                table.update({k:v for k,v in summary.items() if k not in ('source_as_of',)})
+                table['source_as_of']=summary.get('source_as_of')
+            else:
+                table['notes'].append(item.get('nature_vector_reason') or '원도형 확인이 필요합니다.')
+                if key=='4-4' and item.get('map_available'):
+                    table['analysis_text']='국토환경성평가의 WMS 참고도면만 확인되었으며 등급별 면적 원도형은 확보되지 않아 통계는 미산정하였다.'
+                    table['notes'].append('WMS 픽셀을 분류별 면적으로 계산하지 않습니다. CAD 벡터 출력도 제한됩니다.')
+        elif key == '4-3':
             vector_site_area = (_n((st or {}).get('site_area_m2_epsg5186'), 0)
                                 if key == '4-3' and rawkey == 'ecobank' else site_area)
             _fill_vector(table, item, st, raw, vector_site_area)
