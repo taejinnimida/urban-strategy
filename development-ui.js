@@ -646,7 +646,9 @@ function devRenderSourceDetails(data){
     const empty=document.createElement('div');
     empty.textContent='자연환경 현황표 미확보 · 공식 원자료 및 분류별 분석값 필요 (0으로 간주하지 않음) · '+(t?.notes||[]).join(' · ');
     empty.style.cssText='padding:12px;border:1px solid #d9e2ed;background:#f8fafc;font-size:12px';
-    surveyTable.append(empty);return;
+    surveyTable.append(empty);
+    if(t?.analysis_text){const p=document.createElement('p');p.textContent=t.analysis_text;p.style.cssText='font-size:12px;line-height:1.5;padding:8px 2px';surveyTable.append(p);}
+    return;
    }
    const table=document.createElement('table');
    table.style.cssText='width:100%;border-collapse:collapse;font-size:12px;min-width:510px;font-variant-numeric:tabular-nums';
