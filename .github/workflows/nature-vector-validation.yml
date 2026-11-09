@@ -1,0 +1,41 @@
+name: Nature vector survey validation
+
+on:
+  push:
+    branches:
+      - feature/nature-vector-maps-43-46-20261110
+  pull_request:
+    paths:
+      - 'development_nature_vector.py'
+      - 'development_nature_tables.py'
+      - 'development_cad.py'
+      - 'development_sources.py'
+      - 'development_survey_sheet.py'
+      - 'development-ui.js'
+      - 'tests/test_development_nature_vector.py'
+      - '.github/workflows/nature-vector-validation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-nature:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install offline dependencies
+        run: python -m pip install shapely pyproj fastapi pydantic requests ezdxf
+      - name: Verify Python syntax
+        run: |
+          python -m py_compile development_nature_vector.py development_nature_tables.py development_sources.py development_cad.py development_survey_sheet.py development_report.py
+      - name: Verify JS syntax
+        run: node --check development-ui.js
+      - name: Nature vector fixtures (no network or API credentials)
+        run: python -m unittest discover -s tests -p 'test_development_nature_vector.py' -v
+      - name: DEM class fixtures
+        run: python -m unittest discover -s tests -p 'test_development_terrain_classes.py' -v
