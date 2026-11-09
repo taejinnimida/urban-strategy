@@ -191,6 +191,8 @@ def register_report(router, service, snapshots, lock, get_snapshot, fetch_layer,
         data=enrich(data,s,area)
         from development_jimok import attach_jimok_theme
         attach_jimok_theme(data,s,area)
+        from development_land_numeric import attach_numeric_land_themes
+        attach_numeric_land_themes(data,s,area)
         return data
     def state_unlocked(token):
         s=snapshots.get(token)
