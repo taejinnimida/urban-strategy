@@ -28,7 +28,7 @@ MAX_TILE_CALLS = 64  # bounded calls on the shared, rate-limited VWorld channel
 MAX_TILE_AREA_M2 = 4_000_000  # each query well below the 10 sq km request guard
 MAX_TILE_DEPTH = 4
 TILE_OVERLAP_M = 2  # avoid seams from inverse projection and provider geometry tolerances
-CAD_CACHE_VERSION = 2
+CAD_CACHE_VERSION = 3
 MAX_DXF_BYTES = 18_000_000
 MAX_ZIP_BYTES = 28_000_000
 NOTICE = ('기초조사 참고 도면. 원자료 최신성·수록범위·법정 고시도면과의 일치 및 '
@@ -412,37 +412,153 @@ def register_cad(router, output, snapshots, lock, fetch_layer, layer_type):
     import threading
     cad_gate = threading.Lock()
 
-    def context(token):
-        report = output(token)  # Same enriched FACT used by web and XLSX.
+    def verified(token):
+        report = output(token)  # Same frozen FACT as report, map and XLSX.
         snapshot = _verified_snapshot(token, report, snapshots, lock)
         site_fact = snapshot.get('_report_layers', {}).get('LP_PA_CBND_BUBUN', {})
         if site_fact.get('status') != 'COMPLETE':
-            raise HTTPException(409, '서버 직접 확보된 대상지 연속지적이 필요합니다.')
-        revision = site_fact.get('fact_revision')
+            raise HTTPException(409, 'CAD 생성에는 서버 직접 수신된 대상지 연속지적이 필요합니다.')
+        return report, snapshot, site_fact.get('fact_revision')
+
+    def progress_view(live, revision):
+        cache = live.get('_cad_background') or {}
+        if (cache.get('source_revision') == revision and cache.get('status') == 'COMPLETE'
+                and cache.get('cache_version') == CAD_CACHE_VERSION):
+            return {'status': 'COMPLETE', 'ready': True, 'done': cache.get('tile_count', 0),
+                    'total': cache.get('tile_count', 0), 'request_count': cache.get('request_count', 0)}
+        p = live.get('_cad_background_progress') or {}
+        if p.get('source_revision') != revision or p.get('cache_version') != CAD_CACHE_VERSION:
+            return {'status': 'PENDING', 'ready': False, 'done': 0, 'total': 4, 'request_count': 0}
+        return {'status': 'COLLECTING', 'ready': False, 'done': p['done'],
+                'total': p['done'] + len(p['pending']), 'request_count': p['request_count'],
+                'last_error_code': p.get('last_error_code')}
+
+    def context(token):
+        report, snapshot, revision = verified(token)
         with lock:
             cache = snapshots.get(token, {}).get('_cad_background', {})
-            if cache.get('source_revision') == revision and cache.get('status') == 'COMPLETE' and cache.get('cache_version') == CAD_CACHE_VERSION:
-                snapshot['_cad_background'] = copy.deepcopy(cache)
-                return report, snapshot
+            if not (cache.get('source_revision') == revision and cache.get('status') == 'COMPLETE'
+                    and cache.get('cache_version') == CAD_CACHE_VERSION):
+                raise HTTPException(409, '확장 도곽의 주변 연속지적 준비가 필요합니다. 도면 준비를 먼저 실행하세요.')
+            snapshot['_cad_background'] = copy.deepcopy(cache)
+        return report, snapshot
+
+    @router.get('/reports/{token}/cad-background/status')
+    def cad_background_status(token: str):
+        _report, _snapshot, revision = verified(token)
+        with lock:
+            live = snapshots.get(token)
+            return progress_view(live, revision)
+
+    @router.post('/reports/{token}/cad-background/next')
+    def cad_background_next(token: str):
+        # One bounded provider query per HTTP request. Previously four or more
+        # sequential queries caused reverse-proxy 503/timeouts on large sites.
+        _report, snapshot, revision = verified(token)
         if not cad_gate.acquire(False):
-            raise HTTPException(429, '주변 지적 도면을 생성 중입니다. 잠시 후 재시도하세요.')
+            raise HTTPException(429, '다른 CAD 주변 지적 조회가 진행 중입니다.')
         try:
             with lock:
-                cache = snapshots.get(token, {}).get('_cad_background', {})
-                if cache.get('source_revision') == revision and cache.get('status') == 'COMPLETE' and cache.get('cache_version') == CAD_CACHE_VERSION:
-                    snapshot['_cad_background'] = copy.deepcopy(cache)
-                    return report, snapshot
+                live = snapshots.get(token)
+                state = progress_view(live, revision)
+                if state['ready']:
+                    return state
+                progress = live.get('_cad_background_progress') or {}
+                if (progress.get('source_revision') != revision or
+                        progress.get('cache_version') != CAD_CACHE_VERSION):
+                    frame = _drawing_frame(shape(snapshot['geometry']))
+                    progress = {'source_revision': revision, 'cache_version': CAD_CACHE_VERSION,
+                                'pending': [(tuple(tile.bounds), 1) for tile in _four_tiles(frame)],
+                                'done': 0, 'request_count': 0, 'duplicates_removed': 0,
+                                'empty_tile_count': 0, 'found': {}}
+                    live['_cad_background_progress'] = progress
+                if not progress['pending']:
+                    raise HTTPException(409, '주변 지적 수집 상태를 다시 확인하세요.')
+                if progress['request_count'] >= MAX_TILE_CALLS:
+                    raise HTTPException(413, '주변 지적 조회 한도에 도달했습니다. 구역 범위를 줄여야 합니다.')
+                bounds, depth = progress['pending'][0]
+                progress['request_count'] += 1
+            tile = box(*bounds)
+            inverse = Transformer.from_crs(CRS, 'EPSG:4326', always_xy=True).transform
+            project = Transformer.from_crs('EPSG:4326', CRS, always_xy=True).transform
+            query = transform(inverse, tile.buffer(TILE_OVERLAP_M))
+            try:
+                result = fetch_layer(layer_type(geometry=mapping(query), layer='LP_PA_CBND_BUBUN'))
+            except Exception:
+                with lock:
+                    progress['last_error_code'] = 'REQUEST_FAILED'
+                raise HTTPException(503, '주변 지적 제공기관 호출 실패. 수집된 구역은 유지됩니다.') from None
+            code = str(result.get('error_code') or 'REQUEST_FAILED')
+            if not re.fullmatch(r'[A-Z0-9_]{1,64}', code):
+                code = 'REQUEST_FAILED'
+            if result.get('status') != 'COMPLETE':
+                # Oversized/slow provider queries are split into smaller tiles,
+                # but no failed tile is silently accepted as complete.
+                splittable = code in ('PROVIDER_FORMAT', 'INVALID_SIZE', 'INVALID_RANGE',
+                                      'TIMEOUT', 'READ_TIMEOUT', 'CONNECT_TIMEOUT')
+                if splittable and depth < MAX_TILE_DEPTH:
+                    with lock:
+                        live = snapshots.get(token)
+                        if live is None or live.get('_report_layers', {}).get('LP_PA_CBND_BUBUN', {}).get('fact_revision') != revision:
+                            raise HTTPException(409, '지적자료가 갱신되어 도면 준비를 다시 시작해야 합니다.')
+                        progress['pending'] = [(tuple(part.bounds), depth + 1)
+                                               for part in _four_tiles(tile)] + progress['pending'][1:]
+                        progress['last_error_code'] = code
+                        return progress_view(live, revision)
+                with lock:
+                    progress['last_error_code'] = code
+                raise HTTPException(503, '주변 지적 제공기관 조회 실패: '+code+' · 수집된 구역은 유지됩니다.')
+            features = result.get('features')
+            if not isinstance(features, list):
+                raise HTTPException(503, '주변 지적 제공기관의 응답 형식이 잘못되었습니다.')
             frame = _drawing_frame(shape(snapshot['geometry']))
-            background = _collect_surrounding_cadastre(frame, fetch_layer, layer_type)
-            background['source_revision'] = revision
-            background['queried_at'] = datetime.now(ZoneInfo('Asia/Seoul')).isoformat(timespec='seconds')
+            found_now = {}
+            for feature in features:
+                try:
+                    geom = shape(feature['geometry'])
+                    if geom.is_empty or not geom.is_valid:
+                        raise ValueError('geometry')
+                    if not transform(project, geom).intersects(frame):
+                        continue
+                    props = feature.get('properties') or {}
+                    identity = str(props.get('pnu') or props.get('PNU') or feature.get('id') or '')
+                    digest = hashlib.sha256(json.dumps(feature['geometry'], sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+                    found_now[(identity, digest)] = feature
+                except (KeyError, TypeError, ValueError):
+                    raise HTTPException(422, '주변 지적 원자료의 공간도형 검증에 실패했습니다.') from None
             with lock:
                 live = snapshots.get(token)
                 if live is None or live.get('_report_layers', {}).get('LP_PA_CBND_BUBUN', {}).get('fact_revision') != revision:
-                    raise HTTPException(409, '지적자료가 변경되었습니다. 도면을 다시 요청하세요.')
-                live['_cad_background'] = copy.deepcopy(background)
-            snapshot['_cad_background'] = background
-            return report, snapshot
+                    raise HTTPException(409, '지적자료가 갱신되어 도면 준비를 다시 시작해야 합니다.')
+                if len(progress['found']) + len(found_now) > MAX_FEATURES * 2:
+                    raise HTTPException(413, '도곽 내 필지수가 CAD 출력 제한을 초과합니다.')
+                for key, f in found_now.items():
+                    if key in progress['found']:
+                        progress['duplicates_removed'] += 1
+                    else:
+                        progress['found'][key] = f
+                if len(progress['found']) > MAX_FEATURES:
+                    raise HTTPException(413, '도곽 내 필지수가 CAD 출력 제한을 초과합니다.')
+                progress['pending'].pop(0)
+                progress['done'] += 1
+                if not features:
+                    progress['empty_tile_count'] += 1
+                progress.pop('last_error_code', None)
+                if not progress['pending']:
+                    if not progress['found']:
+                        raise HTTPException(503, '확장 도곽에서 연속지적을 확보하지 못했습니다.')
+                    live['_cad_background'] = {
+                        'status': 'COMPLETE', 'features': list(progress['found'].values()),
+                        'request_count': progress['request_count'],
+                        'tile_count': progress['done'],
+                        'empty_tile_count': progress['empty_tile_count'],
+                        'duplicates_removed': progress['duplicates_removed'],
+                        'coverage_assurance': 'PROVIDER_RESPONSE_ONLY',
+                        'cache_version': CAD_CACHE_VERSION,
+                        'source_revision': revision,
+                        'queried_at': datetime.now(ZoneInfo('Asia/Seoul')).isoformat(timespec='seconds')}
+                    del live['_cad_background_progress']
+                return progress_view(live, revision)
         finally:
             cad_gate.release()
 
