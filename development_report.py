@@ -167,6 +167,22 @@ def tables(data):
                                         t.get('analysis_text') if row.get('kind')=='total' else None,
                                         t.get('source'),t.get('as_of')])
     sheets.append(('건축물현황표',building_table_rows))
+    nature_table_rows=[['검토항목','자료상태','행구분','구분','값','단위','면적(㎡)','구역계 대비(%)','도형수·표본수','최저표고(m)','최고표고(m)','비고','자료출처','원자료 기준일','작성시각','분석문']]
+    for item in data['items']:
+        if not re.fullmatch(r'4-[1-8]',str(item.get('id',''))):
+            continue
+        t=item.get('survey_table') or {}
+        rows=t.get('rows') or []
+        if not rows:
+            nature_table_rows.append([item['id'],t.get('status','MISSING'),'미확보','자료 미확보',None,None,None,None,None,None,None,
+                                      ' / '.join(t.get('notes') or []),t.get('source'),t.get('source_as_of'),t.get('prepared_at'),None])
+        for row in rows:
+            nature_table_rows.append([item['id'],t.get('status'),row.get('kind'),row.get('label'),row.get('value'),
+                                      row.get('unit'),row.get('area_m2'),row.get('pct'),row.get('count'),
+                                      row.get('min_m'),row.get('max_m'),row.get('note'),t.get('source'),
+                                      t.get('source_as_of'),t.get('prepared_at'),
+                                      t.get('analysis_text') if row is rows[0] else None])
+    sheets.append(('자연환경현황표',nature_table_rows))
     regulations=[['PNU','검토항목','규제명','관계코드','관계명','관리번호','갱신일']]
     for item in data['items']:
         for row in item.get('regulation_rows',[]):regulations.append([row.get('pnu'),item['id'],row.get('prposAreaDstrcCodeNm'),row.get('cnflcAt'),row.get('cnflcAtNm'),row.get('manageNo'),row.get('lastUpdtDt')])
@@ -243,6 +259,8 @@ def register_report(router, service, snapshots, lock, get_snapshot, fetch_layer,
         attach_land_survey_tables(data,s,area)
         from development_building_tables import attach_building_survey_tables
         attach_building_survey_tables(data)
+        from development_nature_tables import attach_nature_survey_tables
+        attach_nature_survey_tables(data,s)
         return data
     def state_unlocked(token):
         s=snapshots.get(token)
