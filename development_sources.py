@@ -162,6 +162,7 @@ def official_vector(item,geometry,area):
     return {'status':'PARTIAL' if missing else 'DATA','detail':f'공식 원자료 교차 {len(out)}건 · 분류 누락 {missing}건 · 법정 판정 미적용','source':entry['provider'],'source_url':entry['source_url'],'as_of':entry['as_of'],'features':out,'rows':rows,'overlap_area_m2':area(unary_union(parts)) if parts else 0,'scope':'5km' if item=='1-2' else 'fixed_site'}
 
 def dem(geometry,area):
+    from development_terrain_classes import new_accumulator, add_cell, finish
     entry,root=manifest_entry('dem')
     if not entry:return {'status':'MISSING_SOURCE','error_code':'AUTOMATIC_ACQUISITION_NOT_IMPLEMENTED','acquisition':'OFFICIAL_FILE','detail':'DEM 자동 취득 미구현 · 공식 DEM 격자 파일 등록 필요','source':None}
     target=shape(geometry)
@@ -179,6 +180,12 @@ def dem(geometry,area):
         v=values[r][c]
         return None if v is None or v==nodata else finite(v)
     elevations=[];slopes=[];weight=0;slope_weight=0;missing=0;features=[]
+    elev_acc=new_accumulator('elevation')
+    slope_acc=new_accumulator('slope')
+    elev_features=[];slope_features=[]
+    show_limit=5000
+    mapped_cells=0
+
     for r in range(height):
         for c in range(width):
             cell=box(x0+c*dx,y0+r*dx,x0+(c+1)*dx,y0+(r+1)*dx);clip=cell.intersection(metric)
@@ -186,11 +193,20 @@ def dem(geometry,area):
             z=val(r,c);a=clip.area
             if z is None:missing+=1;continue
             elevations.append((z,a));weight+=a
+            ec=add_cell(elev_acc,z,a)
+            if ec is not None and mapped_cells<show_limit:
+                elev_features.append({'type':'Feature','geometry':mapping(transform(back.transform,clip)),
+                                      'properties':{'name':ec[1],'class_code':ec[0],'color':ec[2]}})
+            mapped_cells+=1
             ns=[val(r+rr,c+cc) for rr in (-1,0,1) for cc in (-1,0,1)]
             slope=None
             if all(v is not None for v in ns):
                 gx=((ns[2]+2*ns[5]+ns[8])-(ns[0]+2*ns[3]+ns[6]))/(8*dx);gy=((ns[6]+2*ns[7]+ns[8])-(ns[0]+2*ns[1]+ns[2]))/(8*dx)
                 slope=math.degrees(math.atan(math.hypot(gx,gy)));slopes.append((slope,a));slope_weight+=a
+                sc=add_cell(slope_acc,slope,a)
+                if sc is not None and mapped_cells<=show_limit:
+                    slope_features.append({'type':'Feature','geometry':mapping(transform(back.transform,clip)),
+                                           'properties':{'name':sc[1],'class_code':sc[0],'color':sc[2]}})
             if len(features)<5000:features.append({'type':'Feature','geometry':mapping(transform(back.transform,clip)),'properties':{'name':f'{z:.2f}m','elevation_m':z,'slope_deg':slope}})
     def stats(seq):return {'min':min(v for v,a in seq),'max':max(v for v,a in seq),'mean':sum(v*a for v,a in seq)/sum(a for v,a in seq)} if seq else None
     center=metric.representative_point();xmin,ymin,xmax,ymax=metric.bounds;profiles=[]
@@ -202,7 +218,12 @@ def dem(geometry,area):
             inside=metric.covers(Point(x,y));z=val(math.floor((y-y0)/dx),math.floor((x-x0)/dx)) if inside else None
             pts.append({'distance_m':(xmax-xmin if axis=='동서' else ymax-ymin)*i/100,'elevation_m':z})
         profiles.append({'axis':axis,'points':pts})
-    return {'status':'DATA' if missing==0 and weight>0 and slope_weight>=metric.area*(1-1e-9) else 'PARTIAL','detail':'공식 DEM 격자 기반. 경사는 Horn 3×3 도수(°), 면적가중 평균. 단면은 내부 대표점을 지나는 동서·남북 자동선의 최근접 격자 참고값.','source':entry['provider'],'source_url':entry['source_url'],'as_of':entry['as_of'],'resolution_m':dx,'elevation':stats(elevations),'slope':stats(slopes),'elevation_coverage_pct':100*weight/metric.area,'slope_coverage_pct':100*slope_weight/metric.area,'profiles':profiles,'features':features,'map_truncated':len(elevations)>5000}
+    return {'status':'DATA' if missing==0 and weight>0 and slope_weight>=metric.area*(1-1e-9) else 'PARTIAL','detail':'공식 DEM 격자 기반. 경사는 Horn 3×3 도수(°), 면적가중 평균. 단면은 내부 대표점을 지나는 동서·남북 자동선의 최근접 격자 참고값.','source':entry['provider'],'source_url':entry['source_url'],'as_of':entry['as_of'],'resolution_m':dx,'elevation':stats(elevations),'slope':stats(slopes),'elevation_coverage_pct':100*weight/metric.area,'slope_coverage_pct':100*slope_weight/metric.area,'profiles':profiles,'features':features,'map_truncated':len(elevations)>5000,
+            'elevation_bands':finish(elev_acc,metric.area),
+            'slope_bands':finish(slope_acc,metric.area),
+            # Never publish the first 5000 cells as if they were the full map.
+            'elevation_features':elev_features if mapped_cells<=show_limit else [],
+            'slope_features':slope_features if mapped_cells<=show_limit else []}
 
 def fetch_ned(service,pnu):
     rows=service._land_use_rows_for_pnu(pnu)
@@ -409,7 +430,23 @@ def enrich(data,snapshot,area):
     terrain=facts.get('dem',{})
     for item,key in [('4-1','elevation'),('4-2','slope'),('4-8','profiles')]:
         got=terrain.get(key);results[item]={'status':'참고 분석자료' if got else '자료 필요','detail':terrain.get('detail','공식 DEM 자료 미조회'),'source':terrain.get('source') or '국토지리정보원 등 공공 DEM','source_url':OFFICIAL_LINKS[item]}
-        if got:statistics[item]={'values':got,'resolution_m':terrain.get('resolution_m'),'elevation_coverage_pct':terrain.get('elevation_coverage_pct'),'slope_coverage_pct':terrain.get('slope_coverage_pct')};results[item]['features']=terrain.get('features',[])
+        if got:
+            statistics[item]={'values':got,'resolution_m':terrain.get('resolution_m'),
+                              'elevation_coverage_pct':terrain.get('elevation_coverage_pct'),
+                              'slope_coverage_pct':terrain.get('slope_coverage_pct')}
+            if item in ('4-1','4-2'):
+                band=terrain.get('elevation_bands' if item=='4-1' else 'slope_bands') or {}
+                features=terrain.get('elevation_features' if item=='4-1' else 'slope_features') or []
+                statistics[item]['bands']=band
+                results[item]['features']=features
+                results[item]['legend']=band.get('groups') or []
+                results[item]['thematic_type']='nature_dem'
+                results[item]['provider_verified']=bool(terrain.get('status')=='DATA' and not terrain.get('map_truncated') and features and len(features)<=5000)
+                if terrain.get('map_truncated'):
+                    results[item]['detail']+=' · 등급별 전체 통계만 확보, 지도용 DEM 셀 5,000개 상한 초과로 주제도 보류'
+            else:
+                statistics[item]['profile_data_source']='DEM'
+                results[item]['features']=[]
     e=facts.get('ecvam',{})
     if e.get('status')=='MAP_ONLY' and results.get('4-4',{}).get('status') not in ('공식 파일자료 확보','일부 확보'):results['4-4']={'status':'도면 확보','detail':e['detail'],'source':e['source'],'map_available':True}
     elif e.get('status')=='ERROR' and results.get('4-4',{}).get('status') not in ('공식 파일자료 확보','일부 확보'):results['4-4']={'status':'미확보','detail':e.get('detail','공식 WMS 연결 실패')+' · 등급별 면적은 원도형 별도 필요','source':'국토환경성평가지도'}
