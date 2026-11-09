@@ -226,7 +226,7 @@ def characteristics(service,pnu):
     rows=[]
     for el in root.findall('.//field'):
         if el.findtext('pnu')!=pnu:raise ValueError('PNU mismatch')
-        row={k:el.findtext(k) for k in ('pnu','stdrYear','stdrMt','lastUpdtDt','topgrphFrmCodeNm','topgrphHgCodeNm','roadSideCodeNm','lndUseCodeNm')}
+        row={k:el.findtext(k) for k in ('pnu','stdrYear','stdrMt','lastUpdtDt','tpgrphFrmCodeNm','tpgrphHgCodeNm','roadSideCodeNm','lndUseCodeNm')}
         rows.append(row)
     if len(rows)>=100:raise ValueError('possible truncation')
     rows.sort(key=lambda r:(r.get('stdrYear') or '',r.get('stdrMt') or '',r.get('lastUpdtDt') or ''),reverse=True)
@@ -416,7 +416,7 @@ def enrich(data,snapshot,area):
     characteristic_rows=[]
     for row in land:
         rec=facts.get('characteristics:'+row['pnu'],{}).get('record') or {}
-        row['land_shape']=rec.get('topgrphFrmCodeNm');row['road_frontage']=rec.get('roadSideCodeNm');row['land_characteristics_year']=rec.get('stdrYear')
+        row['land_shape']=rec.get('tpgrphFrmCodeNm') or rec.get('topgrphFrmCodeNm');row['road_frontage']=rec.get('roadSideCodeNm');row['land_characteristics_year']=rec.get('stdrYear')
         if rec:characteristic_rows.append({'pnu':row['pnu'],'shape':row['land_shape'],'overlap_area':row['overlap_area']})
     if characteristic_rows and results.get('2-5',{}).get('status') not in ('공식 파일자료 확보','일부 확보'):
         st=distribution(characteristic_rows,'shape','overlap_area');statistics['2-5']=st;results['2-5']={'status':'필지 속성자료' if st['known'] else '미확보','detail':f"형상명 {st['known']}/{len(land)}필지 확보 · 공시지가 조사용 형상 원문, 사업별 부정형 판정 미적용",'source':'VWorld 토지특성정보'}
@@ -450,7 +450,16 @@ def register_sources(router,service,snapshots,lock,output,get_snapshot,fetch_lay
         if not gate.acquire(False):raise HTTPException(429,'조서 조회 중입니다. 잠시 후 다시 시도하세요.')
         try:
             old=s.get('_national_sources',{}).get(job)
-            if old and old.get('status') in ('DATA','ATTRIBUTE_ONLY','MAP_ONLY'):return {k:v for k,v in old.items() if k not in ('_image','features','rows','profiles')}
+            # Prior 2-5 releases cached an incorrectly spelled topgrph* field.
+            # Refetch the legacy ATTRIBUTE_ONLY response once, instead of
+            # silently displaying 0/N when a user retries the survey.
+            stale_characteristics = (
+                job.startswith('characteristics:') and
+                old and old.get('status') == 'ATTRIBUTE_ONLY' and
+                'tpgrphFrmCodeNm' not in (old.get('record') or {})
+            )
+            if old and old.get('status') in ('DATA','ATTRIBUTE_ONLY','MAP_ONLY') and not stale_characteristics:
+                return {k:v for k,v in old.items() if k not in ('_image','features','rows','profiles')}
             try:
                 if job.startswith('vector:'):
                     k=job.split(':',1)[1];f=s.get('_report_layers',{}).get(k)
