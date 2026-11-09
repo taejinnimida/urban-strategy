@@ -180,24 +180,30 @@ def make_sheet(item, snapshot):
         primitive('polygon', rings=[[(507, 334), (504.6, 340), (507, 339.2)]],
                   fill='#333333', stroke='#333333', weight=0.4, layer='SHEET_DECOR'),
     ])
-    ticks = (1, 2, 5)
-    desired = 20 * metres_per_px
-    power = 10 ** math.floor(math.log10(max(desired, 0.0001)))
-    tick_metres = next((t * power for t in ticks if t * power >= desired), 10 * power)
-    tick_px = tick_metres / metres_per_px
-    while tick_px * 3 > 69:
-        tick_metres /= 2
-        tick_px = tick_metres / metres_per_px
-    x0, y0 = 498.0, 364.0
-    for i in range(3):
-        x = x0 + i * tick_px
-        ops.append(primitive('rect', x=x, y=y0 - 4, w=tick_px, h=4,
-                             fill='#333333' if i % 2 == 0 else '#ffffff',
+    # Choose a true measured distance whose displayed width fits the panel.
+    # Two long segments prevent scale labels from overlapping at small sizes.
+    target_distance = 57.0 * metres_per_px
+    exp = math.floor(math.log10(max(target_distance, 1e-9)))
+    choices = [m * 10 ** k for k in range(exp - 1, exp + 2)
+               for m in (1, 2, 4, 5, 10)]
+    feasible = [n for n in choices if 42 <= n / metres_per_px <= 66]
+    if not feasible:
+        feasible = [n for n in choices if n / metres_per_px <= 67]
+    total_m = min(feasible or choices, key=lambda n: abs(n / metres_per_px - 57))
+    total_px = total_m / metres_per_px
+    half_px = total_px / 2
+    x0, y0 = 497.0, 365.0
+    for i in range(2):
+        x = x0 + i * half_px
+        ops.append(primitive('rect', x=x, y=y0 - 4, w=half_px, h=4,
+                             fill='#333333' if i == 0 else '#ffffff',
                              stroke='#222222', weight=0.3))
-        ops.append(primitive('text', x=x, y=y0 - 6, text=f'{i * tick_metres:g}', size=5.8))
-    ops.append(primitive('text', x=x0 + 3 * tick_px, y=y0 - 6,
-                         text=f'{3 * tick_metres:g}m', size=5.8, anchor='end'))
-    ops.append(primitive('polyline', points=[(x0, y0), (x0 + 3 * tick_px, y0)],
+    ops.append(primitive('text', x=x0, y=y0 - 6.5, text='0', size=5.6))
+    ops.append(primitive('text', x=x0 + half_px, y=y0 - 6.5, text=f'{total_m / 2:g}',
+                         size=5.6, anchor='middle'))
+    ops.append(primitive('text', x=x0 + total_px, y=y0 - 6.5, text=f'{total_m:g}m',
+                         size=5.6, anchor='end'))
+    ops.append(primitive('polyline', points=[(x0, y0), (x0 + total_px, y0)],
                          stroke='#111111', weight=0.6))
 
     ops.append(primitive('rect', x=MAP[0], y=MAP[1], w=MAP[2], h=MAP[3],
