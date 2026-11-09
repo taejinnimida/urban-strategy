@@ -550,17 +550,45 @@ function devRenderSourceDetails(data){
  for(const item of data.items){const option=document.createElement('option');option.value=item.id;option.textContent=`${item.id} ${item.name} · ${item.status}`;select.append(option);}section.append(select);
  const info=document.createElement('p');info.style.padding='12px';section.append(info);
  const cadActions=document.createElement('div');cadActions.className='dev-actions';
+ const cadPrepare=document.createElement('button');cadPrepare.type='button';cadPrepare.textContent='표준 도면 배경자료 준비';
  const cadSingle=document.createElement('button');cadSingle.type='button';cadSingle.textContent='선택 항목 DXF 다운로드';
  const cadBulk=document.createElement('button');cadBulk.type='button';cadBulk.textContent='공간도면 일괄 ZIP 다운로드';
  const cadStatus=document.createElement('span');cadStatus.style.cssText='font-size:12px;color:#526174;align-self:center';
- cadActions.append(cadSingle,cadBulk,cadStatus);section.append(cadActions);
+ cadActions.append(cadPrepare,cadSingle,cadBulk,cadStatus);section.append(cadActions);
+ let cadReady=false,cadPreparing=null,cadAutoAttempted=false;
+ async function prepareCadBackground(){
+  if(cadReady)return;
+  if(cadPreparing)return cadPreparing;
+  cadPrepare.disabled=true;
+  cadPreparing=(async()=>{
+   const base='reports/'+encodeURIComponent(devSite.id)+'/cad-background';
+   let state=await devApi(base+'/status');
+   for(let step=0;!state.ready&&step<64;step++){
+    cadStatus.textContent='주변 지적 수집 '+state.done+'/'+state.total+'구역 · 서버 요청 '+state.request_count+'회 (완료된 구역 저장)';
+    state=await devApi(base+'/next',{});
+   }
+   if(!state.ready)throw Error('주변 지적 수집 요청 상한 도달 · 자료 완전성을 확인해야 합니다.');
+   cadReady=true;
+   cadStatus.textContent='표준 도면 배경자료 준비 완료 · 실제 좌표 기반';
+   paint(); // Refresh the preview now that the same verified CAD context exists.
+  })().catch(e=>{
+   cadStatus.textContent='도면 배경자료 미완료: '+(e.message||'서버 오류')+' · 수집된 구역은 유지됩니다.';
+   throw e;
+  }).finally(()=>{cadPreparing=null;cadPrepare.disabled=false;});
+  return cadPreparing;
+ }
+ cadPrepare.onclick=()=>prepareCadBackground().catch(()=>{});
+
  async function downloadCad(file,url){
-  cadSingle.disabled=true;cadBulk.disabled=true;cadStatus.textContent='확장 도곽의 주변 지적 확인 및 CAD 생성 중…';
+  cadSingle.disabled=true;cadBulk.disabled=true;cadStatus.textContent='주변 지적자료 준비 확인 중…';
   try{
+   await prepareCadBackground();
+   cadStatus.textContent='실좌표 DXF 파일 생성 및 전송 중…';
    const response=await fetch(url,{cache:'no-store'});
    if(!response.ok){
     let detail='CAD 생성 실패 ('+response.status+')';
     try{const payload=await response.json();if(typeof payload.detail==='string')detail=payload.detail;}catch(_){}
+    if(response.status===503&&detail==='CAD 생성 실패 (503)')detail='서버 503: 배포 서버 또는 제공기관 연결 확인 필요. Cloudtype 로그에서 실패 단계를 확인하세요.';
     throw Error(detail);
    }
    const blob=await response.blob(),objectUrl=URL.createObjectURL(blob),a=document.createElement('a');
@@ -605,11 +633,14 @@ function devRenderSourceDetails(data){
  function paint(){
   const item=data.items.find(x=>x.id===select.value);drawn.clearLayers();legendbox.replaceChildren();
   sheetPreview.style.display='none';sheetPreview.removeAttribute('src');mapbox.style.display='block';legendbox.style.display='flex';
+  if(!cadReady&&!cadAutoAttempted&&item.id==='1-1'){
+   cadAutoAttempted=true;prepareCadBackground().catch(()=>{});
+  }
   const available=item.id==='1-1'||(item.provider_verified===true&&['공간자료 확보','일부 확보'].includes(item.status))||(['공식 파일자료 확보','일부 확보'].includes(item.status)&&!!item.features?.length&&item.source!=='VWorld'&&item.thematic_type!=='ecobank');
   cadSingle.dataset.available=available?'yes':'';
   cadSingle.disabled=!available;cadSingle.title=available?'확보된 공간도형 기준 CAD 출력':'검증된 공간도형이 없는 항목은 CAD 출력 불가';
-  cadStatus.textContent=available?'실제 좌표 DXF · 도곽 가로·세로 각각 2배 · 주변 지적 별도 조회':'이 항목은 CAD 도형 미확보 · 일괄 ZIP 목록에 미확보로 기록';
-  if(available&&['2-2','5-2','4-3'].includes(item.id)){
+  if(!cadPreparing)cadStatus.textContent=available?(cadReady?'표준 도면 배경자료 준비 완료':'표준 도면 배경자료 준비 필요 · 준비 버튼을 누르거나 자동 조회를 확인하세요'):'이 항목은 CAD 도형 미확보 · 일괄 ZIP 목록에 미확보로 기록';
+  if(available&&cadReady&&['1-1','2-2','5-2','4-3'].includes(item.id)){
    const selected=item.id;
    sheetPreview.onload=()=>{
     if(select.value!==selected)return;
