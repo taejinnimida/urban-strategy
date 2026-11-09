@@ -224,7 +224,14 @@ def dxf_bytes(item, snapshot, metadata):
     # Labels too small to read or colliding with earlier labels are intentionally omitted.
     frame_short = min(frame.bounds[2] - frame.bounds[0], frame.bounds[3] - frame.bounds[1])
     target_height = min(6.0, max(0.8, 0.013 * frame_short))
-    occupied = []
+    # Spatial hash prevents O(parcels^2) label collision checks on large sites.
+    label_grid = {}
+    cell_size = max(5.0, target_height * 8.0)
+    def label_cells(rect):
+        x0, y0, x1, y1 = rect
+        return ((ix, iy)
+                for ix in range(math.floor(x0/cell_size), math.floor(x1/cell_size)+1)
+                for iy in range(math.floor(y0/cell_size), math.floor(y1/cell_size)+1))
     site_border = projected.boundary
     for geom, props in clipped_parcels:
         raw_label = props.get('jibun') or props.get('JIBUN')
@@ -267,8 +274,10 @@ def dxf_bytes(item, snapshot, metadata):
                     continue
                 rect = (x - half_w - padding, y - half_h - padding,
                         x + half_w + padding, y + half_h + padding)
+                neighbors = {other for cell in label_cells(rect)
+                             for other in label_grid.get(cell, ())}
                 if any(rect[0] < other[2] and rect[2] > other[0] and
-                       rect[1] < other[3] and rect[3] > other[1] for other in occupied):
+                       rect[1] < other[3] and rect[3] > other[1] for other in neighbors):
                     continue
                 selected = (x, y, rect)
                 break
@@ -279,7 +288,8 @@ def dxf_bytes(item, snapshot, metadata):
             model.add_text(label, dxfattribs={
                 'layer': 'PARCEL_LABEL', 'style': 'KOREAN', 'height': round(font_height, 3)
             }).set_placement((float(x), float(y)), align=TextEntityAlignment.MIDDLE_CENTER)
-            occupied.append(rect)
+            for cell in label_cells(rect):
+                label_grid.setdefault(cell, set()).add(rect)
             counts['labels'] += 1
         except (ValueError, TypeError):
             counts['labels_omitted'] += 1
