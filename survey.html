@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>도시현황 FACT 조사</title>
+<link rel="stylesheet" href="/dev-assets/style.css">
+<style>body{max-width:1080px;margin:auto;padding:24px;font-family:system-ui,sans-serif}textarea{width:100%;min-height:190px;font-family:monospace}button{cursor:pointer;padding:10px 14px;margin:5px}pre{white-space:pre-wrap;word-wrap:break-word;background:#f2f4f7;padding:12px;max-height:310px;overflow:auto}table{border-collapse:collapse;width:100%;font-size:13px}th,td{border:1px solid #ddd;padding:8px;text-align:left}small{color:#555}#state{font-weight:600}</style>
+</head>
+<body data-project="survey-facts-only">
+<header><h1>도시현황 FACT 조사</h1>
+<p>독립 현황자료 구축 · 구역계 → 공공자료 → 현황표·CAD · 개발사업 적격성 또는 서울 정비사업 판정 없음</p></header>
+<main>
+<section><h2>1. 대상지 구역계</h2>
+<p>WGS84 EPSG:4326 Polygon/MultiPolygon GeoJSON geometry를 입력하세요. API 자료 미확보는 0이나 비해당으로 처리하지 않습니다.</p>
+<label for="geometry">GeoJSON geometry</label>
+<textarea id="geometry" spellcheck="false" placeholder='{"type":"Polygon","coordinates":[[[127.0,37.5],[127.001,37.5],[127.001,37.501],[127.0,37.5]]]}'></textarea>
+<div><button id="create">구역계 확정</button><button id="prepare" disabled>현황조서 생성</button><button id="sources" disabled>44개 자료항목 확인</button><button id="refresh" disabled>현황 갱신</button></div>
+<p id="state" role="status">대상지 미확정</p></section>
+<section><h2>2. 데이터 수집</h2><div id="jobs"></div><pre id="jobOutput" hidden></pre></section>
+<section><h2>3. 현황 검토 결과</h2><div id="summary"></div><div id="results"></div>
+<p><a id="xlsx" hidden>엑셀 현황조서</a></p></section>
+</main><script src="/survey-ui.js" defer></script>
+</body></html>
