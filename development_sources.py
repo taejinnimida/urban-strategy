@@ -442,7 +442,7 @@ def register_sources(router,service,snapshots,lock,output,get_snapshot,fetch_lay
     def jobs(token:str):
         s=fixed(token)
         if '_report' not in s:raise HTTPException(409,'조서 조회를 먼저 실행하세요.')
-        return {'jobs':[{'id':'vector:'+k,'label':v} for k,v in {**{f'LT_C_UQ11{i}':'용도지역' for i in range(1,5)},**{f'LT_C_UPISUQ15{i}':'도시계획시설' for i in range(1,10)},**EXTRA_LAYERS}.items()]+[{'id':'ned:'+p,'label':'필지 토지이용계획 '+p} for p in s['_report']['land']]+[{'id':'characteristics:'+p,'label':'토지특성 '+p} for p in s['_report']['land']]+[{'id':'file:'+k,'label':v} for k,v in FILE_ITEMS.items() if k!='4-3']+[{'id':'landcover_wms','label':'2025년 세분류 토지피복 WMS 지도'},{'id':'landcover_wfs','label':'세분류 토지피복 원도형 WFS 제공 여부 확인'},{'id':'ecobank','label':'생태·자연도 WFS 원도형'},{'id':'weather','label':'기상청 관측 일자료'},{'id':'dem','label':'표고·경사·단면'},{'id':'ecvam','label':'국토환경성평가 WMS'}]}
+        return {'jobs':[{'id':'vector:'+k,'label':v} for k,v in {**{'LT_C_SPBD':'건축물 공간도형'},**{f'LT_C_UQ11{i}':'용도지역' for i in range(1,5)},**{f'LT_C_UPISUQ15{i}':'도시계획시설' for i in range(1,10)},**EXTRA_LAYERS}.items()]+[{'id':'ned:'+p,'label':'필지 토지이용계획 '+p} for p in s['_report']['land']]+[{'id':'characteristics:'+p,'label':'토지특성 '+p} for p in s['_report']['land']]+[{'id':'file:'+k,'label':v} for k,v in FILE_ITEMS.items() if k!='4-3']+[{'id':'landcover_wms','label':'2025년 세분류 토지피복 WMS 지도'},{'id':'landcover_wfs','label':'세분류 토지피복 원도형 WFS 제공 여부 확인'},{'id':'ecobank','label':'생태·자연도 WFS 원도형'},{'id':'weather','label':'기상청 관측 일자료'},{'id':'dem','label':'표고·경사·단면'},{'id':'ecvam','label':'국토환경성평가 WMS'}]}
     @router.post('/reports/{token}/source-jobs/{job}')
     def collect(token:str,job:str):
         s=fixed(token);allowed={v['id'] for v in jobs(token)['jobs']}
