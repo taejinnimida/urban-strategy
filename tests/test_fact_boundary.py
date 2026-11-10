@@ -58,7 +58,7 @@ class FactBoundaryTests(unittest.TestCase):
             self.adapter.parcel_by_pnu('1234')
 
     def test_independent_region_boundaries(self):
-        data=b'{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"ctp_kor_nm":"서울특별시"},"geometry":{"type":"Polygon","coordinates":[]}}]}'
+        data='{\"type\":\"FeatureCollection\",\"features\":[{\"type\":\"Feature\",\"properties\":{\"ctp_kor_nm\":\"서울특별시\"},\"geometry\":{\"type\":\"Polygon\",\"coordinates\":[]}}]}'.encode('utf-8')
         with patch('facts.vworld.requests.get',return_value=Response(data=data)) as request:
             result=self.adapter.regions((126,37,128,38))
         self.assertEqual(len(result),1)
