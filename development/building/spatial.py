@@ -29,6 +29,10 @@ def _name(v):
 def attach_building_spatial_themes(data,snapshot,area):
     """Two faithful GIS footprint maps, only if real official spatial data exist."""
     indexes={v.get('id'):v for v in data.get('items') or []}
+    # Exact management-key join is allowed. PNU-only or spatial-nearest
+    # matching can assign a building's use/age to the wrong footprint.
+    hub={str(v['id']):v for v in data.get('buildings',[])
+         if isinstance(v,dict) and v.get('id')}
     sources=snapshot.get('_national_sources') or {}
     live=sources.get('building_gis') or {}
     registered=sources.get('file:3-spatial') or {}
@@ -50,13 +54,19 @@ def attach_building_spatial_themes(data,snapshot,area):
         details=[]
         seen=set()
         missing=0
+        exact_hub_matches=set()
         try:
             for i,f in enumerate(source['features']):
                 props=f.get('properties') or {}
                 g=shape(f['geometry'])
                 if g.is_empty or not g.is_valid or g.geom_type not in ('Polygon','MultiPolygon'):
                     raise ValueError('invalid building footprint')
+                matching_hub=hub.get(str(props.get('hub_management_id') or ''))
+                if matching_hub:
+                    exact_hub_matches.add(str(props['hub_management_id']))
                 category=_name(props.get(field))
+                if category is None and matching_hub:
+                    category=_name(matching_hub.get(field))
                 if category is None:
                     missing+=1
                     category='분류 미확보'
@@ -111,6 +121,7 @@ def attach_building_spatial_themes(data,snapshot,area):
             note=['건축물대장 표제부 건수와 GIS건물통합정보 도형수는 다른 모집단입니다.',
                   '구성비의 분모는 GIS 건물도형 합집합 면적이며 구역계 전체면적이 아닙니다.',
                   'GIS 도형별 용도·구조 분류에 근거하며, 편입필지 면적을 건축물 면적으로 사용하지 않습니다.',
+                  f'건축HUB 관리번호 일치: {len(exact_hub_matches)}/{len(details)} GIS 도형. 일치하지 않는 건물의 대장 속성은 추정 결합하지 않습니다.',
                   '원본 GIS 도형의 수록 완전성과 건축물대장 관리번호 일치 여부는 별도 확인 대상입니다.']
             if missing:note.append(f'GIS 도형 분류 미확보 {missing}건. 법정 적격성으로 해석하지 않습니다.')
             description=(f'공식 GIS건물통합정보의 구역계 교차 도형 {len(details)}건을 '
@@ -136,7 +147,9 @@ def attach_building_spatial_themes(data,snapshot,area):
                 'groups':legend,'building_feature_count':len(details),
                 'mapped_footprint_area_m2':covered,
                 'site_area_m2':round(site_area,2),
-                'source':'GIS건물통합정보 편입 도형'}
+                'source':'GIS건물통합정보 편입 도형',
+                'hub_exact_match_count':len(exact_hub_matches),
+                'hub_total_title_count':len(hub)}
             item['statistics']=data['statistics'][itemid]
             item['source_coverage_assurance']=source.get('coverage_assurance','REGISTERED_OFFICIAL_FILE')
             item['source_acquisition']=source.get('acquisition','REGISTERED_FILE')
