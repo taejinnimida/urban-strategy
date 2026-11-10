@@ -138,10 +138,23 @@ def tables(data):
                                cls.get('count'),cls.get('area_m2'),cls.get('color')])
     if len(theme_rows)>1:
         sheets.append(('현황도 분류별 통계',theme_rows))
+    building_table_rows=[['검토항목','자료상태','구분','건축물 공간도형(개)','구성비(%)','자료확인','비고','출처','기준일']]
+    for item in data['items']:
+        if item.get('thematic_type') != 'building':
+            continue
+        table = item.get('survey_table') or {}
+        for row in table.get('rows') or []:
+            building_table_rows.append([item['id'],table.get('status'),row.get('label'),
+                                        row.get('count'),row.get('pct'),row.get('join_status'),
+                                        row.get('note'),table.get('source'),table.get('as_of')])
+        if not (table.get('rows') or []):
+            building_table_rows.append([item['id'],table.get('status'),'분류표 미확보',None,None,
+                                        '미확보','',table.get('source'),table.get('as_of')])
+    sheets.append(('건축물현황표',building_table_rows))
     land_table_rows=[['검토항목','자료상태','행구분','구분','면적(㎡)','구성비(%)','필지·도형수','비고','자료출처','자료기준일']]
     for item in data['items']:
         t=item.get('survey_table')
-        if not t:
+        if not t or item.get('thematic_type') == 'building':
             continue
         if not t.get('rows'):
             land_table_rows.append([item['id'],t['status'],'미확보','현황표 미확보',None,None,None,
