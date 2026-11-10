@@ -130,10 +130,15 @@ def collect_gis_buildings(geometry, facts=None, *,max_features=MAX_FEATURES):
         nonlocal calls
         if calls>=MAX_REQUESTS:raise BuildingSourceError("SOURCE_TRUNCATED")
         calls+=1
+        # NED getBldgisSpceWFS: dt_d010. Official reference's
+        # EPSG:4326 bbox parameter uses LAT/LON ordering, plus CRS suffix.
+        x0,y0,x1,y1=box
         params={
+            "typename":"dt_d010",
             "srsName":"EPSG:4326",
-            "bbox":",".join(format(n,".10f") for n in box),
+            "bbox":",".join(format(n,".10f") for n in (y0,x0,y1,x1))+",EPSG:4326",
             "maxFeatures":str(PAGE_LIMIT),
+            "resultType":"results",
             "output":"application/json",
         }
         try:
