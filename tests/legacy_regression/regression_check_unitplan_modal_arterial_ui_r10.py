@@ -1,6 +1,6 @@
 from pathlib import Path
 import hashlib,re,subprocess,sys,tempfile
-ROOT=Path(__file__).resolve().parent
+ROOT=Path(__file__).resolve().parents[2]
 html=(ROOT/'app.html').read_text(encoding='utf-8')
 checks=[]
 def check(name,ok,detail=''):

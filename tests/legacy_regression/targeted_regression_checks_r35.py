@@ -2,7 +2,7 @@ from pathlib import Path
 import json, re, subprocess, tempfile
 from shapely.geometry import shape
 
-base = Path(__file__).resolve().parent
+base = Path(__file__).resolve().parents[2]
 html = (base / 'app.html').read_text(encoding='utf-8')
 py = (base / 'app.py').read_text(encoding='utf-8')
 ref = json.loads((base / 'route_commercial_reference.geojson').read_text(encoding='utf-8'))

@@ -3,7 +3,7 @@ import importlib.util
 from types import SimpleNamespace
 
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[2]
 HTML = (ROOT / "app.html").read_text(encoding="utf-8")
 PY = (ROOT / "app.py").read_text(encoding="utf-8")
 

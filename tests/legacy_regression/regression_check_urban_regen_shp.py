@@ -1,7 +1,7 @@
 from pathlib import Path
 import ast, hashlib, importlib.util, json, re, subprocess, sys
 
-ROOT=Path(__file__).resolve().parent
+ROOT=Path(__file__).resolve().parents[2]
 py=(ROOT/'app.py').read_text(encoding='utf-8')
 html=(ROOT/'app.html').read_text(encoding='utf-8')
 pre=(ROOT/'app.before_urban_regen_shp.html').read_text(encoding='utf-8')

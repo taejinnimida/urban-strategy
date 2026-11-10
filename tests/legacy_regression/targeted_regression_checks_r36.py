@@ -1,7 +1,7 @@
 from pathlib import Path
 import re, subprocess, tempfile
 
-base=Path(__file__).resolve().parent
+base=Path(__file__).resolve().parents[2]
 html=(base/'app.html').read_text(encoding='utf-8')
 checks=[]
 

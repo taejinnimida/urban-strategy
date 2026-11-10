@@ -1,8 +1,8 @@
 from pathlib import Path
 import hashlib, re, subprocess, sys, json
-ROOT=Path(__file__).resolve().parent
+ROOT=Path(__file__).resolve().parents[2]
 html=(ROOT/'app.html').read_text(encoding='utf-8')
-base=(Path(__file__).resolve().parent/'app.html').read_text(encoding='utf-8')
+base=(Path(__file__).resolve().parents[2]/'app.html').read_text(encoding='utf-8')
 checks=[]
 def check(name,ok,detail=''):
     checks.append((name,bool(ok),detail));print(('PASS' if ok else 'FAIL'),name,detail)
