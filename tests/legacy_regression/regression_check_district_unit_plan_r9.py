@@ -1,7 +1,7 @@
 from pathlib import Path
 import hashlib, importlib.util, re, subprocess, sys
 
-ROOT=Path(__file__).resolve().parent
+ROOT=Path(__file__).resolve().parents[2]
 html=(ROOT/'app.html').read_text(encoding='utf-8')
 py=(ROOT/'app.py').read_text(encoding='utf-8')
 base=(ROOT/'app.before_r9.html').read_text(encoding='utf-8') if (ROOT/'app.before_r9.html').exists() else None

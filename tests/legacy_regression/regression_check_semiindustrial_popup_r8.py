@@ -2,7 +2,7 @@ from pathlib import Path
 import hashlib, importlib.util, json, re, subprocess, sys, zipfile
 from shapely.geometry import shape
 
-ROOT=Path(__file__).resolve().parent
+ROOT=Path(__file__).resolve().parents[2]
 html=(ROOT/'app.html').read_text(encoding='utf-8')
 py=(ROOT/'app.py').read_text(encoding='utf-8')
 checks=[]

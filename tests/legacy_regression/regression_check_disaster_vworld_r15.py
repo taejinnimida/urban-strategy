@@ -1,3 +1,6 @@
+from pathlib import Path as _RootPath
+import sys as _root_sys
+_root_sys.path.insert(0, str(_RootPath(__file__).resolve().parents[2]))
 from pathlib import Path
 import json
 import struct
@@ -10,7 +13,7 @@ from shapely.geometry import shape, mapping, box
 from shapely.ops import transform as geom_transform
 from starlette.requests import Request
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[2]
 import app
 
 passed=0
