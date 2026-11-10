@@ -13,6 +13,8 @@ on:
       - 'survey-ui.js'
       - 'facts/**'
       - 'development/**'
+      - 'standalone/**'
+      - 'tests/test_standalone_build.py'
       - 'tests/test_survey_isolation.py'
       - 'tests/test_repo_structure.py'
       - '.github/workflows/survey-isolation.yml'
@@ -39,5 +41,14 @@ jobs:
           node --check survey-ui.js
       - name: Verify independent survey application and immutable Seoul baseline
         run: python -m unittest tests.test_survey_isolation tests.test_repo_structure tests.test_development_review tests.test_fact_boundary -v
+      - name: Standalone ZIP built and launched outside source tree
+        run: python -m unittest tests.test_standalone_build -v
+      - name: Export portable distribution
+        run: python standalone/build.py --out urban-survey-standalone.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: urban-survey-standalone
+          path: urban-survey-standalone.zip
+          if-no-files-found: error
       - name: Verify basic FACT data grouping
         run: python -m unittest tests.test_development_nature_vector tests.test_development_terrain_classes -v
