@@ -393,6 +393,11 @@ def dxf_bytes(item, snapshot, metadata):
         dxf_paper_sheet(doc, make_sheet(item, snapshot))
         metadata['print_layout'] = 'SURVEY_A3'
         metadata['paper_size'] = 'A3_420x297mm'
+        from development.print_scale import decide_print_scale
+        selected = snapshot.get('print_scale') or decide_print_scale(snapshot['geometry'])
+        metadata['print_scale'] = selected['label']
+        metadata['print_scale_denominator'] = selected['denominator']
+        metadata['print_scale_mode'] = selected['mode']
     stream = io.StringIO()
     doc.write(stream)
     content = stream.getvalue().encode('utf-8')
@@ -421,7 +426,10 @@ def manifest_item(item, snapshot, data):
         'cadastre_frame_width_height_multiplier': FRAME_MULTIPLIER,
         'cadastre_background_status': snapshot.get('_cad_background', {}).get('status', 'UNAVAILABLE'),
         'cadastre_coverage_assurance': snapshot.get('_cad_background', {}).get('coverage_assurance', 'UNVERIFIED'),
-        'crs': CRS, 'units': 'metres', 'notice': NOTICE,
+        'crs': CRS, 'units': 'metres',
+        'paper_print_scale': (snapshot.get('print_scale') or {}).get('label', 'NOT_ASSIGNED'),
+        'paper_print_scale_mode': (snapshot.get('print_scale') or {}).get('mode', 'NOT_ASSIGNED'),
+        'notice': NOTICE,
     }
 
 
