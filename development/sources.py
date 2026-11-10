@@ -96,7 +96,7 @@ def safe_json(path,limit=30_000_000):
     if path.stat().st_size>limit:raise ValueError('file size')
     return json.loads(path.read_text(encoding='utf-8-sig'))
 
-def source_root():return Path(os.environ.get('NATIONAL_DATA_DIR') or Path(__file__).with_name('national_data')).resolve()
+def source_root():return Path(os.environ.get('NATIONAL_DATA_DIR') or (Path(__file__).resolve().parents[1] / 'national_data')).resolve()
 def local_path(root,name):
     p=(root/str(name)).resolve()
     if not p.is_relative_to(root):raise ValueError('path')
