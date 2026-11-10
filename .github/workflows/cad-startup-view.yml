@@ -1,0 +1,27 @@
+name: Survey DXF startup view
+on:
+  push:
+    branches:
+      - fix/dxf-initial-view-20261110
+  pull_request:
+    paths:
+      - 'development/cad.py'
+      - 'tests/test_cad_initial_view.py'
+      - '.github/workflows/cad-startup-view.yml'
+permissions:
+  contents: read
+jobs:
+  cad-initial-view:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install fastapi pydantic shapely pyproj ezdxf requests pyshp httpx
+      - name: Compile source
+        run: python -m py_compile development/cad.py tests/test_cad_initial_view.py
+      - name: Verify saved DXF initial view and modelspace coordinates
+        run: python -m unittest tests.test_cad_initial_view -v
