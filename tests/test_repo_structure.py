@@ -83,7 +83,7 @@ class PackageBoundaryTest(unittest.TestCase):
     def test_gitignore_excludes_bytecode(self):
         ignore=(ROOT / ".gitignore").read_text(encoding="utf-8")
         self.assertIn("__pycache__/", ignore)
-        self.assertIn("*.pyc", ignore)
+        self.assertIn("*.py[cod]", ignore)
 
 
 if __name__ == "__main__":
