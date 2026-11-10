@@ -177,7 +177,7 @@ def make_sheet(item, snapshot):
     for poly in _geometry_parts(site.intersection(view)):
         for ring in _poly_points(poly, xy):
             ops.append(primitive('polyline', points=ring, stroke='#fa3737', weight=2.2,
-                                 dash='7,4', layer='SHEET_SITE'))
+                                 dash='two_dot_chain', layer='SHEET_SITE'))
 
     # Fixed-page title, legend and north/scale columns: same for SVG and DXF.
     ops.extend([
@@ -188,20 +188,23 @@ def make_sheet(item, snapshot):
         primitive('rect', x=PANEL_X, y=322, w=PANEL_W, h=54, fill='#ffffff', stroke='#aaa', weight=0.8),
     ])
     legend = list(zone_context.get('legend') or item.get('legend') or []) if use_zone_context else list(item.get('legend') or [])
-    if item.get('id') == '1-1':
-        # 1-1 is a location/boundary map, not an absent thematic polygon.
-        # Explain the real geometry already printed on the paper sheet.
-        ops.append(primitive('polyline', points=[(497, 69), (504, 69)],
-                             stroke='#fa3737', weight=1.6, dash='7,4',
-                             layer='SHEET_DECOR'))
-        ops.append(primitive('text', x=507, y=71.2, text='확정 대상지', size=6.9))
-        ops.append(primitive('polyline', points=[(497, 81), (504, 81)],
-                             stroke='#cbcbcb', weight=0.7, layer='SHEET_DECOR'))
-        ops.append(primitive('text', x=507, y=83.2, text='주변 연속지적', size=6.9))
-    elif not legend and not display_features:
-        ops.append(primitive('text', x=497, y=73, text='주제도형 미확보', size=7.3))
-    for i, entry in enumerate(legend[:27]):
-        y = 66 + i * 9.0
+    # Every printed sheet MUST explain the red boundary and the cadastral
+    # background before thematic classes. These are actual CAD objects as well
+    # as SVG primitives, not an HTML-only legend overlay.
+    ops.append(primitive('polyline', points=[(497, 69), (504, 69)],
+                         stroke='#fa3737', weight=1.8, dash='two_dot_chain',
+                         layer='SHEET_SITE_LEGEND'))
+    ops.append(primitive('text', x=507, y=71.2, text='확정 구역계 (2점쇄선)',
+                         size=5.5, layer='SHEET_LEGEND_TEXT'))
+    ops.append(primitive('polyline', points=[(497, 81), (504, 81)],
+                         stroke='#cbcbcb', weight=0.7, layer='SHEET_DECOR'))
+    ops.append(primitive('text', x=507, y=83.2, text='주변 연속지적', size=6.9,
+                         layer='SHEET_LEGEND_TEXT'))
+    if not legend and not display_features and item.get('id') != '1-1':
+        ops.append(primitive('text', x=497, y=95, text='주제도형 미확보', size=7.3,
+                             layer='SHEET_LEGEND_TEXT'))
+    for i, entry in enumerate(legend[:25]):
+        y = 95 + i * 8.5
         color = _color(entry.get('color'), '#dddddd')
         ops.append(primitive('rect', x=496, y=y - 5.5, w=7.5, h=7.5,
                              fill=color, stroke='#777777', weight=0.35))
@@ -215,8 +218,8 @@ def make_sheet(item, snapshot):
                              size=max(3.75, font_size)))
     if item.get('id') == '5-2' and not use_zone_context:
         ops.append(primitive('text', x=497, y=307, text='주변 용도지역: 미조회', size=6.2))
-    if len(legend) > 27:
-        ops.append(primitive('text', x=497, y=312, text=f'외 {len(legend) - 27}개: 통계표 참조', size=6.5))
+    if len(legend) > 25:
+        ops.append(primitive('text', x=497, y=312, text=f'외 {len(legend) - 25}개: 통계표 참조', size=6.5))
 
     # Graphic north arrow, fully editable CAD vector.
     ops.extend([
@@ -277,7 +280,9 @@ def svg_sheet(ops):
         elif kind in ('polygon', 'polyline'):
             paths = op['rings'] if kind == 'polygon' else [op['points']]
             d = ' '.join('M ' + ' L '.join(f'{x:.3f},{y:.3f}' for x, y in ring) + (' Z' if kind == 'polygon' else '') for ring in paths)
-            dash = ' stroke-dasharray="7 4"' if op.get('dash') else ''
+            dash = (' stroke-dasharray="11 3 0.5 2 0.5 3" stroke-linecap="round"'
+                    if op.get('dash') == 'two_dot_chain' else
+                    ' stroke-dasharray="7 4"' if op.get('dash') else '')
             buf.append(f'<path d="{d}" fill="{fill}" fill-rule="evenodd" stroke="{stroke}" stroke-width="{weight}" stroke-linejoin="round"{dash}/>')
         elif kind == 'text':
             weight_tag = ' font-weight="bold"' if op.get('bold') else ''
@@ -298,7 +303,13 @@ def dxf_paper_sheet(doc, ops):
     if 'SURVEY_KOR' not in doc.styles:
         doc.styles.new('SURVEY_KOR', dxfattribs={'font': 'malgun.ttf'})
     if 'SURVEY_DASH' not in doc.linetypes:
-        doc.linetypes.new('SURVEY_DASH', dxfattribs={'description': 'Survey site outline', 'pattern': [8.0, 5.0, -3.0]})
+        doc.linetypes.new('SURVEY_DASH', dxfattribs={'description': 'Simple reference dash', 'pattern': [8.0, 5.0, -3.0]})
+    if 'SURVEY_CHAIN2_PAPER' not in doc.linetypes:
+        # Repeated long dash + dot + dot. Zero-length positive entries are DOTS.
+        # Pattern is measured in paper-space millimetres, not projected metres.
+        doc.linetypes.new('SURVEY_CHAIN2_PAPER', dxfattribs={
+            'description':'Boundary: long dash + two dots',
+            'pattern':[8.0, 4.5, -0.8, 0.0, -0.6, 0.0, -2.1]})
 
     def mm(x, y):
         return (4.0 + x * SCALE, PAPER_H - PAPER_DY - y * SCALE)
@@ -311,7 +322,9 @@ def dxf_paper_sheet(doc, ops):
             doc.layers.new(layer_name, dxfattribs={'color': 7, 'true_color': rgb})
         result = {'layer': layer_name, 'true_color': rgb,
                   'lineweight': max(9, min(53, round(op.get('weight', 0.5) * 24)))}
-        if op.get('dash'):
+        if op.get('dash') == 'two_dot_chain':
+            result['linetype'] = 'SURVEY_CHAIN2_PAPER'
+        elif op.get('dash'):
             result['linetype'] = 'SURVEY_DASH'
         return result
 
