@@ -63,6 +63,8 @@ class PrintScaleTest(unittest.TestCase):
         ops=make_sheet(item,snapshot)
         self.assertTrue(any(o.get('type')=='text' and o.get('text')=='1:1,000' for o in ops))
         self.assertIn(b'1:1,000',svg_sheet(ops))
+        self.assertIn(b'width="420mm" height="297mm"',svg_sheet(ops))
+        self.assertIn(b'<g transform="translate(4 ',svg_sheet(ops))
         # The plotted 160-m-wide site must be 160 mm wide at scale 1:1000.
         doc=ezdxf.new('R2010')
         dxf_paper_sheet(doc,ops)
