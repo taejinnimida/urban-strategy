@@ -60,6 +60,20 @@ class LandThemeTest(unittest.TestCase):
         self.assertEqual(sum(x['area_m2'] for x in item['legend']),200)
         self.render(item)
 
+    def test_shape_current_vworld_field_is_mapped_without_seoul_fallback(self):
+        # VWorld getLandCharacteristics returns tpgrphFrmCodeNm,
+        # while earlier tests/snapshots used topgrphFrmCodeNm.
+        facts=self.snapshot['_national_sources']
+        for pnu,name in [('p1','사다리형'),('p2','부정형')]:
+            facts['characteristics:'+pnu]['record']={
+                'pnu':pnu,'tpgrphFrmCodeNm':name}
+        attach_land_shape_theme(self.data,self.snapshot,self.area)
+        item=self.data['items'][0]
+        self.assertEqual(item['status'],'공간자료 확보')
+        self.assertEqual({g['name'] for g in item['legend']},{'사다리형','부정형'})
+        self.assertEqual(item['statistics']['known_parcel_count'],2)
+        self.assertTrue(_exportable(item,self.snapshot))
+
     def test_shape_missing_value_is_gray_not_inferred(self):
         self.snapshot['_national_sources'].pop('characteristics:p2')
         attach_land_shape_theme(self.data,self.snapshot,self.area)
