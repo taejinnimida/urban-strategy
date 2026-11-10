@@ -225,6 +225,8 @@ def register_report(router, service, snapshots, lock, get_snapshot, fetch_layer,
         attach_landcover_theme(data,s,area)
         from development_land_tables import attach_land_survey_tables
         attach_land_survey_tables(data,s,area)
+        from development_building_theme import attach_building_themes
+        attach_building_themes(data,s)
         return data
     def state_unlocked(token):
         s=snapshots.get(token)
