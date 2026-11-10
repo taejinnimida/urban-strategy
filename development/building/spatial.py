@@ -29,14 +29,22 @@ def _name(v):
 def attach_building_spatial_themes(data,snapshot,area):
     """Two faithful GIS footprint maps, only if real official spatial data exist."""
     indexes={v.get('id'):v for v in data.get('items') or []}
-    source=(snapshot.get('_national_sources') or {}).get('file:3-spatial') or {}
+    sources=snapshot.get('_national_sources') or {}
+    live=sources.get('building_gis') or {}
+    registered=sources.get('file:3-spatial') or {}
+    # Prefer direct provider geometry when it contains at least one feature;
+    # verified original-file input remains a provenance-checkable fallback.
+    # A failed live call never means zero buildings or replaces a good file.
+    source=(live if live.get('status') in ('DATA','PARTIAL') and live.get('features')
+            else registered if registered.get('status') in ('DATA','PARTIAL') and registered.get('features')
+            else live if live else registered)
     for itemid,(field,word) in FIELDS.items():
         item=indexes.get(itemid)
         if item is None:continue
         item['spatial_status']='MISSING'
         item['spatial_detail']='공식 GIS건물통합정보 원도형이 등록·확인되지 않아 건물별 도면을 생성하지 않았습니다.'
         item['building_registry_table']=item.get('survey_table')
-        if source.get('status')!='DATA' or not source.get('features'):
+        if source.get('status') not in ('DATA','PARTIAL') or not source.get('features'):
             continue
         groups=defaultdict(list)
         details=[]
@@ -119,6 +127,8 @@ def attach_building_spatial_themes(data,snapshot,area):
                         detail=f'GIS건물통합정보 {len(details)}개 도형 · {word}별 공간분류 · 건축HUB 표제부와 독립된 집계',
                         source=table['source'],features=features,
                         legend=legend,thematic_type='building_spatial',
+                        # A category can be complete even if the *other*
+                        # category is missing (e.g., use present, structure absent).
                         provider_verified=table['status']=='COMPLETE',
                         spatial_status=table['status'],spatial_detail=description,
                         survey_table=table)
@@ -128,6 +138,9 @@ def attach_building_spatial_themes(data,snapshot,area):
                 'site_area_m2':round(site_area,2),
                 'source':'GIS건물통합정보 편입 도형'}
             item['statistics']=data['statistics'][itemid]
+            item['source_coverage_assurance']=source.get('coverage_assurance','REGISTERED_OFFICIAL_FILE')
+            item['source_acquisition']=source.get('acquisition','REGISTERED_FILE')
+            item['registry_footprint_join_status']='NOT_VERIFIED'
         except (KeyError,ValueError,TypeError,OverflowError):
             item['spatial_status']='ERROR'
             item['spatial_detail']='GIS건물통합정보 도형·분류 검증 오류로 도면을 출력하지 않습니다.'
