@@ -97,142 +97,105 @@ def _gis_value(field, props, as_of):
 
 
 def attach_building_themes(data, snapshot):
-    """Attach seven thematic map layers without changing ledger inventory statistics."""
-    layers = snapshot.get('_report_layers', {})
-    integrated = layers.get('LT_C_BLDGINFO') or {}
-    secondary = layers.get('LT_C_SPBD') or {}
-    # Use GIS-building integrated information first. Only when it has no usable
-    # polygons may the independent address-building footprint serve as fallback.
-    site = shape(snapshot['geometry'])
-    by_id = {str(r['id']).strip(): r for r in data['buildings'] if r.get('id')}
-    footprints, skipped = [], 0
-    chosen, layer_name = None, None
-    for name, candidate in (('LT_C_BLDGINFO', integrated), ('LT_C_SPBD', secondary)):
-        if candidate.get('status') not in ('COMPLETE', 'REFERENCE'):
-            continue
-        shapes = []
-        local_skipped = 0
-        for feature in candidate.get('features') or []:
-            try:
-                geom = shape(feature['geometry'])
-                if geom.is_empty or not geom.is_valid or geom.geom_type not in ('Polygon', 'MultiPolygon'):
-                    local_skipped += 1
-                    continue
-                clipped = geom.intersection(site)
-                if clipped.is_empty or clipped.area <= 0:
-                    continue
-                props = {str(k).lower(): v for k, v in (feature.get('properties') or {}).items()}
-                mgm = str(props.get('mgmbldrgstpk') or props.get('mgm_bldrgst_pk') or '').strip()
-                matched = by_id.get(mgm) if mgm else None
-                shapes.append({'geometry': mapping(clipped), 'ledger': matched,
-                               'props': props, 'layer_name': name,
-                               'join_status': 'EXACT_ID' if matched else 'UNMATCHED'})
-            except (TypeError, ValueError, KeyError):
-                local_skipped += 1
-        # A confirmed 0-result is meaningful only if no other source has shapes.
-        if shapes:
-            chosen, layer_name = candidate, name
-            footprints, skipped = shapes, local_skipped
-            break
-        if chosen is None:
-            chosen, layer_name, skipped = candidate, name, local_skipped
-    fetched = chosen is not None
-    verified = fetched and chosen.get('status') == 'COMPLETE'
-    n = len(footprints)
-    source_label = ('VWorld GIS건물통합정보' if layer_name == 'LT_C_BLDGINFO' else
-                    'VWorld 도로명주소 건물도형(보조)') + ' · 건축HUB'
-    matches = sum(1 for f in footprints if f['ledger'])
+    """Attach thematic output from one quality-graded, independent building FACT."""
+    from development_building_fact import assemble_building_fact
+
+    fact = assemble_building_fact(data, snapshot)
+    data['building_fact'] = fact
+    records = fact['records']
+    n = len(records)
+    from collections import Counter
+
     for item in data['items']:
         item_id = item['id']
         field = FIELDS.get(item_id)
-        if field is None:
+        if not field:
             continue
-        if not fetched:
+        if fact['geometry_status'] == 'UNAVAILABLE':
             item.update(features=[], provider_verified=False, geometry_status='UNAVAILABLE',
-                        detail=(item.get('detail') or '') + ' · 건축물 공간도형 미확보')
+                        detail=(item.get('detail') or '')+' · 건축물 공간자료 미확보(0건으로 간주하지 않음)')
             continue
-
-        mapped = []
-        for f in footprints:
-            value = None
-            if f['layer_name'] == 'LT_C_BLDGINFO':
-                value = _gis_value(field, f['props'], data.get('as_of'))
-            if value is None and f['ledger']:
-                value = f['ledger'].get(field)
-            label = _classify(item_id, value) if value is not None else (OTHER if f['ledger'] else UNKNOWN)
-            mapped.append(label)
-        totals = Counter(mapped)
-
-        fixed = list(BINS.get(item_id, ()))
-        if fixed:
-            order = fixed + ([OTHER] if totals.get(OTHER) else []) + ([UNKNOWN] if totals.get(UNKNOWN) else [])
-        else:
-            order = sorted((k for k in totals if k not in (OTHER, UNKNOWN)),
-                           key=lambda k: (-totals[k], k))
-            order += ([OTHER] if totals.get(OTHER) else []) + ([UNKNOWN] if totals.get(UNKNOWN) else [])
-
-        classes = {}
-        for i, label in enumerate(order):
-            if label == UNKNOWN:
-                color, code = '#a1a1aa', 'C99'
-            elif label == OTHER:
-                color, code = '#d6d3d1', 'C98'
+        # Conflicting attributes are never silently resolved. The footprint
+        # remains on the map in a separately reviewable category.
+        labels = []
+        for rec in records:
+            field_data = rec['attributes'][field]
+            if field_data['assurance'] == 'CONFLICT':
+                label = '자료 불일치(검토)'
+            elif field_data['value'] is None:
+                label = OTHER if rec['join_status'] == 'EXACT_ID' else UNKNOWN
             else:
-                color = PALETTE[i % len(PALETTE)]
-                code = 'C' + str(min(i + 1, 97)).zfill(2)
-            classes[label] = {'name': label, 'class_code': code,
-                              'color': color, 'count': totals[label],
-                              'pct': round(totals[label] / n * 100, 1) if n else 0.0}
-
-        features = []
-        for f, label in zip(footprints, mapped):
-            meta = classes[label]
-            features.append({'type': 'Feature', 'geometry': f['geometry'],
-                             'properties': {'name': label, 'class_code': meta['class_code'],
-                                            'color': meta['color'],
-                                            'join_status': f['join_status']}})
-
-        rows = [{'kind': 'total', 'label': '합계', 'count': n,
-                 'pct': 100.0 if n else 0.0,
-                 'join_status': '도형 기준', 'note': '건축물 공간도형 수'}]
-        for label in order:
-            meta = classes[label]
-            rows.append({'kind': 'category', 'label': label, 'count': meta['count'],
-                         'pct': meta['pct'], 'join_status': (
-                             '속성 미확인' if label == UNKNOWN else
-                             '항목값 없음' if label == OTHER else '공식 속성자료'),
-                         'note': ''})
-        note = ('VWorld 건축물 외곽선 기준. 건물도형 하나를 건축물 한 동으로 최종 확정하지 않음. '
-                '공간도형과 건축물대장 관리번호가 일치하지 않으면 대장 미확인으로 별도 집계. '
-                '미확인 건축물을 무허가 또는 철거 건축물로 단정하지 않음.')
+                label = _classify(item_id, field_data['value'])
+            labels.append(label)
+        totals = Counter(labels)
+        ordered = list(BINS.get(item_id) or [])
+        if not ordered:
+            ordered = sorted((k for k in totals if k not in (OTHER,UNKNOWN,'자료 불일치(검토)')),
+                             key=lambda k: (-totals[k],k))
+        ordered += [k for k in (OTHER, UNKNOWN, '자료 불일치(검토)') if totals.get(k)]
+        categories = {}
+        for index,label in enumerate(ordered):
+            if label == UNKNOWN:
+                code,color='C99','#a1a1aa'
+            elif label == OTHER:
+                code,color='C98','#d6d3d1'
+            elif label == '자료 불일치(검토)':
+                code,color='C97','#dc2626'
+            else:
+                code,color=f'C{index+1:02d}',PALETTE[index % len(PALETTE)]
+            categories[label] = {'name':label,'class_code':code,'color':color,
+                                 'count':totals.get(label,0),
+                                 'pct':round(100*totals.get(label,0)/n,1) if n else 0}
+        features=[]
+        for rec,label in zip(records,labels):
+            item_value = rec['attributes'][field]
+            features.append({'type':'Feature','geometry':rec['geometry'],
+                             'properties':{'name':label,
+                                           'color':categories[label]['color'],
+                                           'class_code':categories[label]['class_code'],
+                                           'join_status':rec['join_status'],
+                                           'quality_grade':rec['quality_grade'],
+                                           'attribute_assurance':item_value['assurance'],
+                                           'source':item_value['source'],
+                                           'building_fact_id':rec['id']}})
+        rows=[{'kind':'total','label':'합계','count':n,
+               'pct':100.0 if n else 0.0,'join_status':'공간도형 기준',
+               'note':'법정 건축물 동수 미확정'}]
+        for label in ordered:
+            row=categories[label]
+            rows.append({'kind':'category','label':label,'count':row['count'],
+                         'pct':row['pct'],'join_status':(
+                             '자료 불일치' if label=='자료 불일치(검토)' else
+                             '속성 미확인' if label==UNKNOWN else
+                             '항목값 없음' if label==OTHER else '출처별 확보'),
+                         'note':''})
+        note=fact['note']
         if not n:
-            note += ' 건축물 도형 조회 결과 0건으로, 실제 건축물 부존재를 보증하지 않음.'
-        if layer_name == 'LT_C_SPBD':
-            note += ' 도로명주소 건물도형은 속성 확인되지 않으면 미확인으로 분류.'
-        if skipped:
-            note += f' 비정상 도형 {skipped}건 표시 제외(검증 필요).'
-        item.update(
-            features=features,
-            legend=[classes[label] for label in order if totals[label] > 0],
-            thematic_type='building', provider_verified=verified,
-            geometry_status='COMPLETE' if verified else 'REFERENCE',
-            source=source_label,
-            status='공간자료 확보' if verified else '보조 조회 참고자료',
-            detail=(item.get('detail') or '') +
-                   f' · 도형 {n}개, 대장 관리번호 직접연계 {matches}개, 미연계 {n-matches}개 · 도형출처 {layer_name}'
-                   + ' · ' + note,
-            survey_table={
-                'title': f'[표 {item_id} {TITLES[item_id]} 현황]',
-                'status': 'COMPLETE' if verified else 'REFERENCE',
-                'rows': rows, 'source': source_label,
-                'as_of': data.get('as_of'), 'notes': [note],
-            },
-        )
-        stat = data.get('statistics', {}).get(item_id)
-        if isinstance(stat, dict):
-            stat.update(footprint_count=n, verified_ledger_joins=matches,
-                        unmatched_footprints=n - matches, invalid_features=skipped,
-                        footprint_status=item['geometry_status'],
-                        mapped_groups=[classes[label] for label in order],
-                        mapped_total=n, mapped_unit='건축물 공간도형(개)',
-                        note=(stat.get('note') or '') + ' ' + note)
+            note+=' 공간도형 수집결과 0건은 실제 건축물 부존재를 증명하지 않음.'
+        if fact['geometry_status'] != 'COMPLETE':
+            note+=' 일부/보조 공간자료이며 도형 수는 확정되지 않음.'
+        sources='VWorld GIS건물통합정보 · 도로명주소 건물도형(보조) · 건축HUB'
+        item.update(features=features,
+                    legend=[categories[k] for k in ordered if totals.get(k)],
+                    thematic_type='building',provider_verified=fact['provider_verified'],
+                    geometry_status=fact['geometry_status'],
+                    source=sources,
+                    status='공간자료 확보' if fact['geometry_status']=='COMPLETE' else
+                           '일부 공간자료 확보' if fact['geometry_status']=='PARTIAL' else '보조 조회 참고자료',
+                    detail=(item.get('detail') or '') +
+                           f" · 도형 {n}개, 대장 직접연결 {fact['counts']['direct_register_matches']}개"
+                           f", GIS 속성만 확보 {fact['counts']['gis_attribute_only']}개"
+                           f", 검토 필요 {fact['counts']['conflicting_shapes']}개"
+                           ' · '+note,
+                    survey_table={'title':f'[표 {item_id} {TITLES[item_id]} 현황]',
+                                  'status':fact['geometry_status'],'rows':rows,
+                                  'source':sources,'as_of':data.get('as_of'),
+                                  'notes':[note]})
+        stat=data.get('statistics',{}).get(item_id)
+        if isinstance(stat,dict):
+            stat.update(footprint_count=n,verified_ledger_joins=fact['counts']['direct_register_matches'],
+                        unmatched_footprints=n-fact['counts']['direct_register_matches'],
+                        footprint_status=fact['geometry_status'],
+                        mapped_groups=[categories[k] for k in ordered],
+                        mapped_total=n,mapped_unit='건축물 공간도형(개)',
+                        note=(stat.get('note') or '')+' '+note)
