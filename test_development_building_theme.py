@@ -47,7 +47,7 @@ class BuildingSurveyTest(unittest.TestCase):
             self.assertEqual(len(item['features']), 2)
             self.assertEqual(item['survey_table']['rows'][0]['count'], 2)
             self.assertEqual(sum(e['count'] for e in item['legend']), 2)
-            self.assertEqual(item['geometry_status'], 'COMPLETE')
+            self.assertEqual(item['geometry_status'], 'PARTIAL')
         self.assertEqual(d['items'][0]['features'][0]['properties']['name'], '단독주택')
         self.assertEqual(d['items'][0]['features'][1]['properties']['name'], '대장 미확인')
         self.assertEqual(d['items'][2]['features'][0]['properties']['name'], '3층')
@@ -87,12 +87,60 @@ class BuildingSurveyTest(unittest.TestCase):
 
     def test_zero_footprints_yields_real_blank_sheet_data(self):
         d = data()
-        attach_building_themes(d, snapshot([]))
+        s = snapshot([])
+        s['_report_layers']['LT_C_BLDGINFO'] = {'status': 'COMPLETE', 'features': []}
+        attach_building_themes(d, s)
         for item in d['items']:
             self.assertEqual(item['features'], [])
             self.assertEqual(item['survey_table']['rows'][0]['count'], 0)
             self.assertTrue(item['provider_verified'])
             self.assertEqual(item['geometry_status'], 'COMPLETE')
+
+    def test_partial_empty_is_not_verified_zero(self):
+        d = data()
+        attach_building_themes(d, snapshot([]))
+        self.assertEqual(d['building_fact']['geometry_status'], 'PARTIAL')
+        self.assertFalse(d['building_fact']['counts']['zero_confirmed'])
+        self.assertEqual(d['items'][0]['survey_table']['rows'][0]['count'], 0)
+        self.assertFalse(d['items'][0]['provider_verified'])
+
+    def test_direct_join_conflict_is_not_silently_selected(self):
+        d = data()
+        geom = feature(box(1, 1, 3, 3), 'MG001')
+        geom['properties']['mainPurpsCdNm'] = '근린생활시설'
+        s = snapshot([], 'COMPLETE')
+        s['_report_layers']['LT_C_BLDGINFO'] = {'status': 'COMPLETE', 'features': [geom]}
+        attach_building_themes(d, s)
+        self.assertEqual(d['items'][0]['features'][0]['properties']['name'], '자료 불일치(검토)')
+        self.assertEqual(d['building_fact']['records'][0]['quality_grade'], 'E_CONFLICT')
+        self.assertIsNone(d['building_fact']['records'][0]['attributes']['use']['value'])
+
+    def test_spatial_overlap_not_fake_direct_register_match(self):
+        d = data()
+        attach_building_themes(d, snapshot([feature(box(1, 1, 3, 3))]))
+        self.assertEqual(d['building_fact']['counts']['direct_register_matches'], 0)
+        self.assertEqual(d['building_fact']['counts']['register_without_direct_geometry'], 1)
+        self.assertEqual(d['items'][0]['features'][0]['properties']['name'], '대장 미확인')
+
+    def test_duplicate_address_polygon_suppressed(self):
+        d = data()
+        geom = feature(box(1, 1, 3, 3))
+        geom['properties'] = {'mainPurpsCdNm': '단독주택'}
+        s = snapshot([feature(box(1, 1, 3, 3))])
+        s['_report_layers']['LT_C_BLDGINFO'] = {'status': 'COMPLETE', 'features': [geom]}
+        attach_building_themes(d, s)
+        self.assertEqual(d['building_fact']['counts']['mapped_shapes'], 1)
+        self.assertEqual(d['building_fact']['counts']['address_duplicates_suppressed'], 1)
+
+    def test_disjoint_fallback_retained_with_gis(self):
+        d = data()
+        geom = feature(box(1, 1, 3, 3))
+        geom['properties'] = {'mainPurpsCdNm': '근린생활시설'}
+        s = snapshot([feature(box(6, 6, 8, 8))])
+        s['_report_layers']['LT_C_BLDGINFO'] = {'status': 'COMPLETE', 'features': [geom]}
+        attach_building_themes(d, s)
+        self.assertEqual(d['building_fact']['counts']['mapped_shapes'], 2)
+        self.assertEqual(d['items'][0]['features'][1]['properties']['name'], '대장 미확인')
 
     def test_failed_layer_does_not_become_zero(self):
         d = data()
