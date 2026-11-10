@@ -42,7 +42,7 @@
       token=data.id;jobs=[];
       $('jobs').replaceChildren();$('results').replaceChildren();$('summary').textContent='';
       ['prepare','sources','refresh'].forEach(id=>btn(id,true));
-      output('구역계 확정: '+Number(data.area_m2).toLocaleString('ko-KR')+'㎡ · 자료 유효시간 2시간');
+      output('구역계 확정: '+Number(data.area_m2).toLocaleString('ko-KR')+'㎡ · 도면축척 '+(data.print_scale?.label||'미결정')+' · 자료 유효시간 2시간');
     }catch(e){statusError(e);}
   });
   $('prepare').addEventListener('click',async()=>{
