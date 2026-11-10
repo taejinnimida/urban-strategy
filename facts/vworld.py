@@ -113,7 +113,7 @@ class VWorldFacts:
             'category':'parcel','crs':'EPSG:4326'})
 
     def parcel_by_pnu(self, pnu: str) -> dict:
-        if not re.fullmatch(r'\\d{19}',pnu):
+        if not re.fullmatch(r'\d{19}',pnu):
             raise FactTransportError('INVALID_PNU')
         return self.fetch('https://api.vworld.kr/req/data',{
             'service':'data','request':'getfeature','version':'2.0',
