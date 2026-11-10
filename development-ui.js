@@ -21,7 +21,7 @@ confirmCurrentBoundary=async function(){
  if(selectedParcelPnus.size){if(!await applySelectedParcelsAsBoundary()){devStatus('구역계 확정이 취소되었습니다.');return;}}else await devConfirmOriginal();
  if(!activeGeometry)return;const geometry=JSON.parse(JSON.stringify(activeGeometry)),signature=JSON.stringify(geometry);devStatus('구역계 확정 및 서울 행정경계 확인 중…');
  const v=await devApi('snapshots',{geometry});if(signature!==JSON.stringify(activeGeometry)){devStatus('확정 중 구역계가 변경되었습니다. 다시 확정하세요.');return;}
- devSite=v;devSignature=signature;devStatus(`확정 면적 ${v.area_m2.toLocaleString()}㎡ · ${v.region==='SEOUL'?'서울 대상지':v.region==='OUTSIDE_OR_MIXED'?'서울 외 또는 경계 혼합':'행정경계 미확보: 서울 검토 잠김'} · 검토창 유효시간 2시간`);
+ devSite=v;devSignature=signature;devStatus(`확정 면적 ${v.area_m2.toLocaleString()}㎡ · ${v.region==='SEOUL'?'서울 대상지':v.region==='OUTSIDE_OR_MIXED'?'서울 외 또는 경계 혼합':'행정경계 미확보: 서울 검토 잠김'} · 도면축척 ${v.print_scale?.label||'미결정'} · 검토창 유효시간 2시간`);
  }catch(e){devStatus(e.message);}finally{devBusy=false;devRefresh();}
 };
 function devOpen(mode){if(!devSite||devSignature!==JSON.stringify(activeGeometry)||devBusy)return;if(mode==='seoul'&&devSite.region!=='SEOUL')return;const w=window.open('/?review='+mode+'&site='+encodeURIComponent(devSite.id),'_blank');if(w)w.opener=null;else devStatus('팝업이 차단되었습니다. 새 창 열기를 허용하세요.');}
@@ -568,7 +568,7 @@ async function devInit(){
  try{
  const token=new URLSearchParams(location.search).get('site');if(!token)throw Error('초기 화면에서 대상지를 확정한 뒤 검토창을 여세요.');devSite=await devApi('snapshots/'+encodeURIComponent(token));devSite.id=token;if(devMode==='seoul'&&devSite.region!=='SEOUL')throw Error('서울 포함 여부가 확인되지 않아 서울 사업검토를 실행할 수 없습니다.');
  activeGeometry=JSON.parse(JSON.stringify(devSite.geometry));devSignature=JSON.stringify(activeGeometry);boundaryReferenceGeometry=JSON.parse(JSON.stringify(activeGeometry));drawnItems.clearLayers();L.geoJSON(activeGeometry,{style:{color:'#dc2626',weight:4,fillOpacity:.04}}).eachLayer(l=>drawnItems.addLayer(l));setBoundaryReferenceMetrics();fitToActiveArea();
- devStatus(`확정 대상지 사본 · ${devSite.area_m2.toLocaleString()}㎡ · 원래 창을 수정해도 이 창의 대상지는 유지됩니다.`);
+ devStatus(`확정 대상지 사본 · ${devSite.area_m2.toLocaleString()}㎡ · 도면축척 ${devSite.print_scale?.label||'미결정'} · 원래 창을 수정해도 이 창의 대상지는 유지됩니다.`);
  if(devMode==='seoul'){await devRunOriginal();return;}
  devInstallLayout();
  devInstallPlanningMap();
