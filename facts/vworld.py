@@ -16,6 +16,8 @@ ALLOWED = {
     ('api.vworld.kr', '/req/wfs'),
     ('api.vworld.kr', '/req/wms'),
     ('api.vworld.kr', '/ned/data/getLandCharacteristics'),
+    ('api.vworld.kr', '/ned/data/ladfrlList'),
+    ('api.vworld.kr', '/ned/data/getIndvdLandPriceAttr'),
     ('api.vworld.kr', '/ned/data/getLandUseAttr'),
 }
 
