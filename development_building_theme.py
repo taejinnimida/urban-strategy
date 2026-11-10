@@ -178,6 +178,7 @@ def attach_building_themes(data, snapshot):
         item.update(features=features,
                     legend=[categories[k] for k in ordered if totals.get(k)],
                     thematic_type='building',provider_verified=fact['provider_verified'],
+                    cad_exportable=any(v.get('status') == 'COMPLETE' for v in fact['source_info'].values()),
                     geometry_status=fact['geometry_status'],
                     source=sources,
                     status='공간자료 확보' if fact['geometry_status']=='COMPLETE' else
