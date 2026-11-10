@@ -15,8 +15,8 @@ FORBIDDEN_IN_NATIONWIDE = (
     "app", "dev_app", "market_renewal", "seoul_facilities", "ui_editor_backend"
 )
 REQUIRED_ASSETS = (
-    "development-ui.js", "development/index.html", "development/nonurban.html",
-    "development/nonurban.js", "app.html", "Dockerfile"
+    "development-ui.js", "index.html", "nonurban.html",
+    "nonurban.js", "style.css", "app.html", "Dockerfile"
 )
 MODULES = (
     "development.review", "development.sources", "development.report",
@@ -80,12 +80,10 @@ class PackageBoundaryTest(unittest.TestCase):
         self.assertFalse((ROOT / "test_pipeline_repair.py").exists())
         self.assertTrue((ROOT / "tests/test_pipeline_repair.py").exists())
 
-    def test_no_tracked_bytecode_in_source_tree(self):
-        for f in PKG.rglob("*"):
-            if f.is_file() and (f.name.endswith(".pyc") or "__pycache__" in f.parts):
-                # Python runs can create caches locally, so this is intentionally
-                # controlled by .gitignore and Git tree verification, not disk state.
-                pass
+    def test_gitignore_excludes_bytecode(self):
+        ignore=(ROOT / ".gitignore").read_text(encoding="utf-8")
+        self.assertIn("__pycache__/", ignore)
+        self.assertIn("*.pyc", ignore)
 
 
 if __name__ == "__main__":
