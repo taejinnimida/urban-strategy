@@ -8,14 +8,12 @@ building polygon. The HUB ledger table is retained separately for comparison.
 from collections import defaultdict
 import hashlib
 import json
-import math
 
 from shapely.geometry import mapping, shape
 from shapely.ops import unary_union
 from pyproj import Transformer
 from shapely.ops import transform
 
-from development.sources import official_vector
 
 COLORS=('#c0dcf2','#86bbda','#5284b8','#c5dba8','#83b98c','#e4c37b','#e3a77f','#c9a3d1','#a4aab7')
 FIELDS={'3-1':('use','용도'),'3-2':('structure','구조')}
@@ -80,6 +78,7 @@ def attach_building_spatial_themes(data,snapshot,area):
                                'count':len(groups[name])})
             union=unary_union([g for g,_,_ in details])
             covered=round(area(union),2)
+            if covered<=0:raise ValueError('empty building geometry')
             sums=round(sum(v['area_m2'] for v in legend),2)
             overlap=max(0,round(sums-covered,2))
             features=[]
@@ -89,19 +88,20 @@ def attach_building_spatial_themes(data,snapshot,area):
                                  'properties':{'name':name,'class_code':cls,'color':color,
                                                'building_id':ident}})
             rows=[{'kind':'total','label':'GIS 건물도형 합집합','count':len(details),
-                   'area_m2':covered,'pct':round(100*covered/site_area,1),
+                   'area_m2':covered,'pct':100.0,
                    'note':'원도형 대상지 편입분'}]
             for group in legend:
                 rows.append({'kind':'category','label':group['name'],'count':group['count'],
                              'area_m2':group['area_m2'],
-                             'pct':round(100*group['area_m2']/site_area,1),
+                             'pct':round(100*group['area_m2']/covered,1),
                              'note':'공식 GIS 도형 기준' if group['name']!='분류 미확보' else '분류 미확보'})
             if overlap>max(.05,site_area*.00001):
                 rows.append({'kind':'warning','label':'분류별 면적 중첩',
                              'count':None,'area_m2':overlap,
-                             'pct':round(100*overlap/site_area,1),
+                             'pct':round(100*overlap/covered,1),
                              'note':'합집합과 분류면적 합의 차이'})
             note=['건축물대장 표제부 건수와 GIS건물통합정보 도형수는 다른 모집단입니다.',
+                  '구성비의 분모는 GIS 건물도형 합집합 면적이며 구역계 전체면적이 아닙니다.',
                   'GIS 도형별 용도·구조 분류에 근거하며, 편입필지 면적을 건축물 면적으로 사용하지 않습니다.',
                   '원본 GIS 도형의 수록 완전성과 건축물대장 관리번호 일치 여부는 별도 확인 대상입니다.']
             if missing:note.append(f'GIS 도형 분류 미확보 {missing}건. 법정 적격성으로 해석하지 않습니다.')
@@ -125,6 +125,7 @@ def attach_building_spatial_themes(data,snapshot,area):
             data.setdefault('statistics',{})[itemid]={
                 'groups':legend,'building_feature_count':len(details),
                 'mapped_footprint_area_m2':covered,
+                'site_area_m2':round(site_area,2),
                 'source':'GIS건물통합정보 편입 도형'}
             item['statistics']=data['statistics'][itemid]
         except (KeyError,ValueError,TypeError,OverflowError):
