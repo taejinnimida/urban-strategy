@@ -1,0 +1,43 @@
+name: Standalone urban-survey boundary
+
+on:
+  push:
+    branches:
+      - feature/survey-standalone-20261110
+  pull_request:
+    paths:
+      - 'app.py'
+      - 'dev_app.py'
+      - 'survey_sources.py'
+      - 'survey.html'
+      - 'survey-ui.js'
+      - 'facts/**'
+      - 'development/**'
+      - 'tests/test_survey_isolation.py'
+      - 'tests/test_repo_structure.py'
+      - '.github/workflows/survey-isolation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-survey:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install offline test libraries
+        run: python -m pip install requests fastapi pydantic shapely pyproj pyshp httpx ezdxf
+      - name: Verify syntax
+        run: |
+          python -m compileall -q facts development
+          python -m py_compile app.py dev_app.py survey_sources.py tests/test_survey_isolation.py tests/test_repo_structure.py
+          node --check survey-ui.js
+      - name: Verify independent survey application and immutable Seoul baseline
+        run: python -m unittest tests.test_survey_isolation tests.test_repo_structure tests.test_development_review tests.test_fact_boundary -v
+      - name: Verify basic FACT data grouping
+        run: python -m unittest tests.test_development_nature_vector tests.test_development_terrain_classes -v
