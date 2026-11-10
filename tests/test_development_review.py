@@ -15,7 +15,7 @@ class Tests(unittest.TestCase):
  def setUp(self):
   self.g=mapping(box(126.97,37.56,126.971,37.561));self.regions=[{'geometry':mapping(box(126,37,128,38)),'properties':{'ctp_kor_nm':'서울특별시'}}]
   self.s=SimpleNamespace(_vworld_key=lambda:'TEST',_vworld_domain=lambda:'localhost',_vworld_get=lambda *a,**k:(R({'features':self.regions}),'mock'),_fetch_planning_layer_vworld=lambda *a:([{'type':'Feature','geometry':self.g,'properties':{}}]*2,'mock'),VWORLD_SEARCH_URL='mock')
-  app=FastAPI();d.register(app,self.s);self.c=TestClient(app)
+  app=FastAPI();d.register(app,self.s,fact_provider=SimpleNamespace(regions=lambda bounds:self.regions));self.c=TestClient(app)
  def create(self):return self.c.post('/api/development/snapshots',json={'geometry':self.g})
  def test_snapshot_isolation(self):
   a=self.create().json();self.g=mapping(box(127,37.6,127.001,37.601));b=self.create().json();self.assertNotEqual(a['id'],b['id']);self.assertEqual(self.c.get('/api/development/snapshots/'+a['id']).json()['geometry'],a['geometry']);self.assertEqual(a['region'],'SEOUL')
