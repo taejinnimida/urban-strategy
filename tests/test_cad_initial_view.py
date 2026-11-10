@@ -47,10 +47,16 @@ class CADStartupViewTest(unittest.TestCase):
         self.assertTrue(any(abs(v.dxf.center.x-953050)<10 and
                             abs(v.dxf.center.y-1950060)<10 for v in vports))
         self.assertIn('initial_cad_view',meta)
-        self.assertEqual(int(reopened.header['$TILEMODE']),1)
+        self.assertEqual(int(reopened.header['$TILEMODE']),0)
+        self.assertEqual(reopened.layouts.active_layout().name,'SURVEY_A3')
         self.assertGreater(reopened.header['$LIMMIN'][0],900000)
         self.assertGreater(reopened.header['$LIMMIN'][1],1900000)
         self.assertIn('SURVEY_A3',reopened.layouts)
+        layout=reopened.layouts.get('SURVEY_A3')
+        self.assertGreater(len(list(layout.query('LWPOLYLINE'))),4)
+        self.assertTrue(any('범' in entity.dxf.text for entity in layout.query('TEXT')))
+        self.assertTrue(any('1:1,000' in entity.dxf.text for entity in layout.query('TEXT')))
+        self.assertTrue(any('N' == entity.dxf.text for entity in layout.query('TEXT')))
         self.assertTrue(list(reopened.modelspace().query('LWPOLYLINE[layer=="SITE_BOUNDARY"]')))
 
 if __name__=='__main__':
