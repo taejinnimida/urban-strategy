@@ -62,35 +62,86 @@ def _classify(item_id, value):
     return OTHER
 
 
+# VWorld GIS-building metadata varies by provider/version: only explicitly
+# present named attributes are used. No area / floor / age is inferred.
+GIS_FIELDS = {
+    'use': ('mainpurpscdnm', 'main_prpos_code_nm', 'mainprposcodenm', 'main_prpos_nm', 'mainpurpsnm'),
+    'structure': ('strctcdnm', 'strct_cd_nm', 'structure_nm'),
+    'floors': ('grndflrcnt', 'grnd_flr_cnt', 'ground_floor_count'),
+    'floor_area': ('totarea', 'tot_area', 'total_floor_area'),
+    'coverage': ('bcrat', 'bc_rat'),
+    'far': ('vlrat', 'vl_rat'),
+}
+AGE_DATES = ('useaprday', 'use_apr_day', 'useconfmde', 'use_confm_de')
+
+
+def _gis_value(field, props, as_of):
+    names = GIS_FIELDS.get(field, ())
+    for name in names:
+        value = props.get(name)
+        if value is not None and str(value).strip():
+            return value
+    if field == 'age':
+        from datetime import date
+        year = int(str(as_of)[:4])
+        for name in AGE_DATES:
+            value = str(props.get(name) or '').strip().replace('-', '').replace('.', '')
+            if len(value) == 8 and value.isdigit():
+                try:
+                    day = date(int(value[:4]), int(value[4:6]), int(value[6:8]))
+                    today = date.fromisoformat(str(as_of)[:10])
+                    return max(0, today.year - day.year - ((today.month, today.day) < (day.month, day.day)))
+                except ValueError:
+                    pass
+    return None
+
+
 def attach_building_themes(data, snapshot):
     """Attach seven thematic map layers without changing ledger inventory statistics."""
-    layer = snapshot.get('_report_layers', {}).get('LT_C_SPBD') or {}
-    fetched = layer.get('status') in ('COMPLETE', 'REFERENCE')
-    verified = layer.get('status') == 'COMPLETE'
+    layers = snapshot.get('_report_layers', {})
+    integrated = layers.get('LT_C_BLDGINFO') or {}
+    secondary = layers.get('LT_C_SPBD') or {}
+    # Use GIS-building integrated information first. Only when it has no usable
+    # polygons may the independent address-building footprint serve as fallback.
     site = shape(snapshot['geometry'])
     by_id = {str(r['id']).strip(): r for r in data['buildings'] if r.get('id')}
-    footprints = []
-    skipped = 0
-
-    if fetched:
-        for feature in layer.get('features') or []:
+    footprints, skipped = [], 0
+    chosen, layer_name = None, None
+    for name, candidate in (('LT_C_BLDGINFO', integrated), ('LT_C_SPBD', secondary)):
+        if candidate.get('status') not in ('COMPLETE', 'REFERENCE'):
+            continue
+        shapes = []
+        local_skipped = 0
+        for feature in candidate.get('features') or []:
             try:
                 geom = shape(feature['geometry'])
                 if geom.is_empty or not geom.is_valid or geom.geom_type not in ('Polygon', 'MultiPolygon'):
-                    skipped += 1
+                    local_skipped += 1
                     continue
                 clipped = geom.intersection(site)
                 if clipped.is_empty or clipped.area <= 0:
                     continue
-                raw = feature.get('properties') or {}
-                props = {str(k).lower(): v for k, v in raw.items()}
-                # Only exact building-register management key equality counts as a join.
+                props = {str(k).lower(): v for k, v in (feature.get('properties') or {}).items()}
                 mgm = str(props.get('mgmbldrgstpk') or props.get('mgm_bldrgst_pk') or '').strip()
                 matched = by_id.get(mgm) if mgm else None
-                footprints.append({'geometry': mapping(clipped), 'ledger': matched,
-                                   'join_status': 'EXACT_ID' if matched else 'UNMATCHED'})
+                shapes.append({'geometry': mapping(clipped), 'ledger': matched,
+                               'props': props, 'layer_name': name,
+                               'join_status': 'EXACT_ID' if matched else 'UNMATCHED'})
             except (TypeError, ValueError, KeyError):
-                skipped += 1
+                local_skipped += 1
+        # A confirmed 0-result is meaningful only if no other source has shapes.
+        if shapes:
+            chosen, layer_name = candidate, name
+            footprints, skipped = shapes, local_skipped
+            break
+        if chosen is None:
+            chosen, layer_name, skipped = candidate, name, local_skipped
+    fetched = chosen is not None
+    verified = fetched and chosen.get('status') == 'COMPLETE'
+    if not footprints and fetched and layer_name == 'LT_C_BLDGINFO' and secondary.get('status') in ('COMPLETE', 'REFERENCE'):
+        # Keep an official empty response distinct from an unavailable one.
+        # Alternative source shapes are considered on the next refresh.
+        pass
 
     n = len(footprints)
     matches = sum(1 for f in footprints if f['ledger'])
@@ -106,7 +157,12 @@ def attach_building_themes(data, snapshot):
 
         mapped = []
         for f in footprints:
-            label = _classify(item_id, f['ledger'].get(field)) if f['ledger'] else UNKNOWN
+            value = None
+            if f['layer_name'] == 'LT_C_BLDGINFO':
+                value = _gis_value(field, f['props'], data.get('as_of'))
+            if value is None and f['ledger']:
+                value = f['ledger'].get(field)
+            label = _classify(item_id, value) if value is not None else (OTHER if f['ledger'] else UNKNOWN)
             mapped.append(label)
         totals = Counter(mapped)
 
@@ -146,14 +202,16 @@ def attach_building_themes(data, snapshot):
             meta = classes[label]
             rows.append({'kind': 'category', 'label': label, 'count': meta['count'],
                          'pct': meta['pct'], 'join_status': (
-                             '대장 미연계' if label == UNKNOWN else
-                             '항목값 없음' if label == OTHER else '관리번호 직접연계'),
+                             '속성 미확인' if label == UNKNOWN else
+                             '항목값 없음' if label == OTHER else '공식 속성자료'),
                          'note': ''})
         note = ('VWorld 건축물 외곽선 기준. 건물도형 하나를 건축물 한 동으로 최종 확정하지 않음. '
                 '공간도형과 건축물대장 관리번호가 일치하지 않으면 대장 미확인으로 별도 집계. '
                 '미확인 건축물을 무허가 또는 철거 건축물로 단정하지 않음.')
         if not n:
             note += ' 건축물 도형 조회 결과 0건으로, 실제 건축물 부존재를 보증하지 않음.'
+        if layer_name == 'LT_C_SPBD':
+            note += ' 도로명주소 건물도형은 속성 확인되지 않으면 미확인으로 분류.'
         if skipped:
             note += f' 비정상 도형 {skipped}건 표시 제외(검증 필요).'
         item.update(
@@ -161,15 +219,15 @@ def attach_building_themes(data, snapshot):
             legend=[classes[label] for label in order if totals[label] > 0],
             thematic_type='building', provider_verified=verified,
             geometry_status='COMPLETE' if verified else 'REFERENCE',
-            source='VWorld 건물 공간도형 · 건축HUB 건축물대장',
+            source=('VWorld GIS건물통합정보' if layer_name == 'LT_C_BLDGINFO' else 'VWorld 도로명주소 건물도형(보조)') + ' · 건축HUB',
             status='공간자료 확보' if verified else '보조 조회 참고자료',
             detail=(item.get('detail') or '') +
-                   f' · 도형 {n}개, 대장 관리번호 직접연계 {matches}개, 미연계 {n-matches}개'
+                   f' · 도형 {n}개, 대장 관리번호 직접연계 {matches}개, 미연계 {n-matches}개 · 도형출처 {layer_name}'
                    + ' · ' + note,
             survey_table={
                 'title': f'[표 {item_id} {TITLES[item_id]} 현황]',
                 'status': 'COMPLETE' if verified else 'REFERENCE',
-                'rows': rows, 'source': 'VWorld · 건축HUB',
+                'rows': rows, 'source': item['source'],
                 'as_of': data.get('as_of'), 'notes': [note],
             },
         )
