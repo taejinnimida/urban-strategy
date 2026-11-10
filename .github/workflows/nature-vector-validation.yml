@@ -4,8 +4,14 @@ on:
   push:
     branches:
       - feature/nature-vector-maps-43-46-20261110
+      - refactor/repository-structure-20261110
   pull_request:
     paths:
+      - 'development/**/*.py'
+      - 'app.py'
+      - 'dev_app.py'
+      - 'tests/**/*.py'
+      - 'tests/*.py'
       - 'development/nature/vector.py'
       - 'development/nature/tables.py'
       - 'development/cad.py'
@@ -39,3 +45,7 @@ jobs:
         run: python -m unittest tests.test_development_nature_vector -v
       - name: DEM class fixtures
         run: python -m unittest tests.test_development_terrain_classes -v
+      - name: Run nationwide and Seoul route isolation smoke tests
+        run: python -m unittest tests.test_development tests.test_development_review -v
+      - name: Module-boundary and moved-asset tests
+        run: python -m unittest tests.test_repo_structure -v
