@@ -204,14 +204,13 @@ def _configure_initial_cad_view(doc, projected_frame):
         height=view_height, center=(cx, cy),
         dxfattribs={'ucs_icon': 0},
     )
-    # ZOOM ALL can include drawing limits as well as entity extents.
-    # Do not leave default (0,0)-(420,297) limits with kilometre-sized
-    # projected coordinates: that pulls the viewport away from the site.
-    doc.header['$LIMMIN'] = (x0-width*margin, y0-height*margin)
-    doc.header['$LIMMAX'] = (x1+width*margin, y1+height*margin)
-    doc.header['$EXTMIN'] = (x0, y0, 0.0)
-    doc.header['$EXTMAX'] = (x1, y1, 0.0)
-    doc.header['$TILEMODE'] = 1
+    # DXF HEADER limits are derived from the model layout when ezdxf saves.
+    # Changing doc.header directly is NOT sufficient (gets reset on export).
+    model = doc.modelspace()
+    model.reset_limits(
+        (x0-width*margin, y0-height*margin),
+        (x1+width*margin, y1+height*margin))
+    model.reset_extents((x0,y0,0.0),(x1,y1,0.0))
     return {'center_epsg5179': [round(cx,3),round(cy,3)],
             'view_height_m': round(view_height,3),
             'limits_bbox_epsg5179': [round(x0-width*margin,3),
@@ -429,6 +428,13 @@ def dxf_bytes(item, snapshot, metadata):
     if (item['id'] == '1-1' or (item['id'] in ('2-1','2-2','2-3','2-4','2-5','2-6','5-2','4-3','4-1','4-2','4-4','4-5','4-6','3-1','3-2') and item.get('provider_verified') is True)):
         from development.survey_sheet import make_sheet, dxf_paper_sheet
         dxf_paper_sheet(doc, make_sheet(item, snapshot))
+        # The user-facing CAD opens on the same A3 framed drawing as the web
+        # SVG, not in far-away EPSG:5179 modelspace. Editable georeferenced
+        # primitives remain in the Model tab and retain original coordinates.
+        doc.layouts.set_active_layout('SURVEY_A3')
+        doc.header['$TILEMODE'] = 0
+        metadata['opens_in_layout'] = 'SURVEY_A3'
+        metadata['modelspace_preserved_epsg5179'] = True
         metadata['print_layout'] = 'SURVEY_A3'
         metadata['paper_size'] = 'A3_420x297mm'
         from development.print_scale import decide_print_scale
