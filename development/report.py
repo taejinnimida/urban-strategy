@@ -239,7 +239,7 @@ def register_report(router, service, snapshots, lock, get_snapshot, fetch_layer,
         for row in r['land'].values():
             row['missing_fields']=' · '.join(label for field,label in [('address','소재지'),('category','지목'),('official_area','공부면적'),('ownership','소유구분'),('price','공시지가'),('zoning','용도지역')] if row.get(field) in (None,''))
         from development.sources import enrich
-        data={'parcel_status':r.get('parcel_status','UNAVAILABLE'),'parcel_error_code':r.get('parcel_error_code'),'as_of':r['as_of'],'area_m2':s['area_m2'],'land':list(r['land'].values()),'buildings':buildings(r['buildings'],datetime.fromisoformat(r['as_of']).date()),'items':review(r,s)}
+        data={'parcel_status':r.get('parcel_status','UNAVAILABLE'),'parcel_error_code':r.get('parcel_error_code'),'as_of':r['as_of'],'area_m2':s['area_m2'],'print_scale':s.get('print_scale'),'land':list(r['land'].values()),'buildings':buildings(r['buildings'],datetime.fromisoformat(r['as_of']).date()),'items':review(r,s)}
         data['parcel_note']='브라우저 보조 수신 지적에 따른 참고 필지목록입니다. 원문 진위·전체 필지 수록 여부는 미검증이며 대장 속성은 공공 API에서 별도 조회합니다.' if r.get('parcel_status')=='REFERENCE' else ''
         if data['parcel_note']:
             for row in data['buildings']:row['scope']='보조 지적 필지목록 기반 · '+row['scope']
