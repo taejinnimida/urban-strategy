@@ -252,6 +252,8 @@ class OfficialRecordFacts:
                 raise FactTransportError('SOURCE_TRUNCATED')
             if len(rows)>=total:
                 return rows
-            if not batch:
+            # A partial page with an unsatisfied official total indicates
+            # incomplete/unstable pagination, not verified complete records.
+            if len(batch)<100:
                 raise FactTransportError('SOURCE_TRUNCATED')
         raise FactTransportError('SOURCE_TRUNCATED')
