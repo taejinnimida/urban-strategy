@@ -341,7 +341,6 @@ def dxf_bytes(item, snapshot, metadata):
     theme_layer = 'SURVEY_' + item['id'].replace('-', '_')
     doc.layers.new(theme_layer, dxfattribs={'color': 5, 'lineweight': 25})
     model = doc.modelspace()
-    view_settings = _configure_initial_cad_view(doc, frame)
     counts = {'polylines': 0, 'points': 0, 'parcels': 0, 'thematic_features': 0}
     _entities(model, frame, 'DRAWING_FRAME', counts)
     _entities(model, projected, 'SITE_BOUNDARY', counts)
@@ -532,6 +531,11 @@ def dxf_bytes(item, snapshot, metadata):
     # whereas SURVEY_A3 is the printable/editable formal sheet.
     model_sheet = _add_model_survey_frame(doc, model, frame, item, snapshot)
     metadata['model_companion_sheet'] = model_sheet
+    # Include the actual panel in Model's initial view and ZOOM ALL limits.
+    # If we leave the limits at the original cropped cadastral frame, the
+    # newly constructed legend can sit outside the first visible viewport.
+    model_full = box(*model_sheet['model_frame_bbox'])
+    view_settings = _configure_initial_cad_view(doc, model_full)
     if (item['id'] == '1-1' or (item['id'] in ('2-1','2-2','2-3','2-4','2-5','2-6','5-2','4-3','4-1','4-2','4-4','4-5','4-6','3-1','3-2') and item.get('provider_verified') is True)):
         from development.survey_sheet import make_sheet, dxf_paper_sheet
         dxf_paper_sheet(doc, make_sheet(item, snapshot))
