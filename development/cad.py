@@ -183,6 +183,43 @@ def _collect_surrounding_cadastre(frame, fetch_layer, layer_type):
             'cache_version': CAD_CACHE_VERSION}
 
 
+def _configure_initial_cad_view(doc, projected_frame):
+    """Open modelspace on the surveyed area, not the CAD origin.
+
+    EPSG:5179 geometry must remain in real ground coordinates (metres).
+    A default DXF has model limits around (0,0) and unset EXTMIN/EXTMAX.
+    This combination can make ZOOM ALL/initial open appear almost blank.
+    """
+    x0, y0, x1, y1 = projected_frame.bounds
+    width, height = x1-x0, y1-y0
+    if not all(math.isfinite(v) for v in (x0, y0, x1, y1)) or min(width, height) <= 0:
+        raise ValueError('invalid projected CAD frame')
+    cx, cy = (x0+x1)/2, (y0+y1)/2
+    margin = .08
+    # An explicit site-centred model VPORT avoids viewer defaults at (0,0).
+    # Extra width accommodation gives space to both tall and long sites;
+    # the host CAD window aspect ratio may differ from this approximation.
+    view_height = max(height*1.22, width*.82)
+    doc.set_modelspace_vport(
+        height=view_height, center=(cx, cy),
+        dxfattribs={'ucs_icon': 0},
+    )
+    # ZOOM ALL can include drawing limits as well as entity extents.
+    # Do not leave default (0,0)-(420,297) limits with kilometre-sized
+    # projected coordinates: that pulls the viewport away from the site.
+    doc.header['$LIMMIN'] = (x0-width*margin, y0-height*margin)
+    doc.header['$LIMMAX'] = (x1+width*margin, y1+height*margin)
+    doc.header['$EXTMIN'] = (x0, y0, 0.0)
+    doc.header['$EXTMAX'] = (x1, y1, 0.0)
+    doc.header['$TILEMODE'] = 1
+    return {'center_epsg5179': [round(cx,3),round(cy,3)],
+            'view_height_m': round(view_height,3),
+            'limits_bbox_epsg5179': [round(x0-width*margin,3),
+                                     round(y0-height*margin,3),
+                                     round(x1+width*margin,3),
+                                     round(y1+height*margin,3)]}
+
+
 def dxf_bytes(item, snapshot, metadata):
     site = shape(snapshot['geometry'])
     if site.is_empty or not site.is_valid:
@@ -202,6 +239,7 @@ def dxf_bytes(item, snapshot, metadata):
     theme_layer = 'SURVEY_' + item['id'].replace('-', '_')
     doc.layers.new(theme_layer, dxfattribs={'color': 5, 'lineweight': 25})
     model = doc.modelspace()
+    view_settings = _configure_initial_cad_view(doc, frame)
     counts = {'polylines': 0, 'points': 0, 'parcels': 0, 'thematic_features': 0}
     _entities(model, frame, 'DRAWING_FRAME', counts)
     _entities(model, projected, 'SITE_BOUNDARY', counts)
@@ -405,6 +443,7 @@ def dxf_bytes(item, snapshot, metadata):
         raise HTTPException(413, 'CAD 도면이 파일 크기 한도를 초과합니다.')
     metadata.update(counts)
     metadata['frame_bbox_epsg5179'] = [round(v, 3) for v in frame.bounds]
+    metadata['initial_cad_view'] = view_settings
     metadata['frame_width_height_multiplier'] = FRAME_MULTIPLIER
     metadata['cadastre_scope'] = 'expanded_frame'
     metadata['cadastre_boundary_style'] = 'shared_edges_merged'
