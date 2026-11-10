@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from shapely.geometry import box, mapping
 
 from dev_app import app as survey_app
-from survey_sources import SurveySources, SurveySourceUnavailable
+from survey_sources import SurveySources
 
 
 class StandaloneSurveyTest(unittest.TestCase):
