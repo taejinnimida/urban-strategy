@@ -93,7 +93,9 @@ def _source_features(layer, site, code):
                            'props': props, 'source': code, 'title_key': key,
                            'address_id': address_id,
                            'provider_pnu': pnu if PNU_PATTERN.fullmatch(pnu) else None})
-        except (KeyError, ValueError, TypeError, AttributeError):
+        except Exception:
+            # A single malformed provider geometry cannot erase accepted peers.
+            # The omission stays visible in the quality/coverage counters.
             invalid += 1
     return result, invalid
 
@@ -109,7 +111,7 @@ def _overlap_class(a, b):
         if union > 0 and common / union >= .97:
             return 'SAME_SHAPE_CANDIDATE'
         return 'OVERLAP_REVIEW'
-    except (ValueError, TypeError):
+    except Exception:
         return 'OVERLAP_REVIEW'
 
 
@@ -217,6 +219,13 @@ def assemble_building_fact(data, snapshot):
         status = 'REFERENCE'
     else:
         status = 'PARTIAL'
+    field_assurance_counts = {
+        field: {assurance: sum(rec['attributes'][field]['assurance'] == assurance
+                               for rec in records)
+                for assurance in ('DIRECT_AGREEMENT', 'DIRECT_LEDGER',
+                                  'SOURCE_ATTRIBUTE', 'CONFLICT', 'UNKNOWN')}
+        for field in FIELDS
+    }
     counts = {
         'mapped_shapes': len(records),
         'gis_shapes': len(gis),
@@ -234,7 +243,7 @@ def assemble_building_fact(data, snapshot):
     return {'records': records, 'unmatched_registers': unmatched_registers,
             'source_info': source_info, 'geometry_status': status,
             'provider_verified': status == 'COMPLETE',
-            'counts': counts,
+            'counts': counts, 'field_assurance_counts': field_assurance_counts,
             'note': ('건물 공간도형 수는 건축물 법정 동수가 아님. 건축물대장 직접연결은 관리번호 일치만 인정. '
                      '겹치는 보조 건물도형은 중복 우려로 제외·별도 집계하고, 미연계는 무허가나 멸실로 단정하지 않음. '
                      '건축물대장은 지적 편입필지 관련 조회분이며 전국 전체 건축물대장과 동등하지 않음.')}
