@@ -45,14 +45,22 @@ class StandaloneSurveyTest(unittest.TestCase):
         self.assertGreater(result.json()['area_m2'],0)
         self.assertIn('id',result.json())
 
-    def test_pending_sources_are_explicitly_missing(self):
+    def test_official_sources_are_independent_and_mockable(self):
         source=SurveySources()
-        for fn,args in [(source._resolve_land_ledger,('1234567890123456789',)),
-                        (source._resolve_individual_land_price,('1234567890123456789',2026)),
-                        (source._query_building_hub_title,('1234567890123456789',))]:
-            with self.assertRaises(SurveySourceUnavailable) as caught:
-                fn(*args)
-            self.assertEqual(caught.exception.code,'SOURCE_NOT_IMPLEMENTED')
+        with patch.object(source.records,'ledger',return_value={
+                 'record':{'pnu':'1234567890123456789','lndpclAr':45.},
+                 'selected_source':'vworld_ladfrl'}):
+            result=source._resolve_land_ledger('1234567890123456789')
+        self.assertEqual(result['record']['lndpclAr'],45.)
+        with patch.object(source.records,'price',return_value={
+                 'pnu':'1234567890123456789','year':2026,
+                 'price_per_m2':1300000.}):
+            result=source._resolve_individual_land_price('1234567890123456789',2026)
+        self.assertEqual(result['price_per_m2'],1300000.)
+        with patch.object(source.records,'building_titles',return_value=[{
+                 'mgmBldrgstPk':'fixture-id'}]):
+            rows=source._query_building_hub_title('1234567890123456789')
+        self.assertEqual(len(rows),1)
 
     def test_live_provider_has_no_seoul_runtime_dependency(self):
         import sys
