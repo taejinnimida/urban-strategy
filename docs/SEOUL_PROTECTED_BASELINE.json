@@ -1,0 +1,16 @@
+{
+  "description": "서울도시정비 2026-11-10 main 기준 코드 보호. 변경은 명시적 승인·동등성 검증 후 기준 해시 갱신.",
+  "baseline_main_tree_sha": "84587ff4b418cba56b0ebff0fc2aa565b9ec4e7d",
+  "protected_blobs": {
+    "app.py": "3d2e97eabadcef3c8186c8a4072de82f718755ee",
+    "app.html": "caf26f9e49d8be8a2e458ea76b86f659e567c975",
+    "market_renewal.py": "d52c146f30474bed9ab262f5bc3e4a9b35247084",
+    "seoul_facilities.py": "a693e9e6f71a73d7fa25ac35682388fcf22eec2c",
+    "ui_editor_backend.py": "1f952775720990730beb7e8eb75da09a2eb5be66",
+    "Dockerfile": "f8fada0aad2cea544cc9f5436361c5dc47034954"
+  },
+  "app_allowed_import_bridge": {
+    "old": "from development_review import register as _dev_register",
+    "new": "from development.review import register as _dev_register"
+  }
+}
