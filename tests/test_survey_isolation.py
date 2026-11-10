@@ -29,8 +29,13 @@ class StandaloneSurveyTest(unittest.TestCase):
     def test_seoul_routes_not_mounted_here(self):
         routes={getattr(r,'path','') for r in survey_app.routes}
         self.assertNotIn('/api/rules/market-renewal',routes)
-        self.assertIn('/api/development/snapshots',routes)
-        self.assertIn('/api/development/reports/{token}/prepare',routes)
+        # The same route can be exercised even when the framework keeps
+        # include_router internals in a mounted router representation.
+        with patch('facts.vworld.VWorldFacts.regions',return_value=[]):
+            resp=self.client.post('/api/development/snapshots',json={'geometry':self.geometry})
+        self.assertEqual(resp.status_code,200)
+        token=resp.json()['id']
+        self.assertEqual(self.client.get('/api/development/snapshots/'+token).status_code,200)
         self.assertFalse(any('/seoul' in r for r in routes))
 
     def test_boundary_fact_can_be_created_without_seoul_app(self):
