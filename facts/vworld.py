@@ -4,6 +4,7 @@ Does not import Seoul app, development RULE, or their shared circuit breaker.
 This adapter is opt-in until existing nationwide callers and regression tests
 are migrated; it must not silently replace the operating Seoul data path.
 """
+import json
 import os
 import re
 from urllib.parse import urlparse
@@ -80,7 +81,7 @@ class VWorldFacts:
         if expected!='json':
             raise FactTransportError('INVALID_FORMAT')
         try:
-            data=requests.models.complexjson.loads(payload.decode('utf-8'))
+            data=json.loads(payload.decode('utf-8'))
         except (UnicodeError, ValueError):
             raise FactTransportError('PROVIDER_FORMAT') from None
         if not isinstance(data,dict):
