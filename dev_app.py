@@ -1,107 +1,36 @@
-"""Isolated development entry point. Production remains app:app."""
+"""Standalone urban-survey application: FACT collection, not urban development RULEs.
+
+Start: uvicorn dev_app:app --host 0.0.0.0 --port 8001
+The Seoul operational app.py is NOT imported, mounted, or started.
+"""
 from pathlib import Path
-from typing import Literal
-import math
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, FileResponse
-from pydantic import BaseModel, Field
-from pyproj import Geod
-from shapely.geometry import shape
 
-from survey_sources import SurveySources
 from development.review import register as register_survey
+from survey_sources import SurveySources
 
-BASE = Path(__file__).parent
-
-
-app = FastAPI(title="Independent Urban Survey FACT", version="0.1.0")
-survey_sources = SurveySources()
-register_survey(app, survey_sources)
-
-# Deliberate isolation: this app never imports/mounts Seoul redevelopment.
-# Its only business is evidence collection and descriptive inventories.
-# Expose only the two known development assets; do not serve source files.
-@app.get('/dev-assets/style.css')
-def dev_style():
-    return FileResponse(BASE / 'style.css', media_type='text/css')
-
-@app.get('/dev-assets/nonurban.js')
-def dev_nonurban_js():
-    return FileResponse(BASE / 'nonurban.js', media_type='text/javascript')
+BASE=Path(__file__).resolve().parent
+app=FastAPI(title="Urban Survey FACT",version="0.1.0")
+register_survey(app,SurveySources())
 
 
-@app.get('/', response_class=HTMLResponse)
-def modes():
-    return (BASE / 'index.html').read_text(encoding='utf-8')
-
-
-@app.get('/survey', response_class=HTMLResponse)
+@app.get('/',response_class=HTMLResponse)
+@app.get('/survey',response_class=HTMLResponse)
 def survey_home():
-    return (BASE / 'survey.html').read_text(encoding='utf-8')
+    return (BASE/'survey.html').read_text(encoding='utf-8')
+
 
 @app.get('/survey-ui.js')
 def survey_script():
-    return FileResponse(BASE / 'survey-ui.js', media_type='text/javascript')
-
-@app.get('/nonurban', response_class=HTMLResponse)
-def nonurban_mode():
-    return (BASE / 'nonurban.html').read_text(encoding='utf-8')
+    return FileResponse(BASE/'survey-ui.js',media_type='text/javascript')
 
 
-class Intake(BaseModel):
-    jurisdiction: str = Field(default='', max_length=100)
-    address: str = Field(default='', max_length=300)
-    project: Literal['development', 'district', 'industrial', 'facility', 'building']
-    area_m2: float | None = Field(default=None, gt=0, le=1e10, allow_inf_nan=False)
-    zoning: str = Field(default='', max_length=100)
-    notes: str = Field(default='', max_length=5000)
-    geometry: dict | None = None
+@app.get('/dev-assets/style.css')
+def survey_style():
+    return FileResponse(BASE/'style.css',media_type='text/css')
 
 
-def boundary_fact(geometry):
-    if geometry.get('type') not in ('Polygon', 'MultiPolygon'):
-        raise ValueError('Polygon 또는 MultiPolygon 구역계가 필요합니다.')
-    def points(value):
-        if isinstance(value, list) and value and isinstance(value[0], (int, float)):
-            yield value
-        elif isinstance(value, list):
-            for child in value:
-                yield from points(child)
-    coords = list(points(geometry.get('coordinates')))
-    if not coords or len(coords) > 20000:
-        raise ValueError('좌표는 1~20,000개까지 허용합니다.')
-    if any(len(p) != 2 or any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in p) or not (124 <= p[0] <= 132 and 33 <= p[1] <= 39.5) for p in coords):
-        raise ValueError('대한민국 범위의 WGS84 경도·위도 좌표가 필요합니다.')
-    geom = shape(geometry)
-    if geom.is_empty or not geom.is_valid:
-        raise ValueError('구역계가 비어 있거나 자기교차 등 도형 오류가 있습니다.')
-    from shapely.geometry.polygon import orient
-    polygons = [geom] if geom.geom_type == 'Polygon' else geom.geoms
-    area = sum(abs(Geod(ellps='WGS84').geometry_area_perimeter(orient(p, sign=1))[0]) for p in polygons)
-    return {'area_m2': round(area, 2), 'source': '사용자 GeoJSON / WGS84 타원체 면적', 'geometry': geometry}
-
-
-@app.post('/api/dev/nonurban/intake')
-def intake(data: Intake):
-    try:
-        boundary = boundary_fact(data.geometry) if data.geometry else None
-    except Exception as exc:
-        raise HTTPException(422, '구역계 확인: ' + (str(exc) if isinstance(exc, ValueError) else '도형 형식을 확인하세요.'))
-    subjects = [
-        ('대상지·용도지역', '토지이용계획확인서, 관할 지자체 도시·군관리계획'),
-        ('농지·산지', '농지·산지 해당 여부와 전용 관련 자료'),
-        ('자연환경·보호구역', '공적 규제도면과 대상지 중첩자료'),
-        ('도로·기반시설', '접도·도로 폭원 및 상하수도 공급 가능 자료'),
-        ('제영향평가·행정절차', '사업유형·규모별 현행 법령과 예외조건'),
-        ('관할 지자체 기준', '해당 시·군 조례·시행규칙·위임기준'),
-    ]
-    return {'version': 'R104-DEV', 'mode': 'nonurban', 'status': 'NOT_ASSESSED',
-            'message': '입력자료 정리 결과입니다. 전국 공공자료 자동조회와 법정기준 판정은 아직 연결되지 않았습니다.',
-            'inputs': data.model_dump(exclude={'geometry'}), 'boundary': boundary,
-            'effective_area_m2': boundary['area_m2'] if boundary else data.area_m2,
-            'area_source': boundary['source'] if boundary else '사용자 입력 / 미검증',
-            'checks': [{'item': name, 'status': 'UNKNOWN', 'needed': source} for name, source in subjects]}
-
-
-# No Seoul application, route, RULE or static-asset mount.
+# Legacy /seoul and /nonurban development decision pages intentionally omitted.
+# Those business workflows are not part of the independent survey application.
