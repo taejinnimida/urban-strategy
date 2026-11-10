@@ -763,6 +763,7 @@ function devRenderSourceDetails(data){
    return;
   }
   const isBuilding=/^3-[1-7]$/.test(item.id);
+  const spatialBuilding=isBuilding&&item.thematic_type==='building_spatial';
   if(!/^2-[1-6]$/.test(item.id)&&!isBuilding){surveyTable.style.display='none';return;}
   surveyTable.style.display='block';
   const title=document.createElement('div');
@@ -779,7 +780,7 @@ function devRenderSourceDetails(data){
   const tab=document.createElement('table');
   tab.style.cssText='width:100%;border-collapse:collapse;font-size:12px;min-width:510px;font-variant-numeric:tabular-nums';
   const header=document.createElement('thead'),hrow=document.createElement('tr');
-  for(const text of (isBuilding?['구분',t.count_header||'대장 건수(건)','구성비(%)','비고']:['구분','면적(㎡)','구성비(%)',t.count_header||'필지수(필지)','비고'])){
+  for(const text of ((isBuilding&&!spatialBuilding)?['구분',t.count_header||'대장 건수(건)','구성비(%)','비고']:['구분','면적(㎡)','구성비(%)',t.count_header||'도형수(개)','비고'])){
    const th=document.createElement('th');th.textContent=text;
    th.style.cssText='padding:7px 5px;border:1px solid #9ca9bf;background:#dfe7f6;color:#21376d;text-align:center';
    hrow.append(th);
@@ -788,11 +789,11 @@ function devRenderSourceDetails(data){
   const body=document.createElement('tbody');
   for(const row of t.rows){
    const tr=document.createElement('tr');
-   const cells=isBuilding?[row.label,row.count,row.pct,row.note||'']:[row.label,row.area_m2,row.pct,row.count,row.note||''];
+   const cells=isBuilding&&!spatialBuilding?[row.label,row.count,row.pct,row.note||'']:[row.label,row.area_m2,row.pct,row.count,row.note||''];
    for(let i=0;i<cells.length;i++){
     const td=document.createElement('td');
     const v=cells[i];
-    td.textContent=v===null||v===undefined?'–':i===1&&typeof v==='number'?(isBuilding?v.toLocaleString('ko-KR'):v.toLocaleString('ko-KR',{minimumFractionDigits:1,maximumFractionDigits:2})):i===2&&typeof v==='number'?v.toFixed(1):String(v);
+    td.textContent=v===null||v===undefined?'–':i===1&&typeof v==='number'?(isBuilding&&!spatialBuilding?v.toLocaleString('ko-KR'):v.toLocaleString('ko-KR',{minimumFractionDigits:1,maximumFractionDigits:2})):i===2&&typeof v==='number'?v.toFixed(1):String(v);
     td.style.cssText='border-bottom:1px '+(row.kind==='category'?'dotted':'solid')+' #9ca9bf;padding:5px 8px;text-align:'+(i===1||i===2||(!isBuilding&&i===3)?'right':'center');
     if(row.kind==='total')td.style.fontWeight='700';
     if(row.kind==='boundary')td.style.background='#f4f6fb';
@@ -818,7 +819,7 @@ function devRenderSourceDetails(data){
   cadSingle.dataset.available=available?'yes':'';
   cadSingle.disabled=!available;cadSingle.title=available?'확보된 공간도형 기준 CAD 출력':'검증된 공간도형이 없는 항목은 CAD 출력 불가';
   if(!cadPreparing)cadStatus.textContent=available?(cadReady?'표준 도면 배경자료 준비 완료':'표준 도면 배경자료 준비 필요 · 준비 버튼을 누르거나 자동 조회를 확인하세요'):'이 항목은 CAD 도형 미확보 · 일괄 ZIP 목록에 미확보로 기록';
-  if(available&&cadReady&&['1-1','2-1','2-2','2-3','2-4','2-5','2-6','5-2','4-3','4-1','4-2','4-4','4-5','4-6'].includes(item.id)){
+  if(available&&cadReady&&['1-1','2-1','2-2','2-3','2-4','2-5','2-6','5-2','4-3','4-1','4-2','4-4','4-5','4-6','3-1','3-2'].includes(item.id)){
    const selected=item.id;
    sheetPreview.onload=()=>{
     if(select.value!==selected)return;
@@ -834,7 +835,7 @@ function devRenderSourceDetails(data){
   }
   info.textContent=`${item.detail} · 출처: ${item.source||'미확보'}${item.as_of?' · 자료 기준일: '+item.as_of:''}`;
   const boundary=L.geoJSON(devSite.geometry,{style:{color:'#dc2626',weight:3,fill:false}}).addTo(drawn);devSourceDetailMap.fitBounds(boundary.getBounds(),{padding:[12,12]});
-  if(item.features?.length)L.geoJSON(item.features,{style:f=>({color:['ownership','jimok','land_numeric','land_shape','landcover','ecobank','nature_dem','nature_vector'].includes(item.thematic_type)?'#526174':'#126d88',weight:['ownership','jimok','land_numeric','land_shape','landcover','ecobank','nature_dem','nature_vector'].includes(item.thematic_type)?0.8:1.5,fillColor:['ownership','jimok','land_numeric','land_shape','landcover','ecobank','nature_dem','nature_vector'].includes(item.thematic_type)?(f.properties?.color||'#cccccc'):'#126d88',fillOpacity:['ownership','jimok','land_numeric','land_shape','landcover','ecobank','nature_dem','nature_vector'].includes(item.thematic_type)?0.68:0.2}),onEachFeature:(f,l)=>{const label=document.createElement('span');label.textContent=f.properties?.name||'원자료';l.bindTooltip(label);}}).addTo(drawn);
+  if(item.features?.length)L.geoJSON(item.features,{style:f=>({color:['ownership','jimok','land_numeric','land_shape','landcover','ecobank','nature_dem','nature_vector','building_spatial'].includes(item.thematic_type)?'#526174':'#126d88',weight:['ownership','jimok','land_numeric','land_shape','landcover','ecobank','nature_dem','nature_vector','building_spatial'].includes(item.thematic_type)?0.8:1.5,fillColor:['ownership','jimok','land_numeric','land_shape','landcover','ecobank','nature_dem','nature_vector','building_spatial'].includes(item.thematic_type)?(f.properties?.color||'#cccccc'):'#126d88',fillOpacity:['ownership','jimok','land_numeric','land_shape','landcover','ecobank','nature_dem','nature_vector','building_spatial'].includes(item.thematic_type)?0.68:0.2}),onEachFeature:(f,l)=>{const label=document.createElement('span');label.textContent=f.properties?.name||'원자료';l.bindTooltip(label);}}).addTo(drawn);
   if(Array.isArray(item.legend))for(const entry of item.legend){
    const row=document.createElement('span');row.style.cssText='display:inline-flex;align-items:center;gap:5px';
    const chip=document.createElement('span');chip.style.cssText='display:inline-block;width:14px;height:14px;border:1px solid #64748b;background-color:'+entry.color;
@@ -860,6 +861,11 @@ function devRenderSourceDetails(data){
   }
   if(item.map_available){const url='/api/development/reports/'+encodeURIComponent(devSite.id)+'/ecvam.png';L.imageOverlay(url,boundary.getBounds(),{opacity:.65}).addTo(drawn);boundary.bringToFront();}
   stats.textContent=item.statistics?JSON.stringify(item.statistics,null,2):'수치 분석자료 미확보 · 도면만 확보된 경우 면적을 계산하지 않습니다.';
+  if(/^3-[1-7]$/.test(item.id)&&item.spatial_status!=='COMPLETE'&&item.spatial_status!=='PARTIAL'){
+   const note=document.createElement('div');note.style.cssText='margin-top:8px;padding:10px;background:#fff5e2;border:1px solid #f6d79d;font-size:12px';
+   note.textContent=item.spatial_detail||'건축물대장 속성은 확보되었으나 공식 GIS 건물도형과 결합되지 않아 도면을 생성할 수 없습니다.';
+   legendbox.append(note);
+  }
   rawtext.textContent=item.regulation_rows?.length?JSON.stringify(item.regulation_rows,null,2):'규제 참고행 없음 또는 미조회. 비해당 확정 근거가 아닙니다.';
   setTimeout(()=>devSourceDetailMap?.invalidateSize(false),0);
  }
