@@ -1,139 +1,183 @@
-"""Building-footprint survey themes. No redevelopment eligibility or inferred legal age."""
+"""Building survey maps: plot every official footprint, classify only verified attributes.
+
+VWorld building outlines and building-register rows are independent source FACTs.
+Lack of a register join does not suppress a building from maps or CAD.
+"""
 import hashlib
-import re
-from collections import defaultdict
+import math
+from collections import Counter
+
 from shapely.geometry import shape, mapping
 
-FIELDS = {'3-1':'use','3-2':'structure','3-3':'floors','3-4':'age',
-          '3-5':'floor_area','3-6':'coverage','3-7':'far'}
-PALETTE = ('#4477aa','#ee8866','#228833','#aa3377','#66ccee',
-           '#ccbb44','#8844aa','#44aa99','#bb6677','#999933')
+FIELDS = {'3-1': 'use', '3-2': 'structure', '3-3': 'floors', '3-4': 'age',
+          '3-5': 'floor_area', '3-6': 'coverage', '3-7': 'far'}
+TITLES = {'3-1': '용도별', '3-2': '구조별', '3-3': '층수별',
+          '3-4': '경과연도별', '3-5': '연면적별', '3-6': '건폐율별', '3-7': '용적률별'}
+BINS = {
+    '3-3': ('1층', '2층', '3층', '4층', '5층 이상'),
+    '3-4': ('20년 미만', '20~30년', '30~40년', '40년 이상'),
+    '3-5': ('60㎡ 미만', '60~85㎡', '85~115㎡', '115~165㎡', '165~295㎡', '295㎡ 이상'),
+    # Preserve the sample's intervals and add an underflow/overflow class, if needed.
+    '3-6': ('20% 미만', '20~40%', '40~70%', '70% 이상'),
+    '3-7': ('100% 미만', '100~200%', '200~300%', '300% 이상'),
+}
+OTHER = '기타(값 없음 등)'
+UNKNOWN = '대장 미확인'
+PALETTE = ('#4477aa', '#ee8866', '#228833', '#aa3377', '#66ccee',
+           '#ccbb44', '#8844aa', '#44aa99', '#bb6677', '#999933')
 
 
-def _pnu(props):
-    for key in ('pnu','PNU'):
-        val = str(props.get(key) or '').strip()
-        if re.fullmatch(r'\d{19}',val):
-            return val
-    return None
+def _classify(item_id, value):
+    if value is None or value == '':
+        return OTHER
+    if item_id in ('3-1', '3-2'):
+        text = str(value).strip()
+        return text if text and text not in ('0', '0.0', 'None') else OTHER
+    try:
+        number = float(value)
+        if not math.isfinite(number):
+            return OTHER
+    except (ValueError, TypeError):
+        return OTHER
+    if item_id == '3-3':
+        return (f'{int(number)}층' if number in (1, 2, 3, 4)
+                else '5층 이상' if number >= 5 and number.is_integer() else OTHER)
+    if item_id == '3-4':
+        if number < 0:
+            return OTHER
+        return ('20년 미만' if number < 20 else '20~30년' if number < 30
+                else '30~40년' if number < 40 else '40년 이상')
+    if number <= 0:
+        return OTHER
+    if item_id == '3-5':
+        bounds = (60, 85, 115, 165, 295)
+        return next((name for limit, name in zip(bounds, BINS[item_id])
+                     if number < limit), '295㎡ 이상')
+    if item_id == '3-6':
+        return ('20% 미만' if number < 20 else '20~40%' if number < 40
+                else '40~70%' if number < 70 else '70% 이상')
+    if item_id == '3-7':
+        return ('100% 미만' if number < 100 else '100~200%' if number < 200
+                else '200~300%' if number < 300 else '300% 이상')
+    return OTHER
 
 
 def attach_building_themes(data, snapshot):
-    """Preserve raw spatial outlines and mark uncertain ledger joins as unknown.
-
-    A one-to-one ledger/footprint intersection inside one cadastral parcel is a
-    tentative *spatial* link, not proof of building-register identity.
-    """
-    layer = snapshot.get('_report_layers',{}).get('LT_C_SPBD') or {}
-    fetched = layer.get('status') in ('COMPLETE','REFERENCE')
+    """Attach seven thematic map layers without changing ledger inventory statistics."""
+    layer = snapshot.get('_report_layers', {}).get('LT_C_SPBD') or {}
+    fetched = layer.get('status') in ('COMPLETE', 'REFERENCE')
     verified = layer.get('status') == 'COMPLETE'
     site = shape(snapshot['geometry'])
-    parcel_layer = snapshot.get('_report_layers',{}).get('LP_PA_CBND_BUBUN') or {}
-    parcel_geoms = defaultdict(list)
-    for parcel in parcel_layer.get('features',[]):
-        props = parcel.get('properties') or {}
-        pnu = _pnu(props)
-        if not pnu:
-            pnu = str(parcel.get('id') or '')
-        if re.fullmatch(r'\d{19}',pnu):
+    by_id = {str(r['id']).strip(): r for r in data['buildings'] if r.get('id')}
+    footprints = []
+    skipped = 0
+
+    if fetched:
+        for feature in layer.get('features') or []:
             try:
-                parcel_geoms[pnu].append(shape(parcel['geometry']))
-            except (ValueError,KeyError,TypeError):
-                pass
+                geom = shape(feature['geometry'])
+                if geom.is_empty or not geom.is_valid or geom.geom_type not in ('Polygon', 'MultiPolygon'):
+                    skipped += 1
+                    continue
+                clipped = geom.intersection(site)
+                if clipped.is_empty or clipped.area <= 0:
+                    continue
+                raw = feature.get('properties') or {}
+                props = {str(k).lower(): v for k, v in raw.items()}
+                # Only exact building-register management key equality counts as a join.
+                mgm = str(props.get('mgmbldrgstpk') or props.get('mgm_bldrgst_pk') or '').strip()
+                matched = by_id.get(mgm) if mgm else None
+                footprints.append({'geometry': mapping(clipped), 'ledger': matched,
+                                   'join_status': 'EXACT_ID' if matched else 'UNMATCHED'})
+            except (TypeError, ValueError, KeyError):
+                skipped += 1
 
-    by_pnu=defaultdict(list)
-    for row in data['buildings']:
-        for pnu in str(row.get('pnus') or '').split(','):
-            pnu=pnu.strip()
-            if re.fullmatch(r'\d{19}',pnu):
-                by_pnu[pnu].append(row)
-
-    footprints=[]
-    for feature in layer.get('features',[]) if fetched else []:
-        try:
-            geom=shape(feature['geometry'])
-            if geom.is_empty or not geom.is_valid or geom.geom_type not in ('Polygon','MultiPolygon'):
-                continue
-            clipped=geom.intersection(site)
-            if clipped.is_empty or clipped.area <= 0:
-                continue
-            props=feature.get('properties') or {}
-            explicit=_pnu(props)
-            candidates=[]
-            if explicit in by_pnu:
-                candidates=[explicit]
-            else:
-                for pnu, geoms in parcel_geoms.items():
-                    if pnu not in by_pnu:
-                        continue
-                    total=sum(clipped.intersection(pg).area for pg in geoms)
-                    if total / clipped.area > .95:
-                        candidates.append(pnu)
-            footprints.append({'geometry':mapping(clipped),'id':str(feature.get('id') or ''),
-                              'candidates':sorted(set(candidates)),'explicit':explicit,
-                              'source_properties':props})
-        except (ValueError,TypeError,KeyError):
-            continue
-
-    # Direct management-number equality is the only confirmed thematic join.
-    # PNU/intersection is retained for diagnostics only, never promoted to
-    # a confirmed use / structure / storey / age / density category.
-    ledger_by_id = {str(row['id']).strip(): row for row in data['buildings']
-                    if row.get('id')}
-    direct_ids = ('mgmBldrgstPk', 'mgmbldrgstpk', 'mgm_bldrgst_pk')
-    linked = 0
-    provisionally_located = 0
-    for foot in footprints:
-        foot['ledger'] = None
-        foot['join'] = 'UNMATCHED'
-        raw = foot.get('source_properties') or {}
-        key = next((str(raw.get(name) or '').strip() for name in direct_ids
-                    if raw.get(name) not in (None, '')), '')
-        if key and key in ledger_by_id:
-            foot['ledger'] = ledger_by_id[key]
-            foot['join'] = 'EXACT_ID'
-            linked += 1
-        elif foot['candidates']:
-            provisionally_located += 1
-
+    n = len(footprints)
+    matches = sum(1 for f in footprints if f['ledger'])
     for item in data['items']:
-        field=FIELDS.get(item['id'])
+        item_id = item['id']
+        field = FIELDS.get(item_id)
         if field is None:
             continue
         if not fetched:
-            item.update(features=[],provider_verified=False,
-                        detail=(item.get('detail') or '')+' · 건물 외곽선 공간도형 미확보',
-                        geometry_status='UNAVAILABLE')
+            item.update(features=[], provider_verified=False, geometry_status='UNAVAILABLE',
+                        detail=(item.get('detail') or '') + ' · 건축물 공간도형 미확보')
             continue
-        categories={}
-        features=[]
+
+        mapped = []
         for f in footprints:
-            value=f['ledger'].get(field) if f['ledger'] else None
-            key=str(value) if value is not None and value!='' else '대장 속성 미확인'
-            if key not in categories:
-                color='#a1a1aa' if key=='대장 속성 미확인' else PALETTE[int(hashlib.sha256(key.encode('utf-8')).hexdigest()[:8],16)%len(PALETTE)]
-                categories[key]={'name':key,'color':color,'count':0,
-                                 'class_code':'C99' if key=='대장 속성 미확인' else 'C'+str(len(categories)+1).zfill(2)}
-            categories[key]['count']+=1
-            features.append({'type':'Feature','geometry':f['geometry'],
-                             'properties':{'name':key,'color':categories[key]['color'],
-                                           'class_code':categories[key]['class_code'],
-                                           'join_status':f['join'],
-                                           'building_id':(f['ledger'] or {}).get('id')}})
-        item.update(features=features,legend=list(categories.values()),thematic_type='building',
-                    source='VWorld 건물 공간도형 · 건축HUB 건축물대장',
-                    provider_verified=verified,geometry_status='COMPLETE' if verified else 'REFERENCE',
-                    status='공간자료 확보' if verified else '보조 조회 참고자료',
-                    detail=(item.get('detail') or '')+
-                        f' · 건축물 도형 {len(footprints)}동, 대장 관리번호 일치 {linked}동, 속성 미확인 {len(footprints)-linked}동'
-                        +f' · 공간상 대장 관련 가능 {provisionally_located}동(미확인에 포함)'
-                        +' · 미확인을 무허가 건축물로 단정하지 않음')
-        # Existing register-based distributions are not overwritten.
-        stat=data.get('statistics',{}).get(item['id'])
-        if isinstance(stat,dict):
-            stat['footprint_count']=len(footprints)
-            stat['verified_ledger_joins']=linked
-            stat['possible_spatial_joins']=provisionally_located
-            stat['unmatched_footprints']=len(footprints)-linked
-            stat['footprint_status']=item['geometry_status']
-            stat['note']=(stat.get('note') or '')+' 도형 전체를 표시하며 관리번호가 확인되지 않은 도형은 속성 미확인으로 집계함. 무허가 여부는 판정하지 않음.'
+            label = _classify(item_id, f['ledger'].get(field)) if f['ledger'] else UNKNOWN
+            mapped.append(label)
+        totals = Counter(mapped)
+
+        fixed = list(BINS.get(item_id, ()))
+        if fixed:
+            order = fixed + ([OTHER] if totals.get(OTHER) else []) + ([UNKNOWN] if totals.get(UNKNOWN) else [])
+        else:
+            order = sorted((k for k in totals if k not in (OTHER, UNKNOWN)),
+                           key=lambda k: (-totals[k], k))
+            order += ([OTHER] if totals.get(OTHER) else []) + ([UNKNOWN] if totals.get(UNKNOWN) else [])
+
+        classes = {}
+        for i, label in enumerate(order):
+            if label == UNKNOWN:
+                color, code = '#a1a1aa', 'C99'
+            elif label == OTHER:
+                color, code = '#d6d3d1', 'C98'
+            else:
+                color = PALETTE[i % len(PALETTE)]
+                code = 'C' + str(min(i + 1, 97)).zfill(2)
+            classes[label] = {'name': label, 'class_code': code,
+                              'color': color, 'count': totals[label],
+                              'pct': round(totals[label] / n * 100, 1) if n else 0.0}
+
+        features = []
+        for f, label in zip(footprints, mapped):
+            meta = classes[label]
+            features.append({'type': 'Feature', 'geometry': f['geometry'],
+                             'properties': {'name': label, 'class_code': meta['class_code'],
+                                            'color': meta['color'],
+                                            'join_status': f['join_status']}})
+
+        rows = [{'kind': 'total', 'label': '합계', 'count': n,
+                 'pct': 100.0 if n else 0.0,
+                 'join_status': '도형 기준', 'note': '건축물 공간도형 수'}]
+        for label in order:
+            meta = classes[label]
+            rows.append({'kind': 'category', 'label': label, 'count': meta['count'],
+                         'pct': meta['pct'], 'join_status': (
+                             '대장 미연계' if label == UNKNOWN else
+                             '항목값 없음' if label == OTHER else '관리번호 직접연계'),
+                         'note': ''})
+        note = ('VWorld 건축물 외곽선 기준. 건물도형 하나를 건축물 한 동으로 최종 확정하지 않음. '
+                '공간도형과 건축물대장 관리번호가 일치하지 않으면 대장 미확인으로 별도 집계. '
+                '미확인 건축물을 무허가 또는 철거 건축물로 단정하지 않음.')
+        if not n:
+            note += ' 건축물 도형 조회 결과 0건으로, 실제 건축물 부존재를 보증하지 않음.'
+        if skipped:
+            note += f' 비정상 도형 {skipped}건 표시 제외(검증 필요).'
+        item.update(
+            features=features,
+            legend=[classes[label] for label in order if totals[label] > 0],
+            thematic_type='building', provider_verified=verified,
+            geometry_status='COMPLETE' if verified else 'REFERENCE',
+            source='VWorld 건물 공간도형 · 건축HUB 건축물대장',
+            status='공간자료 확보' if verified else '보조 조회 참고자료',
+            detail=(item.get('detail') or '') +
+                   f' · 도형 {n}개, 대장 관리번호 직접연계 {matches}개, 미연계 {n-matches}개'
+                   + ' · ' + note,
+            survey_table={
+                'title': f'[표 {item_id} {TITLES[item_id]} 현황]',
+                'status': 'COMPLETE' if verified else 'REFERENCE',
+                'rows': rows, 'source': 'VWorld · 건축HUB',
+                'as_of': data.get('as_of'), 'notes': [note],
+            },
+        )
+        stat = data.get('statistics', {}).get(item_id)
+        if isinstance(stat, dict):
+            stat.update(footprint_count=n, verified_ledger_joins=matches,
+                        unmatched_footprints=n - matches, invalid_features=skipped,
+                        footprint_status=item['geometry_status'],
+                        mapped_groups=[classes[label] for label in order],
+                        mapped_total=n, mapped_unit='건축물 공간도형(개)',
+                        note=(stat.get('note') or '') + ' ' + note)
