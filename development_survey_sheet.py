@@ -177,7 +177,8 @@ def make_sheet(item, snapshot):
                              fill=color, stroke='#777777', weight=0.35))
         name = str(entry.get('name') or '분류 미확인')
         # Full category values remain in FACT and report tables.
-        ops.append(primitive('text', x=506, y=y + 0.7, text=name[:14], size=7.0))
+        label = (name[:10] + f' {entry.get("count", 0)}동') if item.get('thematic_type') == 'building' else name[:14]
+        ops.append(primitive('text', x=506, y=y + 0.7, text=label, size=7.0))
     if item.get('id') == '5-2' and not use_zone_context:
         ops.append(primitive('text', x=497, y=307, text='주변 용도지역: 미조회', size=6.2))
     if len(legend) > 27:
