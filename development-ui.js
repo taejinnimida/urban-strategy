@@ -848,7 +848,7 @@ function devRenderSourceDetails(data){
    const sourceLabel=document.createElement('div');
    sourceLabel.style.cssText='font-size:12px;padding:7px;background:#fff4d6;color:#694900';
    sourceLabel.textContent=item.landcover_map_available
-      ?'환경부 2025년 세분류 토지피복 WMS 원영상 확보 · 면적·CAD 원도형 미확보'
+      ?'환경부 2025년 세분류 토지피복 WMS 원영상 확보 · 공간도형 WFS는 별도 확인 필요 · 면적·CAD 원도형 미확보'
       :'토지피복 WMS 영상 미확보 · 제공기관 수신 상태를 확인하세요. 면적·CAD 불가';
    legendbox.append(sourceLabel);
    if(item.landcover_map_available&&item.landcover_map_bounds?.length===2){
@@ -856,6 +856,9 @@ function devRenderSourceDetails(data){
     const cover=L.imageOverlay(img,item.landcover_map_bounds,{opacity:0.9,interactive:false});
     cover.on('error',()=>{if(select.value==='2-6')cadStatus.textContent='2-6 토지피복 WMS 이미지 다운로드 실패 · 서버 로그 확인';});
     cover.addTo(drawn);
+    // Show the actual georeferenced WMS extent, instead of letting the
+    // unthemed 3D/parcel background consume most of the preview.
+    devSourceDetailMap.fitBounds(item.landcover_map_bounds,{padding:[12,12]});
     boundary.bringToFront();
    }
   }
