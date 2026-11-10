@@ -168,6 +168,9 @@ def make_sheet(item, snapshot):
         ops.append(primitive('polyline', points=[(497, 81), (504, 81)],
                              stroke='#cbcbcb', weight=0.7, layer='SHEET_DECOR'))
         ops.append(primitive('text', x=507, y=83.2, text='주변 연속지적', size=6.9))
+    elif item.get('thematic_type') == 'building' and item.get('geometry_status') == 'COMPLETE' and not display_features:
+        ops.append(primitive('text', x=497, y=73, text='건물 도형 조회 0건', size=7.0))
+        ops.append(primitive('text', x=497, y=84, text='실제 부존재 미확정', size=6.1))
     elif not legend and not display_features:
         ops.append(primitive('text', x=497, y=73, text='주제도형 미확보', size=7.3))
     for i, entry in enumerate(legend[:27]):
