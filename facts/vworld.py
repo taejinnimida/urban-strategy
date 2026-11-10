@@ -15,6 +15,8 @@ ALLOWED = {
     ('api.vworld.kr', '/req/search'),
     ('api.vworld.kr', '/req/wfs'),
     ('api.vworld.kr', '/req/wms'),
+    ('api.vworld.kr', '/ned/data/getLandCharacteristics'),
+    ('api.vworld.kr', '/ned/data/getLandUseAttr'),
 }
 
 class FactTransportError(RuntimeError):
