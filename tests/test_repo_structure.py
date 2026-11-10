@@ -4,6 +4,8 @@ These are boundary checks, not a claim that legacy service-object injection or
 Seoul operational bugs are solved. They stop accidental cross-domain imports.
 """
 import ast
+import hashlib
+import json
 import importlib.util
 from pathlib import Path
 import unittest
@@ -79,6 +81,20 @@ class PackageBoundaryTest(unittest.TestCase):
         self.assertFalse(list(ROOT.glob("targeted_regression_*.py")))
         self.assertFalse((ROOT / "test_pipeline_repair.py").exists())
         self.assertTrue((ROOT / "tests/test_pipeline_repair.py").exists())
+
+    def test_seoul_operating_files_equal_protected_main(self):
+        manifest = json.loads((ROOT / "docs/SEOUL_PROTECTED_BASELINE.json").read_text(encoding="utf-8"))
+        bridge = manifest["app_allowed_import_bridge"]
+        for name, expected_sha in manifest["protected_blobs"].items():
+            with self.subTest(file=name):
+                contents = (ROOT / name).read_bytes()
+                if name == "app.py":
+                    old, new = bridge["old"].encode(), bridge["new"].encode()
+                    self.assertEqual(contents.count(new), 1)
+                    contents = contents.replace(new, old)
+                git_blob = b"blob " + str(len(contents)).encode() + b"\0" + contents
+                self.assertEqual(hashlib.sha1(git_blob).hexdigest(), expected_sha,
+                                 f"{name} changed relative to protected main baseline")
 
     def test_gitignore_excludes_bytecode(self):
         ignore=(ROOT / ".gitignore").read_text(encoding="utf-8")
