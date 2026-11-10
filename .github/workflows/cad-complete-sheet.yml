@@ -1,0 +1,33 @@
+name: CAD complete A3 sheet and chain-2 boundary
+on:
+  push:
+    branches:
+      - fix/cad-complete-sheet-chain2-20261110
+  pull_request:
+    paths:
+      - 'development/cad.py'
+      - 'development/survey_sheet.py'
+      - 'tests/test_cad_complete_sheet.py'
+      - '.github/workflows/cad-complete-sheet.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  full-drawing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install fastapi pydantic shapely pyproj ezdxf requests pyshp httpx
+      - name: Compile code
+        run: python -m py_compile development/cad.py development/survey_sheet.py tests/test_cad_complete_sheet.py
+      - name: Verify A3 paper and Model drawings with legend and chain-two site boundary
+        run: python -m unittest tests.test_cad_complete_sheet -v
+      - name: Regress previously fixed initial CAD startup view
+        run: python -m unittest tests.test_cad_initial_view -v
+      - name: Verify scale consistency
+        run: python -m unittest tests.test_print_scale -v
