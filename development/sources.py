@@ -483,7 +483,7 @@ def register_sources(router,service,snapshots,lock,output,get_snapshot,fetch_lay
     def jobs(token:str):
         s=fixed(token)
         if '_report' not in s:raise HTTPException(409,'조서 조회를 먼저 실행하세요.')
-        return {'jobs':[{'id':'vector:'+k,'label':v} for k,v in {**{f'LT_C_UQ11{i}':'용도지역' for i in range(1,5)},**{f'LT_C_UPISUQ15{i}':'도시계획시설' for i in range(1,10)},**EXTRA_LAYERS}.items()]+[{'id':'ned:'+p,'label':'필지 토지이용계획 '+p} for p in s['_report']['land']]+[{'id':'characteristics:'+p,'label':'토지특성 '+p} for p in s['_report']['land']]+[{'id':'file:'+k,'label':v} for k,v in FILE_ITEMS.items() if k!='4-3']+[{'id':'landcover_wms','label':'2025년 세분류 토지피복 WMS 지도'},{'id':'landcover_wfs','label':'세분류 토지피복 원도형 WFS 제공 여부 확인'},{'id':'ecobank','label':'생태·자연도 WFS 원도형'},{'id':'weather','label':'기상청 관측 일자료'},{'id':'dem','label':'표고·경사·단면'},{'id':'ecvam','label':'국토환경성평가 WMS'}]}
+        return {'jobs':[{'id':'vector:'+k,'label':v} for k,v in {**{f'LT_C_UQ11{i}':'용도지역' for i in range(1,5)},**{f'LT_C_UPISUQ15{i}':'도시계획시설' for i in range(1,10)},**EXTRA_LAYERS}.items()]+[{'id':'ned:'+p,'label':'필지 토지이용계획 '+p} for p in s['_report']['land']]+[{'id':'characteristics:'+p,'label':'토지특성 '+p} for p in s['_report']['land']]+[{'id':'file:'+k,'label':v} for k,v in FILE_ITEMS.items() if k!='4-3']+[{'id':'building_gis','label':'국토교통부 GIS건물통합정보 자동조회 (용도·구조·건물 외곽선)'}]+[{'id':'landcover_wms','label':'2025년 세분류 토지피복 WMS 지도'},{'id':'landcover_wfs','label':'세분류 토지피복 원도형 WFS 제공 여부 확인'},{'id':'ecobank','label':'생태·자연도 WFS 원도형'},{'id':'weather','label':'기상청 관측 일자료'},{'id':'dem','label':'표고·경사·단면'},{'id':'ecvam','label':'국토환경성평가 WMS'}]}
     @router.post('/reports/{token}/source-jobs/{job}')
     def collect(token:str,job:str):
         s=fixed(token);allowed={v['id'] for v in jobs(token)['jobs']}
@@ -512,6 +512,9 @@ def register_sources(router,service,snapshots,lock,output,get_snapshot,fetch_lay
                 elif job=='ecobank':
                     from development.nature.ecobank import collect_ecobank
                     result=collect_ecobank(s['geometry'])
+                elif job=='building_gis':
+                    from development.building.live import collect_gis_buildings
+                    result=collect_gis_buildings(s['geometry'])
                 elif job=='landcover_wms':
                     from development.land.landcover_service import fetch_landcover_wms
                     result=fetch_landcover_wms(s['geometry'])
@@ -522,7 +525,7 @@ def register_sources(router,service,snapshots,lock,output,get_snapshot,fetch_lay
                 elif job=='dem':result=dem(s['geometry'],area)
                 else:result=ecvam_map(service,s['geometry'])
             except Exception as exc:
-                stage='LAND_USE' if job.startswith('ned:') else 'LAND_CHARACTERISTICS' if job.startswith('characteristics:') else 'WEATHER' if job=='weather' else 'ECOBANK_WFS' if job=='ecobank' else 'LOCAL_SOURCE' if job=='dem' or job.startswith('file:') else 'SOURCE_COLLECTION'
+                stage='LOCAL_SOURCE' if job=='building_gis' else 'LAND_USE' if job.startswith('ned:') else 'LAND_CHARACTERISTICS' if job.startswith('characteristics:') else 'WEATHER' if job=='weather' else 'ECOBANK_WFS' if job=='ecobank' else 'LOCAL_SOURCE' if job=='dem' or job.startswith('file:') else 'SOURCE_COLLECTION'
                 result=source_failure(exc,stage)
             result['queried_at']=datetime.now(__import__('zoneinfo').ZoneInfo('Asia/Seoul')).isoformat(timespec='seconds')
             with lock:s.setdefault('_national_sources',{})[job]=result
