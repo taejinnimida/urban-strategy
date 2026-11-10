@@ -52,6 +52,39 @@ class BuildingSurveyTest(unittest.TestCase):
         self.assertEqual(d['items'][0]['features'][1]['properties']['name'], '대장 미확인')
         self.assertEqual(d['items'][2]['features'][0]['properties']['name'], '3층')
 
+    def test_integrated_gis_attributes_classify_without_register_join(self):
+        d = data()
+        geom = feature(box(1, 1, 3, 3))
+        geom['properties'] = {
+            'mainPurpsCdNm': '근린생활시설',
+            'grndFlrCnt': 4,
+            'totArea': 110,
+            'bcRat': 55,
+            'vlRat': 205,
+            'useAprDay': '20010101',
+        }
+        s = snapshot([], 'UNKNOWN')
+        s['_report_layers']['LT_C_BLDGINFO'] = {
+            'status': 'COMPLETE', 'features': [geom],
+        }
+        attach_building_themes(d, s)
+        self.assertEqual(d['items'][0]['features'][0]['properties']['name'], '근린생활시설')
+        self.assertEqual(d['items'][2]['features'][0]['properties']['name'], '4층')
+        self.assertEqual(d['items'][4]['features'][0]['properties']['name'], '85~115㎡')
+        self.assertEqual(d['items'][5]['features'][0]['properties']['name'], '40~70%')
+        self.assertEqual(d['items'][6]['features'][0]['properties']['name'], '200~300%')
+        self.assertEqual(d['items'][0]['survey_table']['rows'][0]['count'], 1)
+
+    def test_fallback_to_address_building_footprint(self):
+        d = data()
+        s = snapshot([feature(box(1, 1, 3, 3))])
+        s['_report_layers']['LT_C_BLDGINFO'] = {
+            'status': 'UNKNOWN', 'features': [],
+        }
+        attach_building_themes(d, s)
+        self.assertEqual(d['items'][0]['features'][0]['properties']['name'], '대장 미확인')
+        self.assertIn('보조', d['items'][0]['source'])
+
     def test_zero_footprints_yields_real_blank_sheet_data(self):
         d = data()
         attach_building_themes(d, snapshot([]))
