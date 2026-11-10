@@ -27,8 +27,8 @@ class CADStartupViewTest(unittest.TestCase):
         self.assertAlmostEqual(opts['center_epsg5179'][1],center[1],places=2)
         self.assertGreater(opts['view_height_m'],0)
         self.assertEqual(int(doc.header['$TILEMODE']),1)
-        self.assertGreater(doc.header['$LIMMIN'][0],900000)
-        self.assertGreater(doc.header['$LIMMIN'][1],1900000)
+        self.assertGreater(doc.modelspace().dxf_layout.dxf.limmin.x,900000)
+        self.assertGreater(doc.modelspace().dxf_layout.dxf.limmin.y,1900000)
         vports=doc.viewports.get('*Active')
         if not isinstance(vports,(list,tuple)):vports=[vports]
         self.assertTrue(any(abs(v.dxf.center.x-center[0])<.01 and
