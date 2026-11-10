@@ -51,3 +51,5 @@ jobs:
         run: python -m unittest tests.test_development tests.test_development_review -v
       - name: Module-boundary and moved-asset tests
         run: python -m unittest tests.test_repo_structure -v
+      - name: Full current Python suite (excluding archived version-specific scripts)
+        run: python -m pytest -q tests --ignore=tests/legacy_regression
