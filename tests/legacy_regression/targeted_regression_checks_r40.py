@@ -1,6 +1,6 @@
 from pathlib import Path
 import json, re, subprocess, sys, importlib.util
-ROOT=Path(__file__).resolve().parent
+ROOT=Path(__file__).resolve().parents[2]
 HTML=(ROOT/'app.html').read_text(encoding='utf-8')
 PYAPP=(ROOT/'app.py').read_text(encoding='utf-8')
 checks=[]

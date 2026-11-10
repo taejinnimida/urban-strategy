@@ -1,7 +1,7 @@
 from pathlib import Path
 import importlib.util, json, math, re, subprocess, sys
 
-BASE=Path(__file__).resolve().parent
+BASE=Path(__file__).resolve().parents[2]
 HTML=(BASE/'app.html').read_text(encoding='utf-8')
 PY=(BASE/'app.py').read_text(encoding='utf-8')
 META=json.loads((BASE/'hill_terrain_20m_meta.json').read_text(encoding='utf-8'))

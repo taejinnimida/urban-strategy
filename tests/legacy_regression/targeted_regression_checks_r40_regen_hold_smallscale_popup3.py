@@ -1,6 +1,6 @@
 from pathlib import Path
 import re, subprocess, tempfile, sys
-ROOT=Path(__file__).resolve().parent
+ROOT=Path(__file__).resolve().parents[2]
 HTML=(ROOT/'app.html').read_text(encoding='utf-8')
 checks=[]
 def ck(name, ok):
