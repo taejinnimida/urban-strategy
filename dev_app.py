@@ -5,8 +5,7 @@ from typing import Literal
 import math
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel, Field
 from pyproj import Geod
 from shapely.geometry import shape
@@ -23,12 +22,19 @@ async def lifespan(application):
 
 
 app = FastAPI(title="URBAN STRATEGY R104 DEV", lifespan=lifespan)
-app.mount('/dev-assets', StaticFiles(directory=BASE / 'development'), name='development')
+# Expose only the two known development assets; do not serve source files.
+@app.get('/dev-assets/style.css')
+def dev_style():
+    return FileResponse(BASE / 'style.css', media_type='text/css')
+
+@app.get('/dev-assets/nonurban.js')
+def dev_nonurban_js():
+    return FileResponse(BASE / 'nonurban.js', media_type='text/javascript')
 
 
 @app.get('/', response_class=HTMLResponse)
 def modes():
-    return (BASE / 'development/index.html').read_text(encoding='utf-8')
+    return (BASE / 'index.html').read_text(encoding='utf-8')
 
 
 @app.get('/seoul', response_class=HTMLResponse)
@@ -40,7 +46,7 @@ def seoul_mode():
 
 @app.get('/nonurban', response_class=HTMLResponse)
 def nonurban_mode():
-    return (BASE / 'development/nonurban.html').read_text(encoding='utf-8')
+    return (BASE / 'nonurban.html').read_text(encoding='utf-8')
 
 
 class Intake(BaseModel):
