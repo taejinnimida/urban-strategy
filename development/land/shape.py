@@ -53,7 +53,9 @@ def attach_land_shape_theme(data, snapshot, area):
         record = source.get('record') or {}
         if source.get('status') != 'ATTRIBUTE_ONLY' or str(record.get('pnu')) != pnu:
             continue
-        name = record.get('topgrphFrmCodeNm')
+        # VWorld getLandCharacteristics returns tpgrphFrmCodeNm.
+        # Keep historical topgrphFrmCodeNm snapshots readable.
+        name = record.get('tpgrphFrmCodeNm') or record.get('topgrphFrmCodeNm')
         if isinstance(name, str) and name.strip():
             known[pnu] = name.strip()[:80]
     if not known:
