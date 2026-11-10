@@ -1,0 +1,23 @@
+# Bytecode, interpreter caches and local tooling
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+
+# Local outputs and user-uploaded temporary artifacts
+*.log
+*.tmp
+*.bak
+*.swp
+.DS_Store
+Thumbs.db
+
+# Do not ignore official source datasets or checked-in source code by wildcard.
