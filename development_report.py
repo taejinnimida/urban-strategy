@@ -138,6 +138,50 @@ def tables(data):
                                cls.get('count'),cls.get('area_m2'),cls.get('color')])
     if len(theme_rows)>1:
         sheets.append(('현황도 분류별 통계',theme_rows))
+    # Independent audit trail: one record per mapped footprint, with explicit
+    # per-field source and assurance. This sheet never equates drawings to
+    # legal building counts or infers unauthorized construction.
+    fact=data.get('building_fact') or {}
+    audit=[['통합도형 ID','도형출처','조회상태','품질등급','대장 연결상태',
+            '대장관리번호','도형 제공 PNU','대장 관련 PNU','도로명주소 건물ID',
+            '불일치 항목','용도','용도 확인수준','구조','구조 확인수준',
+            '층수','층수 확인수준','경과연수','경과연수 확인수준',
+            '연면적','연면적 확인수준','건폐율','건폐율 확인수준',
+            '용적률','용적률 확인수준']]
+    for record in fact.get('records') or []:
+        attrs=record.get('attributes') or {}
+        values=[]
+        for field in ('use','structure','floors','age','floor_area','coverage','far'):
+            item=attrs.get(field) or {}
+            values.extend([item.get('value'),item.get('assurance')])
+        audit.append([record.get('id'),record.get('geometry_source'),
+                      record.get('source_status'),record.get('quality_grade'),
+                      record.get('join_status'),record.get('register_id'),
+                      record.get('provider_pnu'),record.get('registered_pnus'),
+                      record.get('address_building_id'),
+                      ', '.join(record.get('conflicts') or []),*values])
+    sheets.append(('건축물 통합FACT',audit))
+    summary=[['항목','값'],['공간도형 수',fact.get('counts',{}).get('mapped_shapes')],
+             ['통합 검증상태',fact.get('geometry_status')],
+             ['실제 건축물 동수 확정여부','미확정'],
+             ['건축물대장 직접연계',fact.get('counts',{}).get('direct_register_matches')],
+             ['GIS 속성만 확인',fact.get('counts',{}).get('gis_attribute_only')],
+             ['도형만 확보',fact.get('counts',{}).get('geometry_only')],
+             ['속성 충돌 검토대상',fact.get('counts',{}).get('conflicting_shapes')],
+             ['대장 있으나 직접 연결할 도형 없음',fact.get('counts',{}).get('register_without_direct_geometry')],
+             ['주소건물 중복도형 제외',fact.get('counts',{}).get('address_duplicates_suppressed')],
+             ['주소건물 겹침 검토',fact.get('counts',{}).get('address_overlaps_needing_review')],
+             ['비정상 도형 제외',fact.get('counts',{}).get('invalid_provider_shapes')],
+             ['0건 양쪽 출처확인',fact.get('counts',{}).get('zero_confirmed')],
+             ['한계',fact.get('note')]]
+    for layer,information in (fact.get('source_info') or {}).items():
+        summary.append([layer+' 자료상태',information.get('status')])
+        summary.append([layer+' 조회시각',information.get('queried_at')])
+    sheets.append(('건축물 FACT 검증',summary))
+    missing=[['대장 관리번호','관련 PNU','공간도형 직접연계 미확인 사유']]
+    for record in fact.get('unmatched_registers') or []:
+        missing.append([record.get('register_id'),record.get('pnus'),record.get('reason')])
+    sheets.append(('대장 도형 미연계',missing))
     building_table_rows=[['검토항목','자료상태','구분','건축물 공간도형(개)','구성비(%)','자료확인','비고','출처','기준일']]
     for item in data['items']:
         if item.get('thematic_type') != 'building':
