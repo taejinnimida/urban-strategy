@@ -44,8 +44,12 @@ class CADStartupViewTest(unittest.TestCase):
         reopened=ezdxf.read(io.StringIO(raw.decode('utf-8')))
         vports=reopened.viewports.get('*Active')
         if not isinstance(vports,(list,tuple)):vports=[vports]
-        self.assertTrue(any(abs(v.dxf.center.x-953050)<10 and
-                            abs(v.dxf.center.y-1950060)<10 for v in vports))
+        model_frame=meta['model_companion_sheet']['model_frame_bbox']
+        expected_x=(model_frame[0]+model_frame[2])/2
+        expected_y=(model_frame[1]+model_frame[3])/2
+        self.assertTrue(any(abs(v.dxf.center.x-expected_x)<1 and
+                            abs(v.dxf.center.y-expected_y)<1 for v in vports))
+        self.assertGreater(reopened.header['$LIMMAX'][0],model_frame[2])
         self.assertIn('initial_cad_view',meta)
         self.assertEqual(int(reopened.header['$TILEMODE']),0)
         self.assertEqual(reopened.layouts.active_layout().name,'SURVEY_A3')
