@@ -1,0 +1,39 @@
+name: Land and building thematic diagnostics
+on:
+  push:
+    branches:
+      - fix/survey-thematic-diagnostics-20261110
+  pull_request:
+    paths:
+      - 'development/land/shape.py'
+      - 'development/building/spatial.py'
+      - 'development/report.py'
+      - 'development/sources.py'
+      - 'development/cad.py'
+      - 'development-ui.js'
+      - 'tests/test_building_spatial.py'
+      - 'tests/test_development_land_themes.py'
+      - '.github/workflows/survey-themes.yml'
+permissions:
+  contents: read
+jobs:
+  survey-themes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install test dependencies
+        run: python -m pip install fastapi pydantic shapely pyproj requests pyshp ezdxf httpx
+      - name: Syntax
+        run: |
+          python -m compileall -q development
+          node --check development-ui.js
+      - name: Shapes and landcover regressions
+        run: python -m unittest tests.test_development_land_themes -v
+      - name: GIS building-to-theme and DXF integration
+        run: python -m unittest tests.test_building_spatial -v
+      - name: Existing land and building survey table regressions
+        run: python -m unittest tests.test_development_land_tables -v
