@@ -10,6 +10,7 @@ from xml.sax.saxutils import escape
 from pyproj import Transformer
 from shapely.geometry import box, shape
 from shapely.ops import transform
+from development.print_scale import decide_print_scale
 
 SHEET_W, SHEET_H = 580.0, 380.0
 MAP = (2.0, 2.0, 485.0, 376.0)  # x, y, width, height
@@ -64,7 +65,17 @@ def make_sheet(item, snapshot):
     xmin, ymin, xmax, ymax = site.bounds
     cx, cy = (xmin + xmax) / 2.0, (ymin + ymax) / 2.0
     width, height = max(xmax - xmin, 0.01), max(ymax - ymin, 0.01)
-    metres_per_px = max(2.0 * width / MAP[2], 2.0 * height / MAP[3])
+    choice = snapshot.get('print_scale') or decide_print_scale(snapshot['geometry'])
+    if choice.get('mode') == 'FIXED' and choice.get('denominator') in (1000, 3000, 5000):
+        # 1 unit of the 580-wide drawing becomes SCALE millimetres on A3.
+        metres_per_px = choice['denominator'] * SCALE / 1000.0
+        if (2*width > MAP[2]*metres_per_px + 1e-8 or
+                2*height > MAP[3]*metres_per_px + 1e-8):
+            raise ValueError('frozen print scale does not contain required context')
+    elif choice.get('mode') == 'NS':
+        metres_per_px = max(2.0 * width / MAP[2], 2.0 * height / MAP[3])
+    else:
+        raise ValueError('invalid frozen print scale')
     view = box(cx - MAP[2] * metres_per_px / 2.0,
                cy - MAP[3] * metres_per_px / 2.0,
                cx + MAP[2] * metres_per_px / 2.0,
@@ -210,6 +221,10 @@ def make_sheet(item, snapshot):
         primitive('polygon', rings=[[(507, 334), (504.6, 340), (507, 339.2)]],
                   fill='#333333', stroke='#333333', weight=0.4, layer='SHEET_DECOR'),
     ])
+    # Explicit scale for print/plot operators. In N.S. mode graphic distance
+    # remains true, but the result must not masquerade as a formal fixed-scale sheet.
+    ops.append(primitive('text', x=532, y=352.5, text=choice['label'],
+                         size=7.6, bold=True, anchor='middle'))
     # Choose a true measured distance whose displayed width fits the panel.
     # Two long segments prevent scale labels from overlapping at small sizes.
     target_distance = 57.0 * metres_per_px
