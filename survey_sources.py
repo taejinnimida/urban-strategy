@@ -12,12 +12,6 @@ from facts.vworld import VWorldFacts, vworld_key, vworld_domain, FactTransportEr
 from facts.official_records import OfficialRecordFacts
 
 
-class SurveySourceUnavailable(RuntimeError):
-    def __init__(self, source):
-        self.code='SOURCE_NOT_IMPLEMENTED'
-        super().__init__('SURVEY_SOURCE_NOT_IMPLEMENTED: '+source)
-
-
 class _FetchedResponse:
     """Adapter matching the existing survey-only collectors, not the Seoul app."""
     status_code=200
