@@ -9,6 +9,7 @@ import re
 from urllib.parse import urljoin, urlparse, parse_qsl, urlunparse
 from xml.etree import ElementTree as ET
 from facts.vworld import VWorldFacts, vworld_key, vworld_domain, FactTransportError
+from facts.official_records import OfficialRecordFacts
 
 
 class SurveySourceUnavailable(RuntimeError):
@@ -43,6 +44,7 @@ class SurveySources:
 
     def __init__(self, facts=None):
         self.facts=facts if facts is not None else VWorldFacts()
+        self.records=OfficialRecordFacts(self.facts)
 
     def _vworld_key(self):
         return vworld_key()
@@ -114,14 +116,14 @@ class SurveySources:
             raise FactTransportError('SOURCE_TRUNCATED')
         return result
 
-    # Each source is built and verified independently in subsequent survey work.
-    # Fail closed rather than borrow Seoul operational query functions.
+    # Fully independent, official public sources. These calls never reach
+    # Seoul's app.py or business-rule engine, even on upstream failures.
     def _resolve_land_ledger(self,pnu):
-        raise SurveySourceUnavailable('land_ledger')
+        return self.records.ledger(pnu)
     def _resolve_individual_land_price(self,pnu,year,timeout=8):
-        raise SurveySourceUnavailable('individual_land_price')
+        return self.records.price(pnu,year)
     def _query_building_hub_title(self,pnu):
-        raise SurveySourceUnavailable('building_hub_title')
+        return self.records.building_titles(pnu)
 
     def _ecvam_key(self):
         return os.getenv('ECVAM_API_KEY','').strip()
