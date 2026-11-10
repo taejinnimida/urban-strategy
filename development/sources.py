@@ -31,7 +31,12 @@ ERROR_LABELS={
  'PROVIDER_FORMAT':'제공기관 응답 형식 오류','PROVIDER_UNREACHABLE':'제공기관 연결 실패',
  'PROVIDER_LAYER_MISSING':'요청 자료의 제공 여부 확인 필요',
  'VALIDATION_FAILED':'공간자료·속성 검증 실패','SOURCE_FILE_MISSING':'등록된 원자료 파일 없음',
- 'REQUEST_FAILED':'공공자료 조회 처리 실패'}
+ 'REQUEST_FAILED':'공공자료 조회 처리 실패',
+ 'SOURCE_TRUNCATED':'건물 공간정보 결과가 조회 제한으로 일부만 반환됨 · 면적·건물수 확정 금지',
+ 'DUPLICATE_ID_CONFLICT':'같은 건물 식별번호에 서로 다른 도형이 있어 검증 필요',
+ 'INVALID_CRS':'건물도형 좌표계가 요청한 EPSG:4326과 일치하지 않음',
+ 'INVALID_BBOX':'구역계 좌표범위 오류',
+ 'INVALID_BOUNDARY':'현황분석 구역계 도형 오류'}
 PROVIDER_CODES=frozenset(('INCORRECT_KEY','INVALID_KEY','EXPIRED_KEY','UNAUTHORIZED_KEY',
  'INVALID_DOMAIN','INCORRECT_DOMAIN','INVALID_REQUEST','INVALID_PARAMETER','INVALID_RANGE',
  'INVALID_DATATYPE','INVALID_DATA','INVALID_SERVICE','INVALID_VERSION','INVALID_FORMAT',
@@ -51,6 +56,8 @@ class PublicDataError(RuntimeError):
 
 def safe_failure(exc,stage='SOURCE_COLLECTION'):
     from development.nature.ecobank import EcoBankError
+    if type(exc).__name__=='BuildingSourceError' and getattr(exc,'code',None) in ERROR_LABELS:
+        return {'error_code':exc.code,'stage':stage if stage in STAGES else 'LOCAL_SOURCE'}
     if isinstance(exc,EcoBankError):
         return {k:v for k,v in {'error_code':exc.code,'stage':'ECOBANK_WFS','http_status':exc.http_status}.items() if v is not None}
     if isinstance(exc,PublicDataError):
