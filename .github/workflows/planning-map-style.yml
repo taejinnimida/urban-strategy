@@ -1,0 +1,25 @@
+name: City planning map display style
+on:
+  push:
+    branches:
+      - feature/planning-map-styles-opacity-20261110
+  pull_request:
+    paths:
+      - 'development-ui.js'
+      - 'tests/test_planning_map_style.cjs'
+      - '.github/workflows/planning-map-style.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check-style:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax check
+        run: node --check development-ui.js
+      - name: Planning map color and 25% transparency regression
+        run: node tests/test_planning_map_style.cjs
