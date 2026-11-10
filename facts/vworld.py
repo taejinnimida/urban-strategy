@@ -88,6 +88,20 @@ class VWorldFacts:
             raise FactTransportError('PROVIDER_FORMAT')
         return data
 
+    def regions(self, bbox) -> list:
+        """Public WFS municipality boundaries. Classification is a FACT only."""
+        if len(bbox)!=4 or not all(isinstance(v,(int,float)) for v in bbox):
+            raise FactTransportError('INVALID_BBOX')
+        result=self.fetch('https://api.vworld.kr/req/wfs',{
+            'service':'WFS','request':'GetFeature','version':'1.0.0',
+            'typename':'lt_c_adsido_info','srsname':'EPSG:4326',
+            'bbox':','.join(map(str,bbox)),
+            'output':'application/json','maxfeatures':50})
+        features=result.get('features')
+        if not isinstance(features,list) or len(features)>50:
+            raise FactTransportError('PROVIDER_FORMAT')
+        return features
+
     def search_parcel_address(self, address: str) -> dict:
         return self.fetch('https://api.vworld.kr/req/search', {
             'service':'search','request':'search','version':'2.0','format':'json',
