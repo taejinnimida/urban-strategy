@@ -57,6 +57,14 @@ class FactBoundaryTests(unittest.TestCase):
         with self.assertRaises(FactTransportError):
             self.adapter.parcel_by_pnu('1234')
 
+    def test_independent_region_boundaries(self):
+        data=b'{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"ctp_kor_nm":"서울특별시"},"geometry":{"type":"Polygon","coordinates":[]}}]}'
+        with patch('facts.vworld.requests.get',return_value=Response(data=data)) as request:
+            result=self.adapter.regions((126,37,128,38))
+        self.assertEqual(len(result),1)
+        self.assertEqual(result[0]['properties']['ctp_kor_nm'],'서울특별시')
+        self.assertEqual(request.call_args.kwargs['params']['typename'],'lt_c_adsido_info')
+
     def test_source_request_has_server_credentials_and_no_redirects(self):
         with patch('facts.vworld.requests.get',return_value=Response()) as request:
             result=self.adapter.search_parcel_address('서울 종로구')
