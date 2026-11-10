@@ -219,6 +219,99 @@ def _configure_initial_cad_view(doc, projected_frame):
                                      round(y1+height*margin,3)]}
 
 
+def _add_model_survey_frame(doc, model, frame, item, snapshot):
+    """CAD-native model-space border, classification key and north/scale panel.
+
+    Paper-space SURVEY_A3 remains the deliverable sheet. This companion
+    frame is included for CAD viewers that reopen DXFs in Model or execute
+    ZOOM EXTENTS without activating paper layouts. It uses projected metric
+    coordinates near the source geometry and has editable LINE/TEXT/HATCH
+    objects. It NEVER changes the site's original coordinates.
+    """
+    from ezdxf.colors import rgb2int
+    from ezdxf.enums import TextEntityAlignment
+    from development.print_scale import decide_print_scale
+
+    xmin, ymin, xmax, ymax = frame.bounds
+    w, h = xmax - xmin, ymax - ymin
+    if min(w, h) <= 0:
+        raise ValueError('invalid metric frame')
+    scale = snapshot.get('print_scale') or decide_print_scale(snapshot['geometry'])
+    # Companion panel dimensions are proportional to the established map
+    # frame, keeping it adjacent instead of at the origin or many km away.
+    gutter = max(w * .012, .3)
+    panel_w = max(w * .19, 6.0)
+    panel_x = xmax + gutter
+    outer_x = panel_x + panel_w + gutter
+    model_layer = 'MODEL_SHEET_FRAME'
+    text_layer = 'MODEL_SHEET_TEXT'
+    legend_layer = 'MODEL_SHEET_LEGEND'
+    for name, rgb in (
+        (model_layer, 0x727272),
+        (text_layer, 0x111111),
+        (legend_layer, 0x777777),
+    ):
+        if name not in doc.layers:
+            doc.layers.new(name, dxfattribs={'color':7,'true_color':rgb})
+    if 'KOREAN' not in doc.styles:
+        doc.styles.new('KOREAN',dxfattribs={'font':'malgun.ttf'})
+
+    def rectangle(x0,y0,x1,y1,layer=model_layer):
+        pts=[(x0,y0),(x1,y0),(x1,y1),(x0,y1)]
+        return model.add_lwpolyline(pts,close=True,dxfattribs={'layer':layer})
+
+    def label(message,x,y,height=None,layer=text_layer):
+        return model.add_text(str(message),dxfattribs={
+            'layer':layer,'style':'KOREAN','height':height or max(.8,min(w,h)*.018)
+        }).set_placement((x,y),align=TextEntityAlignment.MIDDLE_LEFT)
+
+    rectangle(xmin,ymin,outer_x,ymax)
+    rectangle(panel_x,ymax-h*.16,outer_x,ymax)
+    rectangle(panel_x,ymin+h*.18,outer_x,ymax-h*.17)
+    rectangle(panel_x,ymin,outer_x,ymin+h*.17)
+    font=max(.8,min(w,h)*.018)
+    label(str(item.get('name') or item.get('id') or '도시현황도'),panel_x+gutter,ymax-h*.07,font*1.12)
+    label('도면 범례',panel_x+gutter,ymax-h*.21,font)
+    y=ymax-h*.265
+    # A valid model companion also explains the core 2-dot boundary and
+    # cadastral line even if the specific subject has no classified values.
+    model.add_line((panel_x+gutter,y),(panel_x+gutter*5.5,y),
+                   dxfattribs={'layer':'SITE_BOUNDARY'})
+    label('구역계 (2점쇄선)',panel_x+gutter*6,y,font*.84)
+    y-=h*.048
+    model.add_line((panel_x+gutter,y),(panel_x+gutter*5.5,y),
+                   dxfattribs={'layer':'CADASTRE'})
+    label('연속지적',panel_x+gutter*6,y,font*.84)
+    y-=h*.058
+    for entry in (item.get('legend') or [])[:12]:
+        if y<ymin+h*.23:
+            break
+        name=str(entry.get('name') or '분류 미확인')
+        col=str(entry.get('color') or '#dddddd')
+        if not re.fullmatch(r'#[0-9a-fA-F]{6}',col):
+            col='#dddddd'
+        rgb=rgb2int(tuple(int(col[i:i+2],16) for i in (1,3,5)))
+        side=max(font*1.1,gutter*1.9)
+        pts=[(panel_x+gutter,y-side*.5),(panel_x+gutter+side,y-side*.5),
+             (panel_x+gutter+side,y+side*.5),(panel_x+gutter,y+side*.5)]
+        hatch=model.add_hatch(color=7,dxfattribs={
+            'layer':legend_layer,'true_color':rgb})
+        hatch.set_solid_fill(color=7)
+        hatch.dxf.true_color=rgb
+        hatch.paths.add_polyline_path(pts,is_closed=True)
+        rectangle(pts[0][0],pts[0][1],pts[2][0],pts[2][1],legend_layer)
+        label(name[:18],panel_x+gutter+side+gutter*.5,y,font*.85)
+        y-=h*.047
+    label('N',panel_x+gutter,ymin+h*.125,font*1.1)
+    model.add_line((panel_x+gutter,ymin+h*.05),(panel_x+gutter,ymin+h*.113),
+                   dxfattribs={'layer':model_layer})
+    label(scale['label'],panel_x+gutter*4,ymin+h*.08,font)
+    # A numeric scale label is not a substitute for a measured paper-space
+    # view. The actual A3 plot scale lives in SURVEY_A3.
+    return {'model_frame_bbox':[xmin,ymin,outer_x,ymax],
+            'model_panel_side':'right','legend_entries':min(12,len(item.get('legend') or []))}
+
+
 def dxf_bytes(item, snapshot, metadata):
     site = shape(snapshot['geometry'])
     if site.is_empty or not site.is_valid:
@@ -231,7 +324,17 @@ def dxf_bytes(item, snapshot, metadata):
     doc.header['$MEASUREMENT'] = 1
     doc.header['$LUPREC'] = 3
     doc.layers.new('DRAWING_FRAME', dxfattribs={'color': 9, 'lineweight': 25})
-    doc.layers.new('SITE_BOUNDARY', dxfattribs={'color': 1, 'lineweight': 50})
+    # A real CAD double-dot chain (long dash + two dots) in metres.
+    # Select dash lengths from the chosen print denominator; N.S. scales to
+    # the frame. Keep SITE_BOUNDARY and legend swatches on the same linetype.
+    scale_choice = snapshot.get('print_scale') or {}
+    denom = scale_choice.get('denominator') or max(1000, round((frame.bounds[2]-frame.bounds[0])/0.34))
+    unit = max(.5, float(denom)/1000.0)
+    doc.linetypes.new('SURVEY_CHAIN2_MODEL', dxfattribs={
+        'description':'long dash + dot + dot',
+        'pattern':[8.0*unit,4.5*unit,-.8*unit,0.0,-.6*unit,0.0,-2.1*unit]})
+    doc.layers.new('SITE_BOUNDARY', dxfattribs={
+        'color': 1, 'lineweight': 50,'linetype':'SURVEY_CHAIN2_MODEL'})
     doc.layers.new('CADASTRE', dxfattribs={'color': 8, 'lineweight': 13})
     doc.layers.new('PARCEL_LABEL', dxfattribs={'color': 7, 'lineweight': 13})
     doc.styles.new('KOREAN', dxfattribs={'font': 'malgun.ttf'})
@@ -425,6 +528,10 @@ def dxf_bytes(item, snapshot, metadata):
             counts['thematic_features'] += 1
         except (ValueError, KeyError, TypeError):
             raise HTTPException(422, '검토항목 공간자료의 CAD 변환에 실패했습니다.') from None
+    # This companion frame and legend are visible even when opened on Model,
+    # whereas SURVEY_A3 is the printable/editable formal sheet.
+    model_sheet = _add_model_survey_frame(doc, model, frame, item, snapshot)
+    metadata['model_companion_sheet'] = model_sheet
     if (item['id'] == '1-1' or (item['id'] in ('2-1','2-2','2-3','2-4','2-5','2-6','5-2','4-3','4-1','4-2','4-4','4-5','4-6','3-1','3-2') and item.get('provider_verified') is True)):
         from development.survey_sheet import make_sheet, dxf_paper_sheet
         dxf_paper_sheet(doc, make_sheet(item, snapshot))
