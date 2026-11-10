@@ -121,6 +121,7 @@ def attach_building_themes(data, snapshot):
                                            'join_status':f['join'],
                                            'building_id':(f['ledger'] or {}).get('id')}})
         item.update(features=features,legend=list(categories.values()),thematic_type='building',
+                    source='VWorld 건물 공간도형 · 건축HUB 건축물대장',
                     provider_verified=verified,geometry_status='COMPLETE' if verified else 'REFERENCE',
                     status='공간자료 확보' if verified else '보조 조회 참고자료',
                     detail=(item.get('detail') or '')+
