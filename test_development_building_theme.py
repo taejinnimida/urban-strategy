@@ -1,0 +1,74 @@
+"""Synthetic regression tests for independent building footprint survey maps."""
+import unittest
+from shapely.geometry import box, mapping
+from development_building_theme import attach_building_themes, _classify
+
+
+def feature(geom, mgm=None):
+    properties = {'mgmBldrgstPk': mgm} if mgm else {}
+    return {'type': 'Feature', 'geometry': mapping(geom), 'properties': properties}
+
+
+def data():
+    return {
+        'as_of': '2026-11-10',
+        'buildings': [{'id': 'MG001', 'pnus': '1111111111100000001',
+                       'use': '단독주택', 'structure': '철근콘크리트구조',
+                       'floors': 3, 'age': 25, 'floor_area': 100,
+                       'coverage': 60, 'far': 150}],
+        'items': [{'id': f'3-{i}', 'name': str(i), 'detail': ''} for i in range(1, 8)],
+        'statistics': {f'3-{i}': {'field': 'test'} for i in range(1, 8)},
+    }
+
+
+def snapshot(features, status='COMPLETE'):
+    return {
+        'geometry': mapping(box(0, 0, 10, 10)),
+        '_report_layers': {'LT_C_SPBD': {'status': status, 'features': features}},
+    }
+
+
+class BuildingSurveyTest(unittest.TestCase):
+    def test_bins_follow_sample(self):
+        self.assertEqual(_classify('3-3', 5), '5층 이상')
+        self.assertEqual(_classify('3-4', 30), '30~40년')
+        self.assertEqual(_classify('3-5', 85), '85~115㎡')
+        self.assertEqual(_classify('3-6', 10), '20% 미만')
+        self.assertEqual(_classify('3-7', 300), '300% 이상')
+        self.assertEqual(_classify('3-5', 0), '기타(값 없음 등)')
+
+    def test_verified_and_unmatched_both_drawn(self):
+        d = data()
+        attach_building_themes(d, snapshot([
+            feature(box(1, 1, 3, 3), 'MG001'),
+            feature(box(4, 4, 6, 6)),
+        ]))
+        for item in d['items']:
+            self.assertEqual(len(item['features']), 2)
+            self.assertEqual(item['survey_table']['rows'][0]['count'], 2)
+            self.assertEqual(sum(e['count'] for e in item['legend']), 2)
+            self.assertEqual(item['geometry_status'], 'COMPLETE')
+        self.assertEqual(d['items'][0]['features'][0]['properties']['name'], '단독주택')
+        self.assertEqual(d['items'][0]['features'][1]['properties']['name'], '대장 미확인')
+        self.assertEqual(d['items'][2]['features'][0]['properties']['name'], '3층')
+
+    def test_zero_footprints_yields_real_blank_sheet_data(self):
+        d = data()
+        attach_building_themes(d, snapshot([]))
+        for item in d['items']:
+            self.assertEqual(item['features'], [])
+            self.assertEqual(item['survey_table']['rows'][0]['count'], 0)
+            self.assertTrue(item['provider_verified'])
+            self.assertEqual(item['geometry_status'], 'COMPLETE')
+
+    def test_failed_layer_does_not_become_zero(self):
+        d = data()
+        attach_building_themes(d, snapshot([], 'UNKNOWN'))
+        for item in d['items']:
+            self.assertEqual(item['geometry_status'], 'UNAVAILABLE')
+            self.assertFalse(item['provider_verified'])
+            self.assertNotIn('survey_table', item)
+
+
+if __name__ == '__main__':
+    unittest.main()
