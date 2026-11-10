@@ -16,6 +16,7 @@ GEOD=Geod(ellps='WGS84')
 FACILITY_NAMES=['도로','교통시설','공간시설','유통·공급시설','공공·문화체육시설','방재시설','보건위생시설','환경기초시설','기타 기반시설']
 LAYERS={'LP_PA_CBND_BUBUN':'연속지적',**{f'LT_C_UQ11{i}':n for i,n in enumerate(['도시지역','관리지역','농림지역','자연환경보전지역'],1)},**{f'LT_C_UPISUQ15{i}':FACILITY_NAMES[i-1] for i in range(1,10)}}
 from development.sources import EXTRA_LAYERS, PublicDataError, safe_failure, ERROR_LABELS, PROVIDER_CODES, acquisition_status
+from development.print_scale import decide_print_scale
 LAYERS.update(EXTRA_LAYERS)
 # Seoul municipal GeoServer: 25 district boundaries, retrieved 2026-10-28.
 # Routing reference only; not a substitute for a legal boundary determination.
@@ -220,7 +221,7 @@ def register(app,service,*,fact_provider=None):
         return 'UNKNOWN'
     @router.post('/snapshots')
     def create(data:Site):
-        g=validate(data.geometry);p={'geometry':data.geometry,'area_m2':area(g),'region':jurisdiction(g),'region_source':'SEOUL_REFERENCE_20261028' if offline_region(g) else 'VWORLD_OR_UNKNOWN','created_at':time.time(),'expires_in':7200}
+        g=validate(data.geometry);print_scale=decide_print_scale(data.geometry);p={'geometry':data.geometry,'area_m2':area(g),'print_scale':print_scale,'region':jurisdiction(g),'region_source':'SEOUL_REFERENCE_20261028' if offline_region(g) else 'VWORLD_OR_UNKNOWN','created_at':time.time(),'expires_in':7200}
         with lock:
             for k in list(snapshots):
                 if time.time()-snapshots[k]['created_at']>7200:del snapshots[k]
