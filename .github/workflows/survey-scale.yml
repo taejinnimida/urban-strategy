@@ -1,0 +1,38 @@
+name: Survey paper scale selection
+on:
+  push:
+    branches:
+      - feature/survey-auto-paper-scale-20261110
+  pull_request:
+    paths:
+      - 'development/print_scale.py'
+      - 'development/survey_sheet.py'
+      - 'development/cad.py'
+      - 'development/review.py'
+      - 'tests/test_print_scale.py'
+      - '.github/workflows/survey-scale.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  paper-scale:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install offline plotting dependencies
+        run: python -m pip install fastapi pydantic shapely pyproj ezdxf requests pyshp httpx
+      - name: Syntax check
+        run: |
+          python -m py_compile development/print_scale.py development/review.py development/survey_sheet.py development/cad.py
+          node --check development-ui.js
+          node --check survey-ui.js
+      - name: A3 fixed and N.S. scales
+        run: python -m unittest tests.test_print_scale -v
+      - name: Existing A3 layout and DXF regressions
+        run: python -m unittest tests.test_development_survey_sheet -v
+      - name: Boundary snapshot and source review regressions
+        run: python -m unittest tests.test_development_review -v
