@@ -263,7 +263,11 @@ def make_sheet(item, snapshot):
 
 def svg_sheet(ops):
     """Return a self-contained vector preview of exactly the CAD paper objects."""
-    buf = [f'<svg xmlns="http://www.w3.org/2000/svg" width="1160" height="760" viewBox="0 0 {SHEET_W:g} {SHEET_H:g}">',
+    # An on-screen pixel preview alone has no reliable paper print scale.
+    # Physical A3 dimensions and the *same* 412/580 transform as DXF layout
+    # are encoded in the SVG, so 1:1000/3000/5000 labels are truthful at 100%.
+    buf = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{PAPER_W:g}mm" height="{PAPER_H:g}mm" viewBox="0 0 {PAPER_W:g} {PAPER_H:g}">',
+           f'<g transform="translate(4 {PAPER_DY:.8f}) scale({SCALE:.10f})">',
            '<rect x="0" y="0" width="580" height="380" fill="#fff"/>']
     for op in ops:
         kind, stroke, weight = op['type'], _color(op.get('stroke'), '#000000') if op.get('stroke') != 'none' else 'none', op.get('weight', 0.5)
@@ -281,7 +285,7 @@ def svg_sheet(ops):
             buf.append(f'<text x="{op["x"]:.3f}" y="{op["y"]:.3f}" font-family="NanumSquare, Noto Serif CJK KR, Malgun Gothic, sans-serif" font-size="{op.get("size", 7):g}" text-anchor="{anchor}"{weight_tag}>{escape(str(op["text"]))}</text>')
         elif kind == 'circle':
             buf.append(f'<circle cx="{op["x"]:.3f}" cy="{op["y"]:.3f}" r="{op["r"]:.3f}" fill="none" stroke="{stroke}" stroke-width="{weight}"/>')
-    buf.append('</svg>')
+    buf.append('</g></svg>')
     return ''.join(buf).encode('utf-8')
 
 
