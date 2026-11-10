@@ -259,6 +259,8 @@ def register_report(router, service, snapshots, lock, get_snapshot, fetch_layer,
         attach_land_survey_tables(data,s,area)
         from development.building.tables import attach_building_survey_tables
         attach_building_survey_tables(data)
+        from development.building.spatial import attach_building_spatial_themes
+        attach_building_spatial_themes(data,s,area)
         from development.nature.tables import attach_nature_survey_tables
         from development.nature.vector import attach_nature_vector_themes
         attach_nature_vector_themes(data,s)
