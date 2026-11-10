@@ -1,0 +1,31 @@
+name: FACT boundary isolation
+
+on:
+  push:
+    branches:
+      - feature/fact-boundary-20261110
+  pull_request:
+    paths:
+      - 'facts/**'
+      - 'tests/test_fact_boundary.py'
+      - '.github/workflows/fact-boundary.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-fact-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install FACT transport dependencies
+        run: python -m pip install requests
+      - name: Validate standalone modules
+        run: python -m compileall -q facts
+      - name: Test transport without real API credentials or outside network
+        run: python -m unittest tests.test_fact_boundary -v
