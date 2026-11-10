@@ -52,7 +52,7 @@ class BuildingGISLiveTest(unittest.TestCase):
         self.assertEqual(provider.calls[0][1]['srsName'],'EPSG:4326')
         self.assertEqual(provider.calls[0][2],'json')
         snapshot={'geometry':GEOM,'_national_sources':{'building_gis':fetched},
-                  '_cad_background':{'status':'COMPLETE','features':[]}}
+                  '_cad_background':{'status':'COMPLETE','features':[{'type':'Feature','geometry':GEOM,'properties':{'jibun':'1-1'}}]}}
         data={'items':[{'id':'3-1','survey_table':{'title':'건축HUB 표제부 용도별 5건'}},
                        {'id':'3-2','survey_table':{'title':'건축HUB 표제부 구조별 5건'}}],
               'statistics':{}}
