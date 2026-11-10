@@ -1,6 +1,6 @@
 """Offline tests for shared DEM classes; never requires API credentials."""
 import unittest
-from development_terrain_classes import classify,new_accumulator,add_cell,finish
+from development.nature.terrain_classes import classify,new_accumulator,add_cell,finish
 
 class TerrainBandsTest(unittest.TestCase):
     def test_elevation_edges_including_negative(self):

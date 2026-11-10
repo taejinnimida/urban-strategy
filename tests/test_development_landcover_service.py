@@ -5,7 +5,7 @@ import struct
 import unittest
 from unittest.mock import patch
 from shapely.geometry import mapping, box
-from development_landcover_service import (
+from development.land.landcover_service import (
     fetch_landcover_wms, fetch_landcover_wfs, _bounds, LAYER,
     WMS_ENDPOINTS, WFS_ENDPOINT,
 )
@@ -43,7 +43,7 @@ class LandCoverServiceTest(unittest.TestCase):
         def get(url, params, timeout, allow_redirects, headers):
             calls.append((url, params))
             return MockResponse(png_signature())
-        with patch('development_landcover_service.requests.get', side_effect=get):
+        with patch('development.land.landcover_service.requests.get', side_effect=get):
             result = fetch_landcover_wms(SITE)
         self.assertEqual(result['status'], 'MAP_ONLY')
         self.assertEqual(result['layer'], LAYER)
@@ -53,7 +53,7 @@ class LandCoverServiceTest(unittest.TestCase):
         self.assertEqual(result['map_width'], 1024)
 
     def test_non_png_is_not_fake_map(self):
-        with patch('development_landcover_service.requests.get',
+        with patch('development.land.landcover_service.requests.get',
                    return_value=MockResponse(b'<ServiceException>Access denied</ServiceException>')):
             result = fetch_landcover_wms(SITE)
         self.assertEqual(result['status'], 'ERROR')
@@ -65,7 +65,7 @@ class LandCoverServiceTest(unittest.TestCase):
         def get(url, params, timeout, allow_redirects, headers):
             called.append(params['request'])
             return MockResponse(xml)
-        with patch('development_landcover_service.requests.get', side_effect=get):
+        with patch('development.land.landcover_service.requests.get', side_effect=get):
             result = fetch_landcover_wfs(SITE)
         self.assertEqual(result['status'], 'WFS_NOT_ADVERTISED')
         self.assertEqual(called, ['GetCapabilities'])
@@ -78,7 +78,7 @@ class LandCoverServiceTest(unittest.TestCase):
         ]}).encode()
         def get(url, params, timeout, allow_redirects, headers):
             return MockResponse(xml if params['request'] == 'GetCapabilities' else geo)
-        with patch('development_landcover_service.requests.get', side_effect=get):
+        with patch('development.land.landcover_service.requests.get', side_effect=get):
             result = fetch_landcover_wfs(SITE)
         self.assertEqual(result['status'], 'PARTIAL')
         self.assertEqual(result['features'][0]['properties']['name'], '활엽수림')
@@ -92,7 +92,7 @@ class LandCoverServiceTest(unittest.TestCase):
         ]}).encode()
         def get(url, params, timeout, allow_redirects, headers):
             return MockResponse(xml if params['request'] == 'GetCapabilities' else geo)
-        with patch('development_landcover_service.requests.get', side_effect=get):
+        with patch('development.land.landcover_service.requests.get', side_effect=get):
             result = fetch_landcover_wfs(SITE)
         self.assertEqual(result['status'], 'WFS_UNVERIFIED')
         self.assertEqual(result['error_code'], 'MISSING_CLASS')

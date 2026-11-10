@@ -5,7 +5,7 @@ from xml.sax.saxutils import escape
 from pyproj import Transformer
 from shapely.geometry import mapping, box
 from shapely.ops import transform
-from development_ecobank import collect_ecobank, EcoBankError, _parse, WFS_URL, _grade
+from development.nature.ecobank import collect_ecobank, EcoBankError, _parse, WFS_URL, _grade
 
 BACK=Transformer.from_crs('EPSG:5186','EPSG:4326',always_xy=True).transform
 

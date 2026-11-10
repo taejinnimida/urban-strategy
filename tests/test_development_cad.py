@@ -8,7 +8,7 @@ from shapely.geometry import box, shape, mapping, LineString
 from shapely.ops import transform, unary_union
 import ezdxf
 import pytest
-from development_cad import (_collect_surrounding_cadastre, _drawing_frame, dxf_bytes,
+from development.cad import (_collect_surrounding_cadastre, _drawing_frame, dxf_bytes,
                              register_cad, CRS, MAX_TILE_AREA_M2)
 
 PROJECT = Transformer.from_crs('EPSG:4326', CRS, always_xy=True).transform

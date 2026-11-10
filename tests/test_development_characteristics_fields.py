@@ -1,6 +1,6 @@
 """Offline regression for VWorld characteristics XML field spelling (2-5)."""
 import unittest
-from development_sources import characteristics
+from development.sources import characteristics
 
 PNU='1111010100100010001'
 

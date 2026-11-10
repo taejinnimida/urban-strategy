@@ -1,7 +1,7 @@
 import copy
 import unittest
 from shapely.geometry import box, mapping
-from development_ownership import attach_ownership_theme, ownership_class
+from development.land.ownership import attach_ownership_theme, ownership_class
 
 class OwnershipTest(unittest.TestCase):
     def fixture(self, assure='COMPLETE'):

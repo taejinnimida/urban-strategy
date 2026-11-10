@@ -1,7 +1,7 @@
 """Regression checks for report tables (no provider network required)."""
 import unittest
 from shapely.geometry import box, mapping
-from development_land_tables import attach_land_survey_tables
+from development.land.tables import attach_land_survey_tables
 
 class LandTableTest(unittest.TestCase):
     def setUp(self):

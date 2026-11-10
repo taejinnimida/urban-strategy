@@ -5,7 +5,7 @@ Uses synthetic GeoJSON + injected official-source snapshot, never a live API.
 """
 import unittest
 from shapely.geometry import box, mapping, LineString, Point
-from development_nature_vector import attach_nature_vector_themes
+from development.nature.vector import attach_nature_vector_themes
 
 
 def feature(g, name, source_layer=None):
@@ -92,8 +92,8 @@ class NatureVectorTest(unittest.TestCase):
 
 
     def test_complete_vector_produces_real_dxf_and_svg(self):
-        from development_cad import _exportable, dxf_bytes
-        from development_survey_sheet import make_sheet, svg_sheet
+        from development.cad import _exportable, dxf_bytes
+        from development.survey_sheet import make_sheet, svg_sheet
         site = box(127, 37, 127.01, 37.01)
         data, snapshot = scenario('4-6', 'DATA', [
             feature(box(127.002,37.002,127.005,37.005), '하천구역', 'zone'),
@@ -114,7 +114,7 @@ class NatureVectorTest(unittest.TestCase):
         self.assertIn(b'<circle',svg)
 
     def test_wms_only_not_exportable(self):
-        from development_cad import _exportable
+        from development.cad import _exportable
         data, snapshot = scenario('4-4', 'MAP_ONLY', [])
         attach_nature_vector_themes(data, snapshot)
         self.assertFalse(_exportable(data['items'][0], snapshot))
