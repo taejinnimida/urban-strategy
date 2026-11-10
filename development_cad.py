@@ -42,7 +42,7 @@ def _exportable(item, snapshot):
     if item['id'] in BUILDING_IDS:
         return (item.get('thematic_type') == 'building' and
                 item.get('provider_verified') is True and
-                bool(item.get('features')))
+                item.get('geometry_status') == 'COMPLETE')
     # WMS-only cover and geometrically incomplete cover are NOT exportable.
     # An officially registered vector source with PARTIAL status must not
     # bypass the strict 2-6 coverage/classification test.
