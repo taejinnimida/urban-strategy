@@ -12,6 +12,7 @@ on:
       - 'survey.html'
       - 'survey-ui.js'
       - 'facts/**'
+      - 'tests/test_official_records.py'
       - 'development/**'
       - 'standalone/**'
       - 'tests/test_standalone_build.py'
@@ -50,5 +51,7 @@ jobs:
           name: urban-survey-standalone
           path: urban-survey-standalone.zip
           if-no-files-found: error
+      - name: Independent official record parsing and collection tests
+        run: python -m unittest tests.test_official_records -v
       - name: Verify basic FACT data grouping
         run: python -m unittest tests.test_development_nature_vector tests.test_development_terrain_classes -v
