@@ -91,7 +91,7 @@ class PackageBoundaryTest(unittest.TestCase):
                 if name == "app.py":
                     # Restore only the known development registration footer to
                     # compare with main: Seoul functionality itself is untouched.
-                    footer = ("\n# R105 isolated development workflow\n"
+                    footer = ("# R105 isolated development workflow\n"
                               "import sys as _dev_sys\n"
                               "from development_review import register as _dev_register\n"
                               "_dev_register(app, _dev_sys.modules[__name__])\n")
