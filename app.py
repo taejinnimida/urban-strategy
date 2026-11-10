@@ -12371,5 +12371,5 @@ ui_editor_backend.install(app, _admin_auth_or_session, BASE_DIR)
 
 # R105 isolated development workflow
 import sys as _dev_sys
-from development_review import register as _dev_register
+from development.review import register as _dev_register
 _dev_register(app, _dev_sys.modules[__name__])

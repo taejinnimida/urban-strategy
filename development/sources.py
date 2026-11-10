@@ -50,7 +50,7 @@ class PublicDataError(RuntimeError):
         super().__init__(self.code)
 
 def safe_failure(exc,stage='SOURCE_COLLECTION'):
-    from development_ecobank import EcoBankError
+    from development.nature.ecobank import EcoBankError
     if isinstance(exc,EcoBankError):
         return {k:v for k,v in {'error_code':exc.code,'stage':'ECOBANK_WFS','http_status':exc.http_status}.items() if v is not None}
     if isinstance(exc,PublicDataError):
@@ -164,7 +164,7 @@ def official_vector(item,geometry,area):
     return {'status':'PARTIAL' if missing else 'DATA','detail':f'공식 원자료 교차 {len(out)}건 · 분류 누락 {missing}건 · 법정 판정 미적용','source':entry['provider'],'source_url':entry['source_url'],'as_of':entry['as_of'],'features':out,'rows':rows,'overlap_area_m2':area(unary_union(parts)) if parts else 0,'scope':'5km' if item=='1-2' else 'fixed_site'}
 
 def dem(geometry,area):
-    from development_terrain_classes import new_accumulator, add_cell, finish
+    from development.nature.terrain_classes import new_accumulator, add_cell, finish
     entry,root=manifest_entry('dem')
     if not entry:return {'status':'MISSING_SOURCE','error_code':'AUTOMATIC_ACQUISITION_NOT_IMPLEMENTED','acquisition':'OFFICIAL_FILE','detail':'DEM 자동 취득 미구현 · 공식 DEM 격자 파일 등록 필요','source':None}
     target=shape(geometry)
@@ -510,13 +510,13 @@ def register_sources(router,service,snapshots,lock,output,get_snapshot,fetch_lay
                 elif job.startswith('characteristics:'):result=characteristics(service,job.split(':',1)[1])
                 elif job=='weather':result=weather(s['geometry'],s['_report']['as_of'])
                 elif job=='ecobank':
-                    from development_ecobank import collect_ecobank
+                    from development.nature.ecobank import collect_ecobank
                     result=collect_ecobank(s['geometry'])
                 elif job=='landcover_wms':
-                    from development_landcover_service import fetch_landcover_wms
+                    from development.land.landcover_service import fetch_landcover_wms
                     result=fetch_landcover_wms(s['geometry'])
                 elif job=='landcover_wfs':
-                    from development_landcover_service import fetch_landcover_wfs
+                    from development.land.landcover_service import fetch_landcover_wfs
                     result=fetch_landcover_wfs(s['geometry'])
                 elif job.startswith('file:'):result=official_vector(job.split(':',1)[1],s['geometry'],area)
                 elif job=='dem':result=dem(s['geometry'],area)

@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 from xml.sax.saxutils import escape
 from fastapi import HTTPException
 from fastapi.responses import Response
-from development_sources import safe_failure, ERROR_LABELS
+from development.sources import safe_failure, ERROR_LABELS
 from shapely.geometry import shape
 from shapely.ops import unary_union
 
@@ -238,29 +238,29 @@ def register_report(router, service, snapshots, lock, get_snapshot, fetch_layer,
             row['zoning']=' · '.join(sorted(names)) or None;row['zoning_status']='조회 완료' if complete else '보조 조회 참고자료 포함' if any(layers.get(k,{}).get('status')=='REFERENCE' for k in zoneids) else '일부 또는 미확보'
         for row in r['land'].values():
             row['missing_fields']=' · '.join(label for field,label in [('address','소재지'),('category','지목'),('official_area','공부면적'),('ownership','소유구분'),('price','공시지가'),('zoning','용도지역')] if row.get(field) in (None,''))
-        from development_sources import enrich
+        from development.sources import enrich
         data={'parcel_status':r.get('parcel_status','UNAVAILABLE'),'parcel_error_code':r.get('parcel_error_code'),'as_of':r['as_of'],'area_m2':s['area_m2'],'land':list(r['land'].values()),'buildings':buildings(r['buildings'],datetime.fromisoformat(r['as_of']).date()),'items':review(r,s)}
         data['parcel_note']='브라우저 보조 수신 지적에 따른 참고 필지목록입니다. 원문 진위·전체 필지 수록 여부는 미검증이며 대장 속성은 공공 API에서 별도 조회합니다.' if r.get('parcel_status')=='REFERENCE' else ''
         if data['parcel_note']:
             for row in data['buildings']:row['scope']='보조 지적 필지목록 기반 · '+row['scope']
         data['fact_revisions']={k:v.get('fact_revision') for k,v in layers.items()}
         data=enrich(data,s,area)
-        from development_jimok import attach_jimok_theme
+        from development.land.jimok import attach_jimok_theme
         attach_jimok_theme(data,s,area)
-        from development_ownership import attach_ownership_theme
+        from development.land.ownership import attach_ownership_theme
         attach_ownership_theme(data,s,area)
-        from development_land_numeric import attach_numeric_land_themes
+        from development.land.numeric import attach_numeric_land_themes
         attach_numeric_land_themes(data,s,area)
-        from development_land_shape import attach_land_shape_theme
+        from development.land.shape import attach_land_shape_theme
         attach_land_shape_theme(data,s,area)
-        from development_landcover import attach_landcover_theme
+        from development.land.landcover import attach_landcover_theme
         attach_landcover_theme(data,s,area)
-        from development_land_tables import attach_land_survey_tables
+        from development.land.tables import attach_land_survey_tables
         attach_land_survey_tables(data,s,area)
-        from development_building_tables import attach_building_survey_tables
+        from development.building.tables import attach_building_survey_tables
         attach_building_survey_tables(data)
-        from development_nature_tables import attach_nature_survey_tables
-        from development_nature_vector import attach_nature_vector_themes
+        from development.nature.tables import attach_nature_survey_tables
+        from development.nature.vector import attach_nature_vector_themes
         attach_nature_vector_themes(data,s)
         attach_nature_survey_tables(data,s)
         return data
@@ -331,8 +331,8 @@ def register_report(router, service, snapshots, lock, get_snapshot, fetch_layer,
     def download(token:str):
         return Response(xlsx(tables(output(token))),media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',headers={'Content-Disposition':'attachment; filename="land-building-report.xlsx"','Cache-Control':'no-store'})
 
-    from development_cad import register_cad
+    from development.cad import register_cad
     register_cad(router,output,snapshots,lock,fetch_layer,layer_type)
 
-    from development_sources import register_sources
+    from development.sources import register_sources
     register_sources(router,service,snapshots,lock,output,get_snapshot,fetch_layer,layer_type,area,gate)

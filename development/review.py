@@ -15,7 +15,7 @@ from pyproj import Geod, Transformer
 GEOD=Geod(ellps='WGS84')
 FACILITY_NAMES=['도로','교통시설','공간시설','유통·공급시설','공공·문화체육시설','방재시설','보건위생시설','환경기초시설','기타 기반시설']
 LAYERS={'LP_PA_CBND_BUBUN':'연속지적',**{f'LT_C_UQ11{i}':n for i,n in enumerate(['도시지역','관리지역','농림지역','자연환경보전지역'],1)},**{f'LT_C_UPISUQ15{i}':FACILITY_NAMES[i-1] for i in range(1,10)}}
-from development_sources import EXTRA_LAYERS, PublicDataError, safe_failure, ERROR_LABELS, PROVIDER_CODES, acquisition_status
+from development.sources import EXTRA_LAYERS, PublicDataError, safe_failure, ERROR_LABELS, PROVIDER_CODES, acquisition_status
 LAYERS.update(EXTRA_LAYERS)
 # Seoul municipal GeoServer: 25 district boundaries, retrieved 2026-10-28.
 # Routing reference only; not a substitute for a legal boundary determination.
@@ -458,6 +458,6 @@ def register(app,service):
             image=r.content;r.close()
             return Response(image,media_type='image/png',headers={'Cache-Control':'private,max-age=120'})
         except Exception:raise HTTPException(503,'지도자료 미확보')
-    from development_report import register_report
+    from development.report import register_report
     register_report(router,service,snapshots,lock,get,layer,LayerQuery,area)
     app.include_router(router)

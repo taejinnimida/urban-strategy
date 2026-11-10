@@ -389,7 +389,7 @@ def dxf_bytes(item, snapshot, metadata):
         except (ValueError, KeyError, TypeError):
             raise HTTPException(422, '검토항목 공간자료의 CAD 변환에 실패했습니다.') from None
     if (item['id'] == '1-1' or (item['id'] in ('2-1','2-2','2-3','2-4','2-5','2-6','5-2','4-3','4-1','4-2','4-4','4-5','4-6') and item.get('provider_verified') is True)):
-        from development_survey_sheet import make_sheet, dxf_paper_sheet
+        from development.survey_sheet import make_sheet, dxf_paper_sheet
         dxf_paper_sheet(doc, make_sheet(item, snapshot))
         metadata['print_layout'] = 'SURVEY_A3'
         metadata['paper_size'] = 'A3_420x297mm'
@@ -597,7 +597,7 @@ def register_cad(router, output, snapshots, lock, fetch_layer, layer_type):
         # surrounding zoning backdrop. The surrounding query is display-only.
         if item.get('id') != '5-2':
             return item
-        from development_survey_sheet import zoning_context
+        from development.survey_sheet import zoning_context
         classified = zoning_context(item.get('features') or [])
         item['features'] = classified['features']
         item['legend'] = classified['legend']
@@ -643,7 +643,7 @@ def register_cad(router, output, snapshots, lock, fetch_layer, layer_type):
         if item is None or not _exportable(item, snapshot):
             raise HTTPException(409, '검증된 주제도형이 없어 표준 도면을 생성하지 않습니다.')
         item = sheet_context(token, report, snapshot, item)
-        from development_survey_sheet import make_sheet, svg_sheet
+        from development.survey_sheet import make_sheet, svg_sheet
         try:
             payload = svg_sheet(make_sheet(item, snapshot))
         except (ValueError, KeyError, TypeError):
