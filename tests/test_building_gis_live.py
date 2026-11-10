@@ -77,6 +77,24 @@ class BuildingGISLiveTest(unittest.TestCase):
             self.assertIn('SURVEY_A3',doc.layouts)
             self.assertTrue(list(doc.modelspace().query('HATCH')))
 
+    def test_only_exact_hub_key_can_fill_missing_class(self):
+        p=Provider([{'type':'FeatureCollection','features':[{
+            'type':'Feature','geometry':BUILDING1,
+            'properties':{'A1':'GIS001','mgmBldrgstPk':'HUB-001','A9':'','A11':''}}]}])
+        fetched=collect_gis_buildings(GEOM,p)
+        self.assertEqual(fetched['status'],'PARTIAL')
+        snapshot={'geometry':GEOM,'_national_sources':{'building_gis':fetched}}
+        data={'items':[{'id':'3-1'},{'id':'3-2'}],'statistics':{},
+              'buildings':[{'id':'HUB-001','use':'근린생활시설','structure':'철근콘크리트구조'},
+                           {'id':'HUB-002','use':'창고시설','structure':'조적조'}]}
+        attach_building_spatial_themes(data,snapshot,lambda g:transform(AREA,g).area)
+        self.assertEqual(data['items'][0]['spatial_status'],'COMPLETE')
+        self.assertEqual(data['items'][1]['spatial_status'],'COMPLETE')
+        self.assertEqual(data['items'][0]['legend'][0]['name'],'근린생활시설')
+        self.assertEqual(data['items'][1]['legend'][0]['name'],'철근콘크리트구조')
+        self.assertEqual(data['items'][0]['statistics']['hub_exact_match_count'],1)
+        self.assertEqual(data['items'][0]['statistics']['hub_total_title_count'],2)
+
     def test_missing_structure_does_not_invalidate_known_use(self):
         p=Provider([{'type':'FeatureCollection','features':[
             feature(BUILDING1,'GIS001','공동주택','')]}])
