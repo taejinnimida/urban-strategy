@@ -206,8 +206,13 @@ def make_sheet(item, snapshot):
         ops.append(primitive('rect', x=496, y=y - 5.5, w=7.5, h=7.5,
                              fill=color, stroke='#777777', weight=0.35))
         name = str(entry.get('name') or '분류 미확인')
-        # Full category values remain in FACT and report tables.
-        ops.append(primitive('text', x=506, y=y + 0.7, text=name[:14], size=7.0))
+        # Keep complete standard-length classification labels on the map.
+        # When the name is longer, compact font size up to 18 characters;
+        # detailed exceptional strings remain available in the FACT table.
+        shown = name if len(name) <= 18 else name[:17] + '…'
+        font_size = min(7.0, 68.0 / max(1, len(shown)))
+        ops.append(primitive('text', x=506, y=y + 0.7, text=shown,
+                             size=max(3.75, font_size)))
     if item.get('id') == '5-2' and not use_zone_context:
         ops.append(primitive('text', x=497, y=307, text='주변 용도지역: 미조회', size=6.2))
     if len(legend) > 27:
