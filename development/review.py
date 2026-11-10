@@ -194,23 +194,29 @@ def store_layer_unlocked(snapshot,layer,result):
     if old.get('fact_revision')!=result['fact_revision']:snapshot.get('_national_sources',{}).pop('vector:'+layer,None)
     return result
 
-def register(app,service):
+def register(app,service,*,fact_provider=None):
+    from facts.vworld import VWorldFacts
+    common_facts=fact_provider if fact_provider is not None else VWorldFacts()
     router=APIRouter(prefix='/api/development');snapshots={};lock=threading.Lock();diagnostics={}
     point_channel=VWorldChannel(1);display_channel=VWorldChannel(2);facts_channel=VWorldChannel(2,pause_on_transport_error=False)
     def jurisdiction(g):
+        # Common factual jurisdiction lookup has independent credentials/network
+        # lifecycle. No call into Seoul redevelopment data collectors.
         local=offline_region(g)
         if local:return local
-        if not service._vworld_key():return 'UNKNOWN'
         try:
-            r,_=service._vworld_get('https://api.vworld.kr/req/wfs',params={'key':service._vworld_key(),'domain':service._vworld_domain(),'service':'WFS','request':'GetFeature','version':'1.0.0','typename':'lt_c_adsido_info','srsname':'EPSG:4326','bbox':','.join(map(str,g.bounds)),'output':'application/json','maxfeatures':50},timeout=(4,20))
-            r.raise_for_status();seoul=[];other=[]
-            for f in r.json().get('features',[]):
-                p={str(k).lower():str(v) for k,v in (f.get('properties') or {}).items()};v=shape(f['geometry'])
+            features=common_facts.regions(g.bounds)
+            seoul=[];other=[]
+            for f in features:
+                p={str(k).lower():str(v) for k,v in (f.get('properties') or {}).items()}
+                v=shape(f['geometry'])
                 if not v.is_valid:continue
-                (seoul if p.get('ctp_kor_nm')=='서울특별시' or p.get('ctprvn_nm')=='서울특별시' or p.get('ctprvn_cd')=='11' else other).append(v)
+                (seoul if p.get('ctp_kor_nm')=='서울특별시' or p.get('ctprvn_nm')=='서울특별시'
+                 or p.get('ctprvn_cd')=='11' else other).append(v)
             if seoul and unary_union(seoul).covers(g):return 'SEOUL'
             if other and unary_union(other+seoul).covers(g):return 'OUTSIDE_OR_MIXED'
-        except Exception:pass
+        except Exception:
+            pass
         return 'UNKNOWN'
     @router.get('/ui.js')
     def ui():return Response((Path(__file__).resolve().parents[1] / 'development-ui.js').read_text(encoding='utf-8'),media_type='text/javascript',headers={'Cache-Control':'no-store'})
