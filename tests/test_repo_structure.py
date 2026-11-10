@@ -91,10 +91,10 @@ class PackageBoundaryTest(unittest.TestCase):
                 if name == "app.py":
                     # Restore only the known development registration footer to
                     # compare with main: Seoul functionality itself is untouched.
-                    footer = ("\\n# R105 isolated development workflow\\n"
-                              "import sys as _dev_sys\\n"
-                              "from development_review import register as _dev_register\\n"
-                              "_dev_register(app, _dev_sys.modules[__name__])\\n")
+                    footer = ("\n# R105 isolated development workflow\n"
+                              "import sys as _dev_sys\n"
+                              "from development_review import register as _dev_register\n"
+                              "_dev_register(app, _dev_sys.modules[__name__])\n")
                     self.assertNotIn("from development.review import register", contents.decode('utf-8'))
                     contents += footer.encode('utf-8')
                 git_blob = b"blob " + str(len(contents)).encode() + b"\0" + contents
