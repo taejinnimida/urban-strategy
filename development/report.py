@@ -301,7 +301,7 @@ def register_report(router, service, snapshots, lock, get_snapshot, fetch_layer,
                 try:
                     result=service._resolve_land_ledger(pnu);rec=result.get('record') or {}
                     if rec and str(rec.get('pnu') or pnu)!=pnu:raise ValueError('PNU mismatch')
-                    item.update(address=rec.get('ldCodeNm'),category=rec.get('lndcgrCodeNm'),official_area=number(rec.get('lndpclAr')),ownership=rec.get('posesnSeCodeNm'),updated=rec.get('lastUpdtDt'),ledger_source={'vworld_ladfrl':'VWorld 토지대장','data_go_ladfrl':'공공데이터포털 토지대장','vworld_land_characteristics':'VWorld 토지특성','local_AL_D003_snapshot':'서울 보유 공공자료'}.get(result.get('selected_source'),'공공 토지자료'),ledger_status='확보' if rec else '미확보')
+                    item.update(address=rec.get('ldCodeNm'),category=rec.get('lndcgrCodeNm'),official_area=number(rec.get('lndpclAr')),ownership=rec.get('posesnSeCodeNm'),updated=rec.get('lastUpdtDt'),ledger_source={'vworld_ladfrl':'VWorld 토지대장','data_go_ladfrl':'공공데이터포털 토지대장','vworld_land_characteristics':'VWorld 토지특성','local_AL_D003_snapshot':'서울 보유 공공자료'}.get(result.get('selected_source'),'공공 토지자료'),ledger_status=('확보' if rec and all(rec.get(k) not in (None,'') for k in ('lndpclAr','lndcgrCodeNm','posesnSeCodeNm')) else '일부 확보' if rec else '미확보'))
                     if rec.get('mnnmSlno'):item['jibun']=rec['mnnmSlno']
                 except Exception as exc:item.update(ledger_status='조회 실패',ledger_error_code=safe_failure(exc,'LAND_LEDGER')['error_code'])
             if item['price_status']!='확보':
