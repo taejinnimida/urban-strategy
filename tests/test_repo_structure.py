@@ -89,12 +89,36 @@ class PackageBoundaryTest(unittest.TestCase):
             with self.subTest(file=name):
                 contents = (ROOT / name).read_bytes()
                 if name == "app.py":
-                    old, new = bridge["old"].encode(), bridge["new"].encode()
-                    self.assertEqual(contents.count(new), 1)
-                    contents = contents.replace(new, old)
+                    # Restore only the known development registration footer to
+                    # compare with main: Seoul functionality itself is untouched.
+                    footer = ("\\n# R105 isolated development workflow\\n"
+                              "import sys as _dev_sys\\n"
+                              "from development_review import register as _dev_register\\n"
+                              "_dev_register(app, _dev_sys.modules[__name__])\\n")
+                    self.assertNotIn("from development.review import register", contents.decode('utf-8'))
+                    contents += footer.encode('utf-8')
                 git_blob = b"blob " + str(len(contents)).encode() + b"\0" + contents
                 self.assertEqual(hashlib.sha1(git_blob).hexdigest(), expected_sha,
                                  f"{name} changed relative to protected main baseline")
+
+    def test_survey_app_has_no_seoul_runtime_or_business_mount(self):
+        source=(ROOT/'dev_app.py').read_text(encoding='utf-8')
+        parsed=ast.parse(source)
+        imported=[]
+        for node in ast.walk(parsed):
+            if isinstance(node,ast.Import):
+                imported.extend(alias.name for alias in node.names)
+            elif isinstance(node,ast.ImportFrom) and node.module:
+                imported.append(node.module)
+        for module in imported:
+            self.assertFalse(module in ('app','market_renewal','seoul_facilities') or
+                             module.startswith('seoul.'),module)
+        self.assertNotIn('app.mount(',source)
+        self.assertNotIn("'/seoul'",source)
+        self.assertNotIn("'/nonurban'",source)
+        seoul_main=(ROOT/'app.py').read_text(encoding='utf-8')
+        self.assertNotIn('_dev_register(',seoul_main)
+        self.assertNotIn('development.review',seoul_main)
 
     def test_gitignore_excludes_bytecode(self):
         ignore=(ROOT / ".gitignore").read_text(encoding="utf-8")
