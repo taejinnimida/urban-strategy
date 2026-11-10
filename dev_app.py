@@ -1,5 +1,4 @@
 """Isolated development entry point. Production remains app:app."""
-from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
 import math
@@ -10,18 +9,18 @@ from pydantic import BaseModel, Field
 from pyproj import Geod
 from shapely.geometry import shape
 
-import app as seoul
+from survey_sources import SurveySources
+from development.review import register as register_survey
 
 BASE = Path(__file__).parent
 
 
-@asynccontextmanager
-async def lifespan(application):
-    async with seoul.app.router.lifespan_context(seoul.app):
-        yield
+app = FastAPI(title="Independent Urban Survey FACT", version="0.1.0")
+survey_sources = SurveySources()
+register_survey(app, survey_sources)
 
-
-app = FastAPI(title="URBAN STRATEGY R104 DEV", lifespan=lifespan)
+# Deliberate isolation: this app never imports/mounts Seoul redevelopment.
+# Its only business is evidence collection and descriptive inventories.
 # Expose only the two known development assets; do not serve source files.
 @app.get('/dev-assets/style.css')
 def dev_style():
@@ -37,12 +36,13 @@ def modes():
     return (BASE / 'index.html').read_text(encoding='utf-8')
 
 
-@app.get('/seoul', response_class=HTMLResponse)
-def seoul_mode():
-    response = seoul.home()
-    content = response.body.decode('utf-8').replace('<body>', '<body><a href="/" style="position:fixed;bottom:12px;left:12px;z-index:2147483646;background:#12394c;color:white;padding:10px;border-radius:8px">DEV · 검토모드 선택</a>', 1)
-    return HTMLResponse(content, headers={'Cache-Control': 'no-store'})
+@app.get('/survey', response_class=HTMLResponse)
+def survey_home():
+    return (BASE / 'survey.html').read_text(encoding='utf-8')
 
+@app.get('/survey-ui.js')
+def survey_script():
+    return FileResponse(BASE / 'survey-ui.js', media_type='text/javascript')
 
 @app.get('/nonurban', response_class=HTMLResponse)
 def nonurban_mode():
@@ -104,5 +104,4 @@ def intake(data: Intake):
             'checks': [{'item': name, 'status': 'UNKNOWN', 'needed': source} for name, source in subjects]}
 
 
-# All original Seoul APIs, authentication and static assets retain their original URLs.
-app.mount('/', seoul.app)
+# No Seoul application, route, RULE or static-asset mount.
