@@ -50,6 +50,12 @@ class BuildingGISLiveTest(unittest.TestCase):
         self.assertEqual(len(fetched['features']),2)
         self.assertEqual(fetched['request_count'],1)
         self.assertEqual(provider.calls[0][1]['srsName'],'EPSG:4326')
+        self.assertEqual(provider.calls[0][1]['typename'],'dt_d010')
+        values=provider.calls[0][1]['bbox'].split(',')
+        self.assertEqual(values[-1],'EPSG:4326')
+        self.assertTrue(30<float(values[0])<45)
+        self.assertTrue(120<float(values[1])<135)
+        self.assertEqual(provider.calls[0][1]['maxFeatures'],'500')
         self.assertEqual(provider.calls[0][2],'json')
         snapshot={'geometry':GEOM,'_national_sources':{'building_gis':fetched},
                   '_cad_background':{'status':'COMPLETE','features':[{'type':'Feature','geometry':GEOM,'properties':{'jibun':'1-1'}}]}}
