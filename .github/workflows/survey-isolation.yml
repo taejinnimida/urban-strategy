@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/survey-standalone-20261110
+      - feature/survey-native-sources-20261110
   pull_request:
     paths:
       - 'app.py'
