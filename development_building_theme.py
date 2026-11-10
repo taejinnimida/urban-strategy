@@ -138,12 +138,9 @@ def attach_building_themes(data, snapshot):
             chosen, layer_name, skipped = candidate, name, local_skipped
     fetched = chosen is not None
     verified = fetched and chosen.get('status') == 'COMPLETE'
-    if not footprints and fetched and layer_name == 'LT_C_BLDGINFO' and secondary.get('status') in ('COMPLETE', 'REFERENCE'):
-        # Keep an official empty response distinct from an unavailable one.
-        # Alternative source shapes are considered on the next refresh.
-        pass
-
     n = len(footprints)
+    source_label = ('VWorld GIS건물통합정보' if layer_name == 'LT_C_BLDGINFO' else
+                    'VWorld 도로명주소 건물도형(보조)') + ' · 건축HUB'
     matches = sum(1 for f in footprints if f['ledger'])
     for item in data['items']:
         item_id = item['id']
@@ -219,7 +216,7 @@ def attach_building_themes(data, snapshot):
             legend=[classes[label] for label in order if totals[label] > 0],
             thematic_type='building', provider_verified=verified,
             geometry_status='COMPLETE' if verified else 'REFERENCE',
-            source=('VWorld GIS건물통합정보' if layer_name == 'LT_C_BLDGINFO' else 'VWorld 도로명주소 건물도형(보조)') + ' · 건축HUB',
+            source=source_label,
             status='공간자료 확보' if verified else '보조 조회 참고자료',
             detail=(item.get('detail') or '') +
                    f' · 도형 {n}개, 대장 관리번호 직접연계 {matches}개, 미연계 {n-matches}개 · 도형출처 {layer_name}'
@@ -227,7 +224,7 @@ def attach_building_themes(data, snapshot):
             survey_table={
                 'title': f'[표 {item_id} {TITLES[item_id]} 현황]',
                 'status': 'COMPLETE' if verified else 'REFERENCE',
-                'rows': rows, 'source': item['source'],
+                'rows': rows, 'source': source_label,
                 'as_of': data.get('as_of'), 'notes': [note],
             },
         )
