@@ -636,10 +636,10 @@ function devRenderSourceDetails(data){
  function renderSurveyTable(item){
   surveyTable.replaceChildren();
   const t=item.survey_table;
-  if(!/^2-[1-6]$/.test(item.id)){surveyTable.style.display='none';return;}
+  if(!/^(?:2-[1-6]|3-[1-7])$/.test(item.id)){surveyTable.style.display='none';return;}
   surveyTable.style.display='block';
   const title=document.createElement('div');
-  title.textContent=t?.title||('표 '+item.id+' 토지현황');
+  title.textContent=t?.title||('표 '+item.id+(item.id.startsWith('3-')?' 건축물현황':' 토지현황'));
   title.style.cssText='font-size:13px;font-weight:700;color:#243e7a;margin:0 0 6px';
   surveyTable.append(title);
   if(!t?.rows?.length){
@@ -652,7 +652,7 @@ function devRenderSourceDetails(data){
   const tab=document.createElement('table');
   tab.style.cssText='width:100%;border-collapse:collapse;font-size:12px;min-width:510px;font-variant-numeric:tabular-nums';
   const header=document.createElement('thead'),hrow=document.createElement('tr');
-  for(const text of ['구분','면적(㎡)','구성비(%)',t.count_header||'필지수(필지)','비고']){
+  for(const text of (item.id.startsWith('3-')?['구분','건축물도형(개)','구성비(%)','자료확인','비고']:['구분','면적(㎡)','구성비(%)',t.count_header||'필지수(필지)','비고'])){
    const th=document.createElement('th');th.textContent=text;
    th.style.cssText='padding:7px 5px;border:1px solid #9ca9bf;background:#dfe7f6;color:#21376d;text-align:center';
    hrow.append(th);
@@ -661,7 +661,7 @@ function devRenderSourceDetails(data){
   const body=document.createElement('tbody');
   for(const row of t.rows){
    const tr=document.createElement('tr');
-   const cells=[row.label,row.area_m2,row.pct,row.count,row.note||''];
+   const cells=item.id.startsWith('3-')?[row.label,row.count,row.pct,row.join_status||'',row.note||'']:[row.label,row.area_m2,row.pct,row.count,row.note||''];
    for(let i=0;i<cells.length;i++){
     const td=document.createElement('td');
     const v=cells[i];
@@ -687,7 +687,7 @@ function devRenderSourceDetails(data){
    cadAutoAttempted=true;prepareCadBackground().catch(()=>{});
   }
   const available=item.id==='1-1'||(item.id==='2-6' ? item.thematic_type==='landcover'&&item.provider_verified===true : (item.provider_verified===true&&['공간자료 확보','일부 확보'].includes(item.status))||(['공식 파일자료 확보','일부 확보'].includes(item.status)&&!!item.features?.length&&item.source!=='VWorld'&&item.thematic_type!=='ecobank'));
-  const usable=available&&(item.thematic_type!=='building'||!!item.features?.length);
+  const usable=available;
   cadSingle.dataset.available=usable?'yes':'';
   cadSingle.disabled=!usable;cadSingle.title=usable?'확보된 공간도형 기준 CAD 출력':'검증된 공간도형이 없는 항목은 CAD 출력 불가';
   if(!cadPreparing)cadStatus.textContent=usable?(cadReady?'표준 도면 배경자료 준비 완료':'표준 도면 배경자료 준비 필요 · 준비 버튼을 누르거나 자동 조회를 확인하세요'):'이 항목은 CAD 도형 미확보 · 일괄 ZIP 목록에 미확보로 기록';
