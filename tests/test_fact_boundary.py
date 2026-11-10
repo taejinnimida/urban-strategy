@@ -1,4 +1,6 @@
 """Non-network tests: independent FACT adapter without Seoul or national RULE imports."""
+import ast
+from pathlib import Path
 import unittest
 from unittest.mock import patch
 from dataclasses import FrozenInstanceError
@@ -18,6 +20,21 @@ class Response:
 class FactBoundaryTests(unittest.TestCase):
     def setUp(self):
         self.adapter=VWorldFacts(key_provider=lambda:'PRIVATE_KEY',domain_provider=lambda:'example.org')
+
+    def test_common_facts_cannot_import_seoul_or_nationwide(self):
+        fact_root=Path(__file__).resolve().parents[1] / 'facts'
+        forbidden=('app','dev_app','market_renewal','seoul_facilities','development','ui_editor_backend')
+        for source in fact_root.glob('*.py'):
+            parsed=ast.parse(source.read_text(encoding='utf-8'))
+            imports=[]
+            for node in ast.walk(parsed):
+                if isinstance(node,ast.Import):
+                    imports.extend(alias.name for alias in node.names)
+                elif isinstance(node,ast.ImportFrom) and node.module:
+                    imports.append(node.module)
+            for dependency in imports:
+                self.assertFalse(any(dependency==f or dependency.startswith(f+'.') for f in forbidden),
+                                 f'{source.name}: illegal dependency {dependency}')
 
     def test_immutability_and_detached_copy(self):
         x=FactEnvelope(kind='land',status='COMPLETE',source='test',
