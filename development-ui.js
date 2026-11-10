@@ -511,6 +511,16 @@ function devInstallInventory(){
 function devRenderInventory(data){
  const root=document.getElementById('devInventoryResults');root.replaceChildren();
  const note=document.createElement('p');note.textContent=data.parcel_status==='REFERENCE'?`보조 지적 ${data.land.length}필지 참고목록 · ${data.parcel_note||'원문 진위·전체 수록 여부 미검증'}`:data.parcel_status==='UNAVAILABLE'?'연속지적 미확보 · 토지·건축물 조서 보류. 확보된 공간자료는 아래에서 확인하세요.':`${data.land.length}필지 · 관련 건축물대장 ${data.buildings.length}건 · 기준 ${data.as_of} · 빈칸은 미확보입니다.`;root.append(note);
+ const buildingFact=data.building_fact||{},bc=buildingFact.counts||{};
+ if(buildingFact.geometry_status){
+  const box=document.createElement('div');
+  box.style.cssText='margin:8px 0;padding:9px 12px;border:1px solid #cbd5e1;background:#f8fafc;font-size:12px;line-height:1.7';
+  box.textContent='건축물 통합FACT ['+buildingFact.geometry_status+'] · 공간도형 '+(bc.mapped_shapes??'미확보')+
+    '개 · 대장 직접연결 '+(bc.direct_register_matches??0)+'개 · GIS 속성만 '+(bc.gis_attribute_only??0)+
+    '개 · 속성불일치 '+(bc.conflicting_shapes??0)+'개 · 도형 미연계 대장 '+(bc.register_without_direct_geometry??0)+
+    '건. 실제 건축물 법정 동수와 같다고 단정하지 않음.';
+  root.append(box);
+ }
  function table(title,columns,rows){const details=document.createElement('details');const summary=document.createElement('summary');summary.textContent=title;details.append(summary);const wrap=document.createElement('div');wrap.style.cssText='overflow:auto;max-height:460px';const t=document.createElement('table');t.style.cssText='min-width:650px;width:100%;font-size:12px;border-collapse:collapse';const thead=t.createTHead();const header=thead.insertRow();columns.forEach(([key,label])=>{const th=document.createElement('th');th.textContent=label;th.style.cssText='padding:8px;text-align:left;background:#eaf0f5';header.append(th);});const body=t.createTBody();rows.forEach(r=>{const tr=body.insertRow();columns.forEach(([key])=>{const td=tr.insertCell();td.textContent=r[key]??'미확보';td.style.cssText='padding:8px;border-bottom:1px solid #ddd';});});wrap.append(t);details.append(wrap);root.append(details);}
  table('토지조서 (화면 최대 100필지 · 엑셀 전체)',[['jibun','지번'],['parcel_assurance','지적 확인수준'],['category','지목'],['official_area','공부㎡'],['overlap_area','편입 도형㎡'],['ownership','소유구분'],['zoning','중첩 용도지역'],['price','지가 원/㎡'],['ledger_status','대장 상태']],data.land.slice(0,100));
  table('건축물조서 (화면 최대 100건 · 엑셀 전체)',[['address','소재지'],['use','용도'],['structure','구조'],['floors','층수'],['floor_area','연면적㎡'],['age','경과년'],['scope','편입확인']],data.buildings.slice(0,100));
