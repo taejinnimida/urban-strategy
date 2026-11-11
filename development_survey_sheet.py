@@ -315,10 +315,35 @@ def dxf_paper_sheet(doc, ops):
     return layout
 
 
-# Display-only palette for zones fetched in the expanded cadastral frame.
-# NOT an official statutory zoning color standard.
-ZONE_COLORS = ('#fff0b2', '#ffe18a', '#ffc372', '#f2ad6c',
-               '#e4dc9c', '#daeba5', '#b9d8b3', '#c6dbef')
+# Zoning display indices follow the drawing legend in [별첨 1] of the
+# urban/county management-plan drafting guideline. ACI is the source index;
+# RGB is its screen/DXF approximation, not an official approval drawing.
+ZONE_ACI_RGB = {2: '#ffff00', 40: '#ffbf00', 51: '#ffff7f',
+                71: '#bfff7f', 131: '#7fffff', 191: '#bf7fff',
+                231: '#ff7fbf'}
+ZONE_STYLE_RULES = (
+    ('제1종전용주거', 51, 'dot'), ('제2종전용주거', 2, 'dot'),
+    ('제1종일반주거', 51, None), ('제2종일반주거', 2, None),
+    ('제3종일반주거', 40, None), ('준주거', 2, 'diagonal'),
+    ('중심상업', 231, 'dot'), ('일반상업', 231, None),
+    ('근린상업', 231, 'diagonal'), ('유통상업', 231, None),
+    ('전용공업', 191, 'dot'), ('일반공업', 191, None),
+    ('준공업', 191, 'diagonal'), ('보전녹지', 71, 'dot'),
+    ('생산녹지', 71, 'diagonal'), ('자연녹지', 71, None),
+    ('계획관리', None, 'diagonal'), ('생산관리', 71, 'diagonal'),
+    ('보전관리', 71, 'dot'), ('농림', 71, 'diagonal'),
+    ('자연환경보전', 131, 'dot'),
+)
+
+
+def zoning_style(name):
+    key = re.sub(r'\\s+', '', str(name or ''))
+    for label, aci, pattern in ZONE_STYLE_RULES:
+        if label in key:
+            return {'aci': aci, 'color': ZONE_ACI_RGB.get(aci, '#ffffff'),
+                    'pattern': pattern, 'verified_style': True}
+    return {'aci': None, 'color': '#ced5d9', 'pattern': None,
+            'verified_style': False}
 
 
 def zoning_context(features):
@@ -330,14 +355,14 @@ def zoning_context(features):
         if not name or not feature.get('geometry'):
             name = '명칭 미확보'
         clean.append((name, feature))
-    classes = {name: (f'C{index+1:02d}', ZONE_COLORS[index % len(ZONE_COLORS)])
+    classes = {name: (f'C{index+1:02d}', zoning_style(name))
                for index, name in enumerate(sorted(set(name for name, _ in clean)))}
     mapped = []
     for name, feature in clean:
-        code, color = classes[name]
+        code, style = classes[name]
         mapped.append({'type': 'Feature', 'geometry': feature['geometry'],
-                       'properties': {'name': name, 'class_code': code, 'color': color}})
-    legend = [{'name': name, 'class_code': code, 'color': color}
-              for name, (code, color) in classes.items()]
+                       'properties': {'name': name, 'class_code': code, **style}})
+    legend = [{'name': name, 'class_code': code, **style}
+              for name, (code, style) in classes.items()]
     return {'status': 'COMPLETE', 'features': mapped, 'legend': legend,
-            'note': '주변 용도지역 도형 참고자료. 색상은 표시용이며 법정 지정색 아님.'}
+            'note': '주변 용도지역 도형 참고자료. 별첨 1 ACI 색인에 대응한 RGB 채색으로, 무늬는 메타데이터로 보존되며 CAD 해치는 아직 단색임. 법정 고시도면 아님.'}
