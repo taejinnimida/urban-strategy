@@ -9,6 +9,7 @@ RUN pip install --no-cache-dir \
     fastapi \
     "uvicorn[standard]" \
     requests \
+    boto3 \
     pydantic \
     pyproj \
     pyshp \
