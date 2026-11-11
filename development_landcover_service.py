@@ -65,6 +65,25 @@ def _get(url, params, max_bytes):
         r.close()
 
 
+def _official_legend_image():
+    """Best-effort GeoServer legend; never infer colours from classification names."""
+    for endpoint in WMS_ENDPOINTS:
+        try:
+            raw, error = _get(endpoint, {
+                "SERVICE": "WMS", "VERSION": "1.1.1",
+                "REQUEST": "GetLegendGraphic", "LAYER": LAYER,
+                "FORMAT": "image/png", "WIDTH": 15, "HEIGHT": 15,
+            }, 2_000_000)
+            if error or not raw or not raw.startswith(PNG) or len(raw) < 24:
+                continue
+            width,height = struct.unpack(">II", raw[16:24])
+            if 0 < width <= 1500 and 0 < height <= 3000:
+                return raw
+        except (requests.RequestException, ValueError, TypeError):
+            continue
+    return None
+
+
 def fetch_landcover_wms(geometry):
     """One 1024x768 WMS image aligned to a fixed project-area bbox."""
     try:
@@ -108,6 +127,7 @@ def fetch_landcover_wms(geometry):
             "map_width": 1024,
             "map_height": 768,
             "_image": raw,
+            "_legend_image": _official_legend_image(),
         }
     return {
         "status": "ERROR", "error_code": errors[-1] if errors else "WMS_UNAVAILABLE",
