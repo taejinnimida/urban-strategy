@@ -362,11 +362,14 @@ function devPlanningSymbol(id,feature){
  const aci=spec.fill_aci;
  const fillColor=(devPlanningCatalog?.aci_rgb||devPlanningAciFallback)[String(aci)]||'#ffffff';
  const pattern=spec.pattern_type||null;
- const color=devPlanningPatternColor[spec.line_color]||devPlanningPatternColor[spec.boundary_color]||'#746b60';
+ const roadGradeUnknown=group==='facility'&&spec.name==='도로'&&!/(광로|대로)/.test(name);
+ const isLine=['LineString','MultiLineString'].includes(feature.geometry?.type);
+ const color=roadGradeUnknown&&isLine?'#64748b':
+   (devPlanningPatternColor[spec.line_color]||devPlanningPatternColor[spec.boundary_color]||'#746b60');
  const patternColor=devPlanningPatternColor[spec.pattern_color]||'#ff0000';
  const usesAreaPattern=['diagonal','vertical','circles'].includes(pattern);
  const noBase=spec.fill_mode==='none'||spec.fill_mode==='inherit';
- return {name,label:name||spec.name,color,fillColor,aci,pattern,patternColor,
+ return {name,label:roadGradeUnknown&&isLine?(name||spec.name)+' · 도로등급 미확인':(name||spec.name),color,fillColor,aci,pattern,patternColor,
   fillMode:spec.fill_mode,noBase,labelColor:devPlanningPatternColor[spec.label_color]||'#111827',
   spacingMm:spec.spacing_mm||5,diameterMm:spec.diameter_mm||2,
   fillOpacity:spec.fill_mode==='solid'||usesAreaPattern?1:0,
