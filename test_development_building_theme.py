@@ -169,7 +169,7 @@ class BuildingSurveyTest(unittest.TestCase):
         self.assertEqual(d['items'][0]['features'][0]['properties']['name'], '단독주택')
         self.assertIn('잠정', d['items'][0]['survey_table']['rows'][1]['note'])
 
-    def test_no_spatial_candidate_without_complete_cadastral(self):
+    def test_reference_cadastre_may_support_labelled_provisional_candidate(self):
         d = data()
         s = snapshot([])
         s['_report_layers']['LT_C_BLDGINFO'] = {
@@ -177,7 +177,36 @@ class BuildingSurveyTest(unittest.TestCase):
         s['_report_layers']['LP_PA_CBND_BUBUN'] = {
             'status': 'REFERENCE', 'features': [self._parcel((0, 0, 4, 4))]}
         attach_building_themes(d, s)
-        self.assertEqual(d['building_fact']['counts']['spatial_register_candidates'], 0)
+        self.assertEqual(d['building_fact']['counts']['direct_register_matches'], 0)
+        self.assertEqual(d['building_fact']['counts']['spatial_register_candidates'], 1)
+        self.assertEqual(d['building_fact']['counts']['spatial_candidates_from_reference_cadastre'], 1)
+        self.assertEqual(d['building_fact']['records'][0]['match_basis'], 'REFERENCE_PARCEL_OVERLAY_PROVISIONAL')
+        self.assertEqual(d['items'][2]['features'][0]['properties']['name'], '3층')
+
+    def test_provider_pnu_provisional_candidate_without_cadastral_polygon(self):
+        d = data()
+        s = snapshot([])
+        geom = feature(box(1, 1, 3, 3))
+        geom['properties']['pnu'] = '1111111111100000001'
+        s['_report_layers']['LT_C_BLDGINFO'] = {'status': 'COMPLETE', 'features': [geom]}
+        attach_building_themes(d, s)
+        self.assertEqual(d['building_fact']['counts']['spatial_candidates_from_provider_pnu'], 1)
+        self.assertEqual(d['building_fact']['records'][0]['join_status'], 'PARCEL_SPATIAL_REFERENCE')
+        self.assertEqual(d['items'][2]['features'][0]['properties']['name'], '3층')
+
+    def test_unkeyed_ledger_is_available_for_unique_provisional_parcel(self):
+        d = data()
+        d['buildings'][0]['id'] = None
+        s = snapshot([])
+        s['_report_layers']['LT_C_BLDGINFO'] = {'status': 'COMPLETE',
+            'features': [feature(box(1, 1, 3, 3))]}
+        s['_report_layers']['LP_PA_CBND_BUBUN'] = {'status': 'COMPLETE',
+            'features': [self._parcel((0, 0, 4, 4))]}
+        attach_building_themes(d, s)
+        self.assertEqual(d['building_fact']['counts']['unkeyed_register_rows'], 1)
+        self.assertEqual(d['building_fact']['counts']['spatial_register_candidates'], 1)
+        self.assertEqual(d['building_fact']['counts']['direct_register_matches'], 0)
+        self.assertEqual(d['items'][2]['features'][0]['properties']['name'], '3층')
 
     def test_multi_footprints_same_register_rejected(self):
         d = data()
