@@ -503,6 +503,20 @@ def register_sources(router,service,snapshots,lock,output,get_snapshot,fetch_lay
                         headers={'Cache-Control':'private,max-age=120',
                                  'X-Content-Type-Options':'nosniff'})
 
+    @router.get('/reports/{token}/landcover-clipped.png')
+    def clipped_landcover_image(token:str):
+        s=fixed(token)
+        raw=(s.get('_national_sources',{}).get('landcover_wms') or {})
+        if raw.get('status')!='MAP_ONLY' or not raw.get('_image'):
+            raise HTTPException(404,'토지피복 WMS 참고 영상이 확보되지 않았습니다.')
+        from development_landcover_preview import clipped_png
+        try:
+            body=clipped_png(raw['_image'],s['geometry'])
+        except (ValueError,TypeError,KeyError):
+            raise HTTPException(422,'사업구역 경계 영상 처리를 완료하지 못했습니다.') from None
+        return Response(body,media_type='image/png',headers={
+            'Cache-Control':'private,max-age=120','X-Content-Type-Options':'nosniff'})
+
     @router.get('/reports/{token}/ecvam.png')
     def image(token:str):
         data=fixed(token).get('_national_sources',{}).get('ecvam',{})
