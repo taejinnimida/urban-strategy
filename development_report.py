@@ -17,8 +17,8 @@ GROUPS = [
 ('도시계획 현황','도시기본계획|용도지역|용도지구|용도구역|도시계획시설(교통)|도시계획시설(공간)|도시계획시설(기타)|지구단위계획구역'),
 ('공적규제','농지/초지|산지|하천/방재구역|문화재 등|교육환경보호구역|상수원보호/수변구역|도로/접도구역|기타 공적규제'),
 ('도시 및 주거환경현황','노후 불량 건축물|호수밀도|접도율|토지형상')]
-LAND = [('parcel_source','지적자료 취득경로'),('parcel_assurance','지적자료 확인수준'),('pnu','PNU'),('address','소재지'),('jibun','지번'),('category','지목'),('official_area','공부면적(㎡)'),('overlap_area','편입 도형면적(㎡)'),('ownership','소유구분'),('zoning','중첩 용도지역'),('zoning_status','용도지역 조회상태'),('price','개별공시지가(원/㎡)'),('price_year','지가 기준연도'),('ledger_status','대장 조회상태'),('price_status','지가 조회상태'),('building_status','건축물 조회상태'),('ledger_source','대장 출처'),('price_source','지가 출처'),('updated','대장 갱신일'),('queried_at','조회시각'),('ledger_error_code','대장 오류구분'),('price_error_code','지가 오류구분'),('building_error_code','건축물 오류구분'),('missing_fields','미확보 속성'),('land_shape','토지형상 원문'),('road_frontage','도로접면 원문'),('land_characteristics_year','토지특성 연도')]
-BUILDING = [('id','건축물대장 관리번호'),('pnus','관련 PNU'),('address','소재지'),('name','건물·동명'),('use','주용도'),('structure','구조'),('floors','지상층수'),('basements','지하층수'),('footprint','건축면적(㎡)'),('floor_area','연면적(㎡)'),('coverage','대장 건폐율(%)'),('far','대장 용적률(%)'),('approved','사용승인일'),('age','만 경과연수(년)'),('scope','편입 확인'),('source','출처'),('households','대장 세대수'),('families','대장 가구수'),('units','대장 호수'),('register_kind','대장 종류')]
+LAND = [('parcel_source','지적자료 취득경로'),('parcel_assurance','지적자료 확인수준'),('pnu','PNU'),('address','소재지'),('jibun','지번'),('category','지목'),('official_area','공부면적(㎡)'),('overlap_area','편입 도형면적(㎡)'),('ownership','소유구분'),('zoning','중첩 용도지역'),('zoning_status','용도지역 조회상태'),('price','개별공시지가(원/㎡)'),('price_year','지가 기준연도'),('ledger_status','대장 조회상태'),('price_status','지가 조회상태'),('building_status','건축물 조회상태'),('ledger_source','대장 출처'),('price_source','지가 출처'),('updated','대장 갱신일'),('queried_at','조회시각'),('ledger_error_code','대장 오류구분'),('price_error_code','지가 오류구분'),('building_error_code','건축물 오류구분'),('missing_fields','미확보 속성'),('road_frontage','도로접면 원문'),('land_characteristics_year','토지특성 연도')]
+BUILDING = [('id','건축물대장 관리번호'),('pnus','관련 PNU'),('address','소재지'),('name','건물·동명'),('use','주용도'),('structure','구조'),('floors','지상층수'),('basements','지하층수'),('footprint','건축면적(㎡)'),('floor_area','연면적(㎡)'),('site_area','대지면적(㎡)'),('site_area_source','대지면적 근거'),('far_floor_area','용적률 산정용 연면적(㎡)'),('coverage','건폐율(%)'),('coverage_basis','건폐율 산정근거'),('far','용적률(%)'),('far_basis','용적률 산정근거'),('approved','사용승인일'),('age','만 경과연수(년)'),('scope','편입 확인'),('source','출처'),('households','대장 세대수'),('families','대장 가구수'),('units','대장 호수'),('register_kind','대장 종류')]
 
 def now(): return datetime.now(ZoneInfo('Asia/Seoul')).isoformat(timespec='seconds')
 def number(v):
@@ -49,8 +49,16 @@ def parcels(features, geometry, area):
         out[pnu]={'pnu':pnu,'jibun':jibun,'overlap_area':area(unary_union(geoms)), 'ledger_status':'미조회','price_status':'미조회','building_status':'미조회'}
     return out
 
-def buildings(rows, day):
+def buildings(rows, day, land_rows=None):
+    """Building-HUB title attributes, with traceable, non-statutory area calculations.
+
+    Registry ratios of 0 are treated as unverified (legacy titles often use 0 as
+    a placeholder). Land parcel area is only a reference, never automatically
+    a legally confirmed building site area. FAR may not use gross area if
+    basement floors exist and the register's FAR-counted area is unavailable.
+    """
     result={}
+    land_rows=land_rows or {}
     for pnu,items in sorted(rows.items()):
         for i,r in enumerate(items):
             ident=str(r.get('mgmBldrgstPk') or '')
@@ -58,17 +66,72 @@ def buildings(rows, day):
             if key in result:
                 result[key]['pnus'] = ', '.join(sorted(set(result[key]['pnus'].split(', ')+[pnu])))
                 continue
-            result[key]={'id':ident or None,'pnus':pnu,'address':r.get('platPlc'),'name':' '.join(str(r.get(k) or '') for k in ('bldNm','dongNm')).strip(),'use':r.get('mainPurpsCdNm'),'structure':r.get('strctCdNm'),'approved':r.get('useAprDay'),'age':age(r.get('useAprDay'),day),'scope':'편입필지 관련 대장 · 건물 도형 편입 미확인'+(' · 관리번호 없어 중복확인 필요' if not ident else ''),'source':'국토교통부 건축HUB'}
-            for dest,src in [('floors','grndFlrCnt'),('basements','ugrndFlrCnt'),('footprint','archArea'),('floor_area','totArea'),('coverage','bcRat'),('far','vlRat'),('households','hhldCnt'),('families','fmlyCnt'),('units','hoCnt')]: result[key][dest]=number(r.get(src))
+            result[key]={'id':ident or None,'pnus':pnu,'address':r.get('platPlc'),
+                         'name':' '.join(str(r.get(k) or '') for k in ('bldNm','dongNm')).strip(),
+                         'use':r.get('mainPurpsCdNm'),'structure':r.get('strctCdNm'),
+                         'approved':r.get('useAprDay'),'age':age(r.get('useAprDay'),day),
+                         'scope':'편입필지 관련 대장 · 도형 직접연계 별도 확인'+
+                                 (' · 관리번호 없어 중복확인 필요' if not ident else ''),
+                         'source':'국토교통부 건축HUB'}
+            for dest,src in [('floors','grndFlrCnt'),('basements','ugrndFlrCnt'),('footprint','archArea'),
+                             ('floor_area','totArea'),('far_floor_area','vlRatEstmTotArea'),
+                             ('coverage','bcRat'),('far','vlRat'),('households','hhldCnt'),
+                             ('families','fmlyCnt'),('units','hoCnt')]:
+                result[key][dest]=number(r.get(src))
+            result[key]['site_area']=number(r.get('platArea'))
+            result[key]['site_area_source']='건축HUB 대지면적' if result[key]['site_area'] and result[key]['site_area']>0 else None
+            result[key]['coverage_basis']='건축HUB 원문' if result[key]['coverage'] and result[key]['coverage']>0 else None
+            result[key]['far_basis']='건축HUB 원문' if result[key]['far'] and result[key]['far']>0 else None
             result[key]['register_kind']=r.get('regstrKindCdNm')
+
+    pnu_titles={}
+    for row in result.values():
+        for pnu in row['pnus'].split(', '):
+            pnu_titles.setdefault(pnu,set()).add(row['id'] or row['address'])
+    for row in result.values():
+        pnus=row['pnus'].split(', ')
+        if not (row.get('site_area') and row['site_area']>0) and len(pnus)==1:
+            pnu=pnus[0]
+            parcel=land_rows.get(pnu) or {}
+            official_area=number(parcel.get('official_area'))
+            if len(pnu_titles.get(pnu,()))==1 and official_area and official_area>0 and parcel.get('ledger_status')=='확보':
+                row['site_area']=official_area
+                row['site_area_source']='토지대장 공부면적(건축대지 여부 별도 확인)'
+        land_area=row.get('site_area')
+        if not land_area or land_area<=0:
+            row['coverage']=row['coverage'] if row.get('coverage_basis') else None
+            row['far']=row['far'] if row.get('far_basis') else None
+            continue
+        if not row.get('coverage_basis'):
+            arch=row.get('footprint')
+            if arch and arch>0:
+                row['coverage']=round(100*arch/land_area,2)
+                row['coverage_basis']='플랫폼 내부산정: 건축HUB 건축면적 ÷ '+row['site_area_source']
+            else:
+                row['coverage']=None
+        if not row.get('far_basis'):
+            floor=row.get('far_floor_area')
+            if floor and floor>0:
+                row['far']=round(100*floor/land_area,2)
+                row['far_basis']='플랫폼 내부산정: 건축HUB 용적률산정용 연면적 ÷ '+row['site_area_source']
+            elif row.get('basements')==0 and row.get('floor_area') and row['floor_area']>0:
+                row['far']=round(100*row['floor_area']/land_area,2)
+                row['far_basis']='플랫폼 참고산정: 지하층 없는 건축HUB 총연면적 ÷ '+row['site_area_source']+' (제외면적 검증 전)'
+            elif row.get('footprint') and row.get('floors') and row['floors']>0:
+                row['far']=round(100*row['footprint']*row['floors']/land_area,2)
+                row['far_basis']='플랫폼 개략추정: 건축면적 × 지상층수 ÷ '+row['site_area_source']+' (법정 용적률 아님)'
+            else:
+                row['far']=None
     return list(result.values())
 
 def review(report, snapshot):
-    land=list(report.get('land',{}).values()); b=buildings(report.get('buildings',{}),datetime.fromisoformat(report['as_of']).date()); layers=snapshot.get('_report_layers',{})
+    land=list(report.get('land',{}).values()); b=buildings(report.get('buildings',{}),datetime.fromisoformat(report['as_of']).date(),report.get('land',{})); layers=snapshot.get('_report_layers',{})
     out=[]
     for gi,(group,names) in enumerate(GROUPS,1):
         for ni,name in enumerate(names.split('|'),1):
-            key=f'{gi}-{ni}'; status='자료 연결 필요'; detail='원본 공간자료·분석기준 미연결'; source='도시계획 현황 분석보고서 검토항목'
+            key=f'{gi}-{ni}'
+            if key=='2-5':continue  # Historical land-shape classification not part of current survey.
+            status='자료 연결 필요'; detail='원본 공간자료·분석기준 미연결'; source='도시계획 현황 분석보고서 검토항목'
             if key=='1-1':status='기초자료 확보';detail=f"확정 구역계 {snapshot['area_m2']:,.2f}㎡ · 위치는 구역계 좌표 기준";source='확정 구역계'
             if gi==2 and ni in (1,2,3,4):
                 field={1:'ownership',2:'category',3:'official_area',4:'price'}[ni]; known=sum(x.get(field) is not None and x.get(field)!='' for x in land)
@@ -120,7 +183,7 @@ def xlsx(sheets):
 
 def tables(data):
     def table(cols,rows):return [[label for _,label in cols]]+[[r.get(k) for k,_ in cols] for r in rows]
-    sheets=[('요약',[['항목','내용'],['작성 기준시각',data['as_of']],['확정 구역계 면적(㎡)',data['area_m2']],['지적 확보 상태',data.get('parcel_status','UNAVAILABLE')],['편입 필지 수',len(data['land']) if data.get('parcel_status')=='COMPLETE' else '미확보'],['보조 지적 참고 필지 수',len(data['land']) if data.get('parcel_status')=='REFERENCE' else '해당 없음'],['지적자료 한계',data.get('parcel_note') or '제공기관 응답 기준'],['관련 건축물대장 수',len(data['buildings'])],['건축물 범위','편입필지 관련 대장. 건물 도형 편입 여부 미확인'],['미확보 처리','빈 셀은 미확보. 0 또는 해당 없음으로 해석 금지'],['노후도','경과연수는 법정 노후·불량 판정 아님'],['검토 범위','44개 항목 등록. 자료 연결과 법정 분석 완료는 별개']]),('토지조서',table(LAND,data['land'])),('건축물조서',table(BUILDING,data['buildings'])),('검토항목',table([('id','번호'),('group','분류'),('name','검토항목'),('status','자료 상태'),('detail','내용·한계'),('source','출처'),('queried_at','조회시각')],data['items'])),('출처와 미확보',[['PNU','토지대장','공시지가','건축물대장','조회시각','미확보 속성']]+[[r['pnu'],r['ledger_status'],r['price_status'],r['building_status'],r.get('queried_at'),r.get('missing_fields')] for r in data['land']])]
+    sheets=[('요약',[['항목','내용'],['작성 기준시각',data['as_of']],['확정 구역계 면적(㎡)',data['area_m2']],['지적 확보 상태',data.get('parcel_status','UNAVAILABLE')],['편입 필지 수',len(data['land']) if data.get('parcel_status')=='COMPLETE' else '미확보'],['보조 지적 참고 필지 수',len(data['land']) if data.get('parcel_status')=='REFERENCE' else '해당 없음'],['지적자료 한계',data.get('parcel_note') or '제공기관 응답 기준'],['관련 건축물대장 수',len(data['buildings'])],['건축물 범위','편입필지 관련 대장. 건물 도형 편입 여부 미확인'],['미확보 처리','빈 셀은 미확보. 0 또는 해당 없음으로 해석 금지'],['노후도','경과연수는 법정 노후·불량 판정 아님'],['검토 범위',str(len(data['items']))+'개 항목 등록(2-5 토지형상 제외). 자료 연결과 법정 분석 완료는 별개']]),('토지조서',table(LAND,data['land'])),('건축물조서',table(BUILDING,data['buildings'])),('검토항목',table([('id','번호'),('group','분류'),('name','검토항목'),('status','자료 상태'),('detail','내용·한계'),('source','출처'),('queried_at','조회시각')],data['items'])),('출처와 미확보',[['PNU','토지대장','공시지가','건축물대장','조회시각','미확보 속성']]+[[r['pnu'],r['ledger_status'],r['price_status'],r['building_status'],r.get('queried_at'),r.get('missing_fields')] for r in data['land']])]
     stats=[['검토항목','분류','건수','면적(㎡)','요약']]
     for key,value in data.get('statistics',{}).items():
         groups=value.get('groups') or []
@@ -188,18 +251,22 @@ def tables(data):
     for record in fact.get('unmatched_registers') or []:
         missing.append([record.get('register_id'),record.get('pnus'),record.get('reason')])
     sheets.append(('대장 도형 미연계',missing))
-    building_table_rows=[['검토항목','자료상태','구분','건축물 공간도형(개)','구성비(%)','자료확인','비고','출처','기준일']]
+    building_table_rows=[['검토항목','자료상태','구분','건축물 공간도형(개)','구성비(%)','비고']]
     for item in data['items']:
         if item.get('thematic_type') != 'building':
             continue
         table = item.get('survey_table') or {}
         for row in table.get('rows') or []:
             building_table_rows.append([item['id'],table.get('status'),row.get('label'),
-                                        row.get('count'),row.get('pct'),row.get('join_status'),
-                                        row.get('note'),table.get('source'),table.get('as_of')])
+                                        row.get('count'),row.get('pct'),row.get('note')])
         if not (table.get('rows') or []):
-            building_table_rows.append([item['id'],table.get('status'),'분류표 미확보',None,None,
-                                        '미확보','',table.get('source'),table.get('as_of')])
+            building_table_rows.append([item['id'],table.get('status'),'분류표 미확보',None,None,''])
+    building_table_rows.append(['출처 및 산정기준','','','','',''])
+    for item in data['items']:
+        if item.get('thematic_type')=='building':
+            building_table_rows.append([item['id'],'',item.get('name'),'','',
+                                        (item.get('survey_table') or {}).get('source') or '원자료 확인 필요'])
+    building_table_rows.append(['안내','','','','','도형·대장 미연계는 대장 부재를 의미하지 않음. 건폐율·용적률 내부산정은 법정 확정 수치와 구별'])
     sheets.append(('건축물현황표',building_table_rows))
     land_table_rows=[['검토항목','자료상태','행구분','구분','면적(㎡)','구성비(%)','필지·도형수','비고','자료출처','자료기준일']]
     for item in data['items']:
@@ -270,7 +337,7 @@ def register_report(router, service, snapshots, lock, get_snapshot, fetch_layer,
         for row in r['land'].values():
             row['missing_fields']=' · '.join(label for field,label in [('address','소재지'),('category','지목'),('official_area','공부면적'),('ownership','소유구분'),('price','공시지가'),('zoning','용도지역')] if row.get(field) in (None,''))
         from development_sources import enrich
-        data={'parcel_status':r.get('parcel_status','UNAVAILABLE'),'parcel_error_code':r.get('parcel_error_code'),'as_of':r['as_of'],'area_m2':s['area_m2'],'land':list(r['land'].values()),'buildings':buildings(r['buildings'],datetime.fromisoformat(r['as_of']).date()),'items':review(r,s)}
+        data={'parcel_status':r.get('parcel_status','UNAVAILABLE'),'parcel_error_code':r.get('parcel_error_code'),'as_of':r['as_of'],'area_m2':s['area_m2'],'land':list(r['land'].values()),'buildings':buildings(r['buildings'],datetime.fromisoformat(r['as_of']).date(),r['land']),'items':review(r,s)}
         data['parcel_note']='브라우저 보조 수신 지적에 따른 참고 필지목록입니다. 원문 진위·전체 필지 수록 여부는 미검증이며 대장 속성은 공공 API에서 별도 조회합니다.' if r.get('parcel_status')=='REFERENCE' else ''
         if data['parcel_note']:
             for row in data['buildings']:row['scope']='보조 지적 필지목록 기반 · '+row['scope']
