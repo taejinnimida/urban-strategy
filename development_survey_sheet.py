@@ -10,6 +10,7 @@ from xml.sax.saxutils import escape
 from pyproj import Transformer
 from shapely.geometry import box, shape
 from shapely.ops import transform
+from development_planning_symbols import style_for, style_from_properties, hatch_pattern
 
 SHEET_W, SHEET_H = 580.0, 380.0
 MAP = (2.0, 2.0, 485.0, 376.0)  # x, y, width, height
@@ -103,13 +104,17 @@ def make_sheet(item, snapshot):
                 continue
             projected_g = transform(_CRS, g)
             cut = projected_g.intersection(view) if use_zone_context else projected_g.intersection(site).intersection(view)
-            color = _color((feature.get('properties') or {}).get('color'), '#afd0e4')
-            cls = str((feature.get('properties') or {}).get('class_code') or 'C01')
+            props = feature.get('properties') or {}
+            color = _color(props.get('color'), '#afd0e4')
+            draw_style = style_from_properties(props, 'zoning') if item.get('id') == '5-2' else None
+            cls = str(props.get('class_code') or 'C01')
             if not re.fullmatch(r'C\d{2}', cls):
                 cls = 'C01'
             for poly in _geometry_parts(cut):
-                ops.append(primitive('polygon', rings=_poly_points(poly, xy), fill=color,
-                                     stroke='#a5a5a5', weight=0.32, layer='SHEET_THEME_' + cls))
+                ops.append(primitive('polygon', rings=_poly_points(poly, xy),
+                                     fill=('none' if draw_style and draw_style.get('fill_mode') != 'solid' else color),
+                                     stroke='#a5a5a5', weight=0.32, layer='SHEET_THEME_' + cls,
+                                     symbol=draw_style))
         except (KeyError, TypeError, ValueError):
             continue
 
@@ -176,8 +181,10 @@ def make_sheet(item, snapshot):
     for i, entry in enumerate(legend[:27]):
         y = 66 + i * 9.0
         color = _color(entry.get('color'), '#dddddd')
+        draw_style = style_for(entry.get('name'), 'zoning') if item.get('id') == '5-2' else None
         ops.append(primitive('rect', x=496, y=y - 5.5, w=7.5, h=7.5,
-                             fill=color, stroke='#777777', weight=0.35))
+                             fill=('none' if draw_style and draw_style.get('fill_mode') != 'solid' else color),
+                             stroke='#777777', weight=0.35, symbol=draw_style))
         name = str(entry.get('name') or '분류 미확인')
         # Full category values remain in FACT and report tables.
         label = (name[:10] + f' {entry.get("count", 0)}동') if item.get('thematic_type') == 'building' else name[:14]
@@ -315,54 +322,29 @@ def dxf_paper_sheet(doc, ops):
     return layout
 
 
-# Zoning display indices follow the drawing legend in [별첨 1] of the
-# urban/county management-plan drafting guideline. ACI is the source index;
-# RGB is its screen/DXF approximation, not an official approval drawing.
-ZONE_ACI_RGB = {2: '#ffff00', 40: '#ffbf00', 51: '#ffff7f',
-                71: '#bfff7f', 131: '#7fffff', 191: '#bf7fff',
-                231: '#ff7fbf'}
-ZONE_STYLE_RULES = (
-    ('제1종전용주거', 51, 'dot'), ('제2종전용주거', 2, 'dot'),
-    ('제1종일반주거', 51, None), ('제2종일반주거', 2, None),
-    ('제3종일반주거', 40, None), ('준주거', 2, 'diagonal'),
-    ('중심상업', 231, 'dot'), ('일반상업', 231, None),
-    ('근린상업', 231, 'diagonal'), ('유통상업', 231, None),
-    ('전용공업', 191, 'dot'), ('일반공업', 191, None),
-    ('준공업', 191, 'diagonal'), ('보전녹지', 71, 'dot'),
-    ('생산녹지', 71, 'diagonal'), ('자연녹지', 71, None),
-    ('계획관리', None, 'diagonal'), ('생산관리', 71, 'diagonal'),
-    ('보전관리', 71, 'dot'), ('농림', 71, 'diagonal'),
-    ('자연환경보전', 131, 'dot'),
-)
-
-
 def zoning_style(name):
-    key = re.sub(r'\\s+', '', str(name or ''))
-    for label, aci, pattern in ZONE_STYLE_RULES:
-        if label in key:
-            return {'aci': aci, 'color': ZONE_ACI_RGB.get(aci, '#ffffff'),
-                    'pattern': pattern, 'verified_style': True}
-    return {'aci': None, 'color': '#ced5d9', 'pattern': None,
-            'verified_style': False}
+    return style_for(name, "zoning")
 
 
 def zoning_context(features):
-    """Prepare display classes without changing the clipped site zoning FACT."""
+    """Display styling only: source FACT and statutory zoning subtype never inferred."""
     clean = []
     for feature in features:
-        props = {str(k).lower(): v for k, v in (feature.get('properties') or {}).items()}
-        name = str(props.get('uname') or props.get('name') or props.get('dgm_nm') or '').strip()
-        if not name or not feature.get('geometry'):
-            name = '명칭 미확보'
-        clean.append((name, feature))
-    classes = {name: (f'C{index+1:02d}', zoning_style(name))
-               for index, name in enumerate(sorted(set(name for name, _ in clean)))}
+        props = feature.get("properties") or {}
+        p = {str(k).lower(): v for k, v in props.items()}
+        name = str(p.get("uname") or p.get("name") or p.get("dgm_nm") or "").strip()
+        if not name:
+            name = "명칭 미확보"
+        if feature.get("geometry"):
+            clean.append((name, feature))
+    classes = {name: (f"C{i+1:02d}", zoning_style(name))
+               for i, name in enumerate(sorted({name for name, _ in clean}))}
     mapped = []
     for name, feature in clean:
         code, style = classes[name]
-        mapped.append({'type': 'Feature', 'geometry': feature['geometry'],
-                       'properties': {'name': name, 'class_code': code, **style}})
-    legend = [{'name': name, 'class_code': code, **style}
+        mapped.append({"type": "Feature", "geometry": feature["geometry"],
+                       "properties": {"name": name, "class_code": code, **style}})
+    legend = [{"name": name, "class_code": code, **style}
               for name, (code, style) in classes.items()]
-    return {'status': 'COMPLETE', 'features': mapped, 'legend': legend,
-            'note': '주변 용도지역 도형 참고자료. 별첨 1 ACI 색인에 대응한 RGB 채색으로, 무늬는 메타데이터로 보존되며 CAD 해치는 아직 단색임. 법정 고시도면 아님.'}
+    return {"status": "COMPLETE", "features": mapped, "legend": legend,
+            "note": "별첨 1의 색상·무늬와 ACI 구분 적용. 세부분류 미확인 도형은 미확정 표시. 고시도면이 아닌 기초조사 현황도."}
