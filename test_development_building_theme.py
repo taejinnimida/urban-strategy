@@ -224,8 +224,8 @@ class BuildingSurveyTest(unittest.TestCase):
             self.assertEqual(item['survey_table']['rows'][0]['count'], 1)
             self.assertIn('건물도형 0개', item['survey_table']['rows'][0]['note'])
         self.assertEqual(d['items'][2]['features'][0]['properties']['name'], '3층')
-        self.assertEqual(d['items'][2]['statistics']['footprint_count'], 0)
-        self.assertEqual(d['items'][2]['statistics']['pnu_register_parcel_features'], 1)
+        self.assertEqual(d['statistics']['3-3']['footprint_count'], 0)
+        self.assertEqual(d['statistics']['3-3']['pnu_register_parcel_features'], 1)
 
     def test_pnu_register_parcel_not_double_counted_when_footprint_already_joined(self):
         d = data()
