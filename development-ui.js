@@ -902,7 +902,7 @@ function devRenderSourceDetails(data){
   if(!cadReady&&!cadAutoAttempted&&item.id==='1-1'){
    cadAutoAttempted=true;prepareCadBackground().catch(()=>{});
   }
-  const available=item.id==='1-1'||(item.thematic_type==='building'&&item.cad_exportable===true)||(item.id==='2-6' ? item.thematic_type==='landcover'&&item.provider_verified===true : (item.provider_verified===true&&['공간자료 확보','일부 확보'].includes(item.status))||(['공식 파일자료 확보','일부 확보'].includes(item.status)&&!!item.features?.length&&item.source!=='VWorld'&&item.thematic_type!=='ecobank'));
+  const available=item.id==='1-1'||(item.thematic_type==='building'&&item.cad_exportable===true)||(item.id==='2-6' ? item.thematic_type==='landcover'&&item.provider_verified===true : ((item.provider_verified===true||item.verified_feature_sources===true)&&!!item.features?.length&&['공간자료 확보','일부 확보'].includes(item.status))||(['공식 파일자료 확보','일부 확보'].includes(item.status)&&!!item.features?.length&&item.source!=='VWorld'&&item.thematic_type!=='ecobank'));
   const usable=available;
   cadSingle.dataset.available=usable?'yes':'';
   cadSingle.disabled=!usable;cadSingle.title=usable?'확보된 공간도형 기준 CAD 출력':'검증된 공간도형이 없는 항목은 CAD 출력 불가';
