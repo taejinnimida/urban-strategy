@@ -141,6 +141,31 @@ class PlanningSymbolsTest(unittest.TestCase):
                 dxf_paper_sheet(doc,ops)
                 self.assertTrue(len(doc.layouts.get('SURVEY_A3'))>0)
 
+    def test_school_subtype_and_unclassified_road_are_not_guessed(self):
+        self.assertEqual(style_for('대학교','facility')['school_variant'],'university')
+        self.assertEqual(style_for('중학교','facility')['school_variant'],'secondary')
+        self.assertEqual(style_for('초등학교','facility')['school_variant'],'elementary')
+        self.assertIsNone(style_for('학교','facility')['school_variant'])
+        self.assertIsNone(style_for('도로','facility')['line_color'])
+        self.assertEqual(style_for('대로','facility')['line_color'],'red')
+        self.assertEqual(style_for('중로','facility')['line_color'],'blue')
+
+    def test_school_black_glyph_editability(self):
+        site=geo()
+        categorized=planning_context([{'type':'Feature',
+                                       'properties':{'name':'초등학교'},
+                                       'geometry':site}], 'facility')
+        ops=make_sheet({'id':'5-7','name':'기타 시설',
+                        'features':categorized['features'],
+                        'legend':categorized['legend']},
+                       {'geometry':site,'_cad_background':{'status':'COMPLETE','features':[]}})
+        self.assertTrue(any(op['type']=='school_mark' for op in ops))
+        svg=svg_sheet(ops)
+        ET.fromstring(svg)
+        doc=ezdxf.new('R2010')
+        dxf_paper_sheet(doc,ops)
+        self.assertTrue(len(list(doc.layouts.get('SURVEY_A3').query('HATCH')))>0)
+
     def test_linear_pipe_plan_symbol_in_paper_dxf(self):
         from shapely.geometry import LineString
         line=LineString([(953005,1950005),(953115,1950115)])
