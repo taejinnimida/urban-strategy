@@ -499,7 +499,7 @@ async function devInit(){
 let devInventoryBusy=false;
 function devInstallInventory(){
  const box=document.createElement('section');box.id='devInventory';box.className='dev-card';
- box.innerHTML='<h3>도시계획 현황 분석보고서</h3><div style="padding:14px"><p>확정 구역계에 편입되는 필지를 기준으로 공공 대장을 조회합니다. 건물별 편입 여부는 별도 확인이 필요합니다.</p><div class="dev-actions"><button id="devInventoryLoad">44개 항목 자료 조회 / 미확보 재조회</button><button id="devInventoryDownload" disabled>엑셀 다운로드</button></div><p id="devInventoryStatus" role="status">미조회 · 44개 항목의 분석 완료를 의미하지 않습니다.</p><div id="devInventoryResults"></div></div>';
+ box.innerHTML='<h3>도시계획 현황 분석보고서</h3><div style="padding:14px"><p>확정 구역계에 편입되는 필지를 기준으로 공공 대장을 조회합니다. 건물별 편입 여부는 별도 확인이 필요합니다.</p><div class="dev-actions"><button id="devInventoryLoad">기초현황 자료 조회 / 미확보 재조회</button><button id="devInventoryDownload" disabled>엑셀 다운로드</button></div><p id="devInventoryStatus" role="status">미조회 · 44개 항목의 분석 완료를 의미하지 않습니다.</p><div id="devInventoryResults"></div></div>';
  document.getElementById('devReview').append(box);
  document.getElementById('devInventoryLoad').onclick=devLoadInventory;
  document.getElementById('devInventoryDownload').onclick=async()=>{
@@ -516,15 +516,15 @@ function devRenderInventory(data){
   const box=document.createElement('div');
   box.style.cssText='margin:8px 0;padding:9px 12px;border:1px solid #cbd5e1;background:#f8fafc;font-size:12px;line-height:1.7';
   box.textContent='건축물 통합FACT ['+buildingFact.geometry_status+'] · 공간도형 '+(bc.mapped_shapes??'미확보')+
-    '개 · 대장 직접연결 '+(bc.direct_register_matches??0)+'개 · GIS 속성만 '+(bc.gis_attribute_only??0)+
+    '개 · 대장 직접연결 '+(bc.direct_register_matches??0)+'개 · 필지공간 잠정연계 '+(bc.spatial_register_candidates??0)+'개 · GIS 속성만 '+(bc.gis_attribute_only??0)+
     '개 · 속성불일치 '+(bc.conflicting_shapes??0)+'개 · 도형 미연계 대장 '+(bc.register_without_direct_geometry??0)+
     '건. 실제 건축물 법정 동수와 같다고 단정하지 않음.';
   root.append(box);
  }
  function table(title,columns,rows){const details=document.createElement('details');const summary=document.createElement('summary');summary.textContent=title;details.append(summary);const wrap=document.createElement('div');wrap.style.cssText='overflow:auto;max-height:460px';const t=document.createElement('table');t.style.cssText='min-width:650px;width:100%;font-size:12px;border-collapse:collapse';const thead=t.createTHead();const header=thead.insertRow();columns.forEach(([key,label])=>{const th=document.createElement('th');th.textContent=label;th.style.cssText='padding:8px;text-align:left;background:#eaf0f5';header.append(th);});const body=t.createTBody();rows.forEach(r=>{const tr=body.insertRow();columns.forEach(([key])=>{const td=tr.insertCell();td.textContent=r[key]??'미확보';td.style.cssText='padding:8px;border-bottom:1px solid #ddd';});});wrap.append(t);details.append(wrap);root.append(details);}
  table('토지조서 (화면 최대 100필지 · 엑셀 전체)',[['jibun','지번'],['parcel_assurance','지적 확인수준'],['category','지목'],['official_area','공부㎡'],['overlap_area','편입 도형㎡'],['ownership','소유구분'],['zoning','중첩 용도지역'],['price','지가 원/㎡'],['ledger_status','대장 상태']],data.land.slice(0,100));
- table('건축물조서 (화면 최대 100건 · 엑셀 전체)',[['address','소재지'],['use','용도'],['structure','구조'],['floors','층수'],['floor_area','연면적㎡'],['age','경과년'],['scope','편입확인']],data.buildings.slice(0,100));
- table('도시계획 현황 분석보고서 · 44개 검토항목', [['id','번호'],['group','분류'],['name','항목'],['status','자료 상태'],['detail','내용·한계']],data.items);
+ table('건축물조서 (화면 최대 100건 · 엑셀 전체)',[['address','소재지'],['use','용도'],['structure','구조'],['floors','층수'],['site_area','대지면적㎡'],['footprint','건축면적㎡'],['floor_area','연면적㎡'],['coverage','건폐율%'],['coverage_basis','건폐율 근거'],['far','용적률%'],['far_basis','용적률 근거'],['age','경과년'],['scope','편입확인']],data.buildings.slice(0,100));
+ table('도시계획 현황 분석보고서 · '+data.items.length+'개 검토항목', [['id','번호'],['group','분류'],['name','항목'],['status','자료 상태'],['detail','내용·한계']],data.items);
  const failures=(data.source_jobs||[]).filter(v=>v.error_code);if(failures.length)table('자료 연결 결과', [['id','조회 항목'],['status','상태'],['detail','내용'],['error_code','오류구분']],failures);
  document.getElementById('devInventoryDownload').disabled=false;
 }
@@ -545,7 +545,7 @@ async function devLoadInventory(){
   const unconfigured=sourceJobs.filter(j=>['MISSING_SOURCE','MISSING_CREDENTIAL'].includes(j.status)).length;
   const unavailable=sourceJobs.filter(j=>j.status==='OUTSIDE_COVERAGE').length;
   const parcelMessage=result.parcel_status==='REFERENCE'?`보조 지적 ${result.land.length}필지 참고목록 · 전체 필지 수록 여부 미확인`:result.parcel_status==='UNAVAILABLE'?'연속지적 미확보 · 필지 수 미확인 · 토지·건축물 조서 보류':`${result.land.length}필지 · 일부 속성 미확보 ${missing}필지`;
-  status.textContent=`조회 처리 종료 · ${parcelMessage}. 요청 실패 ${failed}건 · 원자료/인증/관측소 설정 필요 ${unconfigured}건 · 자료 수록범위 밖 ${unavailable}건. 건수는 조회 작업 기준이며 44개 검토항목 수와 다릅니다. 항목별 확보 상태는 아래 표에서 확인하세요.`;
+  status.textContent=`조회 처리 종료 · ${parcelMessage}. 요청 실패 ${failed}건 · 원자료/인증/관측소 설정 필요 ${unconfigured}건 · 자료 수록범위 밖 ${unavailable}건. 건수는 조회 작업 기준이며 전체 검토항목 수와 다릅니다. 항목별 확보 상태는 아래 표에서 확인하세요.`;
  }catch(e){status.textContent=e.message;try{const d=await devApi(base);devRenderInventory(d);devRenderSourceDetails(d);}catch(_){}}
  finally{devInventoryBusy=false;button.disabled=false;}
 }
@@ -555,7 +555,7 @@ function devRenderSourceDetails(data){
  if(devSourceDetailMap){devSourceDetailMap.remove();devSourceDetailMap=null;}
  document.getElementById('devSourceDetail')?.remove();
  const section=document.createElement('section');section.id='devSourceDetail';section.className='dev-card';
- const heading=document.createElement('h3');heading.textContent='44개 항목별 자료·통계·도면';section.append(heading);
+ const heading=document.createElement('h3');heading.textContent=data.items.length+'개 항목별 자료·통계·도면';section.append(heading);
  const select=document.createElement('select');select.style.cssText='margin:12px;max-width:90%;padding:8px';
  for(const item of data.items){const option=document.createElement('option');option.value=item.id;option.textContent=`${item.id} ${item.name} · ${item.status}`;select.append(option);}section.append(select);
  const info=document.createElement('p');info.style.padding='12px';section.append(info);
@@ -662,7 +662,7 @@ function devRenderSourceDetails(data){
   const tab=document.createElement('table');
   tab.style.cssText='width:100%;border-collapse:collapse;font-size:12px;min-width:510px;font-variant-numeric:tabular-nums';
   const header=document.createElement('thead'),hrow=document.createElement('tr');
-  for(const text of (item.id.startsWith('3-')?['구분','건축물도형(개)','구성비(%)','자료확인','비고']:['구분','면적(㎡)','구성비(%)',t.count_header||'필지수(필지)','비고'])){
+  for(const text of (item.id.startsWith('3-')?['구분','건축물도형(개)','구성비(%)','비고']:['구분','면적(㎡)','구성비(%)',t.count_header||'필지수(필지)','비고'])){
    const th=document.createElement('th');th.textContent=text;
    th.style.cssText='padding:7px 5px;border:1px solid #9ca9bf;background:#dfe7f6;color:#21376d;text-align:center';
    hrow.append(th);
@@ -671,12 +671,12 @@ function devRenderSourceDetails(data){
   const body=document.createElement('tbody');
   for(const row of t.rows){
    const tr=document.createElement('tr');
-   const cells=item.id.startsWith('3-')?[row.label,row.count,row.pct,row.join_status||'',row.note||'']:[row.label,row.area_m2,row.pct,row.count,row.note||''];
+   const cells=item.id.startsWith('3-')?[row.label,row.count,row.pct,row.note||'']:[row.label,row.area_m2,row.pct,row.count,row.note||''];
    for(let i=0;i<cells.length;i++){
     const td=document.createElement('td');
     const v=cells[i];
     td.textContent=v===null||v===undefined?'–':i===1&&typeof v==='number'?v.toLocaleString('ko-KR',{minimumFractionDigits:1,maximumFractionDigits:2}):i===2&&typeof v==='number'?v.toFixed(1):String(v);
-    td.style.cssText='border-bottom:1px '+(row.kind==='category'?'dotted':'solid')+' #9ca9bf;padding:5px 8px;text-align:'+(i===1||i===2||i===3?'right':'center');
+    td.style.cssText='border-bottom:1px '+(row.kind==='category'?'dotted':'solid')+' #9ca9bf;padding:5px 8px;text-align:'+(i===1||i===2?'right':'left');
     if(row.kind==='total')td.style.fontWeight='700';
     if(row.kind==='boundary')td.style.background='#f4f6fb';
     tr.append(td);
@@ -686,7 +686,10 @@ function devRenderSourceDetails(data){
   tab.append(body);surveyTable.append(tab);
   const note=document.createElement('div');
   note.style.cssText='font-size:11px;color:#526174;line-height:1.5;padding:6px 2px';
-  note.textContent=(t.status==='COMPLETE'?'확인된 공간자료 기준':'잠정·부분집계 · 원자료 검증 필요')+' · '+(t.notes||[]).join(' · ');
+  note.textContent=(t.status==='COMPLETE'?'확인된 공간자료 기준':'잠정·부분집계 · 원자료 검증 필요')+' · '+(t.notes||[]).join(' · ')+
+   ' · 자료출처: '+(t.source||item.source||'미확보')+
+   (t.as_of?' · 자료기준일: '+String(t.as_of).slice(0,10):'')+
+   (item.id.startsWith('3-')?' · 건폐율·용적률의 플랫폼 내부산정값은 법정 확정값 아님. 대장과 도형의 연결 후보는 검증 필요.':'');
   surveyTable.append(note);
  }
  function paint(){
