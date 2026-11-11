@@ -144,7 +144,7 @@ def tables(data):
     fact=data.get('building_fact') or {}
     audit=[['통합도형 ID','도형출처','조회상태','품질등급','대장 연결상태',
             '대장관리번호','도형 제공 PNU','대장 관련 PNU','도로명주소 건물ID',
-            '불일치 항목','용도','용도 확인수준','구조','구조 확인수준',
+            '불일치 항목','공간연계 필지PNU','필지 도형중첩률(%)','연결 근거','용도','용도 확인수준','구조','구조 확인수준',
             '층수','층수 확인수준','경과연수','경과연수 확인수준',
             '연면적','연면적 확인수준','건폐율','건폐율 확인수준',
             '용적률','용적률 확인수준']]
@@ -159,12 +159,17 @@ def tables(data):
                       record.get('join_status'),record.get('register_id'),
                       record.get('provider_pnu'),record.get('registered_pnus'),
                       record.get('address_building_id'),
-                      ', '.join(record.get('conflicts') or []),*values])
+                      ', '.join(record.get('conflicts') or []),
+                      record.get('spatial_parcel_pnu'),record.get('spatial_overlap_pct'),
+                      record.get('match_basis'),*values])
     sheets.append(('건축물 통합FACT',audit))
     summary=[['항목','값'],['공간도형 수',fact.get('counts',{}).get('mapped_shapes')],
              ['통합 검증상태',fact.get('geometry_status')],
              ['실제 건축물 동수 확정여부','미확정'],
              ['건축물대장 직접연계',fact.get('counts',{}).get('direct_register_matches')],
+             ['필지 공간연계 잠정 후보',fact.get('counts',{}).get('spatial_register_candidates')],
+             ['잠정후보 중 GIS-대장 수치 일치',fact.get('counts',{}).get('spatial_corroborated_candidates')],
+             ['직접·잠정 후보 모두 없는 대장',fact.get('counts',{}).get('register_without_any_candidate')],
              ['GIS 속성만 확인',fact.get('counts',{}).get('gis_attribute_only')],
              ['도형만 확보',fact.get('counts',{}).get('geometry_only')],
              ['속성 충돌 검토대상',fact.get('counts',{}).get('conflicting_shapes')],
@@ -173,6 +178,7 @@ def tables(data):
              ['주소건물 겹침 검토',fact.get('counts',{}).get('address_overlaps_needing_review')],
              ['비정상 도형 제외',fact.get('counts',{}).get('invalid_provider_shapes')],
              ['0건 양쪽 출처확인',fact.get('counts',{}).get('zero_confirmed')],
+             ['공간연계용 지적자료 상태',fact.get('spatial_parcel_source_status')],
              ['한계',fact.get('note')]]
     for layer,information in (fact.get('source_info') or {}).items():
         summary.append([layer+' 자료상태',information.get('status')])
