@@ -349,8 +349,6 @@ def register_report(router, service, snapshots, lock, get_snapshot, fetch_layer,
         attach_ownership_theme(data,s,area)
         from development_land_numeric import attach_numeric_land_themes
         attach_numeric_land_themes(data,s,area)
-        from development_land_shape import attach_land_shape_theme
-        attach_land_shape_theme(data,s,area)
         from development_landcover import attach_landcover_theme
         attach_landcover_theme(data,s,area)
         from development_land_tables import attach_land_survey_tables
