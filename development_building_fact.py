@@ -9,6 +9,7 @@ import hashlib
 import json
 import math
 import re
+from collections import Counter, defaultdict
 from shapely.geometry import mapping, shape
 
 FIELDS = ('use', 'structure', 'floors', 'age', 'floor_area', 'coverage', 'far')
@@ -115,6 +116,63 @@ def _overlap_class(a, b):
         return 'OVERLAP_REVIEW'
 
 
+
+def _parcel_geometry_index(layer, site):
+    """Only provider-confirmed cadastral polygons can support parcel association."""
+    if layer.get('status') != 'COMPLETE':
+        return {}
+    grouped = defaultdict(list)
+    for feature in layer.get('features') or []:
+        props = {str(k).lower(): v for k, v in (feature.get('properties') or {}).items()}
+        pnu = str(props.get('pnu') or feature.get('id') or '').strip()
+        if not PNU_PATTERN.fullmatch(pnu):
+            continue
+        try:
+            geom = shape(feature['geometry'])
+            if not geom.is_valid or geom.is_empty or geom.geom_type not in ('Polygon', 'MultiPolygon'):
+                continue
+            clipped = geom.intersection(site)
+            if not clipped.is_empty and clipped.area > 0:
+                grouped[pnu].append(clipped)
+        except Exception:
+            continue
+    from shapely.ops import unary_union
+    return {pnu: unary_union(parts) for pnu, parts in grouped.items()}
+
+
+def _spatial_parcel_candidate(building, parcels):
+    """Find a near-contained, unambiguous parcel; never an exact building identity."""
+    geom = building['geometry']
+    if not parcels or geom.is_empty or geom.area <= 0:
+        return None
+    scores = []
+    for pnu, parcel in parcels.items():
+        if not geom.intersects(parcel):
+            continue
+        ratio = geom.intersection(parcel).area / geom.area
+        if ratio > 0:
+            scores.append((ratio, pnu))
+    scores.sort(reverse=True)
+    if not scores or scores[0][0] < 0.95:
+        return None
+    if len(scores) > 1 and scores[1][0] > 0.03:
+        return None
+    return scores[0][1], round(100 * scores[0][0], 2)
+
+
+def _register_pnus(value):
+    return {pnu.strip() for pnu in str(value or '').split(',')
+            if PNU_PATTERN.fullmatch(pnu.strip())}
+
+
+def _positive_numeric(value):
+    try:
+        number = float(value)
+        return math.isfinite(number) and number > 0
+    except (TypeError, ValueError):
+        return False
+
+
 def assemble_building_fact(data, snapshot):
     """Build one serializable FACT. No direct HTTP, no district-specific rules."""
     layers = snapshot.get('_report_layers') or {}
@@ -149,41 +207,91 @@ def assemble_building_fact(data, snapshot):
         key = str(row.get('id') or '').strip()
         if key:
             by_title.setdefault(key, []).append(row)
+
+    # A footprint and a building-register row may have no common identifier.
+    # Allow a labelled, provisional association ONLY where one cadastral parcel
+    # contains >=95% of the footprint, no competing parcel exceeds 3% and
+    # exactly one register title belongs to that parcel. No forced matching by
+    # counts, order, addresses, or coincident coverage/FAR.
+    parcels = _parcel_geometry_index(layers.get('LP_PA_CBND_BUBUN') or {}, site)
+    titles_by_pnu = defaultdict(set)
+    for key, rows in by_title.items():
+        if len(rows) == 1:
+            for pnu in _register_pnus(rows[0].get('pnus')):
+                titles_by_pnu[pnu].add(key)
+    tentative = {}
+    for observation in selected:
+        if observation['title_key'] and len(by_title.get(observation['title_key'], [])) == 1:
+            continue
+        parcel_hit = _spatial_parcel_candidate(observation, parcels)
+        if not parcel_hit:
+            continue
+        pnu, overlap_pct = parcel_hit
+        possible = titles_by_pnu.get(pnu, set())
+        if len(possible) != 1:
+            continue
+        key = next(iter(possible))
+        tentative[observation['id']] = {'register_id': key, 'parcel_pnu': pnu,
+                                         'overlap_pct': overlap_pct}
+    # Prevent one register title from being assigned to multiple footprints.
+    tentative_counts = Counter(c['register_id'] for c in tentative.values())
+    tentative = {k: v for k, v in tentative.items()
+                 if tentative_counts[v['register_id']] == 1}
     used_title_keys = set()
+    spatial_title_keys = set()
     records = []
     conflicts = 0
     for observation in selected:
         possible = by_title.get(observation['title_key']) if observation['title_key'] else None
-        ledger = possible[0] if possible and len(possible) == 1 else None
-        if ledger:
+        exact_ledger = possible[0] if possible and len(possible) == 1 else None
+        candidate = tentative.get(observation['id']) if not exact_ledger else None
+        candidate_key = candidate['register_id'] if candidate else None
+        provisional_ledger = by_title[candidate_key][0] if candidate else None
+        ledger = exact_ledger or provisional_ledger
+        if exact_ledger:
             used_title_keys.add(observation['title_key'])
+        if provisional_ledger:
+            spatial_title_keys.add(candidate_key)
         attrs, disagreements = {}, []
         gis_props = observation['props'] if observation['source'] == SOURCE_NAMES[0] else {}
         for field in FIELDS:
             gis_value, gis_key = _gis_field(field, gis_props, data.get('as_of'))
             title_value = ledger.get(field) if ledger else None
+            # Zero coverage/FAR on a footprint is an unverified placeholder,
+            # not positive evidence of an actual 0% building.
+            if field in ('coverage', 'far'):
+                if _nonempty(gis_value) and not _positive_numeric(gis_value):
+                    gis_value = None
+                if _nonempty(title_value) and not _positive_numeric(title_value):
+                    title_value = None
             if _nonempty(gis_value) and _nonempty(title_value):
                 if _agree(field, gis_value, title_value):
-                    values = {'value': title_value, 'source': 'GIS+BUILDING_REGISTER',
-                              'assurance': 'DIRECT_AGREEMENT', 'gis_field': gis_key}
+                    values = {'value': title_value,
+                              'source': 'GIS+BUILDING_REGISTER',
+                              'assurance': 'DIRECT_AGREEMENT' if exact_ledger else 'SPATIAL_AGREEMENT',
+                              'gis_field': gis_key}
                 else:
                     disagreements.append(field)
                     values = {'value': None, 'source': 'GIS+BUILDING_REGISTER',
-                              'assurance': 'CONFLICT', 'gis_field': gis_key}
+                              'assurance': 'CONFLICT' if exact_ledger else 'SPATIAL_CONFLICT',
+                              'gis_field': gis_key}
             elif _nonempty(gis_value):
                 values = {'value': gis_value, 'source': 'GIS_BUILDING',
                           'assurance': 'SOURCE_ATTRIBUTE', 'gis_field': gis_key}
             elif _nonempty(title_value):
                 values = {'value': title_value, 'source': 'BUILDING_REGISTER',
-                          'assurance': 'DIRECT_LEDGER', 'gis_field': None}
+                          'assurance': 'DIRECT_LEDGER' if exact_ledger else 'SPATIAL_REFERENCE',
+                          'gis_field': None}
             else:
                 values = {'value': None, 'source': None, 'assurance': 'UNKNOWN', 'gis_field': None}
             attrs[field] = values
         if disagreements:
-            grade = 'E_CONFLICT'
+            grade = 'E_CONFLICT' if exact_ledger else 'E_SPATIAL_REVIEW'
             conflicts += 1
-        elif ledger:
+        elif exact_ledger:
             grade = 'A_DIRECT_TITLE'
+        elif provisional_ledger:
+            grade = 'B_SPATIAL_REFERENCE'
         elif any(v['assurance'] == 'SOURCE_ATTRIBUTE' for v in attrs.values()):
             grade = 'B_GIS_ATTRIBUTE'
         else:
@@ -193,17 +301,24 @@ def assemble_building_fact(data, snapshot):
             'geometry': mapping(observation['geometry']),
             'geometry_source': observation['source'],
             'source_status': source_info[observation['source']]['status'],
-            'register_id': observation['title_key'] if ledger else None,
-            'join_status': 'EXACT_ID' if ledger else 'UNMATCHED',
+            'register_id': observation['title_key'] if exact_ledger else candidate_key,
+            'join_status': ('EXACT_ID' if exact_ledger else
+                            'PARCEL_SPATIAL_REFERENCE' if provisional_ledger else 'UNMATCHED'),
             'quality_grade': grade,
             'provider_pnu': observation['provider_pnu'],
+            'spatial_parcel_pnu': candidate['parcel_pnu'] if candidate else None,
+            'spatial_overlap_pct': candidate['overlap_pct'] if candidate else None,
+            'match_basis': ('BUILDING_REGISTER_ID' if exact_ledger else
+                            'UNIQUE_PARCEL_OVERLAY_PROVISIONAL' if candidate else None),
             'registered_pnus': ledger.get('pnus') if ledger else None,
             'address_building_id': observation['address_id'],
             'attributes': attrs, 'conflicts': disagreements,
         })
     unmatched_registers = [
         {'register_id': key, 'pnus': ', '.join(str(r.get('pnus') or '') for r in rows),
-         'reason': '관련 필지 대장은 확인되나 이 구역에 대응하는 도형의 관리번호 직접연계 없음'}
+         'reason': ('필지 공간중첩으로 잠정 후보만 확인. 대장관리번호 직접 일치 아님'
+                    if key in spatial_title_keys else
+                    '관련 필지 대장은 확인되나 이 구역에 대응하는 도형의 관리번호 직접연계 없음')}
         for key, rows in sorted(by_title.items()) if key not in used_title_keys
     ]
     raw_statuses = [source_info[name]['status'] for name in SOURCE_NAMES]
@@ -223,6 +338,7 @@ def assemble_building_fact(data, snapshot):
         field: {assurance: sum(rec['attributes'][field]['assurance'] == assurance
                                for rec in records)
                 for assurance in ('DIRECT_AGREEMENT', 'DIRECT_LEDGER',
+                                  'SPATIAL_AGREEMENT', 'SPATIAL_REFERENCE', 'SPATIAL_CONFLICT',
                                   'SOURCE_ATTRIBUTE', 'CONFLICT', 'UNKNOWN')}
         for field in FIELDS
     }
@@ -234,6 +350,12 @@ def assemble_building_fact(data, snapshot):
         'address_overlaps_needing_review': secondary_overlap_review,
         'invalid_provider_shapes': invalid,
         'direct_register_matches': sum(r['join_status'] == 'EXACT_ID' for r in records),
+        'spatial_register_candidates': sum(r['join_status'] == 'PARCEL_SPATIAL_REFERENCE' for r in records),
+        'spatial_corroborated_candidates': sum(
+            r['join_status'] == 'PARCEL_SPATIAL_REFERENCE' and
+            any(v['assurance'] == 'SPATIAL_AGREEMENT' for v in r['attributes'].values())
+            for r in records),
+        'register_without_any_candidate': len(set(by_title) - used_title_keys - spatial_title_keys),
         'gis_attribute_only': sum(r['quality_grade'] == 'B_GIS_ATTRIBUTE' for r in records),
         'geometry_only': sum(r['quality_grade'] == 'C_GEOMETRY_ONLY' for r in records),
         'conflicting_shapes': conflicts,
@@ -241,9 +363,13 @@ def assemble_building_fact(data, snapshot):
         'zero_confirmed': zero_confirmed,
     }
     return {'records': records, 'unmatched_registers': unmatched_registers,
-            'source_info': source_info, 'geometry_status': status,
+            'source_info': source_info,
+            'spatial_parcel_source_status': (layers.get('LP_PA_CBND_BUBUN') or {}).get('status', 'UNAVAILABLE'),
+            'geometry_status': status,
             'provider_verified': status == 'COMPLETE',
             'counts': counts, 'field_assurance_counts': field_assurance_counts,
-            'note': ('건물 공간도형 수는 건축물 법정 동수가 아님. 건축물대장 직접연결은 관리번호 일치만 인정. '
+            'note': ('건물 공간도형 수는 건축물 법정 동수가 아님. 관리번호 일치만 직접연계로 인정. '
+                     '지적 필지에 95% 이상 중첩하고 단일 대장·단일 도형인 경우에만 공간상 잠정 후보로 표시하며 '
+                     '법적 건축물 동일성·동수는 확정하지 않음. 건폐율·용적률의 0값은 미확인 처리. '
                      '겹치는 보조 건물도형은 중복 우려로 제외·별도 집계하고, 미연계는 무허가나 멸실로 단정하지 않음. '
                      '건축물대장은 지적 편입필지 관련 조회분이며 전국 전체 건축물대장과 동등하지 않음.')}
