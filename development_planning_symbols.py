@@ -17,7 +17,7 @@ def catalog():
 
 def color_aci(name):
     return {"red": 1, "green": 3, "blue": 5, "light_orange": 31,
-            "dark_purple": 204, "gray": 254, "light_blue": 131, "black": 7}.get(name, 7)
+            "dark_purple": 204, "gray": 254, "neutral": 8, "light_blue": 131, "black": 7}.get(name, 7)
 
 
 def rgb_for_aci(aci):
@@ -65,7 +65,10 @@ def style_for(name, group="zoning"):
                            "secondary" if ("중학교" in key or "고등학교" in key) else
                            "elementary" if "초등학교" in key else None)
                            if group == "facility" and spec["name"] == "학교" else None,
-        "line_color": spec.get("line_color"),
+        "line_color": ("red" if ("광로" in key or "대로" in key) else None)
+                      if group == "facility" and spec["name"] == "도로" else spec.get("line_color"),
+        "road_grade_known": bool("광로" in key or "대로" in key)
+                            if group == "facility" and spec["name"] == "도로" else None,
         "marker_color": spec.get("marker_color"),
         "label_color": spec.get("label_color"),
         "guideline_page": spec.get("guideline_page"),
@@ -211,7 +214,10 @@ def boundary_ticks(model, polygon, layer, style, drawing_units_per_mm, max_ticks
 def stroke_line_symbol(model, geometry, layer, style, drawing_units_per_mm, max_dots=5000):
     """Editable linework with source-classified color and optional 1cm pipe dots."""
     from shapely.geometry import LineString
-    color = color_aci(style.get("line_color") or style.get("boundary_color") or "red")
+    if style.get("group") == "facility" and style.get("name") == "도로" and not style.get("road_grade_known"):
+        color = color_aci("neutral")  # Road width/grade is not source-confirmed.
+    else:
+        color = color_aci(style.get("line_color") or style.get("boundary_color") or "red")
     lines = [geometry] if geometry.geom_type == "LineString" else [
         v for v in getattr(geometry, "geoms", ()) if v.geom_type == "LineString"]
     count = 0
