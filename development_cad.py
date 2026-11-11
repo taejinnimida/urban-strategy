@@ -313,6 +313,7 @@ def dxf_bytes(item, snapshot, metadata):
         if len(item.get('features') or []) > MAX_FEATURES:
             raise HTTPException(413, '토지 주제도 도형이 CAD 출력 상한을 초과했습니다.')
         from ezdxf.colors import rgb2int
+        from development_planning_symbols import style_for, hatch_pattern
         for group in item.get('legend') or []:
             code = str(group.get('class_code') or '')
             color = str(group.get('color') or '')
@@ -321,7 +322,10 @@ def dxf_bytes(item, snapshot, metadata):
             layer_name = theme_layer + '_' + code
             rgb = rgb2int(tuple(int(color[i:i+2], 16) for i in (1, 3, 5)))
             if layer_name not in doc.layers:
-                doc.layers.new(layer_name, dxfattribs={'color': 7, 'true_color': rgb})
+                symbol = style_for(group.get('name'), 'zoning') if item.get('thematic_type') == 'zoning' else None
+                aci = symbol.get('aci') if symbol and symbol.get('verified_style') else None
+                attrs = {'color': int(aci)} if aci is not None else {'color': 7, 'true_color': rgb}
+                doc.layers.new(layer_name, dxfattribs=attrs)
         sheet_theme = (snapshot.get('_cad_zone_background', {}).get('features') or item.get('features') or []) if item.get('thematic_type') == 'zoning' else (item.get('features') or [])
         for feature in sheet_theme:
             try:
@@ -337,22 +341,26 @@ def dxf_bytes(item, snapshot, metadata):
                 polygons = [clipped] if clipped.geom_type == 'Polygon' else [
                     x for x in getattr(clipped, 'geoms', ()) if x.geom_type == 'Polygon'
                 ]
-                rgb = doc.layers.get(layer_name).dxf.true_color
+                rgb = doc.layers.get(layer_name).dxf.get('true_color', None)
                 for polygon in polygons:
                     if polygon.area <= 1e-8:
                         continue
-                    hatch = model.add_hatch(color=7, dxfattribs={'layer': layer_name, 'true_color': rgb})
-                    hatch.set_solid_fill(color=7)
-                    hatch.dxf.true_color = rgb
-                    hatch.paths.add_polyline_path(
-                        [(float(x), float(y)) for x, y in list(polygon.exterior.coords)[:-1]],
-                        is_closed=True, flags=1
-                    )
-                    for interior in polygon.interiors:
+                    if item.get('thematic_type') == 'zoning':
+                        zoning = style_for(props.get('name') or props.get('uname') or props.get('dgm_nm'), 'zoning')
+                        hatch_pattern(model, polygon, layer_name, zoning, 5.0)
+                    else:
+                        hatch = model.add_hatch(color=7, dxfattribs={'layer': layer_name, 'true_color': rgb})
+                        hatch.set_solid_fill(color=7)
+                        hatch.dxf.true_color = rgb
                         hatch.paths.add_polyline_path(
-                            [(float(x), float(y)) for x, y in list(interior.coords)[:-1]],
-                            is_closed=True, flags=0
+                            [(float(x), float(y)) for x, y in list(polygon.exterior.coords)[:-1]],
+                            is_closed=True, flags=1
                         )
+                        for interior in polygon.interiors:
+                            hatch.paths.add_polyline_path(
+                                [(float(x), float(y)) for x, y in list(interior.coords)[:-1]],
+                                is_closed=True, flags=0
+                            )
                     _entities(model, polygon.boundary, layer_name, counts)
                     counts['thematic_features'] += 1
             except (KeyError, TypeError, ValueError, AttributeError):
@@ -363,6 +371,10 @@ def dxf_bytes(item, snapshot, metadata):
         model.set_redraw_order([(entity.dxf.handle, f'{i+1:X}') for i, entity in enumerate(draw_order)])
         doc.header['$SORTENTS'] = int(doc.header.get('$SORTENTS', 0)) | 16
         metadata['thematic_legend'] = item.get('legend') or []
+        if item.get('thematic_type') == 'zoning':
+            metadata['zoning_symbol_source'] = '도시·군관리계획 조서 및 도면 작성지침 별첨 1, pp.23-24'
+            metadata['zoning_symbol_scale'] = 5000
+            metadata['zoning_aci_and_pattern'] = 'official symbol index and spacing; missing subtypes remain UNKNOWN'
         if item['id'] in BUILDING_IDS and item.get('geometry_status') == 'PARTIAL':
             metadata['building_geometry_assurance'] = 'PARTIAL'
             metadata['building_geometry_note'] = (
