@@ -284,10 +284,14 @@ def assemble_building_fact(data, snapshot):
                               'assurance': 'DIRECT_AGREEMENT' if exact_ledger else 'SPATIAL_AGREEMENT',
                               'gis_field': gis_key}
                 else:
+                    # The register attribute is not invalidated by a GIS disagreement.
+                    # Only the map-to-register association may be provisional.
                     disagreements.append(field)
-                    values = {'value': None, 'source': 'GIS+BUILDING_REGISTER',
-                              'assurance': 'CONFLICT' if exact_ledger else 'SPATIAL_CONFLICT',
-                              'gis_field': gis_key}
+                    values = {'value': title_value, 'source': 'BUILDING_REGISTER',
+                              'assurance': ('LEDGER_GIS_CONFLICT' if exact_ledger else
+                                            'SPATIAL_LEDGER_GIS_CONFLICT'),
+                              'gis_field': gis_key, 'gis_value': gis_value,
+                              'disagreement': True}
             elif _nonempty(gis_value):
                 values = {'value': gis_value, 'source': 'GIS_BUILDING',
                           'assurance': 'SOURCE_ATTRIBUTE', 'gis_field': gis_key}
@@ -358,7 +362,8 @@ def assemble_building_fact(data, snapshot):
                 for assurance in ('DIRECT_AGREEMENT', 'DIRECT_LEDGER',
                                   'SPATIAL_AGREEMENT', 'SPATIAL_REFERENCE', 'SPATIAL_CONFLICT',
                                   'INTERNAL_CALC', 'INTERNAL_CALC_PROVISIONAL',
-                                  'SOURCE_ATTRIBUTE', 'CONFLICT', 'UNKNOWN')}
+                                  'SOURCE_ATTRIBUTE', 'CONFLICT', 'UNKNOWN',
+                                  'LEDGER_GIS_CONFLICT', 'SPATIAL_LEDGER_GIS_CONFLICT')}
         for field in FIELDS
     }
     counts = {
@@ -387,9 +392,7 @@ def assemble_building_fact(data, snapshot):
             'geometry_status': status,
             'provider_verified': status == 'COMPLETE',
             'counts': counts, 'field_assurance_counts': field_assurance_counts,
-            'note': ('건물 공간도형 수는 건축물 법정 동수가 아님. 관리번호 일치만 직접연계로 인정. '
-                     '지적 필지에 95% 이상 중첩하고 단일 대장·단일 도형인 경우에만 공간상 잠정 후보로 표시하며 '
-                     '법적 건축물 동일성·동수는 확정하지 않음. 건폐율·용적률의 0값은 미확인 처리. '
-                     '플랫폼 내부산정·개략추정은 공식 건축물대장 원문 수치와 구분하고 법정 용적률로 단정하지 않음. '
-                     '겹치는 보조 건물도형은 중복 우려로 제외·별도 집계하고, 미연계는 무허가나 멸실로 단정하지 않음. '
-                     '건축물대장은 지적 편입필지 관련 조회분이며 전국 전체 건축물대장과 동등하지 않음.')}
+            'note': ('조회된 건축물대장 원문 속성은 우선 활용. GIS 속성과 충돌하면 대장값을 유지하고 차이를 별도 기록. '
+                     '대장 내용의 신뢰성과 지도 도형·대장 연결 신뢰도는 별개이며 필지 공간연계는 잠정 후보. '
+                     '건폐율·용적률 플랫폼 내부산정·개략추정은 원문과 구별하고 법정 확정치로 사용하지 않음. '
+                     '공간도형 수는 법정 건축물 동수와 일치한다고 단정하지 않음.')}
