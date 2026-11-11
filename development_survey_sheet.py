@@ -131,7 +131,9 @@ def make_sheet(item, snapshot):
                     q for q in getattr(cut, 'geoms', []) if q.geom_type == 'LineString']
                 for ln in lines:
                     ops.append(primitive('polyline', points=[xy(x,y) for x,y in ln.coords],
-                                         fill='none', stroke=rgb_for_aci(color_aci(draw_style.get('line_color') or 'red')),
+                                         fill='none', stroke=('#64748b' if
+                                             draw_style.get('name')=='도로' and not draw_style.get('road_grade_known') else
+                                             rgb_for_aci(color_aci(draw_style.get('line_color') or 'red'))),
                                          weight=0.7, layer='SHEET_THEME_' + cls, symbol=draw_style))
         except (KeyError, TypeError, ValueError):
             continue
