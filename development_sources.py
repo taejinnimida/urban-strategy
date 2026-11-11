@@ -477,6 +477,13 @@ def register_sources(router,service,snapshots,lock,output,get_snapshot,fetch_lay
                 elif job=='landcover_wfs':
                     from development_landcover_service import fetch_landcover_wfs
                     result=fetch_landcover_wfs(s['geometry'])
+                elif job=='file:2-6':
+                    # Prefer private indexed official SHP, then preserve the
+                    # established manifest-based local source fallback.
+                    from development_landcover_r2 import fetch_indexed_landcover
+                    result=fetch_indexed_landcover(s['geometry'])
+                    if result.get('status') == 'MISSING_SOURCE':
+                        result=official_vector('2-6',s['geometry'],area)
                 elif job.startswith('file:'):result=official_vector(job.split(':',1)[1],s['geometry'],area)
                 elif job=='dem':result=dem(s['geometry'],area)
                 else:result=ecvam_map(service,s['geometry'])
