@@ -214,6 +214,11 @@ def register(app,service):
         return 'UNKNOWN'
     @router.get('/ui.js')
     def ui():return Response(Path(__file__).with_name('development-ui.js').read_text(),media_type='text/javascript',headers={'Cache-Control':'no-store'})
+    @router.get('/planning-symbols')
+    def planning_symbols():
+        from development_planning_symbols import catalog
+        return Response(json.dumps(catalog(), ensure_ascii=False), media_type='application/json',
+                        headers={'Cache-Control':'public,max-age=1800'})
     @router.post('/snapshots')
     def create(data:Site):
         g=validate(data.geometry);p={'geometry':data.geometry,'area_m2':area(g),'region':jurisdiction(g),'region_source':'SEOUL_REFERENCE_20261028' if offline_region(g) else 'VWORLD_OR_UNKNOWN','created_at':time.time(),'expires_in':7200}
