@@ -504,9 +504,10 @@ function devPlanningRefresh(){
    if(!f.geometry)continue;
    const symbol=devPlanningSymbol(fact.layer,f);symbols.set(symbol.label,symbol);
    const group=devPlanningSourceGroup(fact.layer);
-   L.geoJSON(f,{style:()=>symbol,onEachFeature:(_,layer)=>{
+   L.geoJSON(f,{pane:symbol.pane,style:()=>symbol,onEachFeature:(_,layer)=>{
     if(symbol.pattern)layer.on('add',()=>devPlanningApplyPattern(layer,symbol));
     const text=document.createElement('span');text.textContent=symbol.name||symbol.label;
+    if(devPlanningSourceGroup(fact.layer)!=='zoning'&&!symbol.unverified)text.style.color='#b91c1c';
     layer.bindTooltip(text,{direction:'center',className:'dev-plan-label',permanent:false});
     const popup=document.createElement('div');popup.textContent=`${symbol.label}${symbol.name&&symbol.name!==symbol.label?' · '+symbol.name:''} · ${fact.status==='REFERENCE'?'보조자료 · 출처 재확인 필요':'VWorld 서버 수신'}`;
     layer.bindPopup(popup);
@@ -896,7 +897,7 @@ function devRenderSourceDetails(data){
   cadSingle.dataset.available=usable?'yes':'';
   cadSingle.disabled=!usable;cadSingle.title=usable?'확보된 공간도형 기준 CAD 출력':'검증된 공간도형이 없는 항목은 CAD 출력 불가';
   if(!cadPreparing)cadStatus.textContent=usable?(cadReady?'표준 도면 배경자료 준비 완료':'표준 도면 배경자료 준비 필요 · 준비 버튼을 누르거나 자동 조회를 확인하세요'):'이 항목은 CAD 도형 미확보 · 일괄 ZIP 목록에 미확보로 기록';
-  if(available&&cadReady&&['1-1','2-1','2-2','2-3','2-4','2-5','2-6','5-2','4-3','3-1','3-2','3-3','3-4','3-5','3-6','3-7'].includes(item.id)){
+  if(available&&cadReady&&['1-1','2-1','2-2','2-3','2-4','2-5','2-6','5-2','5-3','5-4','5-5','5-6','5-7','5-8','4-3','3-1','3-2','3-3','3-4','3-5','3-6','3-7'].includes(item.id)){
    const selected=item.id;
    sheetPreview.onload=()=>{
     if(select.value!==selected)return;
