@@ -196,6 +196,11 @@ def attach_building_themes(data, snapshot):
                                      ('INTERNAL_CALC','INTERNAL_CALC_PROVISIONAL','INTERNAL_CALC_PARCEL') and
                                      labels[pos]==label for pos,rec in enumerate(map_records)) else '')
                          ) if x)})
+        # Mapping unit has mixed geometry sources, but source-specific counts are
+        # explicit. This avoids calling cadastral parcels building footprints.
+        for row in rows:
+            if row['kind']=='category' and parcel_records:
+                row['note']=(row.get('note') or '') or '일부 필지 PNU 기준으로 표시'
         note=fact['note']
         if not n:
             note+=' 공간도형 수집결과 0건은 실제 건축물 부존재를 증명하지 않음.'
@@ -228,8 +233,8 @@ def attach_building_themes(data, snapshot):
                                   'notes':[note]})
         stat=data.get('statistics',{}).get(item_id)
         if isinstance(stat,dict):
-            stat.update(footprint_count=n,verified_ledger_joins=fact['counts']['direct_register_matches'],
-                        unmatched_footprints=n-fact['counts']['direct_register_matches']-fact['counts']['spatial_register_candidates'],
+            stat.update(footprint_count=len(records),pnu_register_parcel_features=len(parcel_records),verified_ledger_joins=fact['counts']['direct_register_matches'],
+                        unmatched_footprints=len(records)-fact['counts']['direct_register_matches']-fact['counts']['spatial_register_candidates'],
                         provisional_spatial_joins=fact['counts']['spatial_register_candidates'],
                         footprint_status=fact['geometry_status'],
                         mapped_groups=[categories[k] for k in ordered],
