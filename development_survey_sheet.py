@@ -165,6 +165,10 @@ def make_sheet(item, snapshot):
                     text_color=rgb_for_aci(color_aci(st.get('label_color') or 'black'))
                     plan_labels.append(primitive('text',x=px,y=py+2.0,text=label,size=7,
                                                  color=text_color,anchor='middle',layer='SHEET_PLAN_LABEL'))
+                    if st.get('school_variant'):
+                        plan_labels.append(primitive('school_mark', x=px,y=py+9.0,
+                                                     variant=st['school_variant'],size=6.0,
+                                                     layer='SHEET_PLAN_SYMBOL'))
                     if len(plan_labels)>=120:break
                 if len(plan_labels)>=120:break
             except (ValueError,TypeError,KeyError):continue
@@ -289,6 +293,24 @@ def make_sheet(item, snapshot):
     return ops
 
 
+def _school_mark_shapes(x, y, variant, size):
+    """Outlined architectural symbols from the guideline examples (black ink)."""
+    k = size/8.0
+    def p(*coordinates):
+        return [(x+coordinates[i]*k,y+coordinates[i+1]*k)
+                for i in range(0,len(coordinates),2)]
+    if variant == 'university':
+        return [p(-4,-2,0,-4,4,-2), p(-3,-2,-1.8,-2,-1.8,2,-3,2),
+                p(1.8,-2,3,-2,3,2,1.8,2), p(-4,2,4,2,4,3,-4,3)]
+    if variant == 'secondary':
+        return [p(-4,-3,-2.4,-3,-2.4,2,-4,2),
+                p(2.4,-3,4,-3,4,2,2.4,2),
+                p(-2.4,1,2.4,1,2.4,2.2,-2.4,2.2)]
+    if variant == 'elementary':
+        return [p(-4,-3,-2,-3,-2,1.5,2.5,1.5,2.5,3,-4,3)]
+    return []
+
+
 def _svg_pattern(style, pid):
     """Physical 1:5,000 guideline spacing interpreted at A3 paper scale."""
     kind = style.get('pattern')
@@ -409,6 +431,10 @@ def svg_sheet(ops):
             anchor = {'middle': 'middle', 'end': 'end'}.get(op.get('anchor'), 'start')
             text_color = _color(op.get('color'), '#111111')
             buf.append(f'<text x="{op["x"]:.3f}" y="{op["y"]:.3f}" fill="{text_color}" font-family="NanumSquare, Noto Serif CJK KR, Malgun Gothic, sans-serif" font-size="{op.get("size", 7):g}" text-anchor="{anchor}"{weight_tag}>{escape(str(op["text"]))}</text>')
+        elif kind == 'school_mark':
+            for poly in _school_mark_shapes(op['x'],op['y'],op.get('variant'),op.get('size',6)):
+                path='M '+' L '.join(f'{x:.3f},{y:.3f}' for x,y in poly)+' Z'
+                buf.append(f'<path d="{path}" fill="#000000" stroke="#000000" stroke-width=".15"/>')
         elif kind == 'circle':
             buf.append(f'<circle cx="{op["x"]:.3f}" cy="{op["y"]:.3f}" r="{op["r"]:.3f}" fill="none" stroke="{stroke}" stroke-width="{weight}"/>')
     buf.append('</svg>')
@@ -485,6 +511,12 @@ def dxf_paper_sheet(doc, ops):
             layout.add_text(str(op['text']), dxfattribs={**a, 'height': op.get('size', 7) * SCALE,
                                                        'style': 'SURVEY_KOR'}).set_placement(
                 mm(op['x'], op['y'] - op.get('size', 7) * 0.3), align=align)
+        elif kind == 'school_mark':
+            for poly in _school_mark_shapes(op['x'],op['y'],op.get('variant'),op.get('size',6)):
+                points=[mm(x,y) for x,y in poly]
+                hatch=layout.add_hatch(color=7,dxfattribs={'layer':a['layer']})
+                hatch.set_solid_fill(color=7)
+                hatch.paths.add_polyline_path(points,is_closed=True)
         elif kind == 'circle':
             layout.add_circle(mm(op['x'], op['y']), op['r'] * SCALE, dxfattribs=a)
     # Ensure all paper space fills plot under boundaries, outlines and labels.
