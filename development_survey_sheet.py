@@ -512,7 +512,7 @@ def planning_context(features, group='zoning'):
     mapped = []
     for name, feature in clean:
         code, sym = classes[name]
-        props = {'name': name, 'class_code': code, **sym}
+        props = {'class_code': code, **sym, 'name': name, 'style_name': sym.get('name')}
         # Preserve verifiable source identity fields, but do not derive an ID.
         source_props = {str(k).lower(): v for k, v in
                         (feature.get('properties') or {}).items()}
@@ -521,7 +521,7 @@ def planning_context(features, group='zoning'):
                 props['source_' + field] = source_props[field]
         mapped.append({'type': 'Feature', 'geometry': feature['geometry'],
                        'properties': props})
-    legend = [{'name': name, 'class_code': code, **sym}
+    legend = [{'class_code': code, **sym, 'name': name, 'style_name': sym.get('name')}
               for name, (code, sym) in classes.items()]
     return {'status': 'COMPLETE', 'features': mapped, 'legend': legend,
             'note': '도시·군관리계획수립지침 별첨 1의 분류 기호 적용. '
