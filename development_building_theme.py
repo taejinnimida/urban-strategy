@@ -171,12 +171,20 @@ def attach_building_themes(data, snapshot):
                              '자료 불일치' if label=='자료 불일치(검토)' else
                              '속성 미확인' if label==UNKNOWN else
                              '항목값 없음' if label==OTHER else '출처별 확보'),
-                         'note': ('잠정 필지 공간연계 '+str(sum(
-                             rec['join_status']=='PARCEL_SPATIAL_REFERENCE' and
-                             labels[pos]==label for pos,rec in enumerate(records)))+'개 포함'
-                                  if any(rec['join_status']=='PARCEL_SPATIAL_REFERENCE' and
-                                         labels[pos]==label for pos,rec in enumerate(records))
-                                  else '')})
+                         'note': ' · '.join(x for x in (
+                             ('잠정 필지 공간연계 '+str(sum(
+                                 rec['join_status']=='PARCEL_SPATIAL_REFERENCE' and
+                                 labels[pos]==label for pos,rec in enumerate(records)))+'개'
+                              if any(rec['join_status']=='PARCEL_SPATIAL_REFERENCE' and
+                                     labels[pos]==label for pos,rec in enumerate(records)) else ''),
+                             ('플랫폼 내부산정 '+str(sum(
+                                 rec['attributes'][field]['assurance'] in
+                                 ('INTERNAL_CALC','INTERNAL_CALC_PROVISIONAL') and
+                                 labels[pos]==label for pos,rec in enumerate(records)))+'개 · 법정값 아님'
+                              if any(rec['attributes'][field]['assurance'] in
+                                     ('INTERNAL_CALC','INTERNAL_CALC_PROVISIONAL') and
+                                     labels[pos]==label for pos,rec in enumerate(records)) else '')
+                         ) if x)})
         note=fact['note']
         if not n:
             note+=' 공간도형 수집결과 0건은 실제 건축물 부존재를 증명하지 않음.'
