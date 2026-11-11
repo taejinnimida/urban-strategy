@@ -120,7 +120,7 @@ def attach_building_themes(data, snapshot):
         labels = []
         for rec in records:
             field_data = rec['attributes'][field]
-            if field_data['assurance'] in ('CONFLICT','SPATIAL_CONFLICT'):
+            if field_data['value'] is None and field_data['assurance'] in ('CONFLICT','SPATIAL_CONFLICT'):
                 label = '자료 불일치(검토)'
             elif field_data['value'] is None:
                 label = OTHER if rec['join_status'] == 'EXACT_ID' else UNKNOWN
