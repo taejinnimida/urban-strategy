@@ -23,6 +23,7 @@
     "82": "#29a500",
     "131": "#7fffff",
     "191": "#bf7fff",
+    "204": "#5f007f",
     "231": "#ff7fbf",
     "254": "#cccccc"
   },
@@ -249,8 +250,8 @@
       "group": "zoning",
       "name": "도시지역",
       "aliases": [],
-      "fill_aci": null,
-      "fill_mode": "none",
+      "fill_aci": 1,
+      "fill_mode": "solid",
       "pattern_type": null,
       "spacing_mm": null,
       "pattern_color": null,
@@ -352,7 +353,8 @@
         "시가지경관지구",
         "특화경관지구"
       ],
-      "guideline_page": 24
+      "guideline_page": 24,
+      "note": "경관지구 세부 유형의 실효 규격은 24쪽 기준으로 확인"
     },
     {
       "group": "district",
