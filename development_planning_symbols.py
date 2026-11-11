@@ -60,7 +60,9 @@ def style_for(name, group="zoning"):
         "boundary_pattern": spec.get("boundary_pattern"),
         "boundary_diameter_mm": spec.get("boundary_diameter_mm"),
         "boundary_spacing_mm": spec.get("boundary_spacing_mm"),
-        "facility_index": spec.get("facility_index"),
+        "facility_index": spec.get("facility_index"),  # catalog example only; not an actual facility ID
+        "line_color": spec.get("line_color"),
+        "marker_color": spec.get("marker_color"),
         "label_color": spec.get("label_color"),
         "guideline_page": spec.get("guideline_page"),
     }
@@ -135,4 +137,95 @@ def hatch_pattern(model, polygon, layer, style, drawing_units_per_mm, max_circle
                     model.add_circle((x, y), radius,
                                      dxfattribs={"layer": layer, "color": int(style.get("pattern_aci") or 3)})
                     count += 1
+    # 1.5 mm dots at 3 mm on the regulated boundary, not within the fill.
+    if style.get("boundary_pattern") == "dots":
+        count += boundary_dots(model, polygon, layer, style, drawing_units_per_mm)
+    # Edge ticks are prescribed for height/fire/disaster districts.
+    if pattern == "edge_ticks":
+        count += boundary_ticks(model, polygon, layer, style, drawing_units_per_mm)
+    return count
+
+
+def _ring_line_parts(polygon):
+    from shapely.geometry import LineString
+    for ring in (polygon.exterior, *polygon.interiors):
+        yield LineString(ring.coords)
+
+
+def boundary_dots(model, polygon, layer, style, drawing_units_per_mm, max_dots=5000):
+    """Dotted red decision boundary, with actual 1.5 mm diameter / 3 mm pitch."""
+    from shapely.geometry import Point
+    diameter = float(style.get("boundary_diameter_mm") or 1.5) * drawing_units_per_mm
+    step = float(style.get("boundary_spacing_mm") or 3) * drawing_units_per_mm
+    if step <= 0:
+        raise ValueError("invalid decision boundary dot spacing")
+    count = 0
+    color = color_aci(style.get("boundary_color") or "red")
+    for line in _ring_line_parts(polygon):
+        n = int(line.length / step)
+        if n + count > max_dots:
+            raise ValueError("boundary dot count exceeds safety limit")
+        for i in range(n + 1):
+            point = line.interpolate(i * step)
+            model.add_circle((point.x, point.y), diameter / 2,
+                             dxfattribs={"layer": layer, "color": color})
+            count += 1
+    return count
+
+
+def boundary_ticks(model, polygon, layer, style, drawing_units_per_mm, max_ticks=5000):
+    """4 mm boundary tick rhythm for height/fire/disaster districts."""
+    from shapely.geometry import Point
+    import math
+    step = float(style.get("spacing_mm") or 4) * drawing_units_per_mm
+    tick = drawing_units_per_mm
+    color = color_aci(style.get("pattern_color") or "red")
+    count = 0
+    for line in _ring_line_parts(polygon):
+        n = int(line.length / step)
+        if count + n > max_ticks:
+            raise ValueError("boundary tick count exceeds safety limit")
+        for i in range(n + 1):
+            distance = i * step
+            c = line.interpolate(distance)
+            prev = line.interpolate(max(0, distance - tick * .2))
+            nxt = line.interpolate(min(line.length, distance + tick * .2))
+            dx, dy = nxt.x - prev.x, nxt.y - prev.y
+            size = math.hypot(dx, dy)
+            if not size:
+                continue
+            nx, ny = -dy / size, dx / size
+            a = Point(c.x + nx * tick * .7, c.y + ny * tick * .7)
+            b = Point(c.x - nx * tick * .7, c.y - ny * tick * .7)
+            end = a if polygon.covers(a) else b
+            model.add_line((c.x, c.y), (end.x, end.y),
+                           dxfattribs={"layer": layer, "color": color})
+            count += 1
+    return count
+
+
+def stroke_line_symbol(model, geometry, layer, style, drawing_units_per_mm, max_dots=5000):
+    """Editable linework with source-classified color and optional 1cm pipe dots."""
+    from shapely.geometry import LineString
+    color = color_aci(style.get("line_color") or style.get("boundary_color") or "red")
+    lines = [geometry] if geometry.geom_type == "LineString" else [
+        v for v in getattr(geometry, "geoms", ()) if v.geom_type == "LineString"]
+    count = 0
+    for line in lines:
+        if line.is_empty or line.length <= 0:
+            continue
+        model.add_lwpolyline(list(line.coords), dxfattribs={"layer": layer, "color": color})
+        count += 1
+        if style.get("pattern") != "line_dots":
+            continue
+        step = float(style.get("spacing_mm") or 10) * drawing_units_per_mm
+        radius = float(style.get("diameter_mm") or 1) * drawing_units_per_mm / 2
+        n = int(line.length / step)
+        if count + n > max_dots:
+            raise ValueError("pipeline dot count exceeds safety limit")
+        for i in range(n + 1):
+            p = line.interpolate(i * step)
+            model.add_circle((p.x, p.y), radius,
+                             dxfattribs={"layer": layer, "color": color})
+            count += 1
     return count
