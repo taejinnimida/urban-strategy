@@ -362,17 +362,21 @@ function devPlanningSymbol(id,feature){
  const aci=spec.fill_aci;
  const fillColor=(devPlanningCatalog?.aci_rgb||devPlanningAciFallback)[String(aci)]||'#ffffff';
  const pattern=spec.pattern_type||null;
- const color=devPlanningPatternColor[spec.boundary_color]||'#746b60';
+ const color=devPlanningPatternColor[spec.line_color]||devPlanningPatternColor[spec.boundary_color]||'#746b60';
  const patternColor=devPlanningPatternColor[spec.pattern_color]||'#ff0000';
+ const usesAreaPattern=['diagonal','vertical','circles'].includes(pattern);
+ const noBase=spec.fill_mode==='none'||spec.fill_mode==='inherit';
  return {name,label:name||spec.name,color,fillColor,aci,pattern,patternColor,
-  fillMode:spec.fill_mode,noBase:spec.fill_mode==='none'||spec.fill_mode==='inherit',
+  fillMode:spec.fill_mode,noBase,labelColor:devPlanningPatternColor[spec.label_color]||'#111827',
   spacingMm:spec.spacing_mm||5,diameterMm:spec.diameter_mm||2,
-  fillOpacity:spec.fill_mode==='solid'||pattern?1:0,
+  fillOpacity:spec.fill_mode==='solid'||usesAreaPattern?1:0,
   weight:group==='facility'?1.2:.8,pane:'dev'+group,
-  boundaryPattern:spec.boundary_pattern||null,unverified:false};
+  boundaryPattern:spec.boundary_pattern||null,
+  dashArray:spec.boundary_pattern==='dots'?'2 8':pattern==='edge_ticks'?'5 4':pattern==='line_dots'?'2 12':null,
+  unverified:false};
 }
 function devPlanningApplyPattern(layer,symbol){
- if(!symbol.pattern||!layer._path?.ownerSVGElement)return;
+ if(!['diagonal','vertical','circles'].includes(symbol.pattern)||!layer._path?.ownerSVGElement)return;
  const svg=layer._path.ownerSVGElement,ns='http://www.w3.org/2000/svg';
  const documentRef=svg.ownerDocument;
  const id='dev-pattern-'+[symbol.pattern,symbol.fillColor,symbol.patternColor,symbol.spacingMm,symbol.diameterMm,symbol.fillMode].join('-').replace(/[^a-zA-Z0-9-]/g,'');
@@ -505,9 +509,9 @@ function devPlanningRefresh(){
    const symbol=devPlanningSymbol(fact.layer,f);symbols.set(symbol.label,symbol);
    const group=devPlanningSourceGroup(fact.layer);
    L.geoJSON(f,{pane:symbol.pane,style:()=>symbol,onEachFeature:(_,layer)=>{
-    if(symbol.pattern)layer.on('add',()=>devPlanningApplyPattern(layer,symbol));
+    if(['diagonal','vertical','circles'].includes(symbol.pattern))layer.on('add',()=>devPlanningApplyPattern(layer,symbol));
     const text=document.createElement('span');text.textContent=symbol.name||symbol.label;
-    if(devPlanningSourceGroup(fact.layer)!=='zoning'&&!symbol.unverified)text.style.color='#b91c1c';
+    if(!symbol.unverified)text.style.color=symbol.labelColor||'#111827';
     layer.bindTooltip(text,{direction:'center',className:'dev-plan-label',permanent:false});
     const popup=document.createElement('div');popup.textContent=`${symbol.label}${symbol.name&&symbol.name!==symbol.label?' · '+symbol.name:''} · ${fact.status==='REFERENCE'?'보조자료 · 출처 재확인 필요':'VWorld 서버 수신'}`;
     layer.bindPopup(popup);
@@ -520,7 +524,10 @@ function devPlanningRefresh(){
   swatch.style.backgroundColor=symbol.noBase?'transparent':(symbol.fillColor||symbol.color);
   const lineColor=symbol.patternColor||'#008000';
   if(symbol.pattern==='diagonal')swatch.style.backgroundImage='repeating-linear-gradient(135deg,transparent 0px,transparent 4px,'+lineColor+' 4px,'+lineColor+' 5px)';
+  if(symbol.pattern==='vertical')swatch.style.backgroundImage='repeating-linear-gradient(90deg,transparent 0px,transparent 5px,'+lineColor+' 5px,'+lineColor+' 6px)';
   if(symbol.pattern==='circles')swatch.style.backgroundImage='radial-gradient(transparent 33%,'+lineColor+' 35%,'+lineColor+' 39%,transparent 42%)';
+  if(symbol.boundaryPattern==='dots'||symbol.pattern==='edge_ticks')swatch.style.border='1px dashed '+(symbol.color||lineColor);
+  if(symbol.pattern==='line_dots')swatch.style.backgroundImage='repeating-linear-gradient(90deg,'+lineColor+' 0px,'+lineColor+' 2px,transparent 2px,transparent 8px)';
   item.append(swatch,document.createTextNode(name));legend.append(item);
  }
  devPlanningUpdateLabels();
