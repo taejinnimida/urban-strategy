@@ -523,12 +523,12 @@
       "fill_mode": "none",
       "label_color": "red",
       "boundary_color": "red",
-      "line_color": "red",
+      "line_color": null,
       "aliases": [
         "대로",
         "광로"
       ],
-      "note": "대로 이상 빨강, 중로 이하 파랑은 도로 등급 원문 확인 필요; 시설경계 빨강",
+      "note": "도로 등급이 명시된 경우에만 광로·대로는 빨강, 중로·소로는 파랑. 일반 도로명만으로 등급을 추정하지 않음.",
       "guideline_page": 26
     },
     {
