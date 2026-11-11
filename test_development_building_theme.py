@@ -208,6 +208,58 @@ class BuildingSurveyTest(unittest.TestCase):
         self.assertEqual(d['building_fact']['counts']['direct_register_matches'], 0)
         self.assertEqual(d['items'][2]['features'][0]['properties']['name'], '3층')
 
+    def test_pnu_register_parcel_theme_without_any_building_footprint(self):
+        d = data()
+        s = snapshot([], 'UNKNOWN')
+        s['_report_layers']['LP_PA_CBND_BUBUN'] = {
+            'status': 'COMPLETE', 'features': [self._parcel((0, 0, 4, 4))]}
+        attach_building_themes(d, s)
+        self.assertEqual(d['building_fact']['counts']['mapped_shapes'], 0)
+        self.assertEqual(d['building_fact']['counts']['register_with_cadastral_pnu'], 1)
+        for item in d['items']:
+            self.assertEqual(item['thematic_type'], 'building')
+            self.assertEqual(len(item['features']), 1)
+            self.assertEqual(item['features'][0]['properties']['geometry_basis'], 'CADASTRAL_PNU')
+            self.assertEqual(item['features'][0]['properties']['join_status'], 'PNU_PARCEL_REGISTER')
+            self.assertEqual(item['survey_table']['rows'][0]['count'], 1)
+            self.assertIn('건물도형 0개', item['survey_table']['rows'][0]['note'])
+        self.assertEqual(d['items'][2]['features'][0]['properties']['name'], '3층')
+        self.assertEqual(d['items'][2]['statistics']['footprint_count'], 0)
+        self.assertEqual(d['items'][2]['statistics']['pnu_register_parcel_features'], 1)
+
+    def test_pnu_register_parcel_not_double_counted_when_footprint_already_joined(self):
+        d = data()
+        s = snapshot([feature(box(1, 1, 3, 3), 'MG001')])
+        s['_report_layers']['LP_PA_CBND_BUBUN'] = {
+            'status': 'COMPLETE', 'features': [self._parcel((0, 0, 4, 4))]}
+        attach_building_themes(d, s)
+        self.assertEqual(d['building_fact']['counts']['register_with_cadastral_pnu'], 0)
+        self.assertEqual(len(d['items'][2]['features']), 1)
+        self.assertEqual(d['items'][2]['features'][0]['properties']['join_status'], 'EXACT_ID')
+
+    def test_pnu_register_multiple_titles_on_one_parcel_not_misattributed(self):
+        d = data()
+        other = dict(d['buildings'][0], id='MG002', floors=5)
+        d['buildings'].append(other)
+        s = snapshot([], 'UNKNOWN')
+        s['_report_layers']['LP_PA_CBND_BUBUN'] = {
+            'status': 'COMPLETE', 'features': [self._parcel((0, 0, 4, 4))]}
+        attach_building_themes(d, s)
+        self.assertEqual(d['building_fact']['counts']['register_with_cadastral_pnu'], 0)
+        self.assertEqual(len(d['items'][2]['features']), 0)
+
+    def test_pnu_register_multi_parcel_title_not_repeated(self):
+        d = data()
+        d['buildings'][0]['pnus'] += ', 1111111111100000002'
+        s = snapshot([], 'UNKNOWN')
+        s['_report_layers']['LP_PA_CBND_BUBUN'] = {
+            'status': 'COMPLETE', 'features': [
+                self._parcel((0, 0, 4, 4)),
+                self._parcel((5, 5, 9, 9), '1111111111100000002')]}
+        attach_building_themes(d, s)
+        self.assertEqual(d['building_fact']['counts']['register_with_cadastral_pnu'], 0)
+        self.assertEqual(d['items'][2]['features'], [])
+
     def test_multi_footprints_same_register_rejected(self):
         d = data()
         s = snapshot([])
