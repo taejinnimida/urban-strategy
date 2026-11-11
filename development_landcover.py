@@ -39,14 +39,19 @@ def attach_landcover_theme(data, snapshot, area):
     if source.get('status') not in ('DATA', 'PARTIAL'):
         wfs_state = wfs.get('status') or 'NOT_QUERIED'
         wms_state = wms.get('status') or 'NOT_QUERIED'
+        r2_error = source.get('error_code') == 'R2_LANDCOVER_UNAVAILABLE'
         item.update({
-            'status':'WMS 참고도 확보' if wms_state == 'MAP_ONLY' else 'WMS 미확보',
+            'status': ('원도형 조회 오류 · WMS 참고도 확보' if r2_error and wms_state == 'MAP_ONLY'
+                       else '원도형 조회 오류' if r2_error else
+                       'WMS 참고도 확보' if wms_state == 'MAP_ONLY' else 'WMS 미확보'),
             'detail':f'2025년 세분류 토지피복 WMS: {wms_state} · '
                      f'벡터 WFS 제공 상태: {wfs_state} · '
-                     '공식 벡터 원자료의 면적·분류 완전성 미검증 · CAD 및 유형별 면적 산출 불가',
+                     '공식 벡터 원자료의 면적·분류 완전성 미검증 · CAD 및 유형별 면적 산출 불가' +
+                     (' · 비공개 R2 도엽 조회 오류: R2_LANDCOVER_UNAVAILABLE (인증·객체경로·원자료 구조 점검 필요)' if r2_error else ''),
             'source':'환경공간정보서비스 WMS',
             'source_url':WMS_SOURCE,
             'provider_verified':False,
+            'source_error_code':source.get('error_code') if r2_error else None,
         })
         return
     target = shape(snapshot['geometry'])
