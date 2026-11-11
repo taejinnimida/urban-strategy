@@ -6,12 +6,12 @@ external provider calls or client API credentials are added here.
 import math
 import re
 from xml.sax.saxutils import escape
-from shapely.geometry import Polygon
+from shapely.geometry import Polygon, LineString, Point
 
 from pyproj import Transformer
 from shapely.geometry import box, shape
 from shapely.ops import transform
-from development_planning_symbols import style_for, style_from_properties, hatch_pattern
+from development_planning_symbols import style_for, style_from_properties, hatch_pattern, stroke_line_symbol, rgb_for_aci, color_aci
 
 SHEET_W, SHEET_H = 580.0, 380.0
 MAP = (2.0, 2.0, 485.0, 376.0)  # x, y, width, height
@@ -118,11 +118,21 @@ def make_sheet(item, snapshot):
             cls = str(props.get('class_code') or 'C01')
             if not re.fullmatch(r'C\d{2}', cls):
                 cls = 'C01'
+            boundary_color = (rgb_for_aci(color_aci(draw_style.get('boundary_color') or
+                              draw_style.get('line_color') or 'red')) if
+                              draw_style and draw_style.get('group') != 'zoning' else '#a5a5a5')
             for poly in _geometry_parts(cut):
                 ops.append(primitive('polygon', rings=_poly_points(poly, xy),
                                      fill=('none' if draw_style and draw_style.get('fill_mode') != 'solid' else color),
-                                     stroke='#a5a5a5', weight=0.32, layer='SHEET_THEME_' + cls,
+                                     stroke=boundary_color, weight=0.32, layer='SHEET_THEME_' + cls,
                                      symbol=draw_style))
+            if draw_style and draw_style.get('group') == 'facility':
+                lines = [cut] if cut.geom_type == 'LineString' else [
+                    q for q in getattr(cut, 'geoms', []) if q.geom_type == 'LineString']
+                for ln in lines:
+                    ops.append(primitive('polyline', points=[xy(x,y) for x,y in ln.coords],
+                                         fill='none', stroke=rgb_for_aci(color_aci(draw_style.get('line_color') or 'red')),
+                                         weight=0.7, layer='SHEET_THEME_' + cls, symbol=draw_style))
         except (KeyError, TypeError, ValueError):
             continue
 
@@ -356,7 +366,7 @@ def dxf_paper_sheet(doc, ops):
         elif kind in ('polygon', 'polyline'):
             rings = op['rings'] if kind == 'polygon' else [op['points']]
             sym = op.get('symbol') or {}
-            if sym.get('verified_style') and op.get('layer', '').startswith('SHEET_THEME'):
+            if kind == 'polygon' and sym.get('verified_style') and op.get('layer', '').startswith('SHEET_THEME'):
                 geom = Polygon([mm(x, y) for x, y in rings[0]],
                                [[mm(x, y) for x, y in hole] for hole in rings[1:]])
                 if geom.is_valid and not geom.is_empty:
@@ -369,8 +379,12 @@ def dxf_paper_sheet(doc, ops):
                     hatch.paths.add_polyline_path([mm(x, y) for x, y in ring[:-1] if ring],
                                                   is_closed=True, flags=1 if j == 0 else 0)
             if op.get('stroke') != 'none':
-                for ring in rings:
-                    layout.add_lwpolyline([mm(x, y) for x, y in ring], close=(kind == 'polygon'), dxfattribs=a)
+                if kind == 'polyline' and sym.get('verified_style') and sym.get('group') == 'facility':
+                    stroke_line_symbol(layout, LineString([mm(x,y) for x,y in rings[0]]),
+                                       a['layer'], sym, 1.0)
+                else:
+                    for ring in rings:
+                        layout.add_lwpolyline([mm(x, y) for x, y in ring], close=(kind == 'polygon'), dxfattribs=a)
         elif kind == 'text':
             align = {'middle': TextEntityAlignment.MIDDLE_CENTER, 'end': TextEntityAlignment.MIDDLE_RIGHT}.get(op.get('anchor'), TextEntityAlignment.MIDDLE_LEFT)
             layout.add_text(str(op['text']), dxfattribs={**a, 'height': op.get('size', 7) * SCALE,
