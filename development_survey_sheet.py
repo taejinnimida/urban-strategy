@@ -136,9 +136,43 @@ def make_sheet(item, snapshot):
         except (KeyError, TypeError, ValueError):
             continue
 
-    # The same paint order is used for the SVG and DXF: pale thematic fills,
-    # then fine surrounding cadastral edges, then prominent red site border.
+    # Printed plan names use the guideline's group-specific ink and remain
+    # physically inside an actual source polygon. Do not invent facility IDs.
+    plan_labels = []
+    if item.get('id') in ('5-2','5-3','5-4','5-5','5-6','5-7','5-8'):
+        occupied_plan = []
+        for feature in display_features[:6000]:
+            try:
+                p = feature.get('properties') or {}
+                group = ('zoning' if item['id']=='5-2' else
+                         'district' if item['id']=='5-3' else
+                         'area' if item['id'] in ('5-4','5-8') else 'facility')
+                st = style_from_properties(p,group)
+                if not st.get('verified_style'):continue
+                geom = transform(_CRS,shape(feature['geometry']))
+                clipped = geom.intersection(view if use_zone_context else site.intersection(view))
+                for poly in _geometry_parts(clipped):
+                    center = poly.representative_point()
+                    px,py=xy(center.x,center.y)
+                    if not (MAP[0]+30<px<MAP[0]+MAP[2]-30 and MAP[1]+9<py<MAP[1]+MAP[3]-9):continue
+                    label = st.get('name') or p.get('name')
+                    if not label or len(label)>24:continue
+                    text_width = max(25, len(label)*5.2)
+                    if poly.area < (metres_per_px*text_width)*(metres_per_px*9):continue
+                    rect=(px-text_width/2,py-6,px+text_width/2,py+6)
+                    if any(rect[0]<b[2] and rect[2]>b[0] and rect[1]<b[3] and rect[3]>b[1] for b in occupied_plan):continue
+                    occupied_plan.append(rect)
+                    text_color=rgb_for_aci(color_aci(st.get('label_color') or 'black'))
+                    plan_labels.append(primitive('text',x=px,y=py+2.0,text=label,size=7,
+                                                 color=text_color,anchor='middle',layer='SHEET_PLAN_LABEL'))
+                    if len(plan_labels)>=120:break
+                if len(plan_labels)>=120:break
+            except (ValueError,TypeError,KeyError):continue
+
+    # The same paint order is used for the SVG and DXF: fill, cadastral
+    # outlines, labels, then red site border. No independent invented FACT.
     ops[1:] = ops[context_end:] + ops[1:context_end]
+    ops.extend(plan_labels)
     # Only an unobstructed subset of lot numbers is plotted. Full PNU remains
     # in the model-space cadastral geometry and inventory; no label is invented.
     occupied_labels = []
@@ -373,7 +407,8 @@ def svg_sheet(ops):
         elif kind == 'text':
             weight_tag = ' font-weight="bold"' if op.get('bold') else ''
             anchor = {'middle': 'middle', 'end': 'end'}.get(op.get('anchor'), 'start')
-            buf.append(f'<text x="{op["x"]:.3f}" y="{op["y"]:.3f}" font-family="NanumSquare, Noto Serif CJK KR, Malgun Gothic, sans-serif" font-size="{op.get("size", 7):g}" text-anchor="{anchor}"{weight_tag}>{escape(str(op["text"]))}</text>')
+            text_color = _color(op.get('color'), '#111111')
+            buf.append(f'<text x="{op["x"]:.3f}" y="{op["y"]:.3f}" fill="{text_color}" font-family="NanumSquare, Noto Serif CJK KR, Malgun Gothic, sans-serif" font-size="{op.get("size", 7):g}" text-anchor="{anchor}"{weight_tag}>{escape(str(op["text"]))}</text>')
         elif kind == 'circle':
             buf.append(f'<circle cx="{op["x"]:.3f}" cy="{op["y"]:.3f}" r="{op["r"]:.3f}" fill="none" stroke="{stroke}" stroke-width="{weight}"/>')
     buf.append('</svg>')
@@ -395,7 +430,8 @@ def dxf_paper_sheet(doc, ops):
         return (4.0 + x * SCALE, PAPER_H - PAPER_DY - y * SCALE)
 
     def attrs(op):
-        color = _color(op.get('stroke') if op.get('stroke') not in (None, 'none') else op.get('fill'), '#111111')
+        color = _color(op.get('color') if op['type']=='text' and op.get('color') else
+                       op.get('stroke') if op.get('stroke') not in (None, 'none') else op.get('fill'), '#111111')
         layer_name = op.get('layer') or ('SHEET_TEXT' if op['type'] == 'text' else 'SHEET_FRAME')
         rgb = rgb2int(tuple(int(color[i:i + 2], 16) for i in (1, 3, 5)))
         if layer_name not in doc.layers:
