@@ -718,9 +718,33 @@ function devRenderSourceDetails(data){
    };
    sheetPreview.src='/api/development/reports/'+encodeURIComponent(devSite.id)+'/sheet/'+encodeURIComponent(item.id)+'.svg';
   }
+  if(item.id==='2-6' && !available && item.landcover_map_available){
+   // WMS reference preview is independent of CAD background or vector area.
+   // The API clips the original raster to the site and prints a reference-only
+   // border, right-hand panel, and verified provenance; DXF remains disabled.
+   const selected=item.id;
+   sheetPreview.onload=()=>{
+    if(select.value!==selected)return;
+    sheetPreview.style.display='block';mapbox.style.display='none';legendbox.style.display='none';
+    cadStatus.textContent='사업구역 경계로 잘라낸 토지피복 WMS 참고도 · 수치·편집 DXF 미확보';
+   };
+   sheetPreview.onerror=()=>{
+    if(select.value!==selected)return;
+    sheetPreview.style.display='none';mapbox.style.display='block';legendbox.style.display='flex';
+    cadStatus.textContent='WMS 참고도 출력 실패 · 경계로 잘라낸 공간지도를 표시합니다';
+    setTimeout(()=>devSourceDetailMap?.invalidateSize(false),0);
+   };
+   sheetPreview.src='/api/development/reports/'+encodeURIComponent(devSite.id)+'/sheet/2-6.svg';
+  }
   info.textContent=`${item.detail} · 출처: ${item.source||'미확보'}${item.as_of?' · 자료 기준일: '+item.as_of:''}`;
   const boundary=L.geoJSON(devSite.geometry,{style:{color:'#dc2626',weight:3,fill:false}}).addTo(drawn);devSourceDetailMap.fitBounds(boundary.getBounds(),{padding:[12,12]});
-  if(item.features?.length)L.geoJSON(item.features,{style:f=>({color:['ownership','jimok','land_numeric','land_shape','landcover','ecobank','building'].includes(item.thematic_type)?'#526174':'#126d88',weight:['ownership','jimok','land_numeric','land_shape','landcover','ecobank','building'].includes(item.thematic_type)?0.8:1.5,fillColor:['ownership','jimok','land_numeric','land_shape','landcover','ecobank','building'].includes(item.thematic_type)?(f.properties?.color||'#cccccc'):'#126d88',fillOpacity:['ownership','jimok','land_numeric','land_shape','landcover','ecobank','building'].includes(item.thematic_type)?0.68:0.2}),onEachFeature:(f,l)=>{const label=document.createElement('span');label.textContent=f.properties?.name||'원자료';l.bindTooltip(label);if(item.thematic_type==='building'&&f.properties?.join_status!=='EXACT_ID')l.bindPopup('건축물 공간도형 확인 · 건축물대장 속성 미연계');}}).addTo(drawn);
+  if(item.features?.length)L.geoJSON(item.features,{style:f=>({color:['ownership','jimok','land_numeric','land_shape','landcover','ecobank','building'].includes(item.thematic_type)?'#526174':'#126d88',weight:['ownership','jimok','land_numeric','land_shape','landcover','ecobank','building'].includes(item.thematic_type)?0.8:1.5,fillColor:['ownership','jimok','land_numeric','land_shape','landcover','ecobank','building'].includes(item.thematic_type)?(f.properties?.color||'#cccccc'):'#126d88',fillOpacity:['ownership','jimok','land_numeric','land_shape','landcover','ecobank','building'].includes(item.thematic_type)?0.68:0.2}),onEachFeature:(f,l)=>{const label=document.createElement('span');label.textContent=f.properties?.name||'원자료';l.bindTooltip(label);if(item.thematic_type==='building'){
+  const j=f.properties?.join_status;
+  const msg=j==='EXACT_ID'?'건축물대장 관리번호 직접 연계':
+    j==='PARCEL_SPATIAL_REFERENCE'?'건축물대장 확인 · 필지 공간중첩에 의한 잠정 도형연계 (직접 일치 아님)':
+    '건축물 공간도형 확인 · 해당 도형과 건축물대장 관리번호 미연계 (대장자료 부존재 아님)';
+  l.bindPopup(msg);
+ }}}).addTo(drawn);
   if(Array.isArray(item.legend))for(const entry of item.legend){
    const row=document.createElement('span');row.style.cssText='display:inline-flex;align-items:center;gap:5px';
    const chip=document.createElement('span');chip.style.cssText='display:inline-block;width:14px;height:14px;border:1px solid #64748b;background-color:'+entry.color;
@@ -737,7 +761,7 @@ function devRenderSourceDetails(data){
       :'토지피복 WMS 영상 미확보 · 제공기관 수신 상태를 확인하세요. 면적·CAD 불가';
    legendbox.append(sourceLabel);
    if(item.landcover_map_available&&item.landcover_map_bounds?.length===2){
-    const img='/api/development/reports/'+encodeURIComponent(devSite.id)+'/landcover.png';
+    const img='/api/development/reports/'+encodeURIComponent(devSite.id)+'/landcover-clipped.png';
     const cover=L.imageOverlay(img,item.landcover_map_bounds,{opacity:0.9,interactive:false});
     cover.on('error',()=>{if(select.value==='2-6')cadStatus.textContent='2-6 토지피복 WMS 이미지 다운로드 실패 · 서버 로그 확인';});
     cover.addTo(drawn);
