@@ -22,7 +22,7 @@ BINS = {
     '3-7': ('100% 미만', '100~200%', '200~300%', '300% 이상'),
 }
 OTHER = '기타(값 없음 등)'
-UNKNOWN = '대장 미확인'
+UNKNOWN = '대장·도형 미연계'
 PALETTE = ('#4477aa', '#ee8866', '#228833', '#aa3377', '#66ccee',
            '#ccbb44', '#8844aa', '#44aa99', '#bb6677', '#999933')
 
@@ -182,7 +182,7 @@ def attach_building_themes(data, snapshot):
             note+=' 공간도형 수집결과 0건은 실제 건축물 부존재를 증명하지 않음.'
         if fact['geometry_status'] != 'COMPLETE':
             note+=' 일부/보조 공간자료이며 도형 수는 확정되지 않음.'
-        sources='VWorld GIS건물통합정보 · 도로명주소 건물도형(보조) · 건축HUB'
+        sources='VWorld GIS건물통합정보 · 도로명주소 건물도형(보조) · 국토교통부 건축HUB · 토지대장(플랫폼 내부산정 시)'
         item.update(features=features,
                     legend=[categories[k] for k in ordered if totals.get(k)],
                     thematic_type='building',provider_verified=fact['provider_verified'],
