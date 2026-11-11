@@ -233,6 +233,10 @@ def assemble_building_fact(data, snapshot):
         key = next(iter(possible))
         tentative[observation['id']] = {'register_id': key, 'parcel_pnu': pnu,
                                          'overlap_pct': overlap_pct}
+    # Prevent reuse of an exact-ID title by a spatial-only footprint.
+    exact_titles = {obs['title_key'] for obs in selected
+                    if obs['title_key'] and len(by_title.get(obs['title_key'], [])) == 1}
+    tentative = {k: v for k, v in tentative.items() if v['register_id'] not in exact_titles}
     # Prevent one register title from being assigned to multiple footprints.
     tentative_counts = Counter(c['register_id'] for c in tentative.values())
     tentative = {k: v for k, v in tentative.items()
