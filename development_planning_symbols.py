@@ -17,7 +17,7 @@ def catalog():
 
 def color_aci(name):
     return {"red": 1, "green": 3, "blue": 5, "light_orange": 31,
-            "dark_purple": 200, "gray": 254, "light_blue": 131, "black": 7}.get(name, 7)
+            "dark_purple": 204, "gray": 254, "light_blue": 131, "black": 7}.get(name, 7)
 
 
 def rgb_for_aci(aci):
