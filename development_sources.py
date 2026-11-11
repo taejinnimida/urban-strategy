@@ -339,8 +339,19 @@ def enrich(data,snapshot,area):
         for layer in done:
             for f in layer.get('features',[]):
                 clip=shape(f['geometry']).intersection(shape(snapshot['geometry']))
-                if area(clip)<=0:continue
-                props={str(k).lower():v for k,v in (f.get('properties') or {}).items()};name=str(props.get('uname') or props.get('fclty_nm') or props.get('dgm_nm') or '명칭 미확보');parts.append(clip);names[name].append(clip);fs.append({'type':'Feature','geometry':mapping(clip),'properties':{'name':name}})
+                if clip.is_empty:continue
+                is_line=clip.geom_type in ('LineString','MultiLineString')
+                if area(clip)<=0 and not is_line:continue
+                props={str(k).lower():v for k,v in (f.get('properties') or {}).items()}
+                name=str(props.get('uname') or props.get('fclty_nm') or props.get('dgm_nm') or props.get('name') or '명칭 미확보')
+                if not is_line:
+                    parts.append(clip);names[name].append(clip)
+                source_attrs={'name':name,'source_layer':layer.get('layer')}
+                # Only source identifiers that are actually present may be passed through.
+                for field in ('fclty_no','dgm_no','plan_no'):
+                    if props.get(field) not in (None,''):
+                        source_attrs['source_'+field]=props[field]
+                fs.append({'type':'Feature','geometry':mapping(clip),'properties':source_attrs})
         a=area(unary_union(parts)) if parts else (0 if len(done)==len(ids) else None)
         statistics[item]={'overlap_area_m2':a,'overlap_pct':100*a/data['area_m2'] if a is not None and data['area_m2'] else None,'groups':[{'name':k,'area_m2':area(unary_union(v))} for k,v in names.items()],'note':'서로 다른 분류 간 중첩이 있어 분류별 면적 합계와 전체 union 면적은 다를 수 있음'}
         results[item]={'status':'보조 조회 참고자료' if reference else '공간자료 확보' if len(done)==len(ids) else '일부 확보' if done else '미확보','detail':f'{len(done)}/{len(ids)} 레이어 · 확정구역 교차면적 '+(f'{a:,.2f}㎡' if a is not None else '미확보'),'source':'VWorld 브라우저 보조 수신 포함(출처 재확인 필요)' if reference else 'VWorld','features':fs,'provider_verified':reference==0 and verified==len(ids)}
