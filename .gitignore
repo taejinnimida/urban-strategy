@@ -1,0 +1,11 @@
+# Indexed land-cover polygons are external runtime data, not source code.
+# The 2025 source archives and GPKG tiles must not enter the public repository.
+/national_data/
+/landcover_2025_indexed/
+/landcover_2025_gpkg_part*.zip
+/토지피복도.zip
+*.gpkg
+*.gpkg-shm
+*.gpkg-wal
+__pycache__/
+*.py[cod]
