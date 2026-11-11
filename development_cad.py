@@ -641,6 +641,18 @@ def register_cad(router, output, snapshots, lock, fetch_layer, layer_type):
             raise HTTPException(404, '표준 도면 미리보기를 지원하지 않는 항목입니다.')
         report, snapshot = context(token)
         item = next((copy.deepcopy(x) for x in report['items'] if x['id'] == item_id), None)
+        if item_id == '2-6' and item is not None and not _exportable(item, snapshot):
+            # A separate clearly-labelled WMS reference sheet is allowed even
+            # where editable vector classification and official area are absent.
+            wms = (snapshot.get('_national_sources') or {}).get('landcover_wms') or {}
+            if wms.get('status') == 'MAP_ONLY' and wms.get('_image'):
+                from development_landcover_preview import reference_svg
+                try:
+                    payload = reference_svg(snapshot['geometry'], wms, snapshot.get('_cad_background'))
+                except (ValueError, KeyError, TypeError):
+                    raise HTTPException(422, '토지피복 WMS 참고도 구성에 실패했습니다.') from None
+                return Response(payload, media_type='image/svg+xml', headers={
+                    'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff'})
         if item is None or not _exportable(item, snapshot):
             raise HTTPException(409, '검증된 주제도형이 없어 표준 도면을 생성하지 않습니다.')
         item = sheet_context(token, report, snapshot, item)
