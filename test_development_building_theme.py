@@ -49,7 +49,7 @@ class BuildingSurveyTest(unittest.TestCase):
             self.assertEqual(sum(e['count'] for e in item['legend']), 2)
             self.assertEqual(item['geometry_status'], 'PARTIAL')
         self.assertEqual(d['items'][0]['features'][0]['properties']['name'], '단독주택')
-        self.assertEqual(d['items'][0]['features'][1]['properties']['name'], '대장 미확인')
+        self.assertEqual(d['items'][0]['features'][1]['properties']['name'], '대장·도형 미연계')
         self.assertEqual(d['items'][2]['features'][0]['properties']['name'], '3층')
 
     def test_integrated_gis_attributes_classify_without_register_join(self):
@@ -82,7 +82,7 @@ class BuildingSurveyTest(unittest.TestCase):
             'status': 'UNKNOWN', 'features': [],
         }
         attach_building_themes(d, s)
-        self.assertEqual(d['items'][0]['features'][0]['properties']['name'], '대장 미확인')
+        self.assertEqual(d['items'][0]['features'][0]['properties']['name'], '대장·도형 미연계')
         self.assertIn('보조', d['items'][0]['source'])
 
     def test_zero_footprints_yields_real_blank_sheet_data(self):
@@ -120,7 +120,7 @@ class BuildingSurveyTest(unittest.TestCase):
         attach_building_themes(d, snapshot([feature(box(1, 1, 3, 3))]))
         self.assertEqual(d['building_fact']['counts']['direct_register_matches'], 0)
         self.assertEqual(d['building_fact']['counts']['register_without_direct_geometry'], 1)
-        self.assertEqual(d['items'][0]['features'][0]['properties']['name'], '대장 미확인')
+        self.assertEqual(d['items'][0]['features'][0]['properties']['name'], '대장·도형 미연계')
 
     def test_duplicate_address_polygon_suppressed(self):
         d = data()
@@ -140,7 +140,7 @@ class BuildingSurveyTest(unittest.TestCase):
         s['_report_layers']['LT_C_BLDGINFO'] = {'status': 'COMPLETE', 'features': [geom]}
         attach_building_themes(d, s)
         self.assertEqual(d['building_fact']['counts']['mapped_shapes'], 2)
-        self.assertEqual(d['items'][0]['features'][1]['properties']['name'], '대장 미확인')
+        self.assertEqual(d['items'][0]['features'][1]['properties']['name'], '대장·도형 미연계')
 
     def _parcel(self, bounds, pnu='1111111111100000001'):
         return {'type': 'Feature', 'id': pnu, 'geometry': mapping(box(*bounds)),
