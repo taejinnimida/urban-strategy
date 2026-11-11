@@ -305,8 +305,11 @@ def dxf_bytes(item, snapshot, metadata):
             counts['labels_omitted'] += 1
     # Land and zoning themes use the identical source category colors in SVG and DXF.
     if item.get('thematic_type') in ('ownership', 'jimok', 'land_numeric', 'land_shape', 'landcover', 'zoning', 'ecobank', 'building'):
-        if item['id'] not in ('2-1', '2-2', '2-3', '2-4', '2-5', '2-6', '5-2', '4-3', *BUILDING_IDS) or not item.get('provider_verified'):
-            raise HTTPException(409, '검증된 토지 주제도 공간도형을 확보하지 못했습니다.')
+        allowed_theme = (item['id'] in ('2-1', '2-2', '2-3', '2-4', '2-5', '2-6', '5-2', '4-3', *BUILDING_IDS)
+                         and (item.get('provider_verified') is True
+                              or (item['id'] in BUILDING_IDS and _exportable(item, snapshot))))
+        if not allowed_theme:
+            raise HTTPException(409, 'CAD 출력 가능한 주제도 공간도형을 확보하지 못했습니다.')
         if len(item.get('features') or []) > MAX_FEATURES:
             raise HTTPException(413, '토지 주제도 도형이 CAD 출력 상한을 초과했습니다.')
         from ezdxf.colors import rgb2int
@@ -360,6 +363,11 @@ def dxf_bytes(item, snapshot, metadata):
         model.set_redraw_order([(entity.dxf.handle, f'{i+1:X}') for i, entity in enumerate(draw_order)])
         doc.header['$SORTENTS'] = int(doc.header.get('$SORTENTS', 0)) | 16
         metadata['thematic_legend'] = item.get('legend') or []
+        if item['id'] in BUILDING_IDS and item.get('geometry_status') == 'PARTIAL':
+            metadata['building_geometry_assurance'] = 'PARTIAL'
+            metadata['building_geometry_note'] = (
+                '확보된 도형만 출력하며 누락 도형 및 필지 공간잠정연계는 직접 확인이 필요합니다.'
+            )
         # Do not append the plain single-color theme, which would duplicate lines.
         theme = []
     else:
@@ -378,7 +386,10 @@ def dxf_bytes(item, snapshot, metadata):
             counts['thematic_features'] += 1
         except (ValueError, KeyError, TypeError):
             raise HTTPException(422, '검토항목 공간자료의 CAD 변환에 실패했습니다.') from None
-    if (item['id'] == '1-1' or (item['id'] in ('2-1','2-2','2-3','2-4','2-5','2-6','5-2','4-3',*BUILDING_IDS) and item.get('provider_verified') is True)):
+    if (item['id'] == '1-1' or
+            (item['id'] in ('2-1','2-2','2-3','2-4','2-5','2-6','5-2','4-3',*BUILDING_IDS)
+             and (item.get('provider_verified') is True
+                  or (item['id'] in BUILDING_IDS and _exportable(item, snapshot))))):
         from development_survey_sheet import make_sheet, dxf_paper_sheet
         dxf_paper_sheet(doc, make_sheet(item, snapshot))
         metadata['print_layout'] = 'SURVEY_A3'
