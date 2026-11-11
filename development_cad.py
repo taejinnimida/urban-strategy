@@ -325,7 +325,7 @@ def dxf_bytes(item, snapshot, metadata):
         for group in item.get('legend') or []:
             code = str(group.get('class_code') or '')
             color = str(group.get('color') or '')
-            if not re.fullmatch(r'C[0-9]{2}', code) or not re.fullmatch(r'#[0-9a-fA-F]{6}', color):
+            if not re.fullmatch(r'C[0-9]{2,4}', code) or not re.fullmatch(r'#[0-9a-fA-F]{6}', color):
                 raise HTTPException(422, '토지 주제도 분류색 및 레이어 형식 오류')
             layer_name = theme_layer + '_' + code
             rgb = rgb2int(tuple(int(color[i:i+2], 16) for i in (1, 3, 5)))
