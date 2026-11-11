@@ -119,7 +119,10 @@ def _overlap_class(a, b):
 
 def _parcel_geometry_index(layer, site):
     """Only provider-confirmed cadastral polygons can support parcel association."""
-    if layer.get('status') != 'COMPLETE':
+    # A provider-returned REFERENCE cadastral outline can support a clearly
+    # provisional site-to-parcel spatial candidate; never call that a direct
+    # building-register identity or a complete cadastral inventory.
+    if layer.get('status') not in ('COMPLETE', 'REFERENCE'):
         return {}
     grouped = defaultdict(list)
     for feature in layer.get('features') or []:
@@ -203,10 +206,16 @@ def assemble_building_fact(data, snapshot):
         selected.append(extra)
 
     by_title = {}
-    for row in data.get('buildings') or []:
+    unkeyed_register_rows = 0
+    for n, row in enumerate(data.get('buildings') or []):
         key = str(row.get('id') or '').strip()
-        if key:
-            by_title.setdefault(key, []).append(row)
+        if not key:
+            # No legal registry-management ID is invented; an internal
+            # per-response row key preserves real recorded attributes for
+            # unique-parcel provisional association and audit.
+            unkeyed_register_rows += 1
+            key = 'UNKEYED_REGISTER_ROW:' + str(n)
+        by_title.setdefault(key, []).append(row)
 
     # A footprint and a building-register row may have no common identifier.
     # Allow a labelled, provisional association ONLY where one cadastral parcel
@@ -224,15 +233,28 @@ def assemble_building_fact(data, snapshot):
         if observation['title_key'] and len(by_title.get(observation['title_key'], [])) == 1:
             continue
         parcel_hit = _spatial_parcel_candidate(observation, parcels)
-        if not parcel_hit:
+        supplied_pnu = observation.get('provider_pnu')
+        # When a GIS feature has a valid 19-digit PNU, it can independently
+        # propose a labelled provisional relationship to the building title.
+        # A conflicting geometric parcel observation disqualifies that fallback.
+        if parcel_hit and supplied_pnu and parcel_hit[0] != supplied_pnu:
             continue
-        pnu, overlap_pct = parcel_hit
+        if parcel_hit:
+            pnu, overlap_pct = parcel_hit
+            basis = ('UNIQUE_PARCEL_OVERLAY_PROVISIONAL' if
+                     (layers.get('LP_PA_CBND_BUBUN') or {}).get('status') == 'COMPLETE'
+                     else 'REFERENCE_PARCEL_OVERLAY_PROVISIONAL')
+        elif supplied_pnu:
+            pnu, overlap_pct = supplied_pnu, None
+            basis = 'GIS_PNU_ATTRIBUTE_PROVISIONAL'
+        else:
+            continue
         possible = titles_by_pnu.get(pnu, set())
         if len(possible) != 1:
             continue
         key = next(iter(possible))
         tentative[observation['id']] = {'register_id': key, 'parcel_pnu': pnu,
-                                         'overlap_pct': overlap_pct}
+                                         'overlap_pct': overlap_pct, 'basis': basis}
     # Prevent reuse of an exact-ID title by a spatial-only footprint.
     exact_titles = {obs['title_key'] for obs in selected
                     if obs['title_key'] and len(by_title.get(obs['title_key'], [])) == 1}
@@ -321,7 +343,9 @@ def assemble_building_fact(data, snapshot):
             'geometry': mapping(observation['geometry']),
             'geometry_source': observation['source'],
             'source_status': source_info[observation['source']]['status'],
-            'register_id': observation['title_key'] if exact_ledger else candidate_key,
+            'register_id': (observation['title_key'] if exact_ledger else
+                            str(ledger.get('id') or '').strip() or None if ledger else None),
+            'register_row_key': candidate_key if candidate else observation['title_key'],
             'join_status': ('EXACT_ID' if exact_ledger else
                             'PARCEL_SPATIAL_REFERENCE' if provisional_ledger else 'UNMATCHED'),
             'quality_grade': grade,
@@ -329,7 +353,7 @@ def assemble_building_fact(data, snapshot):
             'spatial_parcel_pnu': candidate['parcel_pnu'] if candidate else None,
             'spatial_overlap_pct': candidate['overlap_pct'] if candidate else None,
             'match_basis': ('BUILDING_REGISTER_ID' if exact_ledger else
-                            'UNIQUE_PARCEL_OVERLAY_PROVISIONAL' if candidate else None),
+                            candidate.get('basis') if candidate else None),
             'registered_pnus': ledger.get('pnus') if ledger else None,
             'site_area_m2': ledger.get('site_area') if ledger else None,
             'site_area_basis': ledger.get('site_area_source') if ledger else None,
@@ -381,6 +405,13 @@ def assemble_building_fact(data, snapshot):
             for r in records),
         'register_without_any_candidate': len(set(by_title) - used_title_keys - spatial_title_keys),
         'gis_attribute_only': sum(r['quality_grade'] == 'B_GIS_ATTRIBUTE' for r in records),
+        'unkeyed_register_rows': unkeyed_register_rows,
+        'spatial_candidates_from_reference_cadastre': sum(
+            r.get('match_basis') == 'REFERENCE_PARCEL_OVERLAY_PROVISIONAL'
+            for r in records),
+        'spatial_candidates_from_provider_pnu': sum(
+            r.get('match_basis') == 'GIS_PNU_ATTRIBUTE_PROVISIONAL'
+            for r in records),
         'geometry_only': sum(r['quality_grade'] == 'C_GEOMETRY_ONLY' for r in records),
         'conflicting_shapes': conflicts,
         'register_without_direct_geometry': len(unmatched_registers),
@@ -393,6 +424,6 @@ def assemble_building_fact(data, snapshot):
             'provider_verified': status == 'COMPLETE',
             'counts': counts, 'field_assurance_counts': field_assurance_counts,
             'note': ('조회된 건축물대장 원문 속성은 우선 활용. GIS 속성과 충돌하면 대장값을 유지하고 차이를 별도 기록. '
-                     '대장 내용의 신뢰성과 지도 도형·대장 연결 신뢰도는 별개이며 필지 공간연계는 잠정 후보. '
+                     '대장 내용의 신뢰성과 지도 도형·대장 연결 신뢰도는 별개이며 필지 공간연계는 잠정 후보. 보조 지적 및 도형 제공 PNU도 직접 건물관리번호 일치가 아님. '
                      '건폐율·용적률 플랫폼 내부산정·개략추정은 원문과 구별하고 법정 확정치로 사용하지 않음. '
                      '공간도형 수는 법정 건축물 동수와 일치한다고 단정하지 않음.')}
