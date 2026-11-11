@@ -61,6 +61,10 @@ def style_for(name, group="zoning"):
         "boundary_diameter_mm": spec.get("boundary_diameter_mm"),
         "boundary_spacing_mm": spec.get("boundary_spacing_mm"),
         "facility_index": spec.get("facility_index"),  # catalog example only; not an actual facility ID
+        "school_variant": ("university" if "대학교" in key else
+                           "secondary" if ("중학교" in key or "고등학교" in key) else
+                           "elementary" if "초등학교" in key else None)
+                           if group == "facility" and spec["name"] == "학교" else None,
         "line_color": spec.get("line_color"),
         "marker_color": spec.get("marker_color"),
         "label_color": spec.get("label_color"),
