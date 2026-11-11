@@ -58,3 +58,34 @@ result = query('/app/national_data/landcover_2025_indexed', site_geojson,
 2. 원본 저장소의 이용조건, 외부 재배포 및 유료 서비스 활용 조건을 확인한다.
 3. 정적 파일 서비스 또는 공동 저장소는 실제 배포 환경의 읽기 권한·지속성·트래픽 조건을 검증해야 한다.
 4. **이 ZIP만으로 기존 웹 애플리케이션에 자동 배포되지는 않는다.** 조회 모듈을 서버 라우터에 연결하고 데이터를 서버에 배치해야 한다.
+
+## Cloudflare R2 비공개 원자료 연결 (개발 브랜치)
+
+버킷: `urban-strategy-data` (Standard, 공개 액세스 비활성).
+버킷 내부 접두경로: `landcover_2025_indexed/`.
+기본 경로의 `tile_index.sqlite`와 `tiles/XXXXXXXX.gpkg` 객체가 필요합니다.
+`README.md`, `manifest.json`과 원본 출처 정보도 보관합니다.
+GitHub에는 공간데이터를 커밋하지 않습니다.
+
+Render·Cloudtype의 **서버 환경변수**에만 아래 값을 등록합니다.
+- `R2_ACCOUNT_ID`: Cloudflare 계정의 32자리 Account ID
+- `R2_ACCESS_KEY_ID`: **R2 전용** 읽기 전용 API Token의 Access Key ID
+- `R2_SECRET_ACCESS_KEY`: 같은 Token의 Secret Access Key
+- `R2_BUCKET`: `urban-strategy-data` (미지정 시 기본값)
+- `R2_LANDCOVER_PREFIX`: `landcover_2025_indexed` (미지정 시 기본값)
+- `LANDCOVER_CACHE_DIR`: 캐시 폴더(선택, 기본 `/tmp/urban-landcover-indexed`)
+
+Cloudflare Global API Key는 사용하지 않습니다. 토큰 권한은 해당
+버킷의 Object Read만 부여하고, 브라우저 JS·GitHub·채팅에 노출하지 않습니다.
+버킷을 공개할 필요가 없습니다. 앱은 고정 Account ID URL로 S3 인증합니다.
+
+`file:2-6` 수집 작업은 비공개 R2에서 위치색인을 확보한 뒤 대상지와
+겹치는 도엽(최대 12개)을 필요할 때만 캐시하며, 기존 `2-6` 테마
+분석 코드가 현황도·테이블·DXF용 검증을 이어서 수행합니다. 요청의
+분석 대상이 미수록 지역이면 **비해당이 아닌 미확보**로 남습니다.
+계정 설정이 없으면 기존 현지 원자료 및 WMS 경로가 유지됩니다.
+
+**검증 완료 범위:** 가짜 S3 응답 기반 파일 다운로드·캐시·검증 테스트.
+**아직 검증 안 됨:** 실제 R2 인증 및 137개 원격 GPKG 존재 확인,
+Render·Cloudtype 환경변수 설정, 실서버 2-6 도면/엑셀/DXF.
+`main`에는 병합하지 않습니다.
