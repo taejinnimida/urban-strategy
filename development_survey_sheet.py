@@ -116,7 +116,7 @@ def make_sheet(item, snapshot):
                           'facility' if item.get('id') in ('5-5', '5-6', '5-7') else None)
             draw_style = style_from_properties(props, plan_group) if plan_group else None
             cls = str(props.get('class_code') or 'C01')
-            if not re.fullmatch(r'C\d{2}', cls):
+            if not re.fullmatch(r'C\d{2,4}', cls):
                 cls = 'C01'
             boundary_color = (rgb_for_aci(color_aci(draw_style.get('boundary_color') or
                               draw_style.get('line_color') or 'red')) if
