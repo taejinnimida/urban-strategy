@@ -335,7 +335,7 @@ def enrich(data,snapshot,area):
             if st['known']:results[item]['status']='참고목록 집계자료'
             st['scope']='REFERENCE_PARCELS'
     for item,ids in VECTOR_ITEMS.items():
-        done=[layers[k] for k in ids if layers.get(k,{}).get('status') in ('COMPLETE','REFERENCE')];verified=sum(v.get('status')=='COMPLETE' for v in done);reference=len(done)-verified;parts=[];names=defaultdict(list);fs=[]
+        done=[layers[k] for k in ids if layers.get(k,{}).get('status') in ('COMPLETE','REFERENCE')];verified=sum(v.get('status')=='COMPLETE' for v in done);reference=len(done)-verified;parts=[];names=defaultdict(list);linear=defaultdict(list);fs=[]
         for layer in done:
             for f in layer.get('features',[]):
                 clip=shape(f['geometry']).intersection(shape(snapshot['geometry']))
@@ -344,7 +344,9 @@ def enrich(data,snapshot,area):
                 if area(clip)<=0 and not is_line:continue
                 props={str(k).lower():v for k,v in (f.get('properties') or {}).items()}
                 name=str(props.get('uname') or props.get('fclty_nm') or props.get('dgm_nm') or props.get('name') or '명칭 미확보')
-                if not is_line:
+                if is_line:
+                    linear[name].append(clip)
+                else:
                     parts.append(clip);names[name].append(clip)
                 source_attrs={'name':name,'source_layer':layer.get('layer')}
                 # Only source identifiers that are actually present may be passed through.
@@ -353,11 +355,22 @@ def enrich(data,snapshot,area):
                         source_attrs['source_'+field]=props[field]
                 fs.append({'type':'Feature','geometry':mapping(clip),'properties':source_attrs})
         a=area(unary_union(parts)) if parts else (0 if len(done)==len(ids) else None)
-        statistics[item]={'overlap_area_m2':a,'overlap_pct':100*a/data['area_m2'] if a is not None and data['area_m2'] else None,'groups':[{'name':k,'area_m2':area(unary_union(v))} for k,v in names.items()],'note':'서로 다른 분류 간 중첩이 있어 분류별 면적 합계와 전체 union 면적은 다를 수 있음'}
+        linear_groups=[]
+        if linear:
+            to_metre=Transformer.from_crs('EPSG:4326','EPSG:5179',always_xy=True).transform
+            for line_name,records in linear.items():
+                linear_groups.append({'name':line_name,'count':len(records),
+                                      'length_m':round(sum(transform(to_metre,v).length for v in records),2)})
+        statistics[item]={'overlap_area_m2':a,'overlap_pct':100*a/data['area_m2'] if a is not None and data['area_m2'] else None,
+                          'groups':[{'name':k,'area_m2':area(unary_union(v))} for k,v in names.items()],
+                          'linear_groups':linear_groups,'linear_feature_count':sum(g['count'] for g in linear_groups),
+                          'note':'면적과 선형 연장을 구분. 선형 자료의 면적 0㎡는 시설 부재를 뜻하지 않음. 서로 다른 분류 간 중첩으로 분류별 면적 합계가 다를 수 있음'}
         results[item]={'status':'보조 조회 참고자료' if reference else '공간자료 확보' if len(done)==len(ids) else '일부 확보' if done else '미확보','detail':f'{len(done)}/{len(ids)} 레이어 · 확정구역 교차면적 '+(f'{a:,.2f}㎡' if a is not None else '미확보'),'source':'VWorld 브라우저 보조 수신 포함(출처 재확인 필요)' if reference else 'VWorld','features':fs,'provider_verified':reference==0 and verified==len(ids),
                        'verified_feature_sources':reference==0 and verified>0,
                        'coverage_partial':len(done)<len(ids) or item in ('5-3','5-4','5-5','5-6','5-7','5-8'),
                        'coverage_note':'확보된 VWorld 레이어와 유형만 포함하며 법정 계획 전체 수록·최신 고시 일치 여부는 미확정'}
+        if linear_groups:
+            results[item]['detail']+=' · 선형시설 '+str(sum(g['count'] for g in linear_groups))+'건(연장계산, 면적 0㎡와 구분)'
         if reference:results[item]['detail']+=f' · 서버 직접 {verified}개/보조 {reference}개 · 보조자료 원문 진위·수록 완전성 미검증, 법정 판정 미적용'
         if item in ('5-3','5-4','6-4'):results[item]['detail']+=' · 연결된 종류만 조회, 모든 지구·구역·유산 규제 포괄 아님'
     ned=[(p,facts.get('ned:'+p,{})) for p in snapshot.get('_report',{}).get('land',{})]
