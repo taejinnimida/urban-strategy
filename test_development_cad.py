@@ -198,6 +198,33 @@ def test_no_fake_success_with_blank_cadastre():
     assert client.get('/api/development/reports/test-token/dxf/1-1').status_code==409
 
 
+def test_partial_building_cad_export_has_layers_and_a3_layout():
+    # A footprint with parcel-spatial provisional attributes must remain
+    # exportable, even when provider_verified=False (PARTIAL building FACT).
+    provider = FakeVworld()
+    client, snapshots = make_app(provider)
+    prepare_background(client)
+    item = {
+        'id': '3-3', 'name': '층수별 현황',
+        'status': '일부 공간자료 확보', 'thematic_type': 'building',
+        'cad_exportable': True, 'geometry_status': 'PARTIAL',
+        'provider_verified': False,
+        'features': [{'type': 'Feature',
+                      'geometry': mapping(transform(INVERSE, box(CX-20, CY-10, CX+20, CY+10))),
+                      'properties': {'name': '3층', 'class_code': 'C03', 'color': '#228833',
+                                     'join_status': 'PARCEL_SPATIAL_REFERENCE'}}],
+        'legend': [{'name': '3층', 'class_code': 'C03', 'color': '#228833',
+                    'count': 1, 'pct': 100.0}],
+    }
+    response = client.get('/api/development/reports/test-token/dxf/3-3')
+    assert response.status_code == 404  # No item in the fixture report.
+    doc = load_dxf(dxf_bytes(item, snapshots['test-token'] | {
+        '_cad_background': snapshots['test-token']['_cad_background']}, {}))
+    assert 'SURVEY_A3' in doc.layouts
+    assert len(list(doc.modelspace().query('HATCH[layer=="SURVEY_3_3_C03"]'))) > 0
+    assert len(list(doc.modelspace().query('LWPOLYLINE[layer=="SURVEY_3_3_C03"]'))) > 0
+
+
 def test_unavailable_item_rejected():
     client,_=make_app(FakeVworld())
     r=client.get('/api/development/reports/test-token/dxf/4-8')
