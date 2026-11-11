@@ -34,7 +34,7 @@ jobs:
         run: python -m unittest -v test_development_building_theme
       - name: Install CAD test dependencies
         run: python -m pip install --disable-pip-version-check pytest httpx
-      - name: CAD DXF and A3 regression tests
-        run: python -m pytest -q test_development_cad.py
+      - name: CAD DXF, building-area and A3 regression tests
+        run: python -m pytest -q test_development_cad.py test_development_building_areas.py
       - name: Application import smoke test
         run: python -c "import app; print('FastAPI import OK')"
