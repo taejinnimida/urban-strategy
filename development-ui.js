@@ -299,34 +299,34 @@ async function devLoadFacts(manual=false){
 }
 // Display-only map. No extra data requests and no changes to FACT/RULE geometry.
 const DEV_PLANNING_FILL_OPACITY=.75;
+// [별첨 1] 도시·군관리계획 조서 및 도면 작성지침:
+// ACI indices from official legend, expressed as equivalent web RGB.
+// Map transparency is a readability adjustment, not a legal drawing rule.
+const devPlanningAciColors={2:'#ffff00',40:'#ffbf00',51:'#ffff7f',71:'#bfff7f',131:'#7fffff',191:'#bf7fff',231:'#ff7fbf'};
 const devPlanningZoneStyles=[
- [/제1종전용주거|1종전용주거/,{fill:'#fff1ad',pattern:'dot'}],
- [/제2종전용주거|2종전용주거/,{fill:'#ffe17f',pattern:'dot'}],
- [/제1종일반주거|1종일반주거/,{fill:'#ffe9a0'}],
- [/제2종일반주거|2종일반주거/,{fill:'#f6cf6d'}],
- [/제3종일반주거|3종일반주거/,{fill:'#efa54f'}],
- [/준주거/,{fill:'#f2be55',pattern:'diagonal'}],
- [/주거/,{fill:'#f6d77e'}],
- [/중심상업/,{fill:'#ba386a'}],
- [/일반상업/,{fill:'#c64978'}],
- [/근린상업/,{fill:'#dc6790'}],
- [/유통상업/,{fill:'#d47c9d'}],
- [/상업/,{fill:'#c64978'}],
- [/전용공업/,{fill:'#a58bc8'}],
- [/일반공업/,{fill:'#b69dd1'}],
- [/준공업/,{fill:'#ba9bc9',pattern:'diagonal'}],
- [/공업/,{fill:'#ae94c8'}],
- [/보전녹지/,{fill:'#439565'}],
- [/생산녹지/,{fill:'#91c878',pattern:'diagonal'}],
- [/자연녹지/,{fill:'#aedb86'}],
- [/녹지/,{fill:'#99c97b'}],
- [/계획관리/,{fill:'#e1d8be'}],
- [/생산관리/,{fill:'#d2d9b5'}],
- [/보전관리/,{fill:'#bacab3'}],
- [/관리지역|관리/,{fill:'#e2dfd7'}],
- [/농림/,{fill:'#b7d18e',pattern:'diagonal'}],
- [/자연환경보전/,{fill:'#afd9df',pattern:'dot'}],
- [/도시지역/,{fill:'#e8c5bf'}]
+ [/제1종전용주거|1종전용주거/,{aci:51,pattern:'dot',patternColor:'#ff0000'}],
+ [/제2종전용주거|2종전용주거/,{aci:2,pattern:'dot',patternColor:'#ff0000'}],
+ [/제1종일반주거|1종일반주거/,{aci:51}],
+ [/제2종일반주거|2종일반주거/,{aci:2}],
+ [/제3종일반주거|3종일반주거/,{aci:40}],
+ [/준주거/,{aci:2,pattern:'diagonal',patternColor:'#ff0000'}],
+ [/중심상업/,{aci:231,pattern:'dot',patternColor:'#ff0000'}],
+ [/일반상업/,{aci:231}],
+ [/근린상업/,{aci:231,pattern:'diagonal',patternColor:'#ff0000'}],
+ [/유통상업/,{aci:231}],
+ [/전용공업/,{aci:191,pattern:'dot',patternColor:'#660099'}],
+ [/일반공업/,{aci:191}],
+ [/준공업/,{aci:191,pattern:'diagonal',patternColor:'#ff0000'}],
+ [/보전녹지/,{aci:71,pattern:'dot',patternColor:'#008000'}],
+ [/생산녹지/,{aci:71,pattern:'diagonal',patternColor:'#008000'}],
+ [/자연녹지/,{aci:71}],
+ [/계획관리/,{noBase:true,pattern:'diagonal',patternColor:'#ff0000'}],
+ [/생산관리/,{aci:71,pattern:'diagonal',patternColor:'#ff0000'}],
+ [/보전관리/,{aci:71,pattern:'dot',patternColor:'#ff0000'}],
+ [/관리지역|^관리$/,{noBase:true}],
+ [/농림/,{aci:71,pattern:'diagonal',patternColor:'#008000'}],
+ [/자연환경보전/,{aci:131,pattern:'dot',patternColor:'#008000'}],
+ [/도시지역/,{fill:'#ff0000'}]
 ];
 const devPlanningFacilityColors=[
  '#b7ada4', // road: muted neutral roadway, solid boundary
@@ -349,11 +349,14 @@ function devPlanningSymbol(id,feature){
  if(id.startsWith('LT_C_UQ11')){
   const normalized=name.replace(/\s+/g,'');
   const matched=devPlanningZoneStyles.find(([re])=>re.test(normalized));
-  const fallback={'LT_C_UQ111':'#e8c5bf','LT_C_UQ112':'#e2dfd7','LT_C_UQ113':'#b7d18e','LT_C_UQ114':'#afd9df'};
-  const fillColor=matched?.[1].fill||fallback[id]||'#ced5d9';
+  // A layer identifier alone cannot establish a detailed zoning subtype.
+  const spec=matched?.[1]||{};
+  const fillColor=devPlanningAciColors[spec.aci]||spec.fill||'#ced5d9';
   return {name,label:name||devLayerSpecs.find(s=>s[0]===id)?.[1]||'용도지역',
-   color:'#746b60',fillColor,pattern:matched?.[1].pattern||null,
-   fillOpacity:DEV_PLANNING_FILL_OPACITY,weight:.8,opacity:1,pane:'devZone'};
+   color:'#746b60',fillColor,aci:spec.aci||null,noBase:!!spec.noBase,
+   pattern:spec.pattern||null,patternColor:spec.patternColor||'#ff0000',
+   fillOpacity:spec.noBase&&!spec.pattern?0:DEV_PLANNING_FILL_OPACITY,
+   weight:.8,opacity:1,pane:'devZone'};
  }
  const i=Number(id.slice(-1))-1;
  const fillColor=devPlanningFacilityColors[i]||'#a3a8ad';
@@ -368,25 +371,27 @@ function devPlanningApplyPattern(layer,symbol){
  if(!symbol.pattern||!layer._path?.ownerSVGElement)return;
  const svg=layer._path.ownerSVGElement;
  const documentRef=svg.ownerDocument,ns='http://www.w3.org/2000/svg';
- const id='dev-plan-'+symbol.pattern+'-'+symbol.fillColor.slice(1).toLowerCase();
+ const id='dev-plan-'+symbol.pattern+'-'+symbol.fillColor.slice(1).toLowerCase()+'-'+symbol.patternColor.slice(1).toLowerCase()+(symbol.noBase?'-clear':'');
  let defs=svg.querySelector('defs');
  if(!defs){defs=documentRef.createElementNS(ns,'defs');svg.insertBefore(defs,svg.firstChild);}
  if(!defs.querySelector('[id="'+id+'"]')){
   const pattern=documentRef.createElementNS(ns,'pattern');
   pattern.setAttribute('id',id);pattern.setAttribute('patternUnits','userSpaceOnUse');
   pattern.setAttribute('width','8');pattern.setAttribute('height','8');
-  const bg=documentRef.createElementNS(ns,'rect');
-  bg.setAttribute('width','8');bg.setAttribute('height','8');
-  bg.setAttribute('fill',symbol.fillColor);pattern.append(bg);
+  if(!symbol.noBase){
+   const bg=documentRef.createElementNS(ns,'rect');
+   bg.setAttribute('width','8');bg.setAttribute('height','8');
+   bg.setAttribute('fill',symbol.fillColor);pattern.append(bg);
+  }
   if(symbol.pattern==='diagonal'){
    const line=documentRef.createElementNS(ns,'path');
    line.setAttribute('d','M-2 2L2 -2 M0 8L8 0 M6 10L10 6');
-   line.setAttribute('fill','none');line.setAttribute('stroke','#74685a');
+   line.setAttribute('fill','none');line.setAttribute('stroke',symbol.patternColor);
    line.setAttribute('stroke-width','.9');pattern.append(line);
   }else{
    const dot=documentRef.createElementNS(ns,'circle');
    dot.setAttribute('cx','4');dot.setAttribute('cy','4');dot.setAttribute('r','1');
-   dot.setAttribute('fill','#74685a');pattern.append(dot);
+   dot.setAttribute('fill',symbol.patternColor);pattern.append(dot);
   }
   defs.append(pattern);
  }
@@ -514,10 +519,10 @@ function devPlanningRefresh(){
  }
  for(const [name,symbol] of symbols){
   const item=document.createElement('span'),swatch=document.createElement('i');
-  swatch.style.backgroundColor=symbol.fillColor||symbol.color;
-  if(symbol.fillOpacity>0)swatch.style.opacity=String(symbol.fillOpacity);
-  if(symbol.pattern==='diagonal')swatch.style.backgroundImage='repeating-linear-gradient(135deg,transparent 0px,transparent 4px,#74685a 4px,#74685a 5px)';
-  if(symbol.pattern==='dot')swatch.style.backgroundImage='radial-gradient(#74685a 22%,transparent 25%)';
+  swatch.style.backgroundColor=symbol.noBase?'transparent':(symbol.fillColor||symbol.color);
+  const lineColor=symbol.patternColor||'#008000';
+  if(symbol.pattern==='diagonal')swatch.style.backgroundImage='repeating-linear-gradient(135deg,transparent 0px,transparent 4px,'+lineColor+' 4px,'+lineColor+' 5px)';
+  if(symbol.pattern==='dot')swatch.style.backgroundImage='radial-gradient('+lineColor+' 22%,transparent 25%)';
   item.append(swatch,document.createTextNode(name));legend.append(item);
  }
  devPlanningUpdateLabels();
@@ -538,7 +543,7 @@ function devInstallPlanningMap(){
  if(devMode!=='development'||devPlanningMap)return;
  const target=document.querySelector('.service-target-box');if(!target)return;
  const box=document.createElement('section');box.id='devPlanningBox';
- box.innerHTML='<h3>도시계획정보도 <small>항공사진과 위치·확대 동기화</small></h3><div id="devPlanningMap" aria-label="도시계획정보도"></div><div id="devPlanningLegend"></div><p id="devPlanningStatus" role="status">자료 조회 대기</p><p id="devPlanningParcelStatus" role="status">주변 지적 조회 대기</p><p class="dev-plan-source">자료: VWorld · 도시·군관리계획 도면표시의 색상·무늬 구분을 참고한 표현(면 채색 투명도 25%) · RGB는 참고용이며 법정 고시도면이 아닙니다.</p>';
+ box.innerHTML='<h3>도시계획정보도 <small>항공사진과 위치·확대 동기화</small></h3><div id="devPlanningMap" aria-label="도시계획정보도"></div><div id="devPlanningLegend"></div><p id="devPlanningStatus" role="status">자료 조회 대기</p><p id="devPlanningParcelStatus" role="status">주변 지적 조회 대기</p><p class="dev-plan-source">자료: VWorld · 도시·군관리계획수립지침 별첨 1의 용도지역 색인·무늬를 참고한 표현(면 채색 투명도 25%) · 고시 원도면은 아닙니다.</p>';
  target.append(box);
  devPlanningMap=L.map('devPlanningMap',{attributionControl:true,zoomControl:true,crs:map.options.crs,zoomSnap:map.options.zoomSnap,minZoom:map.getMinZoom(),maxZoom:map.getMaxZoom()});
  for(const [pane,z] of [['devZone',410],['devFacility',420],['devParcel',430],['devBoundary',440]])devPlanningMap.createPane(pane).style.zIndex=z;
