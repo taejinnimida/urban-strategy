@@ -120,7 +120,7 @@ def attach_building_themes(data, snapshot):
         labels = []
         for rec in records:
             field_data = rec['attributes'][field]
-            if field_data['assurance'] == 'CONFLICT':
+            if field_data['assurance'] in ('CONFLICT','SPATIAL_CONFLICT'):
                 label = '자료 불일치(검토)'
             elif field_data['value'] is None:
                 label = OTHER if rec['join_status'] == 'EXACT_ID' else UNKNOWN
@@ -156,6 +156,9 @@ def attach_building_themes(data, snapshot):
                                            'join_status':rec['join_status'],
                                            'quality_grade':rec['quality_grade'],
                                            'attribute_assurance':item_value['assurance'],
+                                           'join_basis':rec.get('match_basis'),
+                                           'spatial_parcel_pnu':rec.get('spatial_parcel_pnu'),
+                                           'spatial_overlap_pct':rec.get('spatial_overlap_pct'),
                                            'source':item_value['source'],
                                            'building_fact_id':rec['id']}})
         rows=[{'kind':'total','label':'합계','count':n,
@@ -168,7 +171,12 @@ def attach_building_themes(data, snapshot):
                              '자료 불일치' if label=='자료 불일치(검토)' else
                              '속성 미확인' if label==UNKNOWN else
                              '항목값 없음' if label==OTHER else '출처별 확보'),
-                         'note':''})
+                         'note': ('잠정 필지 공간연계 '+str(sum(
+                             rec['join_status']=='PARCEL_SPATIAL_REFERENCE' and
+                             labels[pos]==label for pos,rec in enumerate(records)))+'개 포함'
+                                  if any(rec['join_status']=='PARCEL_SPATIAL_REFERENCE' and
+                                         labels[pos]==label for pos,rec in enumerate(records))
+                                  else '')})
         note=fact['note']
         if not n:
             note+=' 공간도형 수집결과 0건은 실제 건축물 부존재를 증명하지 않음.'
@@ -185,6 +193,7 @@ def attach_building_themes(data, snapshot):
                            '일부 공간자료 확보' if fact['geometry_status']=='PARTIAL' else '보조 조회 참고자료',
                     detail=(item.get('detail') or '') +
                            f" · 도형 {n}개, 대장 직접연결 {fact['counts']['direct_register_matches']}개"
+                           f", 필지 공간연계 잠정 {fact['counts']['spatial_register_candidates']}개"
                            f", GIS 속성만 확보 {fact['counts']['gis_attribute_only']}개"
                            f", 검토 필요 {fact['counts']['conflicting_shapes']}개"
                            ' · '+note,
@@ -195,7 +204,8 @@ def attach_building_themes(data, snapshot):
         stat=data.get('statistics',{}).get(item_id)
         if isinstance(stat,dict):
             stat.update(footprint_count=n,verified_ledger_joins=fact['counts']['direct_register_matches'],
-                        unmatched_footprints=n-fact['counts']['direct_register_matches'],
+                        unmatched_footprints=n-fact['counts']['direct_register_matches']-fact['counts']['spatial_register_candidates'],
+                        provisional_spatial_joins=fact['counts']['spatial_register_candidates'],
                         footprint_status=fact['geometry_status'],
                         mapped_groups=[categories[k] for k in ordered],
                         mapped_total=n,mapped_unit='건축물 공간도형(개)',
