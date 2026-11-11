@@ -636,16 +636,15 @@ function devRenderSourceDetails(data){
  function renderSurveyTable(item){
   surveyTable.replaceChildren();
   const t=item.survey_table;
-  const isBuilding=/^3-[1-7]$/.test(item.id);
-  if(!/^2-[1-6]$/.test(item.id)&&!isBuilding){surveyTable.style.display='none';return;}
+  if(!/^2-[1-6]$/.test(item.id)){surveyTable.style.display='none';return;}
   surveyTable.style.display='block';
   const title=document.createElement('div');
-  title.textContent=t?.title||('표 '+item.id+(isBuilding?' 건축물현황':' 토지현황'));
+  title.textContent=t?.title||('표 '+item.id+' 토지현황');
   title.style.cssText='font-size:13px;font-weight:700;color:#243e7a;margin:0 0 6px';
   surveyTable.append(title);
   if(!t?.rows?.length){
    const empty=document.createElement('div');
-   empty.textContent=isBuilding?'건축물현황표 미확보 · 대장 조회 필요 (0건으로 간주하지 않음)':'현황표 미확보 · 분류별 공간도형과 면적 자료 확인 필요 (0㎡로 간주하지 않음)';
+   empty.textContent='현황표 미확보 · 분류별 공간도형과 면적 자료 확인 필요 (0㎡로 간주하지 않음)';
    empty.style.cssText='padding:12px;border:1px solid #d9e2ed;background:#f8fafc;font-size:12px';
    surveyTable.append(empty);
    return;
@@ -653,7 +652,7 @@ function devRenderSourceDetails(data){
   const tab=document.createElement('table');
   tab.style.cssText='width:100%;border-collapse:collapse;font-size:12px;min-width:510px;font-variant-numeric:tabular-nums';
   const header=document.createElement('thead'),hrow=document.createElement('tr');
-  for(const text of (isBuilding?['구분',t.count_header||'대장 건수(건)','구성비(%)','비고']:['구분','면적(㎡)','구성비(%)',t.count_header||'필지수(필지)','비고'])){
+  for(const text of ['구분','면적(㎡)','구성비(%)',t.count_header||'필지수(필지)','비고']){
    const th=document.createElement('th');th.textContent=text;
    th.style.cssText='padding:7px 5px;border:1px solid #9ca9bf;background:#dfe7f6;color:#21376d;text-align:center';
    hrow.append(th);
@@ -662,12 +661,12 @@ function devRenderSourceDetails(data){
   const body=document.createElement('tbody');
   for(const row of t.rows){
    const tr=document.createElement('tr');
-   const cells=isBuilding?[row.label,row.count,row.pct,row.note||'']:[row.label,row.area_m2,row.pct,row.count,row.note||''];
+   const cells=[row.label,row.area_m2,row.pct,row.count,row.note||''];
    for(let i=0;i<cells.length;i++){
     const td=document.createElement('td');
     const v=cells[i];
-    td.textContent=v===null||v===undefined?'–':i===1&&typeof v==='number'?(isBuilding?v.toLocaleString('ko-KR'):v.toLocaleString('ko-KR',{minimumFractionDigits:1,maximumFractionDigits:2})):i===2&&typeof v==='number'?v.toFixed(1):String(v);
-    td.style.cssText='border-bottom:1px '+(row.kind==='category'?'dotted':'solid')+' #9ca9bf;padding:5px 8px;text-align:'+(i===1||i===2||(!isBuilding&&i===3)?'right':'center');
+    td.textContent=v===null||v===undefined?'–':i===1&&typeof v==='number'?v.toLocaleString('ko-KR',{minimumFractionDigits:1,maximumFractionDigits:2}):i===2&&typeof v==='number'?v.toFixed(1):String(v);
+    td.style.cssText='border-bottom:1px '+(row.kind==='category'?'dotted':'solid')+' #9ca9bf;padding:5px 8px;text-align:'+(i===1||i===2||i===3?'right':'center');
     if(row.kind==='total')td.style.fontWeight='700';
     if(row.kind==='boundary')td.style.background='#f4f6fb';
     tr.append(td);
@@ -675,10 +674,9 @@ function devRenderSourceDetails(data){
    body.append(tr);
   }
   tab.append(body);surveyTable.append(tab);
-  if(isBuilding&&t.analysis_text){const prose=document.createElement('p');prose.style.cssText='font-size:12px;line-height:1.55;margin:9px 2px;color:#1e293b';prose.textContent=t.analysis_text;surveyTable.append(prose);}
   const note=document.createElement('div');
   note.style.cssText='font-size:11px;color:#526174;line-height:1.5;padding:6px 2px';
-  note.textContent=(t.status==='COMPLETE'?(isBuilding?'대장 집계자료 확인':'확인된 공간자료 기준'):'잠정·부분집계 · 원자료 검증 필요')+' · '+(t.notes||[]).join(' · ');
+  note.textContent=(t.status==='COMPLETE'?'확인된 공간자료 기준':'잠정·부분집계 · 원자료 검증 필요')+' · '+(t.notes||[]).join(' · ');
   surveyTable.append(note);
  }
  function paint(){
