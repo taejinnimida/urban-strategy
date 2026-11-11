@@ -37,7 +37,7 @@ class LandcoverWmsPreviewTests(unittest.TestCase):
                     (127.006,37.006),(127.004,37.006)]]))
         mask = site_mask(1024, 768, holed)
         self.assertEqual(mask.getpixel((512,384)), 0)
-        self.assertEqual(mask.getpixel((400,384)), 255)
+        self.assertEqual(mask.getpixel((280,384)), 255)
 
     def test_reference_sheet_has_frame_boundary_reference_notice(self):
         wms = {'status': 'MAP_ONLY', '_image': png()}
