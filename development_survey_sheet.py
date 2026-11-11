@@ -31,7 +31,10 @@ def _title(item):
     return {'1-1': '위치 및 면적', '2-1': '소유별', '2-2': '지목별',
             '2-3': '면적별', '2-4': '공시지가별',
             '2-5': '토지형상별', '2-6': '토지피복별',
-            '5-2': '용도지역 현황도'}.get(item.get('id'),
+            '5-2': '용도지역 현황도', '5-3': '용도지구 현황도',
+            '5-4': '용도구역 현황도', '5-5': '교통시설 현황도',
+            '5-6': '공간시설 현황도', '5-7': '기타 도시계획시설 현황도',
+            '5-8': '지구단위계획구역 현황도'}.get(item.get('id'),
             str(item.get('name') or '현황도')[:16])
 
 
@@ -107,7 +110,11 @@ def make_sheet(item, snapshot):
             cut = projected_g.intersection(view) if use_zone_context else projected_g.intersection(site).intersection(view)
             props = feature.get('properties') or {}
             color = _color(props.get('color'), '#afd0e4')
-            draw_style = style_from_properties(props, 'zoning') if item.get('id') == '5-2' else None
+            plan_group = ('zoning' if item.get('id') == '5-2' else
+                          'district' if item.get('id') == '5-3' else
+                          'area' if item.get('id') in ('5-4', '5-8') else
+                          'facility' if item.get('id') in ('5-5', '5-6', '5-7') else None)
+            draw_style = style_from_properties(props, plan_group) if plan_group else None
             cls = str(props.get('class_code') or 'C01')
             if not re.fullmatch(r'C\d{2}', cls):
                 cls = 'C01'
@@ -182,7 +189,11 @@ def make_sheet(item, snapshot):
     for i, entry in enumerate(legend[:27]):
         y = 66 + i * 9.0
         color = _color(entry.get('color'), '#dddddd')
-        draw_style = style_for(entry.get('name'), 'zoning') if item.get('id') == '5-2' else None
+        plan_group = ('zoning' if item.get('id') == '5-2' else
+                      'district' if item.get('id') == '5-3' else
+                      'area' if item.get('id') in ('5-4', '5-8') else
+                      'facility' if item.get('id') in ('5-5', '5-6', '5-7') else None)
+        draw_style = style_for(entry.get('name'), plan_group) if plan_group else None
         ops.append(primitive('rect', x=496, y=y - 5.5, w=7.5, h=7.5,
                              fill=('none' if draw_style and draw_style.get('fill_mode') != 'solid' else color),
                              stroke='#777777', weight=0.35, symbol=draw_style))
@@ -378,25 +389,36 @@ def zoning_style(name):
     return style_for(name, "zoning")
 
 
-def zoning_context(features):
-    """Display styling only: source FACT and statutory zoning subtype never inferred."""
+def planning_context(features, group='zoning'):
+    """Style the original PLAN feature identities, never invent missing subtype facts."""
     clean = []
     for feature in features:
-        props = feature.get("properties") or {}
-        p = {str(k).lower(): v for k, v in props.items()}
-        name = str(p.get("uname") or p.get("name") or p.get("dgm_nm") or "").strip()
-        if not name:
-            name = "명칭 미확보"
-        if feature.get("geometry"):
+        p = {str(k).lower(): v for k, v in (feature.get('properties') or {}).items()}
+        name = str(p.get('uname') or p.get('name') or p.get('dgm_nm') or
+                   p.get('fclty_nm') or '').strip() or '명칭 미확보'
+        if feature.get('geometry'):
             clean.append((name, feature))
-    classes = {name: (f"C{i+1:02d}", zoning_style(name))
+    classes = {name: (f'C{i+1:02d}', style_for(name, group))
                for i, name in enumerate(sorted({name for name, _ in clean}))}
     mapped = []
     for name, feature in clean:
-        code, style = classes[name]
-        mapped.append({"type": "Feature", "geometry": feature["geometry"],
-                       "properties": {"name": name, "class_code": code, **style}})
-    legend = [{"name": name, "class_code": code, **style}
-              for name, (code, style) in classes.items()]
-    return {"status": "COMPLETE", "features": mapped, "legend": legend,
-            "note": "별첨 1의 색상·무늬와 ACI 구분 적용. 세부분류 미확인 도형은 미확정 표시. 고시도면이 아닌 기초조사 현황도."}
+        code, sym = classes[name]
+        props = {'name': name, 'class_code': code, **sym}
+        # Preserve verifiable source identity fields, but do not derive an ID.
+        source_props = {str(k).lower(): v for k, v in
+                        (feature.get('properties') or {}).items()}
+        for field in ('unq_mnno', 'fclty_no', 'dgm_no'):
+            if source_props.get(field) not in (None, ''):
+                props['source_' + field] = source_props[field]
+        mapped.append({'type': 'Feature', 'geometry': feature['geometry'],
+                       'properties': props})
+    legend = [{'name': name, 'class_code': code, **sym}
+              for name, (code, sym) in classes.items()]
+    return {'status': 'COMPLETE', 'features': mapped, 'legend': legend,
+            'note': '도시·군관리계획수립지침 별첨 1의 분류 기호 적용. '
+                    '원자료에 없는 세부유형·기호번호는 생성하지 않음. 고시 원도면과 별도 확인 필요.'}
+
+
+def zoning_context(features):
+    """Compatibility wrapper for 5-2, using the common symbol catalog."""
+    return planning_context(features, 'zoning')
