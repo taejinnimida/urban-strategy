@@ -107,5 +107,57 @@ class PlanningSymbolsTest(unittest.TestCase):
         self.assertAlmostEqual(abs(lines[0].offset[0]),15/(2**0.5),places=4)
 
 
+    def test_management_dotted_boundary_and_edge_ticks(self):
+        for name, group, expected in (
+            ('지구단위계획구역', 'area', 'CIRCLE'),
+            ('고도지구', 'district', 'LINE'),
+        ):
+            with self.subTest(name=name):
+                doc=ezdxf.new('R2010')
+                m=doc.modelspace()
+                symbol=style_for(name,group)
+                hatch_pattern(m,box(0,0,80,60),'SURVEY_PLAN',symbol,1.0)
+                self.assertGreater(len(list(m.query(expected))),0)
+
+    def test_planning_svg_and_dxf_generic_forms(self):
+        site=geo()
+        parcels={'status':'COMPLETE','features':[{'type':'Feature','properties':{'jibun':'1-1'},
+                                                  'geometry':site}]}
+        snap={'geometry':site,'_cad_background':parcels}
+        items=(('5-3','district','고도지구'),('5-8','area','지구단위계획구역'),
+               ('5-6','facility','근린공원'))
+        for item_id,group,name in items:
+            with self.subTest(name=name):
+                classified=planning_context([{'type':'Feature','properties':{'name':name},
+                                              'geometry':site}],group)
+                item={'id':item_id,'name':name,'features':classified['features'],
+                      'legend':classified['legend']}
+                ops=make_sheet(item,snap)
+                self.assertTrue(any((v.get('symbol') or {}).get('verified_style')
+                                    for v in ops if v['type']=='polygon'))
+                svg=svg_sheet(ops)
+                ET.fromstring(svg)
+                doc=ezdxf.new('R2010')
+                dxf_paper_sheet(doc,ops)
+                self.assertTrue(len(doc.layouts.get('SURVEY_A3'))>0)
+
+    def test_linear_pipe_plan_symbol_in_paper_dxf(self):
+        from shapely.geometry import LineString
+        line=LineString([(953005,1950005),(953115,1950115)])
+        shaped=mapping(transform(BACK,line))
+        site=geo()
+        classified=planning_context([{'type':'Feature','properties':{'name':'가스공급설비'},
+                                       'geometry':shaped}], 'facility')
+        item={'id':'5-7','name':'기타 도시계획시설',
+              'features':classified['features'],'legend':classified['legend']}
+        snap={'geometry':site,'_cad_background':{'status':'COMPLETE','features':[]}}
+        ops=make_sheet(item,snap)
+        self.assertTrue(any(v['type']=='polyline' and (v.get('symbol') or {}).get('pattern')=='line_dots'
+                            for v in ops))
+        doc=ezdxf.new('R2010')
+        dxf_paper_sheet(doc,ops)
+        self.assertTrue(len(list(doc.layouts.get('SURVEY_A3').query('CIRCLE'))) > 0)
+
+
 if __name__ == '__main__':
     unittest.main()
