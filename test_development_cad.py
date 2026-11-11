@@ -178,7 +178,7 @@ def test_real_dxf_and_bulk_zip_reopen_cad_layers():
     assert provider.count==4
     zip_resp=client.get('/api/development/reports/test-token/dxf.zip')
     assert zip_resp.status_code==200
-    assert provider.count==4 # cached: no re-requests
+    assert provider.count==5 # four cached CAD tiles + one zoning-context fetch for 5-2; no new cadastral tile requests
     with zipfile.ZipFile(io.BytesIO(zip_resp.content)) as z:
         assert {'survey_1_1.dxf','survey_5_2.dxf','survey_manifest.json','README.txt'} <= set(z.namelist())
         assert 'survey_4_8.dxf' not in z.namelist()
