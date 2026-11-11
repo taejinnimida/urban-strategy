@@ -277,6 +277,59 @@ def _svg_pattern(style, pid):
     return ''.join(out)
 
 
+def _svg_boundary_marks(rings, symbol):
+    """Scaled edge dots/ticks and oil/gas pipeline beads in printed SVG."""
+    import math
+    if not symbol or not symbol.get('verified_style'):
+        return []
+    result = []
+    kind = symbol.get('boundary_pattern')
+    edge_ticks = symbol.get('pattern') == 'edge_ticks'
+    line_dots = symbol.get('pattern') == 'line_dots'
+    if kind != 'dots' and not edge_ticks and not line_dots:
+        return result
+    if line_dots:
+        pitch = float(symbol.get('spacing_mm') or 10) / SCALE
+        radius = float(symbol.get('diameter_mm') or 1) / (2 * SCALE)
+        color = rgb_for_aci(color_aci(symbol.get('line_color') or 'green'))
+    elif edge_ticks:
+        pitch = float(symbol.get('spacing_mm') or 4) / SCALE
+        radius = 0.0
+        color = rgb_for_aci(color_aci(symbol.get('pattern_color') or 'red'))
+    else:
+        pitch = float(symbol.get('boundary_spacing_mm') or 3) / SCALE
+        radius = float(symbol.get('boundary_diameter_mm') or 1.5) / (2 * SCALE)
+        color = rgb_for_aci(color_aci(symbol.get('boundary_color') or 'red'))
+    total = 0
+    for ring in rings:
+        if len(ring) < 2:
+            continue
+        ln = LineString(ring)
+        if ln.length < 0.001:
+            continue
+        n = int(ln.length / pitch)
+        if total + n > 5000:
+            raise ValueError('regulation symbol count exceeds print-sheet limit')
+        for i in range(n + 1):
+            d = min(ln.length, i * pitch)
+            p = ln.interpolate(d)
+            if edge_ticks:
+                delta = max(.1, min(.5, pitch / 4))
+                before = ln.interpolate(max(0, d-delta))
+                after = ln.interpolate(min(ln.length, d+delta))
+                dx, dy = after.x-before.x, after.y-before.y
+                length = math.hypot(dx,dy)
+                if length <= .00001:
+                    continue
+                nx,ny = -dy/length,dx/length
+                end_x,end_y = p.x+nx/SCALE,p.y+ny/SCALE
+                result.append(f'<path d="M{p.x:.3f},{p.y:.3f}L{end_x:.3f},{end_y:.3f}" fill="none" stroke="{color}" stroke-width=".35"/>')
+            else:
+                result.append(f'<circle cx="{p.x:.3f}" cy="{p.y:.3f}" r="{radius:.3f}" fill="none" stroke="{color}" stroke-width=".35"/>')
+            total += 1
+    return result
+
+
 def svg_sheet(ops):
     """Editable vector SVG and DXF share the same source symbol metadata."""
     buf = [f'<svg xmlns="http://www.w3.org/2000/svg" width="1160" height="760" viewBox="0 0 {SHEET_W:g} {SHEET_H:g}">',
@@ -311,6 +364,12 @@ def svg_sheet(ops):
             d = ' '.join('M ' + ' L '.join(f'{x:.3f},{y:.3f}' for x, y in ring) + (' Z' if kind == 'polygon' else '') for ring in paths)
             dash = ' stroke-dasharray="7 4"' if op.get('dash') else ''
             buf.append(f'<path d="{d}" fill="{fill}" fill-rule="evenodd" stroke="{stroke}" stroke-width="{weight}" stroke-linejoin="round"{dash}/>')
+            if kind == 'polygon' and symbol.get('boundary_pattern') == 'dots':
+                buf.extend(_svg_boundary_marks(paths, symbol))
+            elif kind == 'polygon' and symbol.get('pattern') == 'edge_ticks':
+                buf.extend(_svg_boundary_marks(paths, symbol))
+            elif kind == 'polyline' and symbol.get('pattern') == 'line_dots':
+                buf.extend(_svg_boundary_marks(paths, symbol))
         elif kind == 'text':
             weight_tag = ' font-weight="bold"' if op.get('bold') else ''
             anchor = {'middle': 'middle', 'end': 'end'}.get(op.get('anchor'), 'start')
