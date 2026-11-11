@@ -6,6 +6,7 @@ external provider calls or client API credentials are added here.
 import math
 import re
 from xml.sax.saxutils import escape
+from shapely.geometry import Polygon
 
 from pyproj import Transformer
 from shapely.geometry import box, shape
@@ -233,13 +234,55 @@ def make_sheet(item, snapshot):
     return ops
 
 
+def _svg_pattern(style, pid):
+    """Physical 1:5,000 guideline spacing interpreted at A3 paper scale."""
+    kind = style.get('pattern')
+    if kind not in ('diagonal', 'vertical', 'circles'):
+        return ''
+    pitch = max(0.5, float(style.get('spacing_mm') or 5) / SCALE)
+    r = max(0.1, float(style.get('diameter_mm') or 2) / (2 * SCALE))
+    from development_planning_symbols import rgb_for_aci
+    line = rgb_for_aci(style.get('pattern_aci'))
+    out = [f'<pattern id="{pid}" patternUnits="userSpaceOnUse" width="{pitch:.3f}" height="{pitch:.3f}">']
+    if style.get('fill_mode') == 'solid':
+        out.append(f'<rect width="{pitch:.3f}" height="{pitch:.3f}" fill="{style["color"]}"/>')
+    if kind == 'diagonal':
+        out.append(f'<path d="M0 {pitch:.3f}L{pitch:.3f} 0" stroke="{line}" stroke-width="0.45"/>')
+    elif kind == 'vertical':
+        out.append(f'<path d="M{pitch/2:.3f} 0L{pitch/2:.3f} {pitch:.3f}" stroke="{line}" stroke-width="0.45"/>')
+    elif kind == 'circles':
+        out.append(f'<circle cx="{pitch/2:.3f}" cy="{pitch/2:.3f}" r="{r:.3f}" fill="none" stroke="{line}" stroke-width="0.4"/>')
+    out.append('</pattern>')
+    return ''.join(out)
+
+
 def svg_sheet(ops):
-    """Return a self-contained vector preview of exactly the CAD paper objects."""
+    """Editable vector SVG and DXF share the same source symbol metadata."""
     buf = [f'<svg xmlns="http://www.w3.org/2000/svg" width="1160" height="760" viewBox="0 0 {SHEET_W:g} {SHEET_H:g}">',
            '<rect x="0" y="0" width="580" height="380" fill="#fff"/>']
+    patterns = {}
     for op in ops:
+        symbol = op.get('symbol') or {}
+        if symbol.get('pattern') in ('diagonal', 'vertical', 'circles'):
+            key = (symbol.get('name'), symbol.get('group'))
+            if key not in patterns:
+                patterns[key] = 'survey-pat-' + str(len(patterns) + 1)
+    if patterns:
+        buf.append('<defs>')
+        for (name, group), ident in patterns.items():
+            symbol = next((op['symbol'] for op in ops if (op.get('symbol') or {}).get('name') == name and
+                           (op.get('symbol') or {}).get('group') == group), None)
+            if symbol:
+                buf.append(_svg_pattern(symbol, ident))
+        buf.append('</defs>')
+    for op in ops:
+        symbol = op.get('symbol') or {}
+        if symbol.get('pattern') in ('diagonal', 'vertical', 'circles'):
+            fill_override = 'url(#' + patterns[(symbol.get('name'), symbol.get('group'))] + ')'
+        else:
+            fill_override = None
         kind, stroke, weight = op['type'], _color(op.get('stroke'), '#000000') if op.get('stroke') != 'none' else 'none', op.get('weight', 0.5)
-        fill = _color(op.get('fill'), '#ffffff') if op.get('fill') not in (None, 'none') else 'none'
+        fill = fill_override or (_color(op.get('fill'), '#ffffff') if op.get('fill') not in (None, 'none') else 'none')
         if kind == 'rect':
             buf.append(f'<rect x="{op["x"]:.3f}" y="{op["y"]:.3f}" width="{op["w"]:.3f}" height="{op["h"]:.3f}" fill="{fill}" stroke="{stroke}" stroke-width="{weight}"/>')
         elif kind in ('polygon', 'polyline'):
@@ -289,7 +332,10 @@ def dxf_paper_sheet(doc, ops):
         if kind == 'rect':
             x, y, w, h = op['x'], op['y'], op['w'], op['h']
             points = [mm(x, y), mm(x + w, y), mm(x + w, y + h), mm(x, y + h)]
-            if op.get('fill') != 'none':
+            sym = op.get('symbol') or {}
+            if sym.get('verified_style'):
+                hatch_pattern(layout, Polygon(points), a['layer'], sym, 1.0)
+            elif op.get('fill') != 'none':
                 hatch = layout.add_hatch(color=7, dxfattribs=a)
                 hatch.set_solid_fill(color=7)
                 hatch.dxf.true_color = rgb2int(tuple(int(_color(op.get('fill'), '#ffffff')[i:i + 2], 16) for i in (1, 3, 5)))
@@ -298,7 +344,13 @@ def dxf_paper_sheet(doc, ops):
                 layout.add_lwpolyline(points, close=True, dxfattribs=a)
         elif kind in ('polygon', 'polyline'):
             rings = op['rings'] if kind == 'polygon' else [op['points']]
-            if op.get('fill') != 'none' and kind == 'polygon':
+            sym = op.get('symbol') or {}
+            if sym.get('verified_style') and op.get('layer', '').startswith('SHEET_THEME'):
+                geom = Polygon([mm(x, y) for x, y in rings[0]],
+                               [[mm(x, y) for x, y in hole] for hole in rings[1:]])
+                if geom.is_valid and not geom.is_empty:
+                    hatch_pattern(layout, geom, a['layer'], sym, 1.0)
+            elif op.get('fill') != 'none' and kind == 'polygon':
                 hatch = layout.add_hatch(color=7, dxfattribs=a)
                 hatch.set_solid_fill(color=7)
                 hatch.dxf.true_color = rgb2int(tuple(int(_color(op['fill'], '#ffffff')[i:i + 2], 16) for i in (1, 3, 5)))
