@@ -43,6 +43,8 @@ def _exportable(item, snapshot):
         return (item.get('thematic_type') == 'building' and
                 item.get('cad_exportable') is True and
                 item.get('geometry_status') in ('COMPLETE', 'PARTIAL'))
+    if item['id'] in ('5-2', '5-3', '5-4', '5-5', '5-6', '5-7', '5-8') and not item.get('features'):
+        return False
     # WMS-only cover and geometrically incomplete cover are NOT exportable.
     # An officially registered vector source with PARTIAL status must not
     # bypass the strict 2-6 coverage/classification test.
@@ -304,8 +306,8 @@ def dxf_bytes(item, snapshot, metadata):
         except (ValueError, TypeError):
             counts['labels_omitted'] += 1
     # Land and zoning themes use the identical source category colors in SVG and DXF.
-    if item.get('thematic_type') in ('ownership', 'jimok', 'land_numeric', 'land_shape', 'landcover', 'zoning', 'ecobank', 'building'):
-        allowed_theme = (item['id'] in ('2-1', '2-2', '2-3', '2-4', '2-5', '2-6', '5-2', '4-3', *BUILDING_IDS)
+    if item.get('thematic_type') in ('ownership', 'jimok', 'land_numeric', 'land_shape', 'landcover', 'zoning', 'planning', 'ecobank', 'building'):
+        allowed_theme = (item['id'] in ('2-1', '2-2', '2-3', '2-4', '2-5', '2-6', '5-2', '5-3', '5-4', '5-5', '5-6', '5-7', '5-8', '4-3', *BUILDING_IDS)
                          and (item.get('provider_verified') is True
                               or (item['id'] in BUILDING_IDS and _exportable(item, snapshot))))
         if not allowed_theme:
@@ -322,7 +324,7 @@ def dxf_bytes(item, snapshot, metadata):
             layer_name = theme_layer + '_' + code
             rgb = rgb2int(tuple(int(color[i:i+2], 16) for i in (1, 3, 5)))
             if layer_name not in doc.layers:
-                symbol = style_for(group.get('name'), 'zoning') if item.get('thematic_type') == 'zoning' else None
+                symbol = style_for(group.get('name'), 'zoning' if item.get('thematic_type') == 'zoning' else group.get('group') or 'facility') if item.get('thematic_type') in ('zoning','planning') else None
                 aci = symbol.get('aci') if symbol and symbol.get('verified_style') else None
                 attrs = {'color': int(aci)} if aci is not None else {'color': 7, 'true_color': rgb}
                 doc.layers.new(layer_name, dxfattribs=attrs)
@@ -345,9 +347,10 @@ def dxf_bytes(item, snapshot, metadata):
                 for polygon in polygons:
                     if polygon.area <= 1e-8:
                         continue
-                    if item.get('thematic_type') == 'zoning':
-                        zoning = style_for(props.get('name') or props.get('uname') or props.get('dgm_nm'), 'zoning')
-                        hatch_pattern(model, polygon, layer_name, zoning, 5.0)
+                    if item.get('thematic_type') in ('zoning','planning'):
+                        group = 'zoning' if item.get('thematic_type') == 'zoning' else props.get('group') or 'facility'
+                        plan_symbol = style_for(props.get('name') or props.get('uname') or props.get('dgm_nm'), group)
+                        hatch_pattern(model, polygon, layer_name, plan_symbol, 5.0)
                     else:
                         hatch = model.add_hatch(color=7, dxfattribs={'layer': layer_name, 'true_color': rgb})
                         hatch.set_solid_fill(color=7)
@@ -371,7 +374,7 @@ def dxf_bytes(item, snapshot, metadata):
         model.set_redraw_order([(entity.dxf.handle, f'{i+1:X}') for i, entity in enumerate(draw_order)])
         doc.header['$SORTENTS'] = int(doc.header.get('$SORTENTS', 0)) | 16
         metadata['thematic_legend'] = item.get('legend') or []
-        if item.get('thematic_type') == 'zoning':
+        if item.get('thematic_type') in ('zoning','planning'):
             metadata['zoning_symbol_source'] = '도시·군관리계획 조서 및 도면 작성지침 별첨 1, pp.23-24'
             metadata['zoning_symbol_scale'] = 5000
             metadata['zoning_aci_and_pattern'] = 'official symbol index and spacing; missing subtypes remain UNKNOWN'
@@ -399,7 +402,7 @@ def dxf_bytes(item, snapshot, metadata):
         except (ValueError, KeyError, TypeError):
             raise HTTPException(422, '검토항목 공간자료의 CAD 변환에 실패했습니다.') from None
     if (item['id'] == '1-1' or
-            (item['id'] in ('2-1','2-2','2-3','2-4','2-5','2-6','5-2','4-3',*BUILDING_IDS)
+            (item['id'] in ('2-1','2-2','2-3','2-4','2-5','2-6','5-2','5-3','5-4','5-5','5-6','5-7','5-8','4-3',*BUILDING_IDS)
              and (item.get('provider_verified') is True
                   or (item['id'] in BUILDING_IDS and _exportable(item, snapshot))))):
         from development_survey_sheet import make_sheet, dxf_paper_sheet
@@ -608,6 +611,14 @@ def register_cad(router, output, snapshots, lock, fetch_layer, layer_type):
     def sheet_context(token, report, snapshot, item):
         # The report's clipped official FACT is not replaced by the wider
         # surrounding zoning backdrop. The surrounding query is display-only.
+        if item.get('id') in ('5-3','5-4','5-5','5-6','5-7','5-8'):
+            from development_survey_sheet import planning_context
+            group = 'district' if item['id']=='5-3' else 'area' if item['id'] in ('5-4','5-8') else 'facility'
+            classified = planning_context(item.get('features') or [], group)
+            item['features'] = classified['features']
+            item['legend'] = classified['legend']
+            item['thematic_type'] = 'planning'
+            return item
         if item.get('id') != '5-2':
             return item
         from development_survey_sheet import zoning_context
@@ -649,7 +660,7 @@ def register_cad(router, output, snapshots, lock, fetch_layer, layer_type):
 
     @router.get('/reports/{token}/sheet/{item_id}.svg')
     def download_sheet(token: str, item_id: str):
-        if item_id not in ('1-1', '2-1', '2-2', '2-3', '2-4', '2-5', '2-6', '5-2', '4-3', *BUILDING_IDS):
+        if item_id not in ('1-1', '2-1', '2-2', '2-3', '2-4', '2-5', '2-6', '5-2', '5-3', '5-4', '5-5', '5-6', '5-7', '5-8', '4-3', *BUILDING_IDS):
             raise HTTPException(404, '표준 도면 미리보기를 지원하지 않는 항목입니다.')
         report, snapshot = context(token)
         item = next((copy.deepcopy(x) for x in report['items'] if x['id'] == item_id), None)
