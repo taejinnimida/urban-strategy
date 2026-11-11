@@ -261,6 +261,8 @@ def assemble_building_fact(data, snapshot):
         for field in FIELDS:
             gis_value, gis_key = _gis_field(field, gis_props, data.get('as_of'))
             title_value = ledger.get(field) if ledger else None
+            internal_basis = ledger.get(field+'_basis') if ledger and field in ('coverage','far') else None
+            is_internal = bool(internal_basis and internal_basis != '건축HUB 원문')
             # Zero coverage/FAR on a footprint is an unverified placeholder,
             # not positive evidence of an actual 0% building.
             if field in ('coverage', 'far'):
@@ -268,7 +270,14 @@ def assemble_building_fact(data, snapshot):
                     gis_value = None
                 if _nonempty(title_value) and not _positive_numeric(title_value):
                     title_value = None
-            if _nonempty(gis_value) and _nonempty(title_value):
+            if is_internal and _nonempty(gis_value):
+                # A derived title-side number cannot override the observed GIS
+                # attribute or be presented as official direct agreement.
+                values = {'value': gis_value, 'source': 'GIS_BUILDING',
+                          'assurance': 'SOURCE_ATTRIBUTE', 'gis_field': gis_key,
+                          'alternate_internal_value': title_value,
+                          'alternate_internal_basis': internal_basis}
+            elif _nonempty(gis_value) and _nonempty(title_value):
                 if _agree(field, gis_value, title_value):
                     values = {'value': title_value,
                               'source': 'GIS+BUILDING_REGISTER',
@@ -283,9 +292,12 @@ def assemble_building_fact(data, snapshot):
                 values = {'value': gis_value, 'source': 'GIS_BUILDING',
                           'assurance': 'SOURCE_ATTRIBUTE', 'gis_field': gis_key}
             elif _nonempty(title_value):
-                values = {'value': title_value, 'source': 'BUILDING_REGISTER',
-                          'assurance': 'DIRECT_LEDGER' if exact_ledger else 'SPATIAL_REFERENCE',
-                          'gis_field': None}
+                values = {'value': title_value,
+                          'source': 'PLATFORM_DERIVED' if is_internal else 'BUILDING_REGISTER',
+                          'assurance': ('INTERNAL_CALC' if exact_ledger else 'INTERNAL_CALC_PROVISIONAL')
+                              if is_internal else ('DIRECT_LEDGER' if exact_ledger else 'SPATIAL_REFERENCE'),
+                          'gis_field': None,
+                          'basis': internal_basis if is_internal else None}
             else:
                 values = {'value': None, 'source': None, 'assurance': 'UNKNOWN', 'gis_field': None}
             attrs[field] = values
@@ -315,6 +327,8 @@ def assemble_building_fact(data, snapshot):
             'match_basis': ('BUILDING_REGISTER_ID' if exact_ledger else
                             'UNIQUE_PARCEL_OVERLAY_PROVISIONAL' if candidate else None),
             'registered_pnus': ledger.get('pnus') if ledger else None,
+            'site_area_m2': ledger.get('site_area') if ledger else None,
+            'site_area_basis': ledger.get('site_area_source') if ledger else None,
             'address_building_id': observation['address_id'],
             'attributes': attrs, 'conflicts': disagreements,
         })
@@ -343,6 +357,7 @@ def assemble_building_fact(data, snapshot):
                                for rec in records)
                 for assurance in ('DIRECT_AGREEMENT', 'DIRECT_LEDGER',
                                   'SPATIAL_AGREEMENT', 'SPATIAL_REFERENCE', 'SPATIAL_CONFLICT',
+                                  'INTERNAL_CALC', 'INTERNAL_CALC_PROVISIONAL',
                                   'SOURCE_ATTRIBUTE', 'CONFLICT', 'UNKNOWN')}
         for field in FIELDS
     }
@@ -375,5 +390,6 @@ def assemble_building_fact(data, snapshot):
             'note': ('건물 공간도형 수는 건축물 법정 동수가 아님. 관리번호 일치만 직접연계로 인정. '
                      '지적 필지에 95% 이상 중첩하고 단일 대장·단일 도형인 경우에만 공간상 잠정 후보로 표시하며 '
                      '법적 건축물 동일성·동수는 확정하지 않음. 건폐율·용적률의 0값은 미확인 처리. '
+                     '플랫폼 내부산정·개략추정은 공식 건축물대장 원문 수치와 구분하고 법정 용적률로 단정하지 않음. '
                      '겹치는 보조 건물도형은 중복 우려로 제외·별도 집계하고, 미연계는 무허가나 멸실로 단정하지 않음. '
                      '건축물대장은 지적 편입필지 관련 조회분이며 전국 전체 건축물대장과 동등하지 않음.')}
