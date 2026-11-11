@@ -78,8 +78,9 @@ def buildings(rows, day, land_rows=None):
                              ('coverage','bcRat'),('far','vlRat'),('households','hhldCnt'),
                              ('families','fmlyCnt'),('units','hoCnt')]:
                 result[key][dest]=number(r.get(src))
-            result[key]['site_area']=number(r.get('platArea'))
-            result[key]['site_area_source']='건축HUB 대지면적' if result[key]['site_area'] and result[key]['site_area']>0 else None
+            registered_site_area=number(r.get('platArea'))
+            result[key]['site_area']=registered_site_area if registered_site_area and registered_site_area>0 else None
+            result[key]['site_area_source']='건축HUB 대지면적' if result[key]['site_area'] else None
             result[key]['coverage_basis']='건축HUB 원문' if result[key]['coverage'] and result[key]['coverage']>0 else None
             result[key]['far_basis']='건축HUB 원문' if result[key]['far'] and result[key]['far']>0 else None
             result[key]['register_kind']=r.get('regstrKindCdNm')
