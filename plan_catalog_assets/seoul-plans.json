@@ -1,0 +1,294 @@
+{
+  "schema_version": 1,
+  "checked_at": "2026-11-11",
+  "coverage": "서울 분야별 초기 등록자료. 전체 계획 및 모든 변경 이력을 수록했다는 의미가 아님.",
+  "plans": [
+    {
+      "id": "seoul-urban-2040",
+      "region": "11",
+      "category": "urban",
+      "title": "2040 서울도시기본계획",
+      "target_year": 2040,
+      "status": "approved",
+      "milestone_date": "2023-01-05",
+      "milestone_label": "확정 공고",
+      "note": "",
+      "verification": "source",
+      "checked_at": "2026-11-11",
+      "links": [
+        {
+          "label": "본보고서 PDF",
+          "url": "https://urban.seoul.go.kr/UpisArchive/DATA/PWEB/STATIC/2040_seoul_plan.pdf",
+          "kind": "document",
+          "verification": "source",
+          "checked_at": "2026-11-11",
+          "note": ""
+        },
+        {
+          "label": "자료집 PDF",
+          "url": "https://urban.seoul.go.kr/UpisArchive/DATA/PWEB/STATIC/2040_report.pdf",
+          "kind": "document",
+          "verification": "source",
+          "checked_at": "2026-11-11",
+          "note": ""
+        },
+        {
+          "label": "서울시 계획 안내",
+          "url": "https://urban.seoul.go.kr/view/html/PMNU3030000001",
+          "kind": "reference",
+          "verification": "source",
+          "checked_at": "2026-11-11",
+          "note": ""
+        },
+        {
+          "label": "확정 공고 · 서초구 공식 게시",
+          "url": "https://www.seocho.go.kr/site/seocho/ex/bbs/View.do?bcIdx=377276&cbIdx=270",
+          "kind": "notice",
+          "verification": "source",
+          "checked_at": "2026-11-11",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "seoul-urban-2030",
+      "region": "11",
+      "category": "urban",
+      "title": "2030 서울도시기본계획 (서울플랜)",
+      "target_year": 2030,
+      "status": "historical",
+      "milestone_date": "2014-05-01",
+      "milestone_label": "확정 공고",
+      "note": "2040 계획과 구분하여 이전 계획 자료로 보존합니다.",
+      "verification": "source",
+      "checked_at": "2026-11-11",
+      "links": [
+        {
+          "label": "확정 공고 및 계획도서",
+          "url": "https://news.seoul.go.kr/citybuild/archives/32796",
+          "kind": "notice",
+          "verification": "source",
+          "checked_at": "2026-11-11",
+          "note": ""
+        },
+        {
+          "label": "계획 소개",
+          "url": "https://news.seoul.go.kr/citybuild/archives/34089",
+          "kind": "reference",
+          "verification": "source",
+          "checked_at": "2026-11-11",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "seoul-architecture-3",
+      "region": "11",
+      "category": "architecture",
+      "title": "제3차 서울특별시 건축기본계획",
+      "target_year": 2027,
+      "status": "approved",
+      "milestone_date": "2024-05-30",
+      "milestone_label": "고시 · 서울특별시 제2024-268호",
+      "note": "계획기간 2023~2027. 고시 날짜와 계획기간을 구분합니다.",
+      "verification": "source",
+      "checked_at": "2026-11-11",
+      "links": [
+        {
+          "label": "제3차 서울 건축기본계획 보고서 PDF",
+          "url": "https://www.aurum.re.kr/Legal/PlanFileDownLoad.aspx?num=2096",
+          "kind": "document",
+          "verification": "source",
+          "checked_at": "2026-11-11",
+          "note": ""
+        },
+        {
+          "label": "계획도서 안내 · 건축공간연구원 AURUM",
+          "url": "https://www.aurum.re.kr/Legal/LegalSub.aspx?pcode=C02",
+          "kind": "reference",
+          "verification": "source",
+          "checked_at": "2026-11-11",
+          "note": ""
+        },
+        {
+          "label": "고시 수록 · 서울시보 제3981호 (159쪽)",
+          "url": "https://event.seoul.go.kr/seoulsibo/detailview.do?cn_seq=MjQxODk%3D",
+          "kind": "notice",
+          "verification": "source",
+          "checked_at": "2026-11-11",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "seoul-landscape-2016",
+      "region": "11",
+      "category": "landscape",
+      "title": "2016 서울특별시 경관계획",
+      "target_year": null,
+      "status": "approved",
+      "milestone_date": "2016",
+      "milestone_label": "수립연도",
+      "note": "공식 안내 페이지의 2026년 수정일은 계획 수립연도와 다릅니다.",
+      "verification": "source",
+      "checked_at": "2026-11-11",
+      "links": [
+        {
+          "label": "서울특별시 경관계획 및 관련 도서",
+          "url": "https://news.seoul.go.kr/citybuild/archives/533012",
+          "kind": "document",
+          "verification": "source",
+          "checked_at": "2026-11-11",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "seoul-renewal-downtown-2030",
+      "region": "11",
+      "category": "renewal",
+      "title": "2030 도시·주거환경정비기본계획 · 도시정비형 재개발사업부문",
+      "target_year": 2030,
+      "status": "amended",
+      "milestone_date": "2026-01",
+      "milestone_label": "변경도서 공개",
+      "note": "공식 게시물에 2025년 11월·2026년 1월 변경도서가 함께 수록되어 있습니다.",
+      "verification": "source",
+      "checked_at": "2026-11-11",
+      "links": [
+        {
+          "label": "본보고서·도면집 및 변경 이력",
+          "url": "https://news.seoul.go.kr/citybuild/archives/43005",
+          "kind": "document",
+          "verification": "source",
+          "checked_at": "2026-11-11",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "seoul-renewal-housing-2030",
+      "region": "11",
+      "category": "renewal",
+      "title": "2030 도시·주거환경정비기본계획 · 주거환경정비사업부문",
+      "target_year": 2030,
+      "status": "amended",
+      "milestone_date": "2025-06-26",
+      "milestone_label": "변경 고시 · 서울특별시 제2025-348호",
+      "note": "등록된 변경고시 기준의 이력입니다. 추가 변경자료를 함께 보완할 수 있습니다.",
+      "verification": "source",
+      "checked_at": "2026-11-11",
+      "links": [
+        {
+          "label": "본보고서 및 권역별 주거생활권계획",
+          "url": "https://news.seoul.go.kr/citybuild/archives/525547",
+          "kind": "document",
+          "verification": "source",
+          "checked_at": "2026-11-11",
+          "note": ""
+        },
+        {
+          "label": "2025년 6월 변경 고시",
+          "url": "https://news.seoul.go.kr/citybuild/archives/528131",
+          "kind": "notice",
+          "verification": "source",
+          "checked_at": "2026-11-11",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "seoul-transport-basic",
+      "region": "11",
+      "category": "transport",
+      "title": "서울특별시 도시교통정비 기본계획",
+      "target_year": 2031,
+      "status": "approved",
+      "milestone_date": "2015-01-12",
+      "milestone_label": "계획도서 공식 게시",
+      "note": "게시일 기준입니다. 수립·승인일은 별도 확인이 필요합니다.",
+      "verification": "source",
+      "checked_at": "2026-11-11",
+      "links": [
+        {
+          "label": "제1편 요약보고서 PDF",
+          "url": "https://news.seoul.go.kr/traffic/files/2015/01/54b35b6a3116a1.83096930.pdf",
+          "kind": "document",
+          "verification": "source",
+          "checked_at": "2026-11-11",
+          "note": ""
+        },
+        {
+          "label": "전체 5개 분권 내려받기",
+          "url": "https://news.seoul.go.kr/traffic/archives/20800",
+          "kind": "document",
+          "verification": "source",
+          "checked_at": "2026-11-11",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "seoul-transport-midterm",
+      "region": "11",
+      "category": "transport",
+      "title": "서울특별시 도시교통정비 중기계획",
+      "target_year": null,
+      "status": "approved",
+      "milestone_date": "2023-04-12",
+      "milestone_label": "계획도서 공식 게시",
+      "note": "게시일 기준입니다. 계획기간과 수립·승인일은 별도 확인이 필요합니다.",
+      "verification": "source",
+      "checked_at": "2026-11-11",
+      "links": [
+        {
+          "label": "제1·2권 보고서 및 전자책",
+          "url": "https://news.seoul.go.kr/traffic/archives/509428",
+          "kind": "document",
+          "verification": "source",
+          "checked_at": "2026-11-11",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "seoul-regeneration-2030",
+      "region": "11",
+      "category": "regeneration",
+      "title": "2030 서울특별시 도시재생전략계획",
+      "target_year": 2030,
+      "status": "amended",
+      "milestone_date": "2026-06-09",
+      "milestone_label": "변경(2차) 공고 게시",
+      "note": "최근 등록 이력은 공고 게시일입니다. 공고문과 계획 원문을 함께 확인할 수 있습니다.",
+      "verification": "source",
+      "checked_at": "2026-11-11",
+      "links": [
+        {
+          "label": "계획 안내 및 보고서",
+          "url": "https://uri.seoul.go.kr/web/contents/22.do?mid=1082",
+          "kind": "document",
+          "verification": "source",
+          "checked_at": "2026-11-11",
+          "note": ""
+        },
+        {
+          "label": "2026년 변경(2차) 공고",
+          "url": "https://uri.seoul.go.kr/web/bbsPost/60/5052/detail.do?mid=1075",
+          "kind": "notice",
+          "verification": "source",
+          "checked_at": "2026-11-11",
+          "note": ""
+        },
+        {
+          "label": "2024년 변경 공고",
+          "url": "https://uri.seoul.go.kr/web/bbsPost/60/1455/detail.do?mid=1108",
+          "kind": "notice",
+          "verification": "source",
+          "checked_at": "2026-11-11",
+          "note": ""
+        }
+      ]
+    }
+  ]
+}

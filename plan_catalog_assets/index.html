@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="행정구역별 상위 및 관련계획을 찾고, 찾은 자료의 링크를 함께 모읍니다.">
+  <title>상위 및 관련계획 · 도시정보플랫폼</title>
+  <link rel="stylesheet" href="/plans/assets/plans.css">
+  <script src="/plans/assets/plans.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#planResults">계획목록으로 바로가기</a>
+<header class="topbar">
+  <a class="brand" href="/" aria-label="도시정보플랫폼으로 돌아가기"><span class="brand-mark" aria-hidden="true">U</span><span>도시정보플랫폼<small>URBAN STRATEGY</small></span></a>
+  <nav aria-label="서비스"><a href="/">기초현황조사</a><a href="/plans" aria-current="page">상위 및 관련계획</a></nav>
+  <span class="community-label"><i></i>함께 모으는 계획자료</span>
+</header>
+<main>
+  <section class="intro">
+    <div><div class="eyebrow">지역의 계획을 한곳에서</div><h1>상위 및 관련계획</h1><p>지역을 선택하고, 필요한 계획을 바로 열어보세요.</p></div>
+    <button type="button" class="primary" id="addPlan"><span aria-hidden="true">＋</span> 계획 추가</button>
+  </section>
+  <p id="storageNotice" class="notice" hidden></p>
+  <div class="workspace">
+    <aside class="region-panel" aria-label="행정구역 선택">
+      <div class="panel-head"><h2>어느 지역을 찾으세요?</h2><button id="nationalMap" class="text-button" type="button">전국 지도</button></div>
+      <label class="sr-only" for="regionSearch">지역 검색</label><input id="regionSearch" type="search" placeholder="시·도, 시·군·구 검색" autocomplete="off">
+      <div id="regionMatches" class="region-matches" hidden></div>
+      <div class="map-breadcrumb" id="mapBreadcrumb"></div>
+      <div class="map-frame" id="mapFrame"><div id="regionMap" role="group" aria-label="행정구역 지도"></div></div>
+      <div id="mapError" class="notice" hidden></div>
+      <div class="map-legend"><span><i class="legend-filled"></i>등록자료 있음</span><span><i class="legend-empty"></i>함께 채울 지역</span></div>
+      <div class="region-picker"><label for="provinceSelect">시·도</label><select id="provinceSelect"></select><label for="districtSelect">시·군·구</label><select id="districtSelect"></select><select id="subdistrictSelect" aria-label="일반구 선택" hidden></select></div>
+      <div class="contribution-note"><span aria-hidden="true">↗</span><p>한 번 찾은 자료를,<br><strong>다음 사람도 쉽게.</strong><small>알고 있는 계획의 링크를 남겨주세요.</small></p></div>
+      <details class="map-source"><summary>지도 출처</summary><p id="mapSource"></p><a href="https://github.com/vuski/admdongkor" target="_blank" rel="noopener noreferrer">경계자료 출처 ↗</a></details>
+    </aside>
+    <section class="results-panel" aria-labelledby="regionHeading">
+      <div class="results-title"><div><div class="eyebrow" id="regionPath">행정구역별 계획</div><h2 id="regionHeading">서울특별시 <span id="planCount"></span></h2></div><button id="copyLocation" class="quiet" type="button" title="선택한 지역의 주소 복사">지역 공유 ↗</button></div>
+      <div class="category-tabs" id="categories" role="group" aria-label="계획 분야"></div>
+      <div class="search-row"><label class="search-box"><span aria-hidden="true">⌕</span><input id="planSearch" type="search" placeholder="계획명으로 찾기" aria-label="계획명 검색"></label><select id="statusFilter" aria-label="수립상태 선택"></select></div>
+      <p class="scope-note" id="scopeNote">선택 지역 내 계획과 상위 행정구역 자료를 함께 보여줍니다.</p>
+      <div id="listStatus" role="status" class="list-status">계획목록을 불러오는 중입니다.</div>
+      <div id="planResults" aria-live="polite" aria-busy="true"></div>
+      <div id="pagination" class="pagination"></div>
+      <div class="list-footer"><span>찾은 자료가 목록에 없나요?</span><button id="addPlanBottom" class="text-button" type="button">＋ 계획 추가하기</button></div>
+      <p class="data-note">표시된 상태·날짜는 연결된 자료를 기준으로 합니다. ‘출처 확인’은 최신 계획 전체가 수록되었다는 의미가 아닙니다.</p>
+    </section>
+  </div>
+  <section id="adminPanel" class="admin-panel" hidden><h2>자료 관리</h2><div id="adminContent"></div></section>
+</main>
+<footer class="footer"><strong>도시정보플랫폼</strong><span>함께 찾고, 함께 채우는 상위 및 관련계획</span><a href="/plans/manage">자료 관리</a></footer>
+<dialog id="formDialog" aria-labelledby="dialogTitle"><form id="contributionForm"><div class="dialog-head"><div><div class="eyebrow">함께 만드는 계획목록</div><h2 id="dialogTitle">계획 추가</h2></div><button type="button" class="close" id="closeDialog" aria-label="닫기">×</button></div><div id="formFields"></div><div id="formError" class="form-error" role="alert" hidden></div><div class="dialog-actions"><button type="button" class="quiet" id="cancelDialog">취소</button><button type="submit" class="primary" id="submitForm">등록하기</button></div></form></dialog>
+<div id="toast" role="status" hidden></div>
+</body>
+</html>

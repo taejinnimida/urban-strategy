@@ -664,10 +664,18 @@ function devInstallSurveyNextActions(){
 }
 
 function devExport(){const blob=new Blob([JSON.stringify({snapshot:devSite,facts:devFacts,rule_status:'NOT_IMPLEMENTED'},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='development-review.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}
+function devInstallRelatedPlansLink(){
+ if(devMode==='seoul'||document.getElementById('devRelatedPlansLink'))return;
+ const host=document.querySelector('#serviceReviewPage .service-page-head');if(!host)return;
+ const box=document.createElement('div');box.id='devRelatedPlansLink';box.style.cssText='margin:12px 8px;padding:12px 16px;border:1px solid #dce4ee;border-radius:8px;background:#fff;display:flex;gap:14px;align-items:center;flex-wrap:wrap';
+ const link=document.createElement('a');link.href='/plans';link.target='_blank';link.rel='noopener';link.textContent='상위 및 관련계획 ↗';link.style.cssText='color:#285cab;font-size:14px;font-weight:700;text-decoration:none';
+ const note=document.createElement('span');note.textContent='지역별 계획·수립현황 조회 / 찾은 자료 링크 추가';note.style.cssText='color:#718096;font-size:12px';box.append(link,note);host.after(box);
+}
 async function devInit(){
  const head=document.querySelector('#serviceReviewPage .service-page-head');if(head){head.replaceChildren();const h=document.createElement('h2');h.textContent=devMode==='select'?'대상지 선정 · 전국 지도':devMode==='seoul'?'서울 도시정비검토':'기초현황조사';head.append(h);if(devMode==='select')head.hidden=true;}
  const status=document.createElement('p');status.id='devStatus';status.setAttribute('role','status');status.style.cssText='padding:12px;background:#edf6fa;color:#143852';head?.after(status);
  if(devMode!=='seoul'){const h=document.querySelector('.cc-header h1');if(h)h.textContent='도시계획 기초현황조사·사업검토 플랫폼';const sub=document.querySelector('.cc-header .sub');if(sub)sub.textContent='대상지 선정';document.querySelectorAll('.main-map-layer-note').forEach(e=>e.textContent='전국 VWorld 용도지역·지적·시설 표시용 도면. 확대하여 확인하세요. 자료 미확보는 시설 없음이 아닙니다.');}
+ devInstallRelatedPlansLink();
  if(devMode==='select'){
  devInstallParcelSelection();
  devInstallParcelView();
