@@ -340,6 +340,8 @@ const devPlanningFacilityColors=[
  '#a3a8ad'  // other facilities
 ];
 let devPlanningMap=null,devPlanningGroups=null,devPlanningStamp='',devPlanningLabels=[];
+let devPlanningParcelLines=null,devPlanningParcelText=null,devPlanningParcelTimer=null;
+let devPlanningParcelRevision=0,devPlanningParcelBusy=false,devPlanningParcelPending=false;
 function devPlanningSymbol(id,feature){
  const p=Object.fromEntries(Object.entries(feature.properties||{}).map(([k,v])=>[k.toLowerCase(),v]));
  const name=String(p.uname||p.dgm_nm||p.fclty_nm||p.name||p.jibun||'').trim();
@@ -391,6 +393,97 @@ function devPlanningApplyPattern(layer,symbol){
  layer._path.setAttribute('fill','url(#'+id+')');
  layer._path.setAttribute('fill-opacity',String(DEV_PLANNING_FILL_OPACITY));
 }
+
+/* Viewport cadastral context only. This NEVER alters the selected site or FACT. */
+function devPlanningParcelStatus(message){
+ const status=document.getElementById('devPlanningParcelStatus');
+ if(status)status.textContent=message;
+}
+function devPlanningParcelBounds(){
+ const b=devPlanningMap.getBounds();
+ return {type:'Polygon',coordinates:[[[b.getWest(),b.getSouth()],[b.getEast(),b.getSouth()],
+ [b.getEast(),b.getNorth()],[b.getWest(),b.getNorth()],[b.getWest(),b.getSouth()]]]};
+}
+function devPlanningDrawParcelLabels(features){
+ devPlanningParcelText.clearLayers();
+ if(devPlanningMap.getZoom()<16)return;
+ const used=[],bounds=devPlanningMap.getBounds();
+ for(const feature of features){
+  if(used.length>=160)break;
+  const value=devParcelViewLabel(feature);
+  if(!value)continue;
+  let point=feature.properties?.label_point;
+  if(!Array.isArray(point)){try{point=turf.pointOnFeature(feature).geometry.coordinates;}catch(_){continue;}}
+  const ll=L.latLng(point[1],point[0]);
+  if(!bounds.contains(ll))continue;
+  const pix=devPlanningMap.latLngToContainerPoint(ll);
+  const width=Math.min(120,Math.max(34,value.length*8));
+  if(used.some(p=>Math.abs(p.x-pix.x)<(p.w+width)/2+5&&Math.abs(p.y-pix.y)<20))continue;
+  used.push({x:pix.x,y:pix.y,w:width});
+  const label=document.createElement('span');label.textContent=value;
+  L.marker(ll,{pane:'devParcel',keyboard:false,interactive:false,
+    icon:L.divIcon({className:'dev-plan-parcel-context-label',html:label,iconSize:[width,18],iconAnchor:[width/2,9]})}).addTo(devPlanningParcelText);
+ }
+}
+async function devPlanningFetchViewportParcels(){
+ if(!devPlanningMap||!devPlanningParcelLines||devMode!=='development')return;
+ const revision=devPlanningParcelRevision;
+ if(!devPlanningMap.hasLayer(devPlanningGroups.parcel)){
+  devPlanningParcelStatus('지적경계 표시 꺼짐');return;
+ }
+ if(devPlanningParcelBusy){devPlanningParcelPending=true;return;}
+ if(devPlanningMap.getZoom()<15){
+  devPlanningParcelLines.clearLayers();devPlanningParcelText.clearLayers();
+  devPlanningParcelStatus('주변 지적선은 지도를 확대하면 표시됩니다.');return;
+ }
+ const geometry=devPlanningParcelBounds();
+ if(turf.area(turf.feature(geometry))>5000000){
+  devPlanningParcelLines.clearLayers();devPlanningParcelText.clearLayers();
+  devPlanningParcelStatus('화면 범위가 넓어 지적 조회를 보류했습니다. 지도를 확대하세요.');return;
+ }
+ devPlanningParcelBusy=true;devPlanningParcelPending=false;
+ devPlanningParcelStatus('화면 전체 주변 연속지적 조회 중…');
+ try{
+  let result=await devApi('parcel-view',{geometry},30000);
+  if(revision!==devPlanningParcelRevision)return;
+  if(result.status==='UNKNOWN'&&!['RATE_LIMIT','TEMPORARILY_PAUSED','SERVICE_NOT_READY'].includes(result.error_code)&&devClientReady()){
+   try{
+    const rsp=(await devVWorldClientRequest(geometry,'LP_PA_CBND_BUBUN',1,1000))?.response;
+    if(rsp?.status==='NOT_FOUND')result={status:'COMPLETE',features:[]};
+    else if(rsp?.status==='OK'&&Array.isArray(rsp.result?.featureCollection?.features)){
+     const features=rsp.result.featureCollection.features;
+     result={status:features.length>=1000?'PARTIAL':'COMPLETE',features};
+    }
+   }catch(_){/* Keep original failure if browser fallback fails. */}
+  }
+  if(revision!==devPlanningParcelRevision)return;
+  if(!['COMPLETE','PARTIAL'].includes(result.status))throw Error('CADASTRE_UNAVAILABLE');
+  const features=(result.features||[]).filter(f=>f?.geometry&&['Polygon','MultiPolygon'].includes(f.geometry.type));
+  devPlanningParcelLines.clearLayers();
+  devPlanningParcelLines.addData({type:'FeatureCollection',features});
+  devPlanningDrawParcelLabels(features);
+  devPlanningUpdateLabels();
+  devPlanningParcelStatus(result.status==='PARTIAL'
+   ?'주변 연속지적 '+features.length+'필지 일부 표시 · 조회 한도에 도달했습니다. 확대하여 조회하세요.'
+   :features.length?'화면 주변 연속지적 '+features.length+'필지 표시':'주변 지적 조회 0건 · 수록 여부 확인 필요');
+ }catch(_){
+  if(revision===devPlanningParcelRevision){
+   devPlanningParcelLines.clearLayers();devPlanningParcelText.clearLayers();
+   devPlanningParcelStatus('주변 지적 조회 실패 · 대상지 지적만 표시. 이동·확대 시 재조회합니다.');
+  }
+ }finally{
+  devPlanningParcelBusy=false;
+  if(devPlanningParcelPending||revision!==devPlanningParcelRevision){
+   devPlanningParcelPending=false;devPlanningScheduleViewportParcels();
+  }
+ }
+}
+function devPlanningScheduleViewportParcels(){
+ ++devPlanningParcelRevision;
+ if(devPlanningParcelTimer)clearTimeout(devPlanningParcelTimer);
+ if(devPlanningMap)devPlanningParcelTimer=setTimeout(devPlanningFetchViewportParcels,550);
+}
+
 function devPlanningRefresh(){
  if(!devPlanningMap)return;
  const status=document.getElementById('devPlanningStatus');
@@ -399,6 +492,8 @@ function devPlanningRefresh(){
  const stamp=JSON.stringify(devFacts.map(f=>[f.layer,f.fact_revision,f.status,f.queried_at,f.features?.length]));
  if(stamp===devPlanningStamp)return;devPlanningStamp=stamp;
  for(const group of Object.values(devPlanningGroups))group.clearLayers();devPlanningLabels=[];
+ if(devPlanningParcelLines)devPlanningGroups.parcel.addLayer(devPlanningParcelLines);
+ if(devPlanningParcelText)devPlanningGroups.parcel.addLayer(devPlanningParcelText);
  const legend=document.getElementById('devPlanningLegend');legend.replaceChildren();
  const symbols=new Map([['확정 구역계',{color:'#dc2626'}]]);
  for(const fact of devFacts){
@@ -434,7 +529,7 @@ function devPlanningUpdateLabels(){
   const {layer,text,group}=entry;
   const point=layer.getBounds().getCenter(),pixel=devPlanningMap.latLngToContainerPoint(point);
   const key=Math.floor(pixel.x/110)+':'+Math.floor(pixel.y/28);
-  const visible=devPlanningMap.hasLayer(devPlanningGroups[group])&&devPlanningMap.getBounds().contains(point)&&devPlanningMap.getZoom()>=16&&!used.has(key)&&shown<150;
+  const visible=devPlanningMap.hasLayer(devPlanningGroups[group])&&devPlanningMap.getBounds().contains(point)&&devPlanningMap.getZoom()>=16&&!used.has(key)&&shown<150&&!(group==='parcel'&&devPlanningParcelLines?.getLayers().length);
   layer.unbindTooltip();layer.bindTooltip(text,{direction:'center',className:'dev-plan-label',permanent:visible});
   if(visible){used.add(key);shown++;}
  }
@@ -443,11 +538,16 @@ function devInstallPlanningMap(){
  if(devMode!=='development'||devPlanningMap)return;
  const target=document.querySelector('.service-target-box');if(!target)return;
  const box=document.createElement('section');box.id='devPlanningBox';
- box.innerHTML='<h3>도시계획정보도 <small>항공사진과 위치·확대 동기화</small></h3><div id="devPlanningMap" aria-label="도시계획정보도"></div><div id="devPlanningLegend"></div><p id="devPlanningStatus" role="status">자료 조회 대기</p><p class="dev-plan-source">자료: VWorld · 도시·군관리계획 도면표시의 색상·무늬 구분을 참고한 표현(면 채색 투명도 25%) · RGB는 참고용이며 법정 고시도면이 아닙니다.</p>';
+ box.innerHTML='<h3>도시계획정보도 <small>항공사진과 위치·확대 동기화</small></h3><div id="devPlanningMap" aria-label="도시계획정보도"></div><div id="devPlanningLegend"></div><p id="devPlanningStatus" role="status">자료 조회 대기</p><p id="devPlanningParcelStatus" role="status">주변 지적 조회 대기</p><p class="dev-plan-source">자료: VWorld · 도시·군관리계획 도면표시의 색상·무늬 구분을 참고한 표현(면 채색 투명도 25%) · RGB는 참고용이며 법정 고시도면이 아닙니다.</p>';
  target.append(box);
  devPlanningMap=L.map('devPlanningMap',{attributionControl:true,zoomControl:true,crs:map.options.crs,zoomSnap:map.options.zoomSnap,minZoom:map.getMinZoom(),maxZoom:map.getMaxZoom()});
  for(const [pane,z] of [['devZone',410],['devFacility',420],['devParcel',430],['devBoundary',440]])devPlanningMap.createPane(pane).style.zIndex=z;
  devPlanningGroups={zoning:L.layerGroup().addTo(devPlanningMap),facility:L.layerGroup().addTo(devPlanningMap),parcel:L.layerGroup().addTo(devPlanningMap)};
+ devPlanningParcelLines=L.geoJSON(null,{pane:'devParcel',interactive:false,
+  style:{color:'#50677b',weight:1.1,opacity:.9,fill:false}});
+ devPlanningParcelText=L.layerGroup();
+ devPlanningGroups.parcel.addLayer(devPlanningParcelLines);
+ devPlanningGroups.parcel.addLayer(devPlanningParcelText);
  L.geoJSON(devSite.geometry,{pane:'devBoundary',interactive:false,style:{color:'#dc2626',weight:3,fillOpacity:0}}).addTo(devPlanningMap);
  L.control.layers(null,{'용도지역':devPlanningGroups.zoning,'도시계획시설':devPlanningGroups.facility,'지적경계':devPlanningGroups.parcel},{collapsed:false}).addTo(devPlanningMap);
  L.control.scale({imperial:false}).addTo(devPlanningMap);
@@ -455,12 +555,12 @@ function devInstallPlanningMap(){
  devPlanningMap.attributionControl.addAttribution('VWorld 공간정보');
  let syncing=false;
  const sync=(from,to)=>{if(syncing)return;syncing=true;try{to.setView(from.getCenter(),from.getZoom(),{animate:false});}finally{syncing=false;}};
- map.on('moveend',()=>sync(map,devPlanningMap));devPlanningMap.on('moveend',()=>{sync(devPlanningMap,map);devPlanningUpdateLabels();});
- devPlanningMap.on('overlayadd overlayremove',devPlanningUpdateLabels);
+ map.on('moveend',()=>{sync(map,devPlanningMap);devPlanningScheduleViewportParcels();});devPlanningMap.on('moveend',()=>{sync(devPlanningMap,map);devPlanningUpdateLabels();devPlanningScheduleViewportParcels();});
+ devPlanningMap.on('overlayadd overlayremove',()=>{devPlanningUpdateLabels();devPlanningScheduleViewportParcels();});
  const resize=()=>{const original=map.getContainer(),el=document.getElementById('devPlanningMap');el.style.height=original.clientHeight+'px';el.style.width=original.clientWidth+'px';devPlanningMap.invalidateSize({pan:false});sync(map,devPlanningMap);};
  window.addEventListener('resize',resize);
  if(typeof ResizeObserver!=='undefined'){const observer=new ResizeObserver(resize);observer.observe(map.getContainer());}
- setTimeout(resize,0);devPlanningRefresh();
+ setTimeout(()=>{resize();devPlanningScheduleViewportParcels();},0);devPlanningRefresh();
 }
 
 function devInstallLayout(){
@@ -479,7 +579,7 @@ function devInstallLayout(){
  #devPlanningBox h3{margin:0 0 10px;font-size:15px}#devPlanningBox small{font-size:11px;font-weight:400;color:#64748b;margin-left:8px}
  #devPlanningMap{height:480px;max-width:100%;background:#f9fafb}
  #devPlanningLegend{display:flex;flex-wrap:wrap;gap:6px 14px;padding:10px 0;font-size:11px}#devPlanningLegend span{display:inline-flex;align-items:center;gap:5px}#devPlanningLegend i{display:inline-block;width:14px;height:10px;border:1px solid #777}
- #devPlanningStatus,.dev-plan-source{font-size:11px;line-height:1.6;margin:5px 0;color:#64748b}
+ #devPlanningParcelStatus{font-size:11px;color:#526174;line-height:1.5;margin:4px 0}.dev-plan-parcel-context-label{pointer-events:none!important;background:transparent;border:0;box-shadow:none;color:#334155;font:11px/18px Arial,sans-serif;white-space:nowrap;text-align:center;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff}#devPlanningStatus,.dev-plan-source{font-size:11px;line-height:1.6;margin:5px 0;color:#64748b}
  .dev-plan-label{font-size:11px;background:#ffffffd9;border:0;box-shadow:none;padding:1px 3px;color:#1e293b;pointer-events:none}
  .dev-plan-north{background:white;padding:5px 8px;font-weight:700;border:1px solid #ccc}
  @media(max-width:1000px){html[data-review-mode="development"] #serviceReviewPage{grid-template-columns:1fr}html[data-review-mode="development"] .service-target-box{position:static}html[data-review-mode="development"] #map{height:360px!important}}
