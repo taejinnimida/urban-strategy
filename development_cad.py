@@ -45,6 +45,11 @@ def _exportable(item, snapshot):
                 item.get('geometry_status') in ('COMPLETE', 'PARTIAL'))
     if item['id'] in ('5-2', '5-3', '5-4', '5-5', '5-6', '5-7', '5-8') and not item.get('features'):
         return False
+    if item['id'] in ('5-3','5-4','5-5','5-6','5-7','5-8'):
+        # Verified source vectors can produce a clearly labelled PARTIAL drawing.
+        # Missing official layers remain missing; never claim full coverage.
+        if item.get('features') and item.get('verified_feature_sources') is True and item.get('status') in ('공간자료 확보','일부 확보'):
+            return True
     # WMS-only cover and geometrically incomplete cover are NOT exportable.
     # An officially registered vector source with PARTIAL status must not
     # bypass the strict 2-6 coverage/classification test.
@@ -309,6 +314,7 @@ def dxf_bytes(item, snapshot, metadata):
     if item.get('thematic_type') in ('ownership', 'jimok', 'land_numeric', 'land_shape', 'landcover', 'zoning', 'planning', 'ecobank', 'building'):
         allowed_theme = (item['id'] in ('2-1', '2-2', '2-3', '2-4', '2-5', '2-6', '5-2', '5-3', '5-4', '5-5', '5-6', '5-7', '5-8', '4-3', *BUILDING_IDS)
                          and (item.get('provider_verified') is True
+                              or (item.get('thematic_type') == 'planning' and item.get('verified_feature_sources') is True)
                               or (item['id'] in BUILDING_IDS and _exportable(item, snapshot))))
         if not allowed_theme:
             raise HTTPException(409, 'CAD 출력 가능한 주제도 공간도형을 확보하지 못했습니다.')
@@ -389,6 +395,8 @@ def dxf_bytes(item, snapshot, metadata):
         doc.header['$SORTENTS'] = int(doc.header.get('$SORTENTS', 0)) | 16
         metadata['thematic_legend'] = item.get('legend') or []
         if item.get('thematic_type') in ('zoning','planning'):
+            if item.get('coverage_partial'):
+                metadata['planning_coverage_note'] = '확보된 공식 도형만 표시; 미확보 용도지구·시설 유형이 존재할 수 있습니다.'
             metadata['zoning_symbol_source'] = '도시·군관리계획 조서 및 도면 작성지침 별첨 1, pp.23-24'
             metadata['zoning_symbol_scale'] = 5000
             metadata['zoning_aci_and_pattern'] = 'official symbol index and spacing; missing subtypes remain UNKNOWN'
