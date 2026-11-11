@@ -122,7 +122,7 @@ def _parcel_geometry_index(layer, site):
     # A provider-returned REFERENCE cadastral outline can support a clearly
     # provisional site-to-parcel spatial candidate; never call that a direct
     # building-register identity or a complete cadastral inventory.
-    if layer.get('status') not in ('COMPLETE', 'REFERENCE'):
+    if layer.get('status') not in ('COMPLETE', 'REFERENCE', 'PARTIAL'):
         return {}
     grouped = defaultdict(list)
     for feature in layer.get('features') or []:
@@ -360,10 +360,65 @@ def assemble_building_fact(data, snapshot):
             'address_building_id': observation['address_id'],
             'attributes': attrs, 'conflicts': disagreements,
         })
+    # Independent, ledger-first PNU mapping: a PNU identifies a cadastral parcel,
+    # NOT a building footprint. If a title has one unambiguous PNU and the
+    # displayed parcel has that official cadastral ID, its real ledger values may
+    # be plotted on that parcel even without any matching GIS building identity.
+    # This never creates an EXACT_ID building-footprint join.
+    pnu_to_titles = defaultdict(set)
+    for key, rows in by_title.items():
+        if len(rows) == 1:
+            for pnu in _register_pnus(rows[0].get('pnus')):
+                pnu_to_titles[pnu].add(key)
+    parcel_register_records = []
+    parcel_record_keys = set()
+    for pnu, keys in sorted(pnu_to_titles.items()):
+        if len(keys) != 1 or pnu not in parcels:
+            continue
+        key = next(iter(keys))
+        ledger = by_title[key][0]
+        # One building title across several parcels must not be counted once
+        # for each parcel, or visually assigned to any one parcel arbitrarily.
+        if len(_register_pnus(ledger.get('pnus'))) != 1:
+            continue
+        if key in used_title_keys or key in spatial_title_keys:
+            continue
+        attrs = {}
+        for field in FIELDS:
+            value = ledger.get(field)
+            basis = ledger.get(field + '_basis') if field in ('coverage', 'far') else None
+            internal = bool(basis and basis != '건축HUB 원문')
+            if field in ('coverage', 'far') and not _positive_numeric(value):
+                value = None
+            attrs[field] = {
+                'value': value,
+                'source': ('PLATFORM_DERIVED' if internal else 'BUILDING_REGISTER') if _nonempty(value) else None,
+                'assurance': ('INTERNAL_CALC_PARCEL' if internal else 'DIRECT_LEDGER_PNU')
+                             if _nonempty(value) else 'UNKNOWN',
+                'basis': basis if internal else None,
+            }
+        parcel_register_records.append({
+            'id': 'CADASTRAL_PNU:' + pnu,
+            'geometry': mapping(parcels[pnu]),
+            'geometry_source': 'LP_PA_CBND_BUBUN',
+            'geometry_basis': 'CADASTRAL_PNU',
+            'source_status': (layers.get('LP_PA_CBND_BUBUN') or {}).get('status'),
+            'register_id': key,
+            'registered_pnus': ledger.get('pnus'),
+            'spatial_parcel_pnu': pnu,
+            'join_status': 'PNU_PARCEL_REGISTER',
+            'match_basis': 'EXACT_CADASTRAL_PNU_NOT_BUILDING_FOOTPRINT',
+            'quality_grade': 'P_PARCEL_LEDGER',
+            'attributes': attrs,
+            'conflicts': [],
+        })
+        parcel_record_keys.add(key)
     unmatched_registers = [
         {'register_id': key, 'pnus': ', '.join(str(r.get('pnus') or '') for r in rows),
          'reason': ('필지 공간중첩으로 잠정 후보만 확인. 대장관리번호 직접 일치 아님'
                     if key in spatial_title_keys else
+                    '관련 PNU의 필지 도형으로 대장 속성 표시 가능. 개별 건물 외곽선과 직접연계는 미확정'
+                    if key in parcel_record_keys else
                     '관련 필지 대장은 확인되나 이 구역에 대응하는 도형의 관리번호 직접연계 없음')}
         for key, rows in sorted(by_title.items()) if key not in used_title_keys
     ]
@@ -403,7 +458,9 @@ def assemble_building_fact(data, snapshot):
             r['join_status'] == 'PARCEL_SPATIAL_REFERENCE' and
             any(v['assurance'] == 'SPATIAL_AGREEMENT' for v in r['attributes'].values())
             for r in records),
-        'register_without_any_candidate': len(set(by_title) - used_title_keys - spatial_title_keys),
+        'register_without_any_candidate': len(set(by_title) - used_title_keys - spatial_title_keys - parcel_record_keys),
+        'register_with_cadastral_pnu': len(parcel_record_keys),
+        'cadastral_pnu_features': len(parcel_register_records),
         'gis_attribute_only': sum(r['quality_grade'] == 'B_GIS_ATTRIBUTE' for r in records),
         'unkeyed_register_rows': unkeyed_register_rows,
         'spatial_candidates_from_reference_cadastre': sum(
@@ -417,13 +474,14 @@ def assemble_building_fact(data, snapshot):
         'register_without_direct_geometry': len(unmatched_registers),
         'zero_confirmed': zero_confirmed,
     }
-    return {'records': records, 'unmatched_registers': unmatched_registers,
+    return {'records': records, 'parcel_register_records': parcel_register_records,
+            'unmatched_registers': unmatched_registers,
             'source_info': source_info,
             'spatial_parcel_source_status': (layers.get('LP_PA_CBND_BUBUN') or {}).get('status', 'UNAVAILABLE'),
             'geometry_status': status,
             'provider_verified': status == 'COMPLETE',
             'counts': counts, 'field_assurance_counts': field_assurance_counts,
             'note': ('조회된 건축물대장 원문 속성은 우선 활용. GIS 속성과 충돌하면 대장값을 유지하고 차이를 별도 기록. '
-                     '대장 내용의 신뢰성과 지도 도형·대장 연결 신뢰도는 별개이며 필지 공간연계는 잠정 후보. 보조 지적 및 도형 제공 PNU도 직접 건물관리번호 일치가 아님. '
+                     '대장 내용의 신뢰성과 지도 도형·대장 연결 신뢰도는 별개. 관련 PNU가 연속지적과 일치하면 필지단위 대장 현황도로 표시하되 건축물 외곽선으로 가장하지 않음. 보조 지적 및 도형 제공 PNU도 직접 건물관리번호 일치가 아님. '
                      '건폐율·용적률 플랫폼 내부산정·개략추정은 원문과 구별하고 법정 확정치로 사용하지 않음. '
                      '공간도형 수는 법정 건축물 동수와 일치한다고 단정하지 않음.')}
