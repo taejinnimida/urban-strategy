@@ -315,7 +315,7 @@ def dxf_bytes(item, snapshot, metadata):
         if len(item.get('features') or []) > MAX_FEATURES:
             raise HTTPException(413, '토지 주제도 도형이 CAD 출력 상한을 초과했습니다.')
         from ezdxf.colors import rgb2int
-        from development_planning_symbols import style_for, hatch_pattern
+        from development_planning_symbols import style_for, hatch_pattern, stroke_line_symbol, color_aci
         for group in item.get('legend') or []:
             code = str(group.get('class_code') or '')
             color = str(group.get('color') or '')
@@ -326,7 +326,12 @@ def dxf_bytes(item, snapshot, metadata):
             if layer_name not in doc.layers:
                 symbol = style_for(group.get('name'), 'zoning' if item.get('thematic_type') == 'zoning' else group.get('group') or 'facility') if item.get('thematic_type') in ('zoning','planning') else None
                 aci = symbol.get('aci') if symbol and symbol.get('verified_style') else None
-                attrs = {'color': int(aci)} if aci is not None else {'color': 7, 'true_color': rgb}
+                if aci is not None:
+                    attrs = {'color': int(aci)}
+                elif symbol and symbol.get('verified_style') and (symbol.get('boundary_color') or symbol.get('line_color')):
+                    attrs = {'color': color_aci(symbol.get('boundary_color') or symbol.get('line_color'))}
+                else:
+                    attrs = {'color': 7, 'true_color': rgb}
                 doc.layers.new(layer_name, dxfattribs=attrs)
         sheet_theme = (snapshot.get('_cad_zone_background', {}).get('features') or item.get('features') or []) if item.get('thematic_type') == 'zoning' else (item.get('features') or [])
         for feature in sheet_theme:
@@ -343,6 +348,15 @@ def dxf_bytes(item, snapshot, metadata):
                 polygons = [clipped] if clipped.geom_type == 'Polygon' else [
                     x for x in getattr(clipped, 'geoms', ()) if x.geom_type == 'Polygon'
                 ]
+                if item.get('thematic_type') == 'planning':
+                    group = props.get('group') or 'facility'
+                    plan_style = style_for(props.get('name') or props.get('uname') or props.get('dgm_nm'), group)
+                    lines = [clipped] if clipped.geom_type == 'LineString' else [
+                        x for x in getattr(clipped, 'geoms', ()) if x.geom_type == 'LineString'
+                    ]
+                    for line in lines:
+                        stroke_line_symbol(model, line, layer_name, plan_style, 5.0)
+                        counts['thematic_features'] += 1
                 rgb = doc.layers.get(layer_name).dxf.get('true_color', None)
                 for polygon in polygons:
                     if polygon.area <= 1e-8:
