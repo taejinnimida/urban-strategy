@@ -356,7 +356,8 @@ def enrich(data,snapshot,area):
         statistics[item]={'overlap_area_m2':a,'overlap_pct':100*a/data['area_m2'] if a is not None and data['area_m2'] else None,'groups':[{'name':k,'area_m2':area(unary_union(v))} for k,v in names.items()],'note':'서로 다른 분류 간 중첩이 있어 분류별 면적 합계와 전체 union 면적은 다를 수 있음'}
         results[item]={'status':'보조 조회 참고자료' if reference else '공간자료 확보' if len(done)==len(ids) else '일부 확보' if done else '미확보','detail':f'{len(done)}/{len(ids)} 레이어 · 확정구역 교차면적 '+(f'{a:,.2f}㎡' if a is not None else '미확보'),'source':'VWorld 브라우저 보조 수신 포함(출처 재확인 필요)' if reference else 'VWorld','features':fs,'provider_verified':reference==0 and verified==len(ids),
                        'verified_feature_sources':reference==0 and verified>0,
-                       'coverage_partial':len(done)<len(ids)}
+                       'coverage_partial':len(done)<len(ids) or item in ('5-3','5-4','5-5','5-6','5-7','5-8'),
+                       'coverage_note':'확보된 VWorld 레이어와 유형만 포함하며 법정 계획 전체 수록·최신 고시 일치 여부는 미확정'}
         if reference:results[item]['detail']+=f' · 서버 직접 {verified}개/보조 {reference}개 · 보조자료 원문 진위·수록 완전성 미검증, 법정 판정 미적용'
         if item in ('5-3','5-4','6-4'):results[item]['detail']+=' · 연결된 종류만 조회, 모든 지구·구역·유산 규제 포괄 아님'
     ned=[(p,facts.get('ned:'+p,{})) for p in snapshot.get('_report',{}).get('land',{})]
