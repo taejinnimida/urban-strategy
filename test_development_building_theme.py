@@ -111,9 +111,11 @@ class BuildingSurveyTest(unittest.TestCase):
         s = snapshot([], 'COMPLETE')
         s['_report_layers']['LT_C_BLDGINFO'] = {'status': 'COMPLETE', 'features': [geom]}
         attach_building_themes(d, s)
-        self.assertEqual(d['items'][0]['features'][0]['properties']['name'], '자료 불일치(검토)')
+        self.assertEqual(d['items'][0]['features'][0]['properties']['name'], '단독주택')
         self.assertEqual(d['building_fact']['records'][0]['quality_grade'], 'E_CONFLICT')
-        self.assertIsNone(d['building_fact']['records'][0]['attributes']['use']['value'])
+        self.assertEqual(d['building_fact']['records'][0]['attributes']['use']['value'], '단독주택')
+        self.assertEqual(d['building_fact']['records'][0]['attributes']['use']['gis_value'], '근린생활시설')
+        self.assertEqual(d['building_fact']['records'][0]['attributes']['use']['assurance'], 'LEDGER_GIS_CONFLICT')
 
     def test_spatial_overlap_not_fake_direct_register_match(self):
         d = data()
