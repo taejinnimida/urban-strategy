@@ -10,6 +10,7 @@ RUN pip install --no-cache-dir \
     "uvicorn[standard]" \
     requests \
     boto3 \
+    Pillow \
     pydantic \
     pyproj \
     pyshp \
