@@ -22,6 +22,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          python - <<'PY'
           import json, os, subprocess, sys
           from urllib.parse import quote
           
@@ -85,3 +86,4 @@ jobs:
           if names != sorted(keep):
               raise RuntimeError("Unexpected remaining branches: " + str(names))
           print("SUCCESS: remaining branches", names)
+          PY
