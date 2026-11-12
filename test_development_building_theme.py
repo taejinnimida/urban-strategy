@@ -154,6 +154,29 @@ class BuildingSurveyTest(unittest.TestCase):
         self.assertEqual(d['items'][0]['geometry_status'],'UNAVAILABLE')
         self.assertEqual(d['items'][0]['survey_table']['rows'][0]['count'],1)
 
+    def test_22_register_rows_and_43_unjoined_gis_footprints_still_draw(self):
+        d=data()
+        d['buildings']=[{**d['buildings'][0],'id':f'MG{i:03d}'}
+                        for i in range(22)]
+        polygons=[feature(box(0.2+(i%9)*0.9,0.2+(i//9)*0.9,
+                              0.65+(i%9)*0.9,0.65+(i//9)*0.9),
+                          props={'mainPurpsCdNm':'단독주택', 'grndFlrCnt':2})
+                  for i in range(43)]
+        snap=snapshot(polygons,cadastral=[parcel(box(0,0,10,10))])
+        attach_building_themes(d,snap)
+        for item in d['items']:
+            self.assertEqual(item['survey_table']['rows'][0]['count'],22)
+            self.assertEqual(len(item['features']),43)
+            self.assertEqual(sum(v['count'] for v in item['legend']),43)
+            self.assertTrue(item['cad_exportable'])
+            self.assertTrue(all(f['properties']['geometry_source']=='LT_C_BLDGINFO'
+                                for f in item['features']))
+            self.assertTrue(all(f['properties']['geometry_basis']=='BUILDING_FOOTPRINT'
+                                for f in item['features']))
+        self.assertEqual(d['statistics']['3-1']['survey_total'],22)
+        self.assertEqual(d['statistics']['3-1']['mapped_total'],43)
+        self.assertEqual(d['statistics']['3-1']['verified_ledger_joins'],0)
+
     def test_register_count_and_gis_count_are_separate(self):
         d=data()
         d['buildings'].append({**d['buildings'][0],'id':'MG002','use':'공동주택'})
