@@ -534,30 +534,30 @@ async def plan_footprints(file: UploadFile = File(...), crs: str = Form("EPSG:51
     }
 
 
-def _candidate_score(row:dict):
-    raw=row.get("pedestrianScore",row.get("pedestrian_score"))
+def _candidate_pedestrian_volume(row:dict):
+    raw=row.get("pedestrianVolume",row.get("pedestrian_volume"))
     try:
-        score=float(raw)
-        return score if math.isfinite(score) else None
+        value=float(raw)
+        return value if math.isfinite(value) else None
     except Exception:
         return None
 
 @app.get("/api/integrations/status")
 def integration_status():
     return {
-        "seoul_open_data":{"configured":bool(_seoul_open_data_key()),"purpose":"pedestrian/population ranking"},
+        "seoul_open_data":{"configured":bool(_seoul_open_data_key()),"purpose":"raw pedestrian volume lookup"},
         "vworld3d":{"configured":bool((_vworld_key() if (os.getenv("VWORLD_API_KEY") or "").strip() else "")),"adapter":"prepared","engine":"WebGL 3D API 3.0","building_feature_hide":True,"plan_mass_polygon_supported":True,"glb_supported":True},
         "viewpoint_policy":{
             "target_per_band":5,
             "bands":{"near":"0-250m","mid":"250-500m","far":"500-1000m"},
             "designated_policy":"top5_plus_designated",
-            "unscored_candidates":"never auto-selected"
+            "missing_pedestrian_volume":"never auto-selected"
         },
         "candidate_adapters":{
             "transit_park_heritage":"development fallback currently available",
             "road_intersection_20m":"official road-width adapter required",
-            "landscape_plan_viewpoint":"official dataset adapter/upload required",
-            "pedestrian":"SEOUL_OPEN_DATA_KEY + spatial score adapter required"
+            "landscape_plan_viewpoint":"2016 Seoul Landscape Plan official coordinates to be embedded",
+            "pedestrian":"SEOUL_OPEN_DATA_KEY + raw-volume spatial matching adapter required"
         }
     }
 
@@ -573,22 +573,22 @@ def viewpoint_rank(data:ViewpointRankReq):
         rows=[dict(r) for r in data.candidates if str(r.get("band") or "")==band and not bool(r.get("userExcluded"))]
         designated=[r for r in rows if bool(r.get("mandatory")) or str(r.get("category") or "")=="designated"]
         manual=[r for r in rows if bool(r.get("userSelected")) and r not in designated]
-        scored=[]
+        measured=[]
         unresolved=[]
         for r in rows:
             if r in designated or r in manual:
                 continue
-            score=_candidate_score(r)
-            if score is None:
+            volume=_candidate_pedestrian_volume(r)
+            if volume is None:
                 unresolved.append(r)
             else:
-                r["_score"]=score
-                scored.append(r)
-        scored.sort(key=lambda r:(-r["_score"],float(r.get("distance") or 1e18),str(r.get("id") or "")))
+                r["_pedestrian_volume"]=volume
+                measured.append(r)
+        measured.sort(key=lambda r:(-r["_pedestrian_volume"],float(r.get("distance") or 1e18),str(r.get("id") or "")))
         if policy=="designated_within_target":
             pool=[]
             seen=set()
-            for r in designated+manual+scored:
+            for r in designated+manual+measured:
                 rid=str(r.get("id") or "")
                 if rid and rid not in seen:
                     seen.add(rid);pool.append(r)
@@ -597,7 +597,7 @@ def viewpoint_rank(data:ViewpointRankReq):
             selected=[]
             seen=set()
             # top N regular/manual first, then append all designated viewpoints.
-            for r in manual+scored:
+            for r in manual+measured:
                 rid=str(r.get("id") or "")
                 if rid and rid not in seen and len(selected)<target:
                     seen.add(rid);selected.append(r)
@@ -612,21 +612,21 @@ def viewpoint_rank(data:ViewpointRankReq):
         ranked=[{
             "id":str(r.get("id") or ""),
             "name":r.get("name"),
-            "score":r["_score"],
+            "pedestrian_volume":r["_pedestrian_volume"],
             "distance":r.get("distance"),
             "category":r.get("category"),
             "rank":i+1
-        } for i,r in enumerate(scored)]
+        } for i,r in enumerate(measured)]
         result["bands"][band]={
             "candidate_count":len(rows),
-            "scored_count":len(scored),
-            "unscored_count":len(unresolved),
+            "measured_count":len(measured),
+            "missing_volume_count":len(unresolved),
             "designated_count":len(designated),
             "manual_count":len(manual),
             "selected_ids":band_selected,
             "designated_ids":band_designated,
             "ranked":ranked,
-            "auto_selection_complete":len(scored)>=target
+            "auto_selection_complete":len(measured)>=target
         }
     result["selected_ids"]=list(dict.fromkeys(selected_ids))
     result["designated_ids"]=list(dict.fromkeys(designated_ids))
