@@ -9363,6 +9363,12 @@ def home():
     )
 
 
+@app.get("/landscape-review", response_class=HTMLResponse)
+def landscape_review(site: str | None = None):
+    html = (Path(__file__).parent / "landscape-review" / "index.html").read_text(encoding="utf-8")
+    return HTMLResponse(content=html, headers={"Cache-Control": "no-store"})
+
+
 @app.get("/api/reference/stations")
 def reference_stations():
     """내장 지하철역사 기준자료. API 키나 원본 SHP 파일을 외부에 노출하지 않습니다."""
