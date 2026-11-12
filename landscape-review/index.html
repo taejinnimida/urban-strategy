@@ -1116,10 +1116,27 @@ function renderCandidates(){
   }else updateCandidateStatus(pending?`보행량 원수치 미연동으로 자동선정 보류`:'기본 선정수 충족');
 }
 async function fetchCandidates(){
-  if(!siteState.center){showToast('대상지를 먼저 지정하세요.');return;}initCandidateMap();const b=document.getElementById('fetchCandidates'),old=b.textContent;b.disabled=true;b.textContent='조회 중…';updateCandidateStatus('개발용 후보 API 조회 중');
-  try{const[lat,lng]=siteState.center,q=overpassQuery(lat,lng,1150),res=await fetch('https://overpass-api.de/api/interpreter',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:'data='+encodeURIComponent(q)});if(!res.ok)throw new Error(res.status);const d=await res.json();candidateItems=enrich([...officialViewpoints,...normalizeOsm(d.elements||[])]);await rankViewpointCandidates();renderCandidates();showToast(`기준 충족 후보 ${candidateItems.length}개를 수집했습니다.`);}
-  catch(e){candidateItems=enrich([...officialViewpoints]);await rankViewpointCandidates();renderCandidates();updateCandidateStatus('후보 API 조회 실패 · 공식 데이터 어댑터 연결 필요');showToast('후보 API 조회에 실패했습니다.');}
-  finally{b.disabled=false;b.textContent=old;}
+  if(!siteState.center){showToast('대상지를 먼저 지정하세요.');return;}
+  initCandidateMap();
+  const button=document.getElementById('fetchCandidates'),old=button.textContent;
+  button.disabled=true;button.textContent='조회 중…';updateCandidateStatus('서버에서 후보자료 조회 중');
+  try{
+    const [lat,lng]=siteState.center;
+    const params=new URLSearchParams({lat:String(lat),lng:String(lng),radius:'1150'});
+    const res=await fetch('/api/viewpoint/candidates?'+params,{cache:'no-store'});
+    if(!res.ok)throw new Error('HTTP '+res.status);
+    const data=await res.json();
+    if(data.status!=='OK')throw new Error('후보 응답 오류');
+    candidateItems=enrich([...officialViewpoints,...normalizeOsm(data.elements||[])]);
+    await rankViewpointCandidates();renderCandidates();
+    showToast('기준 충족 후보 '+candidateItems.length+'개를 수집했습니다.');
+  }catch(e){
+    console.error('viewpoint candidate lookup',e);
+    candidateItems=enrich([...officialViewpoints]);
+    await rankViewpointCandidates();renderCandidates();
+    updateCandidateStatus('후보 조회 실패 · '+e.message);
+    showToast('후보 API 조회에 실패했습니다.');
+  }finally{button.disabled=false;button.textContent=old;}
 }
 function repPoint(f){if(f?.geometry?.type==='Point')return[f.geometry.coordinates[1],f.geometry.coordinates[0]];const c=[];(function walk(x){if(!Array.isArray(x))return;if(typeof x[0]==='number'&&typeof x[1]==='number')c.push(x);else x.forEach(walk);})(f?.geometry?.coordinates);if(!c.length)return null;return[c.reduce((a,b)=>a+b[1],0)/c.length,c.reduce((a,b)=>a+b[0],0)/c.length];}
 function parseOfficial(j){const fs=j.type==='FeatureCollection'?j.features:j.type==='Feature'?[j]:j.type==='Point'?[{type:'Feature',properties:{},geometry:j}]:[];return fs.map((f,i)=>{const ll=repPoint(f);if(!ll)return null;return{id:`designated-${i}-${ll[0]}-${ll[1]}`,lat:ll[0],lng:ll[1],category:'designated',name:f.properties?.name||f.properties?.title||`경관계획 조망점 ${i+1}`,source:f.properties?.source||'사용자 제공 공식 조망점 DB',mandatory:true,pedestrianVolume:null,verification:'경관계획상 지정'};}).filter(Boolean);}
