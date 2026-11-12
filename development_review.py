@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import Response
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
-from shapely.geometry import shape, box
+from shapely.geometry import shape, box, mapping
 from shapely.geometry.polygon import orient
 from shapely.ops import unary_union, transform
 from pyproj import Geod, Transformer
@@ -270,6 +270,77 @@ def register(app,service):
             get(token)
             with lock:return store_layer_unlocked(snapshots[token],key,result)
         finally:browser_submit_gate.release()
+    # Map-only viewport zoning. Do not save these features in analysis FACTs:
+    # the red site boundary, not the map viewport, defines report scope.
+    viewport_zoning_layers=frozenset(f'LT_C_UQ11{i}' for i in range(1,5))
+    zoning_view_channel=VWorldChannel(1,pause_on_transport_error=False)
+    zoning_view_cache={}
+    @router.post('/planning-view')
+    def planning_view(data:LayerQuery):
+        if data.layer not in viewport_zoning_layers:
+            raise HTTPException(422,'주변 용도지역 표시 전용 레이어만 조회할 수 있습니다.')
+        g=validate(data.geometry)
+        if area(box(*g.bounds))>5_000_000:
+            raise HTTPException(422,'주변 용도지역 표시범위는 5㎢ 이하로 확대하세요.')
+        bounds=tuple(round(v,7) for v in g.bounds)
+        key=(data.layer,bounds)
+        with lock:
+            cached=zoning_view_cache.get(key)
+            if cached and time.monotonic()-cached[0]<120:
+                return cached[1]
+        base={'display_only':True,'layer':data.layer,'source':'VWorld',
+              'queried_at':time.time(),'coverage':'MAP_VIEWPORT_ONLY'}
+        try:
+            if not service._vworld_key():raise ChannelFailure('SERVICE_NOT_READY')
+            a,b,c,d=g.bounds
+            fs=[];seen=set();started=time.monotonic();last_route=None
+            page_limit=4
+            for page in range(1,page_limit+1):
+                if time.monotonic()-started>23:raise ChannelFailure('TIMEOUT')
+                response,last_route=zoning_view_channel.request('https://api.vworld.kr/req/data',
+                    {'key':service._vworld_key(),'domain':service._vworld_domain(),
+                     'service':'data','version':'2.0','request':'getfeature',
+                     'format':'json','size':1000,'page':page,'geometry':'true',
+                     'attribute':'true','crs':'EPSG:4326','data':data.layer,
+                     'geomfilter':f'BOX({a},{b},{c},{d})'},'json')
+                try:payload=(response.json().get('response') or {})
+                finally:response.close()
+                if payload.get('status')=='NOT_FOUND':break
+                if payload.get('status')!='OK':raise ChannelFailure('PROVIDER_REJECTED')
+                items=((payload.get('result') or {}).get('featureCollection') or {}).get('features')
+                if not isinstance(items,list):raise ChannelFailure('PROVIDER_FORMAT')
+                for feature in items:
+                    try:
+                        geom=shape(feature['geometry'])
+                        if geom.is_empty or not geom.is_valid or geom.geom_type not in ('Polygon','MultiPolygon'):
+                            raise ValueError('invalid zoning polygon')
+                        if not geom.intersects(g):continue
+                        clipped=geom.intersection(g)
+                        if clipped.is_empty or clipped.area<=0:continue
+                        raw_id=str(feature.get('id') or (feature.get('properties') or {}).get('unq_mnno') or '')
+                        unique=raw_id or hashlib.sha256(json.dumps(
+                            feature['geometry'],sort_keys=True).encode()).hexdigest()
+                        if unique in seen:continue
+                        seen.add(unique)
+                        fs.append({'type':'Feature','id':unique,'geometry':mapping(clipped),
+                                   'properties':feature.get('properties') or {}})
+                    except Exception:raise ChannelFailure('PROVIDER_FORMAT') from None
+                if len(items)<1000:break
+            truncated=len(items)==1000 and page==page_limit
+            result={**base,'status':'PARTIAL' if truncated else 'COMPLETE',
+                    'features':fs,'count':len(fs),'route':last_route,
+                    'truncated':truncated}
+            if not truncated:
+                with lock:
+                    if len(zoning_view_cache)>=48:zoning_view_cache.pop(next(iter(zoning_view_cache)))
+                    zoning_view_cache[key]=(time.monotonic(),result)
+            return result
+        except Exception as exc:
+            return {**base,'status':'UNKNOWN','features':[],
+                    'error_code':(exc.code if isinstance(exc,ChannelFailure)
+                                  else safe_failure(exc).get('error_code','REQUEST_FAILED')),
+                    'message':'주변 용도지역 자료를 확인하지 못했습니다. 대상지 FACT와는 별개입니다.'}
+
     # Display-only parcel context. It never writes to snapshots or analysis FACTs.
     parcel_view_channel=VWorldChannel(1,pause_on_transport_error=False)
     parcel_view_cache={}
