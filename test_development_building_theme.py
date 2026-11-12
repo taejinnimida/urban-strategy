@@ -213,7 +213,10 @@ class BuildingSurveyTest(unittest.TestCase):
         attach_building_themes(d, s)
         self.assertEqual(d['building_fact']['counts']['spatial_candidates_from_provider_pnu'], 1)
         self.assertEqual(d['building_fact']['records'][0]['join_status'], 'PARCEL_SPATIAL_REFERENCE')
-        self.assertEqual(d['items'][2]['features'][0]['properties']['name'], '3층')
+        # No cadastral polygon: keep the ledger in the table, not a possibly
+        # demolished building outline on the survey drawing.
+        self.assertEqual(d['items'][2]['features'], [])
+        self.assertEqual(d['items'][2]['survey_table']['rows'][0]['count'], 1)
 
     def test_unkeyed_ledger_is_available_for_unique_provisional_parcel(self):
         d = data()
