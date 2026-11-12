@@ -294,6 +294,7 @@ def register(app,service):
             if not service._vworld_key():raise ChannelFailure('SERVICE_NOT_READY')
             a,b,c,d=g.bounds
             fs=[];seen=set();started=time.monotonic();last_route=None;items=[]
+            skipped=0;repaired=0;received=0
             page_limit=4
             for page in range(1,page_limit+1):
                 if time.monotonic()-started>23:raise ChannelFailure('TIMEOUT')
@@ -309,28 +310,66 @@ def register(app,service):
                 if payload.get('status')!='OK':raise ChannelFailure('PROVIDER_REJECTED')
                 items=((payload.get('result') or {}).get('featureCollection') or {}).get('features')
                 if not isinstance(items,list):raise ChannelFailure('PROVIDER_FORMAT')
+                received+=len(items)
                 for feature in items:
                     try:
                         geom=shape(feature['geometry'])
-                        if geom.is_empty or not geom.is_valid or geom.geom_type not in ('Polygon','MultiPolygon'):
-                            raise ValueError('invalid zoning polygon')
+                        if geom.is_empty or geom.geom_type not in ('Polygon','MultiPolygon'):
+                            skipped+=1;continue
+                        if not geom.is_valid:
+                            # Map-only repair. Never overwrite authoritative geometry
+                            # or assign repaired shapes to site/report FACTs.
+                            try:
+                                from shapely.validation import make_valid
+                                valid=make_valid(geom)
+                                parts=[part for part in
+                                       (valid.geoms if hasattr(valid,'geoms') else [valid])
+                                       if part.geom_type in ('Polygon','MultiPolygon') and not part.is_empty]
+                                geom=unary_union(parts) if parts else None
+                                if geom is None or geom.is_empty or not geom.is_valid:
+                                    skipped+=1;continue
+                                repaired+=1
+                            except Exception:
+                                skipped+=1;continue
                         if not geom.intersects(g):continue
                         clipped=geom.intersection(g)
                         if clipped.is_empty or clipped.area<=0:continue
-                        raw_id=str(feature.get('id') or (feature.get('properties') or {}).get('unq_mnno') or '')
-                        unique=raw_id or hashlib.sha256(json.dumps(
+                        if clipped.geom_type not in ('Polygon','MultiPolygon'):
+                            parts=[part for part in
+                                   (clipped.geoms if hasattr(clipped,'geoms') else [clipped])
+                                   if part.geom_type in ('Polygon','MultiPolygon') and not part.is_empty]
+                            if not parts:continue
+                            clipped=unary_union(parts)
+                        provider_id=str(feature.get('id') or
+                                        (feature.get('properties') or {}).get('unq_mnno') or '')
+                        # Provider IDs can be reused for separate geometry parts.
+                        # Deduplicate only identical footprint content, not a whole zone.
+                        unique=hashlib.sha256(json.dumps(
                             feature['geometry'],sort_keys=True).encode()).hexdigest()
                         if unique in seen:continue
                         seen.add(unique)
-                        fs.append({'type':'Feature','id':unique,'geometry':mapping(clipped),
-                                   'properties':feature.get('properties') or {}})
-                    except Exception:raise ChannelFailure('PROVIDER_FORMAT') from None
+                        props=dict(feature.get('properties') or {})
+                        fs.append({'type':'Feature','id':provider_id or unique,
+                                   'geometry':mapping(clipped),'properties':props})
+                    except Exception:
+                        skipped+=1
+                        continue
                 if len(items)<1000:break
             truncated=len(items)==1000 and page==page_limit
-            result={**base,'status':'PARTIAL' if truncated else 'COMPLETE',
+            incomplete=truncated or skipped>0 or repaired>0
+            names={}
+            for f in fs:
+                properties={str(k).lower():v for k,v in f['properties'].items()}
+                name=str(properties.get('uname') or properties.get('dgm_nm') or
+                         properties.get('name') or '명칭 미확보').strip()[:80]
+                names[name]=names.get(name,0)+1
+            result={**base,'status':'PARTIAL' if incomplete else 'COMPLETE',
                     'features':fs,'count':len(fs),'route':last_route,
-                    'truncated':truncated}
-            if not truncated:
+                    'truncated':truncated,'received':received,
+                    'skipped_invalid_features':skipped,
+                    'repaired_for_map_only':repaired,
+                    'subtype_counts':names}
+            if not incomplete:
                 with lock:
                     if len(zoning_view_cache)>=48:zoning_view_cache.pop(next(iter(zoning_view_cache)))
                     zoning_view_cache[key]=(time.monotonic(),result)
