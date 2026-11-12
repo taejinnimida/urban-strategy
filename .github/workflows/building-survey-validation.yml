@@ -38,7 +38,7 @@ jobs:
       - name: Install CAD test dependencies
         run: python -m pip install --disable-pip-version-check pytest httpx
       - name: Nationwide viewport zoning API and report isolation regression tests
-        run: python -m unittest -v test_development_review.Tests.test_planning_view_zoning_full_viewport_without_mutating_site_fact test_development_review.Tests.test_planning_view_allowlist_and_bounds
+        run: python -m unittest -v test_development_review.Tests.test_planning_view_zoning_full_viewport_without_mutating_site_fact test_development_review.Tests.test_planning_view_allowlist_and_bounds test_development_review.Tests.test_viewport_skips_broken_geometry_but_keeps_third_residential
       - name: CAD DXF, building-area and A3 regression tests
         run: python -m pytest -q test_development_cad.py test_development_building_areas.py
       - name: Viewport zoning scope and FACT isolation regression tests
