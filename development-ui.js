@@ -865,7 +865,7 @@ function devRenderSourceDetails(data){
   const tab=document.createElement('table');
   tab.style.cssText='width:100%;border-collapse:collapse;font-size:12px;min-width:510px;font-variant-numeric:tabular-nums';
   const header=document.createElement('thead'),hrow=document.createElement('tr');
-  for(const text of (item.id.startsWith('3-')?['구분','지도 표시단위(개)','구성비(%)','비고']:['구분','면적(㎡)','구성비(%)',t.count_header||'필지수(필지)','비고'])){
+  for(const text of (item.id.startsWith('3-')?['구분','건축물조서(건)','구성비(%)','비고']:['구분','면적(㎡)','구성비(%)',t.count_header||'필지수(필지)','비고'])){
    const th=document.createElement('th');th.textContent=text;
    th.style.cssText='padding:7px 5px;border:1px solid #9ca9bf;background:#dfe7f6;color:#21376d;text-align:center';
    hrow.append(th);
