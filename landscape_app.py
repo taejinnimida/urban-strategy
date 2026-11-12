@@ -383,6 +383,119 @@ async def boundary_file(file: UploadFile = File(...), crs: str = Form("EPSG:5179
         **meta,
     }
 
+
+
+@app.post("/api/plan-footprints")
+async def plan_footprints(file: UploadFile = File(...), crs: str = Form("EPSG:5179")):
+    name=(file.filename or "").strip()
+    ext=os.path.splitext(name.lower())[1]
+    raw=await file.read()
+    if not raw:
+        raise HTTPException(422,"빈 파일입니다.")
+    if len(raw)>50*1024*1024:
+        raise HTTPException(413,"계획안 파일은 50MB 이하만 지원합니다.")
+    try:
+        source_crs=CRS.from_user_input(crs)
+    except Exception:
+        raise HTTPException(422,"지원하지 않는 좌표계입니다.")
+
+    geoms=[]
+    source_type=""
+    meta={}
+
+    if ext==".dxf":
+        with tempfile.NamedTemporaryFile(suffix=".dxf",delete=False) as fp:
+            fp.write(raw)
+            tmp=fp.name
+        try:
+            doc=ezdxf.readfile(tmp)
+        except Exception as exc:
+            raise HTTPException(422,"DXF 파일을 읽지 못했습니다.") from exc
+        finally:
+            try: os.unlink(tmp)
+            except Exception: pass
+        candidates=_dxf_polyline_candidates(doc)
+        for pts,layer in candidates:
+            try:
+                if pts[0]!=pts[-1]:
+                    pts=pts+[pts[0]]
+                g=Polygon(pts)
+                if not g.is_valid:
+                    g=g.buffer(0)
+                g=_polygonal_only(g)
+                if g is None or g.is_empty or g.area<=0:
+                    continue
+                geoms.append((g,{"layer":layer}))
+            except Exception:
+                continue
+        source_type="DXF"
+        meta={"candidate_count":len(geoms)}
+    elif ext in (".json",".geojson"):
+        try:
+            data=json.loads(raw.decode("utf-8-sig"))
+        except Exception as exc:
+            raise HTTPException(422,"GeoJSON 파일을 읽지 못했습니다.") from exc
+        features=[]
+        if data.get("type")=="FeatureCollection":
+            features=data.get("features") or []
+        elif data.get("type")=="Feature":
+            features=[data]
+        elif data.get("type") in ("Polygon","MultiPolygon"):
+            features=[{"type":"Feature","properties":{},"geometry":data}]
+        else:
+            raise HTTPException(422,"Polygon/MultiPolygon GeoJSON만 지원합니다.")
+        for ft in features:
+            try:
+                g=shape(ft.get("geometry"))
+                if not g.is_valid:
+                    g=g.buffer(0)
+                g=_polygonal_only(g)
+                if g is None or g.is_empty:
+                    continue
+                if g.geom_type=="Polygon":
+                    geoms.append((g,dict(ft.get("properties") or {})))
+                else:
+                    for part in g.geoms:
+                        geoms.append((part,dict(ft.get("properties") or {})))
+            except Exception:
+                continue
+        source_type="GeoJSON"
+    else:
+        raise HTTPException(422,"계획안 외곽선은 DXF 또는 GeoJSON만 지원합니다.")
+
+    if not geoms:
+        raise HTTPException(422,"건축물 폐합 외곽선을 찾지 못했습니다.")
+
+    out=[]
+    for i,(g,props) in enumerate(geoms, start=1):
+        try:
+            gw=_to_wgs84(g,source_crs)
+            if not gw.is_valid:
+                gw=gw.buffer(0)
+            gw=_polygonal_only(gw)
+            if gw is None or gw.is_empty:
+                continue
+            out.append({
+                "type":"Feature",
+                "id":f"plan-{i}",
+                "properties":{"index":i,**props},
+                "geometry":mapping(gw)
+            })
+        except Exception:
+            continue
+
+    if not out:
+        raise HTTPException(422,"건축물 외곽선 좌표변환에 실패했습니다.")
+
+    return {
+        "status":"RESOLVED",
+        "source_type":source_type,
+        "source_crs":source_crs.to_string(),
+        "feature_count":len(out),
+        "features":out,
+        **meta,
+    }
+
 @app.post("/api/snapshots")
 def create_snapshot(data:SnapshotReq):
     try:
