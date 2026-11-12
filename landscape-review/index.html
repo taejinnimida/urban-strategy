@@ -285,6 +285,12 @@ button,input,select{font:inherit}.hidden{display:none!important}
                 <input id="officialVpLng" type="number" step="0.000001" placeholder="경도" />
                 <button class="btn ghost small" id="officialVpAdd" type="button">좌표 추가</button>
               </div>
+              <div class="upload-inline">
+                <input id="trafficFileName" value="주요교차로 교통량 CSV/GeoJSON (선택)" readonly />
+                <button class="btn ghost" id="trafficFileUpload" type="button">교통량 불러오기</button>
+                <input id="trafficFile" type="file" accept=".csv,.json,.geojson,text/csv,application/json" hidden />
+              </div>
+              <p class="helper">필수 열: id, name, lat, lng, roadWidthM, trafficVolume. 교차로 위치·폭원·차량교통량이 확인된 자료만 사용합니다. 교통량의 조사연도·단위는 원본에서 확인하세요.</p>
               <div class="adapter-grid">
                 <div class="adapter-item"><b>유형별 우선순위</b><span>보행자전용도로 → 공원·광장 → 지하철 → 주요 버스 → 대학 → 문화유산 → 전망대 순. 동순위는 대상지와 가까운 순.</span></div>
                 <div class="adapter-item"><b>20m 이상 교차로</b><span>교차로 위치·도로폭원·차량교통량 원자료가 확인된 후보만 보충 선정합니다.</span></div>
@@ -1192,6 +1198,38 @@ document.getElementById('fetchCandidates').onclick=fetchCandidates;
 document.getElementById('clearCandidates').onclick=async()=>{candidateLookupRows=[];trafficIntersectionItems=[];refreshCandidateRows();await rankViewpointCandidates();renderCandidates();};
 document.querySelectorAll('#candidateFilter button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#candidateFilter button').forEach(x=>x.classList.remove('active'));b.classList.add('active');candidateBandFilter=b.dataset.band;renderCandidates();});
 const officialVpFile=document.getElementById('officialVpFile');document.getElementById('officialVpUpload').onclick=()=>officialVpFile.click();officialVpFile.onchange=async()=>{const f=officialVpFile.files[0];if(!f)return;try{officialViewpoints=parseOfficial(JSON.parse(await f.text()));document.getElementById('officialVpFileName').value=`${f.name} · ${officialViewpoints.length}개`;refreshCandidateRows();await rankViewpointCandidates();renderCandidates();showToast(`지정 조망점 ${officialViewpoints.length}개 추가 반영`);}catch(e){showToast('GeoJSON을 읽지 못했습니다.');}};
+function parseTrafficCsv(text){
+  const rows=text.replace(/^\uFEFF/,'').trim().split(/\r?\n/);
+  if(rows.length<2)return [];
+  const headers=rows.shift().split(',').map(v=>v.trim());
+  return rows.filter(Boolean).map(line=>{
+    const cells=line.split(',').map(v=>v.trim());
+    return Object.fromEntries(headers.map((h,i)=>[h,cells[i]]));
+  });
+}
+function normalizeTrafficIntersections(data){
+  const rows=Array.isArray(data)?data:data?.type==='FeatureCollection'?(data.features||[]):[];
+  return rows.map((item,i)=>{
+    const p=item.properties||item;
+    const coordinates=item.geometry?.type==='Point'?item.geometry.coordinates:null;
+    const lat=Number(p.lat??p.latitude??coordinates?.[1]),lng=Number(p.lng??p.lon??p.longitude??coordinates?.[0]);
+    const roadWidthM=Number(p.roadWidthM??p.road_width_m),trafficVolume=Number(p.trafficVolume??p.traffic_volume);
+    if(!isFiniteCoord(lat,lng)||!Number.isFinite(roadWidthM)||roadWidthM<20||!Number.isFinite(trafficVolume)||trafficVolume<0)return null;
+    return {id:'traffic-'+String(p.id||i),lat,lng,name:String(p.name||'주요교차로'),category:'intersection',roadWidthM,trafficVolume,source:'사용자 제공 교통량 원자료',verification:'교통량·폭원 원자료 입력 · 원본 검증 필요'};
+  }).filter(Boolean);
+}
+const trafficFile=document.getElementById('trafficFile');
+document.getElementById('trafficFileUpload').onclick=()=>trafficFile.click();
+trafficFile.onchange=async()=>{
+  const file=trafficFile.files?.[0];if(!file)return;
+  try{
+    const text=await file.text(),data=/\.csv$/i.test(file.name)?parseTrafficCsv(text):JSON.parse(text);
+    trafficIntersectionItems=normalizeTrafficIntersections(data);
+    document.getElementById('trafficFileName').value=file.name+' · 적격 교차로 '+trafficIntersectionItems.length+'개';
+    refreshCandidateRows();await rankViewpointCandidates();renderCandidates();
+    showToast('교통량 확인 교차로 '+trafficIntersectionItems.length+'개 반영');
+  }catch(e){console.error(e);showToast('교통량 파일 형식 또는 좌표를 확인하세요.');}
+};
 document.getElementById('officialVpAdd').onclick=async()=>{
   const name=(document.getElementById('officialVpName').value||'').trim()||'경관계획 지정 조망점';
   const lat=Number(document.getElementById('officialVpLat').value),lng=Number(document.getElementById('officialVpLng').value);
