@@ -198,8 +198,10 @@ def _dem_grid(entry, root, target):
         if (c1-c0)*(r1-r0)>160000:
             raise ValueError('DEM area exceeds 160000 cells; register a local site extract')
         data=ds.read(1,window=Window(c0,r0,c1-c0,r1-r0),masked=True)
-        # Masked arrays preserve nodata; JSON None is not a valid elevation.
-        rows=[[None if bool(data.mask[j,i]) else float(data[j,i])
+        # A raster with no nodata mask can expose a scalar False mask.
+        from numpy.ma import getmaskarray
+        masked=getmaskarray(data)
+        rows=[[None if bool(masked[j,i]) else float(data[j,i])
                for i in range(data.shape[1])] for j in range(data.shape[0]-1,-1,-1)]
         x0=float(ds.bounds.left+c0*dx)
         y0=float(ds.bounds.top-r1*dx)
