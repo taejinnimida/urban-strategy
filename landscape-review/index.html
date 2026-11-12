@@ -3,8 +3,10 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>경관성 검토 플랫폼 — Day 2 대상지 설정</title>
+  <title>경관성 검토 플랫폼 — 대상지 설정</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="anonymous" />
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/shpjs@latest/dist/shp.js"></script>
   <style>
 :root{
   --bg:#f4f6f8; --panel:#fff; --ink:#17202a; --muted:#6f7b86; --line:#dfe5ea;
@@ -32,7 +34,8 @@ button,input,select{font:inherit}.hidden{display:none!important}
 @media(max-width:980px){.app-shell{grid-template-columns:1fr}.sidebar{position:relative;height:auto}.steps{display:grid;grid-template-columns:repeat(5,1fr)}.step{justify-content:center}.step em{display:none}.grid.two,.viewpoint-layout,.sim-grid,.report-layout,.report-type-grid{grid-template-columns:1fr}.sim-controls{grid-template-columns:1fr 1fr}.workspace,.topbar{padding-left:18px;padding-right:18px}}
 
 /* Day 2 — live site setup */
-.site-grid{align-items:stretch}.live-map-card{min-height:650px;display:flex;flex-direction:column}.live-map{height:570px;min-height:520px;z-index:1;background:#eef2f4}.live-map-card .map-toolbar{height:58px}.map-toolbar>div:first-child{display:flex;flex-direction:column;gap:3px}.map-toolbar small{font-size:10px;color:var(--muted);font-weight:500}.map-status{min-height:62px;padding:12px 16px;border-top:1px solid var(--line);display:flex;flex-direction:column;justify-content:center;background:#fff}.map-status b{font-size:12px}.map-status span{font-size:10px;color:var(--muted);margin-top:4px}.helper{font-size:10px;line-height:1.55;color:var(--muted);margin:-8px 0 16px}.coordinate-grid input{margin-bottom:4px!important}.btn.no-top{margin-top:0;margin-bottom:18px}.site-actions{display:grid;grid-template-columns:1.5fr 1fr .8fr;gap:7px;margin-bottom:16px}.site-actions .btn{padding:9px 8px;font-size:11px}.site-actions .btn:disabled{opacity:.4;cursor:not-allowed}.site-summary-box{padding:14px}.site-summary-box>div:first-child b{max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.site-summary-box dl{display:grid;gap:7px;margin:12px 0 0;padding-top:10px;border-top:1px solid #e5eaee}.site-summary-box dl div{display:grid;grid-template-columns:64px 1fr;gap:10px}.site-summary-box dt{font-size:10px;color:var(--muted)}.site-summary-box dd{font-size:10px;margin:0;text-align:right;overflow-wrap:anywhere}.save-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.leaflet-container{font-family:Pretendard,"Noto Sans KR",system-ui,sans-serif}.leaflet-control-attribution{font-size:9px!important}.leaflet-popup-content{font-size:11px}
+.site-grid{align-items:stretch}.live-map-card{min-height:650px;display:flex;flex-direction:column}.live-map{height:570px;min-height:520px;z-index:1;background:#eef2f4}.live-map-card .map-toolbar{height:58px}.map-toolbar>div:first-child{display:flex;flex-direction:column;gap:3px}.map-toolbar small{font-size:10px;color:var(--muted);font-weight:500}.map-status{min-height:62px;padding:12px 16px;border-top:1px solid var(--line);display:flex;flex-direction:column;justify-content:center;background:#fff}.map-status b{font-size:12px}.map-status span{font-size:10px;color:var(--muted);margin-top:4px}.helper{font-size:10px;line-height:1.55;color:var(--muted);margin:-8px 0 16px}.coordinate-grid input{margin-bottom:4px!important}.btn.no-top{margin-top:0;margin-bottom:18px}.site-actions{display:grid;grid-template-columns:1.5fr 1fr .8fr;gap:7px;margin-bottom:16px}.site-actions .btn{padding:9px 8px;font-size:11px}.site-actions .btn:disabled{opacity:.4;cursor:not-allowed}
+.site-mode-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin:0 0 12px}.site-mode-tabs .btn{font-size:11px;padding:9px 8px}.site-mode-tabs .btn.active{background:var(--brand);color:#fff;border-color:var(--brand)}.parcel-tools{display:none;border:1px solid var(--line);background:#f8fafb;border-radius:10px;padding:12px;margin:0 0 14px}.parcel-tools.active{display:block}.parcel-tools .parcel-row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center}.parcel-tools b{font-size:12px}.parcel-tools p{margin:5px 0 10px;font-size:10px;line-height:1.55;color:var(--muted)}.parcel-selection-status{font-size:11px;color:#425466;min-height:18px}.parcel-chip-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.parcel-chip{display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid var(--line);border-radius:999px;padding:5px 8px;font-size:10px}.parcel-chip button{border:0;background:transparent;cursor:pointer;color:#8b4b3f;font-weight:800;padding:0}.parcel-selected-layer{filter:drop-shadow(0 1px 1px rgba(0,0,0,.2))}.map-click-mode{cursor:crosshair!important}.site-summary-box{padding:14px}.site-summary-box>div:first-child b{max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.site-summary-box dl{display:grid;gap:7px;margin:12px 0 0;padding-top:10px;border-top:1px solid #e5eaee}.site-summary-box dl div{display:grid;grid-template-columns:64px 1fr;gap:10px}.site-summary-box dt{font-size:10px;color:var(--muted)}.site-summary-box dd{font-size:10px;margin:0;text-align:right;overflow-wrap:anywhere}.save-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.leaflet-container{font-family:Pretendard,"Noto Sans KR",system-ui,sans-serif}.leaflet-control-attribution{font-size:9px!important}.leaflet-popup-content{font-size:11px}
 @media(max-width:980px){.live-map{height:460px;min-height:420px}.live-map-card{min-height:0}.site-actions{grid-template-columns:1fr 1fr}.site-actions .btn:last-child{grid-column:1/-1}}
 
 /* Day 3 — viewpoint candidate engine */
@@ -98,14 +101,14 @@ button,input,select{font:inherit}.hidden{display:none!important}
     <main class="main">
       <header class="topbar">
         <div><p class="eyebrow">서울 지구단위계획 경관성 검토</p><h1 id="pageTitle">대상지 설정</h1></div>
-        <div class="status-group"><span class="status-dot"></span><span>Prototype v0.3</span></div>
+        <div class="status-group"><span class="status-dot"></span><span>Prototype v0.4</span></div>
       </header>
 
       <section class="workspace">
         <article class="panel step-panel active" data-panel="1">
           <div class="panel-head">
-            <div><h2>대상지 설정</h2><p>주소, 좌표, 지도 클릭 또는 GeoJSON으로 대상지를 지정하고 저장합니다.</p></div>
-            <span class="chip">Day 2 실제기능</span>
+            <div><h2>대상지 설정</h2><p>도시계획 검토와 동일하게 필지 선택, 파일 업로드 또는 직접 그리기로 구역계를 지정합니다.</p></div>
+            <span class="chip">공통 대상지 선택</span>
           </div>
 
           <div class="grid two site-grid">
@@ -128,16 +131,33 @@ button,input,select{font:inherit}.hidden{display:none!important}
               <button class="btn ghost full no-top" id="applyCoord">좌표 적용</button>
 
               <label>구역계 입력</label>
-              <div class="upload-box" id="siteUpload">
-                <strong>GeoJSON 구역계 업로드</strong>
-                <span>Polygon / MultiPolygon 지원 · DXF/SHP는 후속 어댑터</span>
-                <input id="siteFile" type="file" accept=".json,.geojson,application/geo+json,application/json" hidden />
+              <div class="site-mode-tabs">
+                <button class="btn ghost active" id="parcelModeBtn" type="button">필지 클릭</button>
+                <button class="btn ghost" id="fileModeBtn" type="button">파일 불러오기</button>
+                <button class="btn ghost" id="drawModeBtn" type="button">직접 그리기</button>
               </div>
 
-              <div class="site-actions">
+              <div class="parcel-tools active" id="parcelTools">
+                <div class="parcel-row"><b>지도에서 필지를 선택하세요.</b><button class="btn ghost small" id="clearParcels" type="button">선택 해제</button></div>
+                <p>필지 안쪽을 클릭하면 연속지적을 조회해 다중선택합니다. 다시 클릭하면 선택을 해제합니다.</p>
+                <div class="parcel-selection-status" id="parcelStatus">필지 선택 모드 준비 중</div>
+                <div class="parcel-chip-list" id="parcelChips"></div>
+                <button class="btn secondary full" id="applyParcels" type="button" disabled>선택 필지로 구역계 적용</button>
+              </div>
+
+              <div class="upload-box hidden" id="siteUpload">
+                <strong>구역계 파일 업로드</strong>
+                <span>GeoJSON / SHP ZIP 지원</span>
+                <input id="siteFile" type="file" accept=".json,.geojson,.zip,application/geo+json,application/json,application/zip" hidden />
+              </div>
+
+              <div class="site-actions hidden" id="drawTools">
                 <button class="btn secondary" id="drawPolygon">지도에서 구역계 그리기</button>
                 <button class="btn ghost" id="finishPolygon" disabled>그리기 완료</button>
                 <button class="btn ghost" id="clearSite">초기화</button>
+              </div>
+              <div class="site-actions" id="commonSiteActions">
+                <button class="btn ghost" id="clearSiteAlways" type="button">대상지 초기화</button>
               </div>
 
               <div class="summary-box site-summary-box">
@@ -157,11 +177,11 @@ button,input,select{font:inherit}.hidden{display:none!important}
 
             <section class="card map-card live-map-card">
               <div class="map-toolbar">
-                <div><span>대상지 지도</span><small id="mapHint">지도 클릭 시 중심점을 지정할 수 있습니다.</small></div>
+                <div><span>대상지 지도</span><small id="mapHint">필지 선택 모드 · 지도에서 필지 안쪽을 클릭하세요.</small></div>
                 <div><button class="mini active" data-basemap="osm">일반지도</button><button class="mini" disabled title="후속 구현">항공사진</button></div>
               </div>
               <div id="siteMap" class="live-map" aria-label="대상지 지도"></div>
-              <div class="map-status" id="mapStatus"><b>대상지 미지정</b><span>주소·좌표·지도·GeoJSON 중 하나를 사용하세요.</span></div>
+              <div class="map-status" id="mapStatus"><b>대상지 미지정</b><span>필지 선택·파일 업로드·직접 그리기 중 하나를 사용하세요.</span></div>
             </section>
           </div>
 
@@ -286,6 +306,10 @@ let siteMap=null, siteMarker=null, siteBoundaryLayer=null, draftLine=null;
 let drawing=false, draftLatLngs=[];
 let geocodeLockedUntil=0;
 let siteState={projectName:'', label:'', method:'', center:null, boundary:null};
+let siteInputMode='parcel', parcelSelectionLayer=null;
+const selectedParcels=new Map();
+const VWORLD_CLIENT_KEY=String(window.VWORLD_CLIENT_KEY||'__VWORLD_CLIENT_KEY__').trim();
+const VWORLD_CLIENT_DOMAIN=String(window.VWORLD_CLIENT_DOMAIN||location.origin||'').replace(/\/$/,'');
 
 function initSiteMap(){
   if(typeof L==='undefined'){
@@ -297,10 +321,19 @@ function initSiteMap(){
     maxZoom:19,
     attribution:'&copy; OpenStreetMap contributors'
   }).addTo(siteMap);
-  siteMap.on('click',e=>{
+  parcelSelectionLayer=L.geoJSON(null,{
+    style:{color:'#ffffff',weight:3,fillColor:'#ef4444',fillOpacity:.28,className:'parcel-selected-layer'},
+    onEachFeature:(feature,layer)=>{
+      const p=feature.properties||{};layer.bindTooltip(p.jibun||p.pnu||'선택 필지');
+      layer.on('click',ev=>{L.DomEvent.stopPropagation(ev);toggleParcelFeature(feature);});
+    }
+  }).addTo(siteMap);
+  siteMap.on('click',async e=>{
     if(drawing){ addDraftPoint(e.latlng); return; }
+    if(siteInputMode==='parcel'){ await selectParcelAtPoint(e.latlng); return; }
     setCenter([e.latlng.lat,e.latlng.lng],'지도 클릭',`${e.latlng.lat.toFixed(6)}, ${e.latlng.lng.toFixed(6)}`);
   });
+  applySiteMode('parcel');
 }
 
 function isFiniteCoord(lat,lng){ return Number.isFinite(lat)&&Number.isFinite(lng)&&lat>=-90&&lat<=90&&lng>=-180&&lng<=180; }
@@ -355,7 +388,7 @@ function updateSiteSummary(){
   document.getElementById('siteBoundary').textContent=siteState.boundary?'있음':'없음';
   document.getElementById('mapStatus').innerHTML=c
     ? `<b>${escapeHtml(siteState.label||'대상지')}</b><span>${escapeHtml(siteState.method||'입력')} · ${c[0].toFixed(6)}, ${c[1].toFixed(6)}${siteState.boundary?' · 구역계 확보':''}</span>`
-    : '<b>대상지 미지정</b><span>주소·좌표·지도·GeoJSON 중 하나를 사용하세요.</span>';
+    : '<b>대상지 미지정</b><span>필지 선택·파일 업로드·직접 그리기 중 하나를 사용하세요.</span>';
 }
 function escapeHtml(s){return String(s).replace(/[&<>'"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[m]));}
 
@@ -396,19 +429,91 @@ siteUpload.addEventListener('click',()=>siteFile.click());
 siteFile.addEventListener('change',async()=>{
   const file=siteFile.files[0]; if(!file) return;
   try{
-    const json=JSON.parse(await file.text());
-    const geojson=normalizeGeoJSON(json);
-    setBoundary(geojson,'GeoJSON 업로드',file.name);
+    let geojson;
+    if(file.name.toLowerCase().endsWith('.zip')){
+      if(typeof shp!=='function') throw new Error('SHP_READER_UNAVAILABLE');
+      geojson=normalizeGeoJSON(await shp(await file.arrayBuffer()));
+      setBoundary(geojson,'SHP ZIP 업로드',file.name);
+      showToast('SHP 구역계를 적용했습니다.');
+    }else{
+      geojson=normalizeGeoJSON(JSON.parse(await file.text()));
+      setBoundary(geojson,'GeoJSON 업로드',file.name);
+      showToast('GeoJSON 구역계를 적용했습니다.');
+    }
     siteUpload.querySelector('strong').textContent=file.name;
-    showToast('GeoJSON 구역계를 적용했습니다.');
-  }catch(err){showToast('GeoJSON 파일을 읽지 못했습니다.');}
+  }catch(err){showToast('구역계 파일을 읽지 못했습니다. GeoJSON 또는 SHP ZIP을 확인하세요.');}
 });
 function normalizeGeoJSON(json){
-  if(json.type==='FeatureCollection') return json;
-  if(json.type==='Feature') return json;
+  if(Array.isArray(json)){const features=[];json.forEach(x=>{const n=normalizeGeoJSON(x);if(n.type==='FeatureCollection')features.push(...n.features);else if(n.type==='Feature')features.push(n);});return {type:'FeatureCollection',features};}
+  if(json.type==='FeatureCollection') return {type:'FeatureCollection',features:(json.features||[]).filter(f=>['Polygon','MultiPolygon'].includes(f.geometry?.type))};
+  if(json.type==='Feature'&&['Polygon','MultiPolygon'].includes(json.geometry?.type)) return json;
   if(['Polygon','MultiPolygon'].includes(json.type)) return {type:'Feature',properties:{},geometry:json};
   throw new Error('Unsupported GeoJSON');
 }
+
+function vworldReady(){return VWORLD_CLIENT_KEY&&VWORLD_CLIENT_KEY!=='__VWORLD_CLIENT_KEY__';}
+function vworldRequest(geometry,layer='LP_PA_CBND_BUBUN',page=1,size=100){
+  if(!vworldReady()) return Promise.reject(new Error('VWORLD_KEY_REQUIRED'));
+  const bbox=turf.bbox(turf.feature(geometry));
+  return new Promise((resolve,reject)=>{
+    const callback='landscapeParcel_'+Date.now()+'_'+Math.random().toString(36).slice(2),script=document.createElement('script');let done=false;
+    const cleanup=()=>{clearTimeout(timer);try{delete window[callback];}catch(_){window[callback]=undefined;}script.remove();};
+    const finish=(err,val)=>{if(done)return;done=true;cleanup();err?reject(err):resolve(val);};
+    const timer=setTimeout(()=>finish(new Error('VWORLD_TIMEOUT')),10000);
+    window[callback]=payload=>finish(null,payload);script.onerror=()=>finish(new Error('VWORLD_NETWORK'));
+    const params=new URLSearchParams({key:VWORLD_CLIENT_KEY,domain:VWORLD_CLIENT_DOMAIN,service:'data',version:'2.0',request:'getfeature',format:'json',size:String(size),page:String(page),geometry:'true',attribute:'true',crs:'EPSG:4326',data:layer,geomfilter:`BOX(${bbox.join(',')})`,callback});
+    script.src='https://api.vworld.kr/req/data?'+params;document.head.appendChild(script);
+  });
+}
+function parcelFromVWorld(payload,ll){
+  const rsp=payload?.response;if(rsp?.status==='NOT_FOUND')return null;if(rsp?.status!=='OK')throw new Error('VWORLD_REJECTED');
+  const rows=rsp.result?.featureCollection?.features||[],pt=turf.point([ll.lng,ll.lat]),hits=[];
+  for(const f of rows){if(!['Polygon','MultiPolygon'].includes(f.geometry?.type))continue;let inside=false;try{inside=turf.booleanPointInPolygon(pt,f);}catch(_){continue;}if(!inside)continue;
+    const props={...(f.properties||{})},low=Object.fromEntries(Object.entries(props).map(([k,v])=>[String(k).toLowerCase(),v]));const pnu=String(low.pnu||f.id||'');
+    if(!/^\d{19}$/.test(pnu))continue;props.pnu=pnu;if(low.jibun!=null)props.jibun=low.jibun;hits.push({type:'Feature',id:pnu,properties:props,geometry:f.geometry});}
+  return hits.length===1?hits[0]:null;
+}
+async function selectParcelAtPoint(ll){
+  const status=document.getElementById('parcelStatus');
+  if(!vworldReady()){status.textContent='VWorld 브라우저 키가 아직 연결되지 않았습니다. 파일 업로드 또는 직접 그리기는 사용할 수 있습니다.';showToast('필지 클릭은 VWorld 키 연결 후 사용할 수 있습니다.');return;}
+  status.textContent='클릭한 필지 조회 중…';
+  try{const geometry=turf.buffer(turf.point([ll.lng,ll.lat]),8,{units:'meters'}).geometry;const feature=parcelFromVWorld(await vworldRequest(geometry),ll);if(!feature)throw new Error('NOT_FOUND');toggleParcelFeature(feature);}
+  catch(err){status.textContent=err.message==='NOT_FOUND'?'필지를 찾지 못했습니다. 필지 안쪽을 다시 클릭하세요.':'VWorld 연속지적 조회 실패 · 다시 시도하세요.';}
+}
+function toggleParcelFeature(feature){
+  const pnu=String(feature?.properties?.pnu||feature?.id||'');if(!pnu)return;
+  if(selectedParcels.has(pnu))selectedParcels.delete(pnu);else selectedParcels.set(pnu,feature);renderParcelSelection();
+}
+function renderParcelSelection(){
+  if(parcelSelectionLayer){parcelSelectionLayer.clearLayers();if(selectedParcels.size)parcelSelectionLayer.addData({type:'FeatureCollection',features:[...selectedParcels.values()]});}
+  const chips=document.getElementById('parcelChips');chips.innerHTML='';
+  [...selectedParcels].forEach(([pnu,f])=>{const el=document.createElement('span');el.className='parcel-chip';el.innerHTML=`${escapeHtml(f.properties?.jibun||pnu)} <button type="button" aria-label="선택해제">×</button>`;el.querySelector('button').onclick=()=>{selectedParcels.delete(pnu);renderParcelSelection();};chips.appendChild(el);});
+  document.getElementById('parcelStatus').textContent=selectedParcels.size?`${selectedParcels.size}개 필지 선택됨 · 추가 선택하거나 구역계로 적용하세요.`:(vworldReady()?'필지 선택 모드 · 지도에서 필지 안쪽을 클릭하세요.':'VWorld 키 연결 대기 · 파일 업로드/직접 그리기 사용 가능');
+  document.getElementById('applyParcels').disabled=!selectedParcels.size;
+}
+function applySelectedParcels(){
+  if(!selectedParcels.size)return;
+  const fc={type:'FeatureCollection',features:[...selectedParcels.values()].map(f=>JSON.parse(JSON.stringify(f)))};
+  const labels=[...selectedParcels.values()].map(f=>f.properties?.jibun).filter(Boolean);
+  setBoundary(fc,'필지 선택',labels.length<=3?labels.join(', '):`${labels.slice(0,3).join(', ')} 외 ${labels.length-3}필지`);
+  showToast(`${selectedParcels.size}개 필지를 대상지 구역계로 적용했습니다.`);
+}
+function applySiteMode(mode){
+  siteInputMode=mode;drawing=false;draftLatLngs=[];if(draftLine&&siteMap){siteMap.removeLayer(draftLine);draftLine=null;}
+  document.getElementById('parcelTools').classList.toggle('active',mode==='parcel');
+  document.getElementById('siteUpload').classList.toggle('hidden',mode!=='file');
+  document.getElementById('drawTools').classList.toggle('hidden',mode!=='draw');
+  for(const [id,m] of [['parcelModeBtn','parcel'],['fileModeBtn','file'],['drawModeBtn','draw']])document.getElementById(id).classList.toggle('active',m===mode);
+  if(siteMap)siteMap.getContainer().classList.toggle('map-click-mode',mode==='parcel'||mode==='draw');
+  const hint=document.getElementById('mapHint');
+  if(hint)hint.textContent=mode==='parcel'?'필지 선택 모드 · 지도에서 필지 안쪽을 클릭하세요.':mode==='file'?'구역계 파일을 업로드하세요. 지도 클릭은 중심점만 지정합니다.':'직접 그리기 모드 · 아래 버튼을 누른 뒤 꼭짓점을 클릭하세요.';
+  renderParcelSelection();
+}
+document.getElementById('parcelModeBtn').onclick=()=>applySiteMode('parcel');
+document.getElementById('fileModeBtn').onclick=()=>applySiteMode('file');
+document.getElementById('drawModeBtn').onclick=()=>applySiteMode('draw');
+document.getElementById('applyParcels').onclick=applySelectedParcels;
+document.getElementById('clearParcels').onclick=()=>{selectedParcels.clear();renderParcelSelection();};
 
 function addDraftPoint(latlng){
   draftLatLngs.push(latlng);
@@ -445,12 +550,14 @@ document.getElementById('finishPolygon').addEventListener('click',()=>{
   setBoundary(feature,'지도 구역계 입력','사용자 작성 구역계'); showToast('구역계를 확정했습니다.');
 });
 
-document.getElementById('clearSite').addEventListener('click',()=>{
-  clearMapGeometry(); siteState={projectName:'',label:'',method:'',center:null,boundary:null};
+function resetSiteInput(){
+  clearMapGeometry(); selectedParcels.clear(); renderParcelSelection(); siteState={projectName:'',label:'',method:'',center:null,boundary:null};
   ['siteSearch','latInput','lngInput'].forEach(id=>document.getElementById(id).value='');
-  siteUpload.querySelector('strong').textContent='GeoJSON 구역계 업로드'; updateSiteSummary();
-  if(siteMap) siteMap.setView(SEOUL_CENTER,12); showToast('대상지 입력을 초기화했습니다.');
-});
+  siteUpload.querySelector('strong').textContent='구역계 파일 업로드'; updateSiteSummary();
+  if(siteMap) siteMap.setView(SEOUL_CENTER,12); applySiteMode('parcel'); showToast('대상지 입력을 초기화했습니다.');
+}
+document.getElementById('clearSite').addEventListener('click',resetSiteInput);
+document.getElementById('clearSiteAlways').addEventListener('click',resetSiteInput);
 document.getElementById('saveSite').addEventListener('click',()=>{
   if(!siteState.center){showToast('저장할 대상지를 먼저 지정하세요.');return;}
   siteState.projectName=document.getElementById('projectName').value.trim();
