@@ -8,6 +8,16 @@ function setup(region='SEOUL'){
  const {ctx,els,opened}=setup();await ctx.confirmCurrentBoundary();assert.equal(els.siteReviewBtn.disabled,false);assert.equal(els.devNational.disabled,false);ctx.devOpen('seoul');ctx.devOpen('development');assert.equal(opened.length,2);assert.match(opened[0],/review=seoul&site=test/);assert.match(opened[1],/review=development&site=test/);
  ctx.activeGeometry.coordinates[0][0][0]+=.001;ctx.devRefresh();assert.equal(els.siteReviewBtn.disabled,true);assert.equal(els.devNational.disabled,true);ctx.devOpen('development');assert.equal(opened.length,2);
  for(const region of ['UNKNOWN','OUTSIDE_OR_MIXED']){const c=setup(region);await c.ctx.confirmCurrentBoundary();assert.equal(c.els.siteReviewBtn.disabled,true);assert.equal(c.els.devNational.disabled,false);c.ctx.devOpen('seoul');assert.equal(c.opened.length,0);}
+ const merge=setup().ctx.devPlanningMergeDisplayFacts;
+ const zoneFeature=(id,name)=>({id,type:'Feature',geometry:{type:'Polygon',coordinates:[]},properties:{uname:name}});
+ const siteZoning={layer:'LT_C_UQ111',status:'COMPLETE',fact_revision:'site-rev',features:[zoneFeature('3','제3종일반주거지역')]};
+ const viewportZoning={layer:'LT_C_UQ111',status:'COMPLETE',features:[zoneFeature('1','제1종일반주거지역')]};
+ const merged=merge([siteZoning],new Map([['LT_C_UQ111',viewportZoning]]));
+ assert.equal(merged.length,1);
+ assert.equal(merged[0].features.length,2,'viewport result must not erase site-only subtype');
+ assert.ok(merged[0].features.some(f=>f.properties.uname==='제3종일반주거지역'));
+ const duplicated=merge([siteZoning],new Map([['LT_C_UQ111',{...viewportZoning,features:[zoneFeature('3','제3종일반주거지역')]}]]));
+ assert.equal(duplicated[0].features.length,1,'same source feature ID must not double count');
  const c=setup();c.ctx.fetch=async()=>({ok:false,json:async()=>({detail:'API error'})});await c.ctx.confirmCurrentBoundary();assert.equal(c.els.devNational.disabled,true);
  const cancel=setup();cancel.ctx.selectedParcelPnus.add('1');cancel.ctx.applySelectedParcelsAsBoundary=async()=>false;await cancel.ctx.confirmCurrentBoundary();assert.equal(cancel.els.devNational.disabled,true);
  console.log('PASS: confirm; two windows; edited boundary lock; outside/unknown Seoul lock; error; cancelled parcel confirmation');
