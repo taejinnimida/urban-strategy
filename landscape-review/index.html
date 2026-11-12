@@ -281,18 +281,33 @@ button,input,select{font:inherit}.hidden{display:none!important}
         </article>
 
         <article class="panel step-panel" data-panel="4">
-          <div class="panel-head"><div><h2>3D 경관 시뮬레이션</h2><p>조망점의 실제 좌표와 동일한 카메라 조건에서 계획 매스 적용 전·후를 비교합니다.</p></div><span class="chip">실제 3D 연결</span></div>
+          <div class="panel-head"><div><h2>3D 경관 시뮬레이션</h2><p>VWorld 실제 3D 도시에서 동일 조망점·동일 카메라 조건으로 사업시행 전·후를 비교합니다.</p></div><span class="chip">VWorld 3D</span></div>
           <section class="card sim-controls">
             <div><label>조망점</label><select id="vpSelect"><option value="">조망점 후보 조회 필요</option></select></div>
             <div><label>카메라 높이</label><input id="simCameraHeight" value="1.7 m" readonly /></div>
             <div><label>조망거리</label><input id="simDistance" value="-" readonly /></div>
             <div><label>FOV</label><input id="simFov" value="60°" readonly /></div>
           </section>
-          <div class="grid two sim-grid">
-            <section class="card scene-card"><div class="scene-head"><b>사업시행 전</b><span id="beforeViewLabel">대상지 기준</span></div><div id="simBefore3d" style="height:420px;background:#eef1f4"></div></section>
-            <section class="card scene-card"><div class="scene-head"><b>사업시행 후</b><span id="afterViewLabel">계획 매스</span></div><div id="simAfter3d" style="height:420px;background:#eef1f4"></div></section>
-          </div>
-          <section class="card analysis-card"><div><span>시뮬레이션 상태</span><b id="simStatus">조망점과 계획안을 준비하세요.</b></div><p id="simAnalysis">현재 단계는 대상지·조망점·동별 계획 매스의 좌표 연결을 검증합니다.</p><p id="smapIntegrationStatus" style="font-size:10px;color:#68757f;margin-top:8px">S-MAP/XDWorld 연동상태 확인 중…</p></section>
+          <section class="card scene-card">
+            <div class="scene-head">
+              <b id="simSceneModeLabel">사업시행 전</b>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                <button class="btn ghost small" id="simBeforeBtn">전</button>
+                <button class="btn secondary small" id="simAfterBtn">후</button>
+                <button class="btn ghost small" id="autoHideBuildingsBtn">구역내 기존건물 자동숨김</button>
+                <button class="btn ghost small" id="manualHideBuildingsBtn">건물 클릭숨김</button>
+                <button class="btn ghost small" id="restoreBuildingsBtn">숨김 복원</button>
+              </div>
+            </div>
+            <div id="vworldSim3d" style="height:620px;background:#eef1f4;position:relative">
+              <div style="position:absolute;inset:0;display:grid;place-items:center;color:#6b7780;font-size:12px">VWorld 3D 준비 중…</div>
+            </div>
+          </section>
+          <section class="card analysis-card">
+            <div><span>시뮬레이션 상태</span><b id="simStatus">조망점과 계획안을 준비하세요.</b></div>
+            <p id="simAnalysis">사업시행 전에는 VWorld 기존 도시를 그대로 표시하고, 사업시행 후에는 대상지 기존건물을 숨긴 뒤 계획 매스를 표시합니다.</p>
+            <p id="vworldIntegrationStatus" style="font-size:10px;color:#68757f;margin-top:8px">VWorld 3D 연동상태 확인 중…</p>
+          </section>
           <div class="actions"><button class="btn ghost prev" data-prev="3">이전</button><button class="btn primary next" data-next="5">검토서 미리보기</button></div>
         </article>
 
@@ -320,7 +335,7 @@ button,input,select{font:inherit}.hidden{display:none!important}
     window.THREE = Object.assign({}, ThreeCore, { OrbitControls });
     window.dispatchEvent(new Event('three-ready'));
   </script>
-  <script src="/landscape-review/xdworld-adapter.js"></script>
+  <script src="/landscape-review/vworld3d-adapter.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"></script>
   <script>
 const steps = [...document.querySelectorAll('.step')];
@@ -343,7 +358,7 @@ function go(step){
     setTimeout(()=>{ if(candidateMap){candidateMap.invalidateSize();syncCandidateSite();} },100);
   }
   if(step===4){
-    setTimeout(()=>{syncSimulationViewpoints();initSimulation3D();renderSimulation();refreshIntegrationStatus();},100);
+    setTimeout(()=>{syncSimulationViewpoints();initVWorldSimulation();refreshIntegrationStatus();},100);
   }
 }
 steps.forEach(s=>s.addEventListener('click',()=>go(+s.dataset.step)));
@@ -968,135 +983,167 @@ document.querySelectorAll('#candidateFilter button').forEach(b=>b.onclick=()=>{d
 const officialVpFile=document.getElementById('officialVpFile');document.getElementById('officialVpUpload').onclick=()=>officialVpFile.click();officialVpFile.onchange=async()=>{const f=officialVpFile.files[0];if(!f)return;try{officialViewpoints=parseOfficial(JSON.parse(await f.text()));document.getElementById('officialVpFileName').value=`${f.name} · ${officialViewpoints.length}개`;candidateItems=enrich([...officialViewpoints,...candidateItems.filter(x=>x.source==='OSM 개발용')]);await rankViewpointCandidates();renderCandidates();showToast(`지정 조망점 ${officialViewpoints.length}개 추가 반영`);}catch(e){showToast('GeoJSON을 읽지 못했습니다.');}};
 
 async function refreshIntegrationStatus(){
-  const el=document.getElementById('smapIntegrationStatus');if(!el)return;
+  const el=document.getElementById('vworldIntegrationStatus');if(!el)return;
   try{
     const r=await fetch('/api/integrations/status',{cache:'no-store'}),v=await r.json();
-    const smap=v?.smap_openlab?.configured?'S-MAP 키 연결':'S-MAP 키 미연결';
+    const vworld=v?.vworld3d?.configured?'VWorld 3D 키 연결':'VWorld 3D 키 미연결';
     const ped=v?.seoul_open_data?.configured?'보행량 데이터 키 연결':'보행량 데이터 키 미연결';
-    el.textContent=smap+' · '+ped+' · XDWorld 구역 내부 건물 제외 어댑터 준비';
+    el.textContent=vworld+' · '+ped+' · VWorld WebGL 3D API 3.0 어댑터 준비';
   }catch(e){el.textContent='연동상태 확인 실패';}
 }
 
 // -----------------------------
-// Step 4: actual viewpoint -> plan mass simulation
+// Step 4: VWorld WebGL 3D simulation
 // -----------------------------
-let simBeforeScene=null,simAfterScene=null,simBeforeCamera=null,simAfterCamera=null;
-let simBeforeRenderer=null,simAfterRenderer=null,simBeforeControls=null,simAfterControls=null;
-let simReady=false,simSelectedViewId='';
+let vworldSimAdapter=null;
+let vworldSimReady=false;
+let simSelectedViewId='';
+let simMode='before';
+let manualEraseActive=false;
+let boundaryAutoHideDone=false;
 
-function simLocal(lon,lat){
-  if(!siteState.center)return [0,0];
-  const lat0=siteState.center[0],lon0=siteState.center[1],r=Math.PI/180;
-  return [(Number(lon)-lon0)*111320*Math.cos(lat0*r),(Number(lat)-lat0)*110540];
-}
-function simClear(scene){
-  if(!scene)return;
-  [...scene.children].forEach(o=>{
-    if(o.userData?.persistent)return;
-    scene.remove(o);
-    o.traverse?.(x=>{if(x.geometry)x.geometry.dispose();if(x.material){if(Array.isArray(x.material))x.material.forEach(m=>m.dispose());else x.material.dispose();}});
-  });
-}
-function simBaseScene(scene){
-  const ground=new THREE.Mesh(new THREE.PlaneGeometry(2400,2400),new THREE.MeshStandardMaterial({color:0xd7dcdf,roughness:1}));
-  ground.userData.persistent=false;scene.add(ground);
-  if(siteState.boundary){
-    const rs=ringsOf(siteState.boundary);
-    rs.forEach(ring=>{
-      const pts=ring.map(p=>{const [x,y]=simLocal(p[0],p[1]);return new THREE.Vector3(x,y,.15);});
-      if(pts.length>1){
-        const g=new THREE.BufferGeometry().setFromPoints(pts);
-        scene.add(new THREE.Line(g,new THREE.LineBasicMaterial({color:0xb27a3b})));
-      }
-    });
-  }
-}
-function simAddPlanMasses(scene){
-  if(!planBuildings.length)return;
-  planBuildings.forEach((b,index)=>{
-    const poly=b.coords,outer=poly[0]||[];if(outer.length<4)return;
-    const sh=new THREE.Shape();
-    outer.forEach((p,i)=>{const [x,y]=simLocal(p[0],p[1]);if(i===0)sh.moveTo(x,y);else sh.lineTo(x,y);});
-    for(const holeRing of poly.slice(1)){
-      if(holeRing.length<4)continue;
-      const hole=new THREE.Path();
-      holeRing.forEach((p,i)=>{const [x,y]=simLocal(p[0],p[1]);if(i===0)hole.moveTo(x,y);else hole.lineTo(x,y);});
-      sh.holes.push(hole);
-    }
-    const h=Math.max(1,Number(b.height||50));
-    const geo=new THREE.ExtrudeGeometry(sh,{depth:h,bevelEnabled:false,steps:1});
-    geo.computeVertexNormals();
-    const mesh=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({color:0xb47a3c,roughness:.72,metalness:.04}));
-    mesh.userData.buildingIndex=index;scene.add(mesh);
-    scene.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo),new THREE.LineBasicMaterial({color:0x65401f})));
-  });
-}
-function createSimScene(hostId){
-  const host=document.getElementById(hostId),w=host.clientWidth||560,h=host.clientHeight||420;
-  const scene=new THREE.Scene();scene.background=new THREE.Color(0xdfe9ef);
-  const camera=new THREE.PerspectiveCamera(60,w/h,.1,5000);camera.up.set(0,0,1);
-  const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));renderer.setSize(w,h);host.innerHTML='';host.appendChild(renderer.domElement);
-  const hemi=new THREE.HemisphereLight(0xffffff,0x76818a,1.5);hemi.userData.persistent=true;scene.add(hemi);
-  const sun=new THREE.DirectionalLight(0xffffff,1.25);sun.position.set(200,-120,300);sun.userData.persistent=true;scene.add(sun);
-  const controls=new THREE.OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.enabled=false;
-  return {scene,camera,renderer,controls,host};
-}
-function initSimulation3D(){
-  if(simReady)return;
-  if(typeof THREE==='undefined'){window.addEventListener('three-ready',()=>{initSimulation3D();renderSimulation();},{once:true});return;}
-  const a=createSimScene('simBefore3d'),b=createSimScene('simAfter3d');
-  simBeforeScene=a.scene;simBeforeCamera=a.camera;simBeforeRenderer=a.renderer;simBeforeControls=a.controls;
-  simAfterScene=b.scene;simAfterCamera=b.camera;simAfterRenderer=b.renderer;simAfterControls=b.controls;
-  simReady=true;
-  const animate=()=>{requestAnimationFrame(animate);simBeforeControls?.update();simAfterControls?.update();simBeforeRenderer?.render(simBeforeScene,simBeforeCamera);simAfterRenderer?.render(simAfterScene,simAfterCamera);};animate();
-  window.addEventListener('resize',()=>{
-    [['simBefore3d',simBeforeRenderer,simBeforeCamera],['simAfter3d',simAfterRenderer,simAfterCamera]].forEach(([id,r,c])=>{
-      if(!r||!c)return;const host=document.getElementById(id),w=host.clientWidth||560,h=host.clientHeight||420;c.aspect=w/h;c.updateProjectionMatrix();r.setSize(w,h);
-    });
-  });
-}
 function simulationRows(){
-  return [...candidateItems].filter(r=>Number.isFinite(r.lat)&&Number.isFinite(r.lng)).sort((a,b)=>Number(b.mandatory)-Number(a.mandatory)||a.distance-b.distance);
+  const ids=new Set(viewpointRanking?.selected_ids||[]);
+  const selected=candidateItems.filter(r=>ids.has(r.id));
+  const base=selected.length?selected:candidateItems;
+  return [...base].filter(r=>Number.isFinite(r.lat)&&Number.isFinite(r.lng))
+    .sort((a,b)=>Number(b.mandatory)-Number(a.mandatory)||a.distance-b.distance);
 }
+
 function syncSimulationViewpoints(){
   const select=document.getElementById('vpSelect'),rows=simulationRows();
   const previous=simSelectedViewId||select.value;
-  if(!rows.length){select.innerHTML='<option value="">조망점 후보 조회 필요</option>';simSelectedViewId='';return;}
+  if(!rows.length){
+    select.innerHTML='<option value="">조망점 후보 조회 필요</option>';
+    simSelectedViewId='';
+    return;
+  }
   select.innerHTML=rows.map((r,i)=>'<option value="'+escapeHtml(r.id)+'">'+String.fromCharCode(65+i)+' · '+escapeHtml(r.name)+' · '+bandLabel(r.band)+' · '+r.distance+'m</option>').join('');
   if(rows.some(r=>r.id===previous))select.value=previous;
   simSelectedViewId=select.value;
 }
-function renderSimulation(){
-  initSimulation3D();if(!simReady)return;
+
+async function initVWorldSimulation(){
+  if(vworldSimReady&&vworldSimAdapter){renderVWorldSimulation();return;}
+  const status=document.getElementById('simStatus');
+  if(!VWORLD_CLIENT_KEY||VWORLD_CLIENT_KEY==='__VWORLD_CLIENT_KEY__'){
+    status.textContent='VWorld 브라우저 키가 없습니다.';
+    document.getElementById('vworldIntegrationStatus').textContent='VWORLD_API_KEY 또는 VWORLD_CLIENT_KEY 설정 필요';
+    return;
+  }
+  if(typeof LandscapeVWorld3DAdapter==='undefined'){
+    status.textContent='VWorld 3D 어댑터를 불러오지 못했습니다.';
+    return;
+  }
+  try{
+    status.textContent='VWorld 3D 도시를 불러오는 중…';
+    vworldSimAdapter=new LandscapeVWorld3DAdapter({apiKey:VWORLD_CLIENT_KEY,domain:VWORLD_CLIENT_DOMAIN});
+    await vworldSimAdapter.init('vworldSim3d',siteState.center||SEOUL_CENTER);
+    vworldSimReady=true;
+    status.textContent='VWorld 3D 연결 완료';
+    renderVWorldSimulation();
+  }catch(e){
+    console.error(e);
+    status.textContent='VWorld 3D 연결 실패';
+    document.getElementById('vworldIntegrationStatus').textContent='VWorld WebGL 3D 초기화 실패 · 키/도메인 등록 확인 필요';
+  }
+}
+
+function currentSimulationViewpoint(){
+  const id=document.getElementById('vpSelect').value||simSelectedViewId;
+  return candidateItems.find(r=>r.id===id)||null;
+}
+
+function setSimulationMode(mode){
+  simMode=mode==='after'?'after':'before';
+  document.getElementById('simSceneModeLabel').textContent=simMode==='after'?'사업시행 후':'사업시행 전';
+  document.getElementById('simBeforeBtn').className=simMode==='before'?'btn secondary small':'btn ghost small';
+  document.getElementById('simAfterBtn').className=simMode==='after'?'btn secondary small':'btn ghost small';
+  if(vworldSimAdapter)vworldSimAdapter.setPlanVisible(simMode==='after');
+  const status=document.getElementById('simStatus');
+  if(simMode==='before') status.textContent='사업시행 전 · VWorld 기존 도시';
+  else status.textContent='사업시행 후 · 계획 매스 표시';
+}
+
+function renderVWorldSimulation(){
+  if(!vworldSimReady||!vworldSimAdapter)return;
   const status=document.getElementById('simStatus'),analysis=document.getElementById('simAnalysis');
-  simClear(simBeforeScene);simClear(simAfterScene);simBaseScene(simBeforeScene);simBaseScene(simAfterScene);simAddPlanMasses(simAfterScene);
-  const row=candidateItems.find(r=>r.id===(document.getElementById('vpSelect').value||simSelectedViewId));
+  const row=currentSimulationViewpoint();
   if(!row||!siteState.center){
-    status.textContent='조망점 후보를 먼저 조회하세요.';
-    analysis.textContent='조망점 분석 단계에서 후보를 조회한 뒤 시뮬레이션할 지점을 선택하세요.';
+    status.textContent='조망점 후보를 먼저 선정하세요.';
+    analysis.textContent='조망점 분석 단계의 선정 결과가 있어야 동일 카메라 조건으로 경관 시뮬레이션을 생성할 수 있습니다.';
     return;
   }
   simSelectedViewId=row.id;
-  const [cx,cy]=simLocal(row.lng,row.lat),cameraHeight=1.7;
   const maxH=planBuildings.length?Math.max(...planBuildings.map(b=>Number(b.height||0))):30;
-  const target=new THREE.Vector3(0,0,Math.max(8,Math.min(maxH*.35,35)));
-  [simBeforeCamera,simAfterCamera].forEach(c=>{
-    c.fov=60;c.aspect=(c===simBeforeCamera?document.getElementById('simBefore3d'):document.getElementById('simAfter3d')).clientWidth/420;
-    c.position.set(cx,cy,cameraHeight);c.lookAt(target);c.updateProjectionMatrix();
-  });
-  simBeforeControls.target.copy(target);simAfterControls.target.copy(target);
-  document.getElementById('simDistance').value=Math.round(row.distance||Math.hypot(cx,cy))+' m';
-  document.getElementById('beforeViewLabel').textContent=row.name;
-  document.getElementById('afterViewLabel').textContent=row.name;
-  if(planBuildings.length){
-    status.textContent='조망점 좌표와 동별 계획 매스 연결 완료';
-    analysis.textContent=row.name+'에서 대상지를 바라보는 동일 카메라 조건입니다. 사업시행 후 화면에는 '+planBuildings.length+'개 동의 개별 높이값이 반영됩니다.';
-  }else{
-    status.textContent='계획 매스가 없습니다.';
-    analysis.textContent='계획안 입력 단계에서 DXF/GeoJSON 외곽선과 동별 높이를 입력해야 사업시행 후 모델이 표시됩니다.';
+  const targetHeight=Math.max(8,Math.min(maxH*.35,35));
+  try{
+    const view=vworldSimAdapter.setViewpoint(
+      {lat:row.lat,lng:row.lng},
+      {lat:siteState.center[0],lng:siteState.center[1]},
+      1.7,targetHeight,60
+    );
+    document.getElementById('simDistance').value=Math.round(view.distance)+' m';
+    vworldSimAdapter.addPlanMasses(planBuildings);
+    vworldSimAdapter.setPlanVisible(simMode==='after');
+    status.textContent=simMode==='after'?'사업시행 후 · 계획 매스 표시':'사업시행 전 · VWorld 기존 도시';
+    analysis.textContent=row.name+' 조망점에서 대상지를 바라보는 카메라입니다. 방위 '+Math.round(view.bearing)+'° · 거리 '+Math.round(view.distance)+'m · FOV 60°. 계획안 '+planBuildings.length+'개 동이 VWorld 좌표에 삽입됩니다.';
+  }catch(e){
+    console.error(e);
+    status.textContent='조망 카메라 적용 실패';
   }
 }
-document.getElementById('vpSelect').addEventListener('change',e=>{simSelectedViewId=e.target.value;renderSimulation();});
+
+document.getElementById('vpSelect').addEventListener('change',e=>{
+  simSelectedViewId=e.target.value;
+  renderVWorldSimulation();
+});
+document.getElementById('simBeforeBtn').addEventListener('click',()=>setSimulationMode('before'));
+document.getElementById('simAfterBtn').addEventListener('click',()=>setSimulationMode('after'));
+
+document.getElementById('manualHideBuildingsBtn').addEventListener('click',()=>{
+  if(!vworldSimAdapter||!vworldSimReady){showToast('VWorld 3D를 먼저 불러오세요.');return;}
+  manualEraseActive=!manualEraseActive;
+  const btn=document.getElementById('manualHideBuildingsBtn');
+  if(manualEraseActive){
+    vworldSimAdapter.enableManualBuildingErase(n=>{
+      document.getElementById('simStatus').textContent='기존건물 '+n+'개 숨김';
+    });
+    btn.textContent='클릭숨김 종료';
+    showToast('VWorld 건물을 클릭하면 숨겨집니다.');
+  }else{
+    vworldSimAdapter.disableManualBuildingErase();
+    btn.textContent='건물 클릭숨김';
+  }
+});
+
+document.getElementById('restoreBuildingsBtn').addEventListener('click',()=>{
+  if(!vworldSimAdapter)return;
+  manualEraseActive=false;boundaryAutoHideDone=false;
+  vworldSimAdapter.disableManualBuildingErase();
+  document.getElementById('manualHideBuildingsBtn').textContent='건물 클릭숨김';
+  const n=vworldSimAdapter.restoreHiddenBuildings();
+  document.getElementById('simStatus').textContent='숨긴 기존건물 '+n+'개 복원';
+});
+
+document.getElementById('autoHideBuildingsBtn').addEventListener('click',async()=>{
+  if(!vworldSimAdapter||!vworldSimReady){showToast('VWorld 3D를 먼저 불러오세요.');return;}
+  if(!siteState.boundary){showToast('대상지 구역계가 필요합니다.');return;}
+  const btn=document.getElementById('autoHideBuildingsBtn'),old=btn.textContent;
+  btn.disabled=true;btn.textContent='자동숨김 분석 중…';
+  try{
+    const result=await vworldSimAdapter.autoHideBuildingsInBoundary(siteState.boundary,{stepPx:6,waitMs:1800});
+    boundaryAutoHideDone=true;
+    document.getElementById('simStatus').textContent='구역내 기존건물 자동숨김 '+result.hidden+'개';
+    setSimulationMode('after');
+    showToast('대상지 내부 3D 건물 후보를 숨겼습니다. 결과를 확인하세요.');
+  }catch(e){
+    console.error(e);
+    showToast('자동숨김에 실패했습니다. 건물 클릭숨김을 사용하세요.');
+  }finally{
+    btn.disabled=false;btn.textContent=old;
+  }
+});
 
 const reportBtns=[...document.querySelectorAll('.report-type')];
 const output=document.getElementById('outputList');
