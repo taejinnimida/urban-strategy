@@ -46,8 +46,17 @@ main{padding:12px}.card{background:#fff;border:1px solid #dce3eb;border-radius:1
       <div class="row" style="margin-top:8px"><button class="btn" id="applyParcelsBtn" disabled>선택필지 구역계 적용</button><button class="btn danger" id="clearParcelsBtn">선택 해제</button></div>
     </div>
     <div class="panel" data-panel="file">
-      <input class="input" id="fileInput" type="file" accept=".zip,.json,.geojson">
-      <div class="help">SHP는 .shp/.shx/.dbf/.prj를 하나의 ZIP으로 올리세요. GeoJSON도 지원합니다.</div>
+      <div class="row">
+        <input class="input" id="fileInput" type="file" accept=".zip,.dxf,.json,.geojson">
+        <select class="input" id="fileCrs" style="max-width:220px">
+          <option value="EPSG:5179" selected>EPSG:5179</option>
+          <option value="EPSG:5186">EPSG:5186</option>
+          <option value="EPSG:5181">EPSG:5181</option>
+          <option value="EPSG:5174">EPSG:5174</option>
+          <option value="EPSG:4326">EPSG:4326</option>
+        </select>
+      </div>
+      <div class="help">지원: SHP ZIP(.shp/.shx/.dbf/.prj), DXF, GeoJSON. SHP의 .prj가 있으면 좌표계를 자동 적용하고, DXF 또는 PRJ 없는 SHP는 선택한 좌표계를 사용합니다.</div>
     </div>
   </div>
   <div class="tools" style="border-top:1px solid #e5eaf0">
@@ -94,7 +103,7 @@ async function chooseParcel(ll){setStatus('클릭 필지 조회 중…');try{con
 function renderSelected(){selectedLayer.clearLayers();if(selected.size)selectedLayer.addData({type:'FeatureCollection',features:[...selected.values()]});const names=[...selected.values()].map(f=>f.properties?.jibun||f.properties?.pnu||'필지');document.getElementById('parcelCount').textContent='선택 '+selected.size+'필지';document.getElementById('parcelList').textContent=names.length?names.join(', '):'선택된 필지가 없습니다.';document.getElementById('applyParcelsBtn').disabled=!selected.size}
 document.getElementById('clearParcelsBtn').onclick=()=>{selected.clear();renderSelected()};
 document.getElementById('applyParcelsBtn').onclick=()=>{if(!selected.size)return;let fc={type:'FeatureCollection',features:[...selected.values()]};try{const u=turf.union(fc);setBoundary(u,'선택 필지')}catch(e){setBoundary(turf.combine(fc).features[0],'선택 필지')}};
-document.getElementById('fileInput').onchange=async e=>{const file=e.target.files[0];if(!file)return;try{let gj;if(file.name.toLowerCase().endsWith('.zip'))gj=await shp(await file.arrayBuffer());else gj=JSON.parse(await file.text());setBoundary(gj,file.name)}catch(err){alert('구역계 파일을 읽지 못했습니다.')}};
+document.getElementById('fileInput').onchange=async e=>{const file=e.target.files[0];if(!file)return;setStatus('구역계 파일 인식 중…');try{const fd=new FormData();fd.append('file',file);fd.append('crs',document.getElementById('fileCrs').value);const r=await fetch('/api/boundary-file',{method:'POST',body:fd});const v=await r.json();if(!r.ok)throw Error(v.detail||'구역계 파일 인식 실패');if(v.status!=='RESOLVED'||!v.geometry)throw Error('구역계를 찾지 못했습니다.');setBoundary(v.geometry,(v.source_type||'파일')+' · '+file.name);document.getElementById('boundaryMeta').textContent='인식 완료 · '+Math.round(v.area_m2).toLocaleString()+'㎡ · '+(v.source_crs||'좌표계 확인');setStatus('구역계 파일 인식 완료')}catch(err){setStatus(err.message||'구역계 파일을 읽지 못했습니다.');alert(err.message||'구역계 파일을 읽지 못했습니다.')}};
 document.getElementById('addressBtn').onclick=async()=>{const q=document.getElementById('parcelAddress').value.trim();if(!q)return;setStatus('지번주소 조회 중…');try{const r=await fetch('/api/address',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({address:q})});const v=await r.json();if(!r.ok)throw Error(v.detail||'주소자료 조회 실패');if(v.status!=='resolved'||!v.feature)throw Error(v.message||'정확히 일치하는 지번주소를 찾지 못했습니다.');const f=v.feature,pnu=String(f.properties?.pnu||f.id||'');selected.set(pnu,f);renderSelected();const layer=L.geoJSON(f);map.fitBounds(layer.getBounds(),{padding:[35,35]});setStatus('지번 필지 확보 · 구역계에 포함할 필지를 추가 선택할 수 있습니다.')}catch(e){setStatus(e.message)}};
 document.getElementById('confirmBtn').onclick=async()=>{if(!boundary)return;document.getElementById('confirmBtn').disabled=true;setStatus('구역계 확정 중…');try{const r=await fetch('/api/snapshots',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry:boundary})});const v=await r.json();if(!r.ok)throw Error(v.detail||'확정 실패');confirmedSite=v;document.getElementById('surveyBtn').disabled=false;document.getElementById('landscapeBtn').disabled=false;document.getElementById('boundaryMeta').textContent='확정 완료 · '+Math.round(v.area_m2).toLocaleString()+'㎡';setStatus('구역계 확정 완료')}catch(e){document.getElementById('confirmBtn').disabled=false;setStatus(e.message)}};
 document.getElementById('surveyBtn').onclick=()=>alert('기초현황조사는 이 경관 독립 브랜치에서 실행하지 않습니다. 공통 플랫폼 연계 시 연결합니다.');
