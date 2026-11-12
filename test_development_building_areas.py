@@ -87,7 +87,7 @@ def test_provisional_map_does_not_label_calculation_as_register_original():
     # ledger table, but never fill the parcel as a building on map/CAD.
     assert data['items'][5]['features'] == []
     assert data['items'][5]['survey_table']['rows'][0]['count'] == 1
-    assert data['items'][5]['survey_table']['rows'][2]['count'] == 1
+    assert data['items'][5]['survey_table']['rows'][3]['count'] == 1
 
 
 def test_two_five_is_not_an_active_survey_item():
