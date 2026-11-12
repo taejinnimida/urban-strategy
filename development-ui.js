@@ -13,7 +13,7 @@ async function devApi(path,data,timeoutMs=0){
  finally{if(timer)clearTimeout(timer);}
 }
 function devStatus(text){const el=document.getElementById('devStatus');if(el){el.textContent=text;el.hidden=!text;}}
-function devRefresh(){if(devMode!=='select')return;const same=!!devSite&&devSignature===JSON.stringify(activeGeometry);const a=document.getElementById('siteReviewBtn'),b=document.getElementById('devNational'),c=document.getElementById('devSeoulReviewAction');if(a){a.disabled=!same||devBusy||devSite?.region!=='SEOUL';}if(c){c.disabled=!same||devBusy||devSite?.region!=='SEOUL';}if(b)b.disabled=!same||devBusy;if(a)a.title=!same?'먼저 구역계를 확정하세요.':devSite?.region==='SEOUL'?'서울 대상지 확인됨':devSite?.region==='OUTSIDE_OR_MIXED'?'서울 외 또는 경계 혼합 대상지입니다.':'서울 행정경계 확인이 필요합니다.';if(devSite&&!same)devStatus('구역계 변경: 다시 확정하세요. 이전 검토창의 대상지는 유지됩니다.');}
+function devRefresh(){if(devMode!=='select')return;const same=!!devSite&&devSignature===JSON.stringify(activeGeometry);const a=document.getElementById('siteReviewBtn'),b=document.getElementById('devNational'),c=document.getElementById('devSeoulReviewAction'),d=document.getElementById('devLandscapeReview');if(a){a.disabled=!same||devBusy||devSite?.region!=='SEOUL';}if(c){c.disabled=!same||devBusy||devSite?.region!=='SEOUL';}if(b)b.disabled=!same||devBusy;if(d)d.disabled=!same||devBusy;if(a)a.title=!same?'먼저 구역계를 확정하세요.':devSite?.region==='SEOUL'?'서울 대상지 확인됨':devSite?.region==='OUTSIDE_OR_MIXED'?'서울 외 또는 경계 혼합 대상지입니다.':'서울 행정경계 확인이 필요합니다.';if(devSite&&!same)devStatus('구역계 변경: 다시 확정하세요. 이전 검토창의 대상지는 유지됩니다.');}
 renderBoundaryParcelSelectionSummary=function(){devSummaryOriginal();devRefresh();};
 confirmCurrentBoundary=async function(){
  if(devMode!=='select'||devBusy)return;devBusy=true;devRefresh();
@@ -24,7 +24,7 @@ confirmCurrentBoundary=async function(){
  devSite=v;devSignature=signature;devStatus(`확정 면적 ${v.area_m2.toLocaleString()}㎡ · ${v.region==='SEOUL'?'서울 대상지':v.region==='OUTSIDE_OR_MIXED'?'서울 외 또는 경계 혼합':'행정경계 미확보: 서울 검토 잠김'} · 검토창 유효시간 2시간`);
  }catch(e){devStatus(e.message);}finally{devBusy=false;devRefresh();}
 };
-function devOpen(mode){if(!devSite||devSignature!==JSON.stringify(activeGeometry)||devBusy)return;if(mode==='seoul'&&devSite.region!=='SEOUL')return;const w=window.open('/?review='+mode+'&site='+encodeURIComponent(devSite.id),'_blank');if(w)w.opener=null;else devStatus('팝업이 차단되었습니다. 새 창 열기를 허용하세요.');}
+function devOpen(mode){if(!devSite||devSignature!==JSON.stringify(activeGeometry)||devBusy)return;if(mode==='seoul'&&devSite.region!=='SEOUL')return;const target=mode==='landscape'?'/landscape-review?site='+encodeURIComponent(devSite.id):'/?review='+mode+'&site='+encodeURIComponent(devSite.id);const w=window.open(target,'_blank');if(w)w.opener=null;else devStatus('팝업이 차단되었습니다. 새 창 열기를 허용하세요.');}
 runSiteReview=async function(){if(devMode==='select')return devOpen('seoul');if(devMode==='seoul'&&devSite?.region==='SEOUL')return devRunOriginal();};
 if(devMode!=='seoul'){
  measureAndSync=async function(){if(activeGeometry){boundaryReferenceGeometry=JSON.parse(JSON.stringify(activeGeometry));setBoundaryReferenceMetrics();}devRefresh();};
@@ -409,7 +409,7 @@ function devNormalizeResultActionFonts(){
   style.textContent='html[data-review-mode="select"] .dev-result-action-font{font-size:14px!important;line-height:1.4!important}';
   document.head.append(style);
  }
- const labels=/^(?:기초현황조사|도시정비검토|도시개발검토|건축시뮬레이션|서울도시정보|도시개발정보)$/;
+ const labels=/^(?:기초현황조사|경관성검토|도시정비검토|도시개발검토|건축시뮬레이션|서울도시정보|도시개발정보)$/;
  document.querySelectorAll('button,a,[role="button"],input[type="button"]').forEach(el=>{
   const text=String(el.tagName==='INPUT'?el.value:el.textContent||'').replace(/\s+/g,'').trim();
   if(el.id==='siteReviewBtn'||el.id==='devNational'||labels.test(text))el.classList.add('dev-result-action-font');
@@ -441,10 +441,11 @@ function devInstallWorkflowActions(){
  const note=document.createElement('p');note.textContent='① 기초현황조사 → ② 사업방식 검토 → ③ 건축시뮬레이션. 도시개발검토와 건축시뮬레이션은 아직 제공하지 않습니다.';
  const actions=document.createElement('div');actions.className='dev-flow-steps';
  const survey=document.createElement('button');survey.type='button';survey.id='devNational';survey.textContent='기초현황조사';survey.disabled=true;survey.onclick=()=>devOpen('development');
+ const landscape=document.createElement('button');landscape.type='button';landscape.id='devLandscapeReview';landscape.textContent='경관성 검토';landscape.disabled=true;landscape.title='확정한 대상지를 경관성 검토 모듈로 전달해 새 창에서 엽니다.';landscape.onclick=()=>devOpen('landscape');
  const seoulAction=document.createElement('button');seoulAction.type='button';seoulAction.id='devSeoulReviewAction';seoulAction.textContent='도시정비검토';seoulAction.disabled=true;seoulAction.title='서울 대상지에 한하여 기존 서울도시정비플랫폼을 실행합니다.';seoulAction.onclick=()=>devOpen('seoul');
  const development=document.createElement('button');development.type='button';development.id='devDevelopmentReview';development.textContent='도시개발검토 · 준비 중';development.disabled=true;development.title='전국 도시개발 사업검토는 아직 구현되지 않았습니다.';
  const simulation=document.createElement('button');simulation.type='button';simulation.id='devBuildingSimulation';simulation.textContent='건축시뮬레이션 · 추후 제공';simulation.disabled=true;simulation.title='후속 확장 예정입니다.';
- actions.append(survey,seoulAction,development,simulation);section.append(title,note,actions);
+ actions.append(survey,landscape,seoulAction,development,simulation);section.append(title,note,actions);
  const placement=seoul.closest('.boundary-review-bar')||seoul.parentElement;
  if(placement)placement.after(section);else document.getElementById('map')?.before(section);
 }
