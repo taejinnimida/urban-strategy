@@ -25,7 +25,12 @@
       this._loadPromise=new Promise((resolve,reject)=>{
         const existing=document.querySelector('script[data-vworld-webgl3="1"]');
         if(existing){
-          const poll=()=>window.vw&&window.Cesium?resolve(true):setTimeout(poll,100);
+          const started=Date.now();
+          const poll=()=>{
+            if(window.vw&&window.Cesium)return resolve(true);
+            if(Date.now()-started>12000)return reject(new Error('VWORLD_WEBGL_STATIC_SCRIPT_NOT_READY'));
+            setTimeout(poll,100);
+          };
           poll();return;
         }
         const script=document.createElement('script');
