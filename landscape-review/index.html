@@ -147,8 +147,12 @@ button,input,select{font:inherit}.hidden{display:none!important}
 
               <div class="upload-box hidden" id="siteUpload">
                 <strong>구역계 파일 업로드</strong>
-                <span>GeoJSON / SHP ZIP 지원</span>
-                <input id="siteFile" type="file" accept=".json,.geojson,.zip,application/geo+json,application/json,application/zip" hidden />
+                <span>DXF / SHP ZIP / GeoJSON</span>
+                <input id="siteFile" type="file" hidden />
+              </div>
+              <div class="grid two compact hidden" id="siteFileOptions">
+                <div><label>파일 좌표계</label><select id="siteFileCrs"><option value="EPSG:5179" selected>EPSG:5179</option><option value="EPSG:5186">EPSG:5186</option><option value="EPSG:5181">EPSG:5181</option><option value="EPSG:5174">EPSG:5174</option><option value="EPSG:4326">EPSG:4326</option></select></div>
+                <div><label>지원 형식</label><input value="DXF · SHP ZIP · GeoJSON" readonly /></div>
               </div>
 
               <div class="site-actions hidden" id="drawTools">
@@ -497,20 +501,29 @@ const siteUpload=document.getElementById('siteUpload'), siteFile=document.getEle
 siteUpload.addEventListener('click',()=>siteFile.click());
 siteFile.addEventListener('change',async()=>{
   const file=siteFile.files[0]; if(!file) return;
+  const ext=(file.name.toLowerCase().match(/\.[^.]+$/)||[''])[0];
+  if(!['.zip','.dxf','.json','.geojson'].includes(ext)){
+    showToast('지원 형식은 DXF, SHP ZIP, GeoJSON입니다.');
+    siteFile.value='';
+    return;
+  }
+  const oldTitle=siteUpload.querySelector('strong').textContent;
+  siteUpload.querySelector('strong').textContent='구역계 인식 중…';
   try{
-    let geojson;
-    if(file.name.toLowerCase().endsWith('.zip')){
-      if(typeof shp!=='function') throw new Error('SHP_READER_UNAVAILABLE');
-      geojson=normalizeGeoJSON(await shp(await file.arrayBuffer()));
-      setBoundary(geojson,'SHP ZIP 업로드',file.name);
-      showToast('SHP 구역계를 적용했습니다.');
-    }else{
-      geojson=normalizeGeoJSON(JSON.parse(await file.text()));
-      setBoundary(geojson,'GeoJSON 업로드',file.name);
-      showToast('GeoJSON 구역계를 적용했습니다.');
-    }
+    const fd=new FormData();
+    fd.append('file',file);
+    fd.append('crs',document.getElementById('siteFileCrs')?.value||'EPSG:5179');
+    const res=await fetch('/api/boundary-file',{method:'POST',body:fd});
+    const result=await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(result.detail||'구역계 파일 인식 실패');
+    if(result.status!=='RESOLVED'||!result.geometry) throw new Error('구역계를 찾지 못했습니다.');
+    setBoundary(result.geometry,(result.source_type||'파일')+' 업로드',file.name);
     siteUpload.querySelector('strong').textContent=file.name;
-  }catch(err){showToast('구역계 파일을 읽지 못했습니다. GeoJSON 또는 SHP ZIP을 확인하세요.');}
+    showToast((result.source_type||'파일')+' 구역계를 적용했습니다.');
+  }catch(err){
+    siteUpload.querySelector('strong').textContent=oldTitle;
+    showToast(err.message||'구역계 파일을 읽지 못했습니다.');
+  }
 });
 function normalizeGeoJSON(json){
   if(Array.isArray(json)){const features=[];json.forEach(x=>{const n=normalizeGeoJSON(x);if(n.type==='FeatureCollection')features.push(...n.features);else if(n.type==='Feature')features.push(n);});return {type:'FeatureCollection',features};}
@@ -622,7 +635,7 @@ document.getElementById('finishPolygon').addEventListener('click',()=>{
 function resetSiteInput(){
   clearMapGeometry(); selectedParcels.clear(); renderParcelSelection(); siteState={projectName:'',label:'',method:'',center:null,boundary:null};
   ['siteSearch','latInput','lngInput'].forEach(id=>document.getElementById(id).value='');
-  siteUpload.querySelector('strong').textContent='구역계 파일 업로드'; updateSiteSummary();
+  siteUpload.querySelector('strong').textContent='구역계 파일 업로드';siteFile.value=''; updateSiteSummary();
   if(siteMap) siteMap.setView(SEOUL_CENTER,12); applySiteMode('parcel'); showToast('대상지 입력을 초기화했습니다.');
 }
 document.getElementById('clearSite').addEventListener('click',resetSiteInput);
