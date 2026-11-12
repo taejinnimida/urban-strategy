@@ -136,6 +136,36 @@ class BuildingSurveyTest(unittest.TestCase):
         attach_building_themes(d,snapshot([building],cadastral=[below,other]))
         self.assertEqual(d['items'][0]['features'][0]['properties']['join_status'],'GIS_ONLY')
 
+    def test_gis_integrated_a2_pnu_matches_register_without_parcel_geometry(self):
+        # Source GIS integration returns A2 (19-digit parcel PNU), not pnu.
+        d=data()
+        geom=feature(box(1,1,3,3),props={
+            'A2':PNU, 'A9':'근린생활시설', 'A11':'철근콘크리트구조',
+            'A26':2, 'A13':'20100101', 'A14':240.0})
+        attach_building_themes(d,snapshot([geom]))
+        r=d['building_fact']['records'][0]
+        self.assertEqual(r['provider_pnu'],PNU)
+        self.assertEqual(r['provider_pnu_field'],'a2')
+        self.assertEqual(r['join_status'],'PARCEL_SPATIAL_REFERENCE')
+        self.assertEqual(r['match_basis'],'GIS_PNU_ATTRIBUTE_PROVISIONAL')
+        self.assertEqual(d['building_fact']['counts']['gis_source_a2_pnu_available'],1)
+        p=d['items'][0]['features'][0]['properties']
+        self.assertEqual(p['geometry_source'],'LT_C_BLDGINFO')
+        self.assertEqual(p['name'],'단독주택')
+        self.assertEqual(p['join_status'],'PARCEL_SPATIAL_REFERENCE')
+        self.assert_only_gis_footprints(d)
+
+    def test_gis_integration_a2_validity_and_direct_name_attribute(self):
+        d=data()
+        geom=feature(box(1,1,3,3),props={'A2':'bad-value','A9':'근린생활시설','A11':'벽돌구조','A26':2})
+        attach_building_themes(d,snapshot([geom]))
+        r=d['building_fact']['records'][0]
+        self.assertIsNone(r['provider_pnu'])
+        self.assertEqual(r['attributes']['use']['value'],'근린생활시설')
+        self.assertEqual(r['attributes']['structure']['value'],'벽돌구조')
+        self.assertEqual(d['items'][0]['features'][0]['properties']['join_status'],'GIS_ONLY')
+        self.assertEqual(d['items'][0]['features'][0]['properties']['name'],'근린생활시설')
+
     def test_parcel_not_substituted_when_gis_pnu_provisional(self):
         d=data()
         geom=feature(box(1,1,3,3),props={'pnu':PNU})
