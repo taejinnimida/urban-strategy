@@ -24,7 +24,7 @@ def data():
 def snapshot(features, status='COMPLETE'):
     return {
         'geometry': mapping(box(0, 0, 10, 10)),
-        '_report_layers': {'LT_C_SPBD': {'status': status, 'features': features}},
+        '_report_layers': {'LT_C_BLDGINFO': {'status': status, 'features': features}},
     }
 
 
