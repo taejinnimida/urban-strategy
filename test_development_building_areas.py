@@ -90,8 +90,8 @@ def test_provisional_map_does_not_label_calculation_as_register_original():
     assert len(shapes) == 1
     assert shapes[0]['properties']['geometry_source'] == 'LT_C_BLDGINFO'
     assert shapes[0]['properties']['geometry_basis'] == 'BUILDING_FOOTPRINT'
-    assert shapes[0]['properties']['join_status'] == 'GIS_ONLY'
-    assert shapes[0]['properties']['attribute_assurance'] == 'UNKNOWN'
+    assert shapes[0]['properties']['join_status'] == 'PARCEL_SPATIAL_REFERENCE'
+    assert shapes[0]['properties']['attribute_assurance'] == 'INTERNAL_CALC_PROVISIONAL'
     assert data['items'][5]['survey_table']['rows'][0]['count'] == 1
     assert data['items'][5]['survey_table']['rows'][3]['count'] == 1
 
