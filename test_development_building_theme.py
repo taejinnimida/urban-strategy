@@ -104,7 +104,7 @@ class BuildingSurveyTest(unittest.TestCase):
 
     def test_partial_empty_is_not_verified_zero(self):
         d = data()
-        attach_building_themes(d, snapshot([]))
+        attach_building_themes(d, snapshot([], 'UNKNOWN'))
         self.assertEqual(d['building_fact']['geometry_status'], 'UNAVAILABLE')
         self.assertFalse(d['building_fact']['counts']['zero_confirmed'])
         self.assertEqual(d['items'][0]['survey_table']['rows'][0]['count'], 1)
