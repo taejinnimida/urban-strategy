@@ -752,11 +752,12 @@ function devInstallWorkflowActions(){
  #devWorkflow h3{margin:0 0 3px;font-size:15px}
  #devWorkflow p{margin:2px 0 10px;font-size:12px;color:#64748b}
  #devWorkflow .dev-flow-steps{display:flex;gap:10px;align-items:stretch;flex-wrap:wrap}
- #devWorkflow .dev-flow-steps button{padding:11px 16px;border:1px solid #b9c8d9;border-radius:6px;background:#fff;color:#234565;font-size:14px;font-weight:700;cursor:pointer}
+ #devWorkflow .dev-flow-steps button,#devWorkflow .dev-flow-steps a{padding:11px 16px;border:1px solid #b9c8d9;border-radius:6px;background:#fff;color:#234565;font-size:14px;font-weight:700;cursor:pointer}
+ #devWorkflow .dev-flow-steps a{display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
  #devWorkflow .dev-flow-steps #devNational{background:#315eae;border-color:#315eae;color:#fff}
  #devWorkflow .dev-flow-steps button:disabled{background:#e9edf2;border-color:#d3dbe4;color:#8190a0;cursor:not-allowed;opacity:1}
  #devWorkflow .dev-flow-steps #devSeoulReviewAction:not(:disabled){background:#da7838;border-color:#da7838;color:#fff}
- #devWorkflow .dev-flow-steps button:focus-visible{outline:3px solid #2563eb;outline-offset:2px}
+ #devWorkflow .dev-flow-steps button:focus-visible,#devWorkflow .dev-flow-steps a:focus-visible{outline:3px solid #2563eb;outline-offset:2px}
  `;
  document.head.append(style);
  const section=document.createElement('section');section.id='devWorkflow';section.setAttribute('aria-label','결과물 작성 및 후속 검토');
@@ -764,11 +765,12 @@ function devInstallWorkflowActions(){
  const note=document.createElement('p');note.textContent='① 기초현황조사 → ② 사업방식 검토 → ③ 경관성 검토. 도시개발검토는 준비 중이며 경관성 검토는 별도 경관검토 엔진으로 연결합니다.';
  const actions=document.createElement('div');actions.className='dev-flow-steps';
  const survey=document.createElement('button');survey.type='button';survey.id='devNational';survey.textContent='기초현황조사';survey.disabled=true;survey.onclick=()=>devOpen('development');
+ const plans=document.createElement('a');plans.id='devRelatedPlansAction';plans.href='/plans';plans.target='_blank';plans.rel='noopener noreferrer';plans.textContent='상위 및 관련계획 ↗';plans.title='구역계 지정 없이 지역별 계획과 자료를 조회합니다. 새 창에서 열립니다.';
  const seoulAction=document.createElement('button');seoulAction.type='button';seoulAction.id='devSeoulReviewAction';seoulAction.textContent='도시정비검토';seoulAction.disabled=true;seoulAction.title='서울 대상지에 한하여 기존 서울도시정비플랫폼을 실행합니다.';seoulAction.onclick=()=>devOpen('seoul');
  const development=document.createElement('button');development.type='button';development.id='devDevelopmentReview';development.textContent='도시개발검토 · 준비 중';development.disabled=true;development.title='전국 도시개발 사업검토는 아직 구현되지 않았습니다.';
  const landscape=document.createElement('button');landscape.type='button';landscape.id='devLandscapeReview';landscape.textContent='경관성 검토';landscape.disabled=true;landscape.title='확정 대상지를 기준으로 경관성 검토 플랫폼을 엽니다.';
  landscape.onclick=()=>{if(landscape.disabled)return;const w=window.open('https://urban-landscape-review.onrender.com/','_blank');if(w)w.opener=null;else devStatus('팝업이 차단되었습니다. 새 창 열기를 허용하세요.');};
- actions.append(survey,seoulAction,development,landscape);section.append(title,note,actions);
+ actions.append(survey,plans,seoulAction,development,landscape);section.append(title,note,actions);
  const placement=seoul.closest('.boundary-review-bar')||seoul.parentElement;
  if(placement)placement.after(section);else document.getElementById('map')?.before(section);
 }

@@ -12373,3 +12373,7 @@ ui_editor_backend.install(app, _admin_auth_or_session, BASE_DIR)
 import sys as _dev_sys
 from development_review import register as _dev_register
 _dev_register(app, _dev_sys.modules[__name__])
+
+# Shared plan references: independent catalogue, no Seoul business RULE dependency.
+from related_plans import install as _install_related_plans
+_install_related_plans(app, _admin_auth_or_session)
