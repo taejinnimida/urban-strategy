@@ -703,14 +703,14 @@ async function loadPlatformSiteSnapshot(){
   const siteId=new URLSearchParams(location.search).get('site');
   if(!siteId)return false;
   try{
-    const r=await fetch('/api/development/snapshots/'+encodeURIComponent(siteId),{cache:'no-store'});
+    const r=await fetch('/api/snapshots/'+encodeURIComponent(siteId),{cache:'no-store'});
     if(!r.ok)throw new Error('snapshot');
     const v=await r.json();
     if(!v?.geometry)throw new Error('geometry');
     const geo={type:'Feature',properties:{source:'urban-planning-platform',site_id:siteId},geometry:v.geometry};
     setBoundary(geo,'Urban Planning Platform 대상지',v.address||v.label||('확정 대상지 · '+Math.round(Number(v.area_m2||0)).toLocaleString()+'㎡'));
     const project=document.getElementById('projectName');
-    if(project && !project.value.trim()) project.value='경관성 검토';
+    if(project) project.value='경관성 검토';
     showToast('플랫폼에서 확정한 대상지를 불러왔습니다.');
     setTimeout(()=>go(2),120);
     return true;
