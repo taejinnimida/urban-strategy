@@ -218,11 +218,10 @@ def assemble_building_fact(data, snapshot):
             key = 'UNKEYED_REGISTER_ROW:' + str(n)
         by_title.setdefault(key, []).append(row)
 
-    # A footprint and a building-register row may have no common identifier.
-    # A provisional PNU candidate is allowed when the largest parcel overlap
-    # covers >=65% of the footprint, regardless of other parcel overlap.
-    # A unique register title on the candidate parcel is still required;
-    # this is a spatial hypothesis, never direct register-ID identity.
+    # Parcel-based candidate grouping accepts multiple register titles and
+    # multiple building footprints per PNU. Do not discard candidates because
+    # there is no 1:1 management-ID relation. A source PNU differing from
+    # spatial-overlay PNU is recorded as a discrepancy, not a rejection.
     parcels = _parcel_geometry_index(layers.get('LP_PA_CBND_BUBUN') or {}, site)
     titles_by_pnu = defaultdict(set)
     for key, rows in by_title.items():
@@ -235,35 +234,30 @@ def assemble_building_fact(data, snapshot):
             continue
         parcel_hit = _spatial_parcel_candidate(observation, parcels)
         supplied_pnu = observation.get('provider_pnu')
-        # When a GIS feature has a valid 19-digit PNU, it can independently
-        # propose a labelled provisional relationship to the building title.
-        # A conflicting geometric parcel observation disqualifies that fallback.
-        if parcel_hit and supplied_pnu and parcel_hit[0] != supplied_pnu:
-            continue
+        # Prefer a PNU appearing in the authoritative building-register PNU
+        # group. When both available sources disagree, retain the conflict.
+        candidates = []
         if parcel_hit:
-            pnu, overlap_pct = parcel_hit
-            basis = ('UNIQUE_PARCEL_OVERLAY_PROVISIONAL' if
-                     (layers.get('LP_PA_CBND_BUBUN') or {}).get('status') == 'COMPLETE'
-                     else 'REFERENCE_PARCEL_OVERLAY_PROVISIONAL')
-        elif supplied_pnu:
-            pnu, overlap_pct = supplied_pnu, None
-            basis = 'GIS_PNU_ATTRIBUTE_PROVISIONAL'
-        else:
+            candidates.append((parcel_hit[0], parcel_hit[1],
+                               'PARCEL_OVERLAY_65_PERCENT'))
+        if supplied_pnu and (not parcel_hit or parcel_hit[0] != supplied_pnu):
+            candidates.append((supplied_pnu, None, 'GIS_SOURCE_PNU'))
+        possible = [(pnu, ratio, basis, sorted(titles_by_pnu[pnu]))
+                    for pnu, ratio, basis in candidates if titles_by_pnu.get(pnu)]
+        if not possible:
             continue
-        possible = titles_by_pnu.get(pnu, set())
-        if len(possible) != 1:
-            continue
-        key = next(iter(possible))
-        tentative[observation['id']] = {'register_id': key, 'parcel_pnu': pnu,
-                                         'overlap_pct': overlap_pct, 'basis': basis}
-    # Prevent reuse of an exact-ID title by a spatial-only footprint.
-    exact_titles = {obs['title_key'] for obs in selected
-                    if obs['title_key'] and len(by_title.get(obs['title_key'], [])) == 1}
-    tentative = {k: v for k, v in tentative.items() if v['register_id'] not in exact_titles}
-    # Prevent one register title from being assigned to multiple footprints.
-    tentative_counts = Counter(c['register_id'] for c in tentative.values())
-    tentative = {k: v for k, v in tentative.items()
-                 if tentative_counts[v['register_id']] == 1}
+        # A spatially supported, registered PNU wins; provider-only fallback
+        # is still possible. Neither is proof of a specific building title.
+        pnu, overlap_pct, basis, keys = possible[0]
+        tentative[observation['id']] = {
+            'register_ids': keys,
+            'register_id': keys[0] if len(keys) == 1 else None,
+            'parcel_pnu': pnu,
+            'overlap_pct': overlap_pct,
+            'basis': basis,
+            'provider_pnu_conflict': bool(parcel_hit and supplied_pnu
+                                          and parcel_hit[0] != supplied_pnu),
+        }
     used_title_keys = set()
     spatial_title_keys = set()
     records = []
@@ -272,8 +266,8 @@ def assemble_building_fact(data, snapshot):
         possible = by_title.get(observation['title_key']) if observation['title_key'] else None
         exact_ledger = possible[0] if possible and len(possible) == 1 else None
         candidate = tentative.get(observation['id']) if not exact_ledger else None
-        candidate_key = candidate['register_id'] if candidate else None
-        provisional_ledger = by_title[candidate_key][0] if candidate else None
+        candidate_key = candidate.get('register_id') if candidate else None
+        provisional_ledger = by_title[candidate_key][0] if candidate_key else None
         ledger = exact_ledger or provisional_ledger
         if exact_ledger:
             used_title_keys.add(observation['title_key'])
@@ -347,13 +341,16 @@ def assemble_building_fact(data, snapshot):
             'register_id': (observation['title_key'] if exact_ledger else
                             str(ledger.get('id') or '').strip() or None if ledger else None),
             'register_row_key': candidate_key if candidate else observation['title_key'],
+            'register_candidates': candidate['register_ids'] if candidate else [],
             'join_status': ('EXACT_ID' if exact_ledger else
-                            'PARCEL_SPATIAL_REFERENCE' if provisional_ledger else 'UNMATCHED'),
+                            'PARCEL_SPATIAL_REFERENCE' if provisional_ledger else
+                            'PNU_GROUP_REFERENCE' if candidate else 'UNMATCHED'),
             'quality_grade': grade,
             'provider_pnu': observation['provider_pnu'],
             'provider_pnu_field': observation.get('provider_pnu_field'),
             'spatial_parcel_pnu': candidate['parcel_pnu'] if candidate else None,
             'spatial_overlap_pct': candidate['overlap_pct'] if candidate else None,
+            'provider_pnu_conflict': candidate['provider_pnu_conflict'] if candidate else False,
             'match_basis': ('BUILDING_REGISTER_ID' if exact_ledger else
                             candidate.get('basis') if candidate else None),
             'registered_pnus': ledger.get('pnus') if ledger else None,
@@ -458,6 +455,8 @@ def assemble_building_fact(data, snapshot):
         'invalid_provider_shapes': invalid,
         'direct_register_matches': sum(r['join_status'] == 'EXACT_ID' for r in records),
         'spatial_register_candidates': sum(r['join_status'] == 'PARCEL_SPATIAL_REFERENCE' for r in records),
+        'spatial_multi_title_candidates': sum(r['join_status'] == 'PNU_GROUP_REFERENCE' for r in records),
+        'provider_parcel_conflicts_retained': sum(r['provider_pnu_conflict'] for r in records),
         'spatial_corroborated_candidates': sum(
             r['join_status'] == 'PARCEL_SPATIAL_REFERENCE' and
             any(v['assurance'] == 'SPATIAL_AGREEMENT' for v in r['attributes'].values())
