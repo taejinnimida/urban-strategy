@@ -513,7 +513,7 @@ async function devPlanningFetchViewportZoning(){
  }
  devPlanningZoningBusy=true;devPlanningZoningPending=false;
  devPlanningViewportStatus('지도 화면 전체의 용도지역 조회 중…');
- const results=new Map();let ok=0,partial=0,failed=0;
+ const results=new Map();let ok=0,partial=0,failed=0,diag=[];
  try{
   for(const layer of DEV_PLANNING_ZONING_LAYERS){
    if(revision!==devPlanningZoningRevision)break;
@@ -522,7 +522,18 @@ async function devPlanningFetchViewportZoning(){
     if(result.status==='COMPLETE'){results.set(layer,result);ok++;}
     else if(result.status==='PARTIAL'){results.set(layer,result);partial++;}
     else failed++;
-   }catch(_){failed++;}
+    if(layer==='LT_C_UQ111'){
+     const counts=result.subtype_counts||{};
+     const third=Object.entries(counts).filter(([k])=>/제?3종일반주거|제?삼종일반주거/.test(k.replace(/\s/g,''))).reduce((a,[,n])=>a+Number(n||0),0);
+     diag.push('도시지역 원자료 '+(result.received??'?')+'건 · 정상 도형 '+(result.count??0)+'건 · 제3종일반주거 '+third+'건'+
+      ((result.skipped_invalid_features||0)?' · 오류 도형 제외 '+result.skipped_invalid_features+'건':'')+
+      ((result.repaired_for_map_only||0)?' · 표시용 보정 '+result.repaired_for_map_only+'건':'')+
+      (result.error_code?' · 오류 '+(devFailureLabels[result.error_code]||result.error_code):''));
+    }
+   }catch(e){
+    failed++;
+    if(layer==='LT_C_UQ111')diag.push('도시지역 조회 실패 · '+(devFailureLabels[e.code]||'연결 확인 필요'));
+   }
   }
   if(revision!==devPlanningZoningRevision)return;
   devPlanningViewportZoning=results;
@@ -531,6 +542,7 @@ async function devPlanningFetchViewportZoning(){
    '주변 용도지역 '+ok+'개 레이어 조회완료'
    +(partial?' · 일부자료 '+partial+'개':'')
    +(failed?' · 미확보 '+failed+'개(해당 레이어는 대상지 교차자료만 표시)':'')
+   +(diag.length?' · '+diag.join(' · '):'')
    +' · 화면 범위 전용, 현황보고서 FACT는 변경하지 않음'
   );
  }finally{
