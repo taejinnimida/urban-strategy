@@ -5,5 +5,4 @@ services:
     repo: https://github.com/taejinnimida/urban-strategy
     branch: urban-landscape-review
     dockerfilePath: ./Dockerfile
-    startCommand: uvicorn landscape_app:app --host 0.0.0.0 --port $PORT
     autoDeployTrigger: commit
