@@ -196,13 +196,14 @@ button,input,select{font:inherit}.hidden{display:none!important}
               <div class="segmented" id="planMode"><button class="active" data-mode="mass">외곽선 + 높이</button><button data-mode="model">3D 모델</button></div>
               <div id="massMode">
                 <label>건축물 외곽선</label>
-                <div class="upload-box" id="planUpload"><strong>배치도 / 외곽선 파일</strong><span>DXF / GeoJSON · 목업</span><input id="planFile" type="file" hidden /></div>
-                <div class="grid two compact"><div><label>건축물 높이(m)</label><input id="buildingHeight" type="number" value="50" min="1" /></div><div><label>건축물 동수</label><input id="buildingCount" type="number" value="1" min="1" /></div></div>
+                <div class="upload-box" id="planUpload"><strong>배치도 / 외곽선 파일</strong><span>DXF / GeoJSON</span><input id="planFile" type="file" accept=".dxf,.json,.geojson" hidden /></div>
+                <div class="grid two compact"><div><label>계획안 좌표계</label><select id="planCrs"><option value="EPSG:5179" selected>EPSG:5179</option><option value="EPSG:5186">EPSG:5186</option><option value="EPSG:5181">EPSG:5181</option><option value="EPSG:5174">EPSG:5174</option><option value="EPSG:4326">EPSG:4326</option></select></div><div><label>건축물 높이(m)</label><input id="buildingHeight" type="number" value="50" min="1" /></div></div>
+                <div class="grid two compact"><div><label>인식된 동수</label><input id="buildingCount" type="number" value="0" min="0" readonly /></div><div><label>파일상태</label><input id="planFileStatus" value="미입력" readonly /></div></div>
               </div>
               <div id="modelMode" class="hidden"><label>3D 모델 업로드</label><div class="upload-box"><strong>GLB / glTF / OBJ</strong><span>직접 SketchUp 입력은 후속 검토</span></div></div>
               <button class="btn secondary full" id="generateMass">계획 매스 미리보기</button>
             </section>
-            <section class="card preview-card"><div class="preview-title">계획안 개념 미리보기</div><div class="mass-preview"><div class="ground"></div><div class="mass" id="massModel"><span id="massLabel">50m</span></div><div class="mass-shadow"></div></div><div class="metric-row"><div><span>계획높이</span><b id="heightMetric">50 m</b></div><div><span>동수</span><b id="countMetric">1동</b></div><div><span>상태</span><b>계획안</b></div></div></section>
+            <section class="card preview-card"><div class="preview-title">계획안 3D 매스 미리보기</div><div id="plan3d" style="height:420px;border-radius:10px;overflow:hidden;background:#eef1f4"></div><div class="metric-row"><div><span>계획높이</span><b id="heightMetric">50 m</b></div><div><span>동수</span><b id="countMetric">0동</b></div><div><span>상태</span><b id="planModelStatus">외곽선 미입력</b></div></div></section>
           </div>
           <div class="actions"><button class="btn ghost prev" data-prev="1">이전</button><button class="btn primary next" data-next="3">조망점 분석으로</button></div>
         </article>
@@ -271,6 +272,8 @@ button,input,select{font:inherit}.hidden{display:none!important}
     </main>
   </div>
   <div class="toast" id="toast"></div>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.164.1/examples/js/controls/OrbitControls.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"></script>
   <script>
 const steps = [...document.querySelectorAll('.step')];
@@ -576,18 +579,118 @@ document.getElementById('loadSite').addEventListener('click',()=>{
 });
 
 // -----------------------------
-// Existing Day 1 mock functions kept intact
+// Plan footprint -> actual 3D mass preview
 // -----------------------------
-function bindUpload(boxId,inputId){
-  const box=document.getElementById(boxId), input=document.getElementById(inputId);
-  box.addEventListener('click',()=>input.click());
-  input.addEventListener('change',()=>{
-    if(!input.files[0]) return;
-    box.querySelector('strong').textContent=input.files[0].name;
-    showToast('파일 선택 흐름을 확인했습니다.');
-  });
+let planFootprints=[];
+let planScene=null,planCamera=null,planRenderer=null,planControls=null,planMassGroup=null;
+
+function initPlan3D(){
+  const host=document.getElementById('plan3d');
+  if(!host || planRenderer || typeof THREE==='undefined') return;
+  const w=host.clientWidth||640,h=host.clientHeight||420;
+  planScene=new THREE.Scene();
+  planScene.background=new THREE.Color(0xf1f3f5);
+  planCamera=new THREE.PerspectiveCamera(45,w/h,0.1,10000);
+  planCamera.position.set(140,-180,130);
+  planCamera.up.set(0,0,1);
+  planRenderer=new THREE.WebGLRenderer({antialias:true,alpha:false});
+  planRenderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+  planRenderer.setSize(w,h);
+  host.appendChild(planRenderer.domElement);
+  planControls=new THREE.OrbitControls(planCamera,planRenderer.domElement);
+  planControls.enableDamping=true;
+  planControls.target.set(0,0,30);
+  const hemi=new THREE.HemisphereLight(0xffffff,0x8b8f94,1.5);planScene.add(hemi);
+  const sun=new THREE.DirectionalLight(0xffffff,1.6);sun.position.set(120,-80,200);planScene.add(sun);
+  const grid=new THREE.GridHelper(400,20,0x8f969e,0xc7ccd1);grid.rotation.x=Math.PI/2;planScene.add(grid);
+  planMassGroup=new THREE.Group();planScene.add(planMassGroup);
+  const animate=()=>{requestAnimationFrame(animate);planControls.update();planRenderer.render(planScene,planCamera)};animate();
+  window.addEventListener('resize',()=>{if(!planRenderer)return;const nw=host.clientWidth||640,nh=host.clientHeight||420;planCamera.aspect=nw/nh;planCamera.updateProjectionMatrix();planRenderer.setSize(nw,nh);});
 }
-bindUpload('planUpload','planFile');
+
+function planGeometryFeatures(){
+  const out=[];
+  for(const f of planFootprints){
+    const g=f.geometry;
+    if(!g)continue;
+    if(g.type==='Polygon')out.push(g.coordinates);
+    if(g.type==='MultiPolygon')g.coordinates.forEach(p=>out.push(p));
+  }
+  return out;
+}
+function planLocal(lon,lat,lon0,lat0){
+  const r=Math.PI/180;
+  return [(lon-lon0)*111320*Math.cos(lat0*r),(lat-lat0)*110540];
+}
+function renderPlan3D(){
+  initPlan3D();
+  if(!planRenderer||!planMassGroup)return;
+  while(planMassGroup.children.length){
+    const o=planMassGroup.children.pop(); if(o.geometry)o.geometry.dispose(); if(o.material)o.material.dispose();
+  }
+  const polys=planGeometryFeatures();
+  const height=Math.max(1,Number(document.getElementById('buildingHeight').value||50));
+  if(!polys.length){
+    document.getElementById('planModelStatus').textContent='외곽선 미입력';
+    return;
+  }
+  const all=polys.flatMap(p=>p[0]||[]);
+  const lon0=all.reduce((s,p)=>s+Number(p[0]),0)/all.length;
+  const lat0=all.reduce((s,p)=>s+Number(p[1]),0)/all.length;
+  let maxR=10;
+  for(const poly of polys){
+    const outer=poly[0]||[]; if(outer.length<4)continue;
+    const shape3=new THREE.Shape();
+    outer.forEach((p,i)=>{const [x,y]=planLocal(Number(p[0]),Number(p[1]),lon0,lat0);maxR=Math.max(maxR,Math.hypot(x,y));if(i===0)shape3.moveTo(x,y);else shape3.lineTo(x,y);});
+    for(const holeRing of poly.slice(1)){
+      if(holeRing.length<4)continue;
+      const hole=new THREE.Path();
+      holeRing.forEach((p,i)=>{const [x,y]=planLocal(Number(p[0]),Number(p[1]),lon0,lat0);if(i===0)hole.moveTo(x,y);else hole.lineTo(x,y);});
+      shape3.holes.push(hole);
+    }
+    const geo=new THREE.ExtrudeGeometry(shape3,{depth:height,bevelEnabled:false,steps:1});
+    geo.computeVertexNormals();
+    const mat=new THREE.MeshStandardMaterial({color:0xb47a3c,roughness:.72,metalness:.05});
+    const mesh=new THREE.Mesh(geo,mat);
+    planMassGroup.add(mesh);
+    const edges=new THREE.LineSegments(new THREE.EdgesGeometry(geo),new THREE.LineBasicMaterial({color:0x6d4723}));
+    planMassGroup.add(edges);
+  }
+  planControls.target.set(0,0,height*.35);
+  const d=Math.max(80,maxR*2.2,height*2.2);
+  planCamera.position.set(d,-d,d*.75);
+  planCamera.near=.1;planCamera.far=Math.max(5000,d*20);planCamera.updateProjectionMatrix();
+  planControls.update();
+  document.getElementById('heightMetric').textContent=height+' m';
+  document.getElementById('countMetric').textContent=polys.length+'동';
+  document.getElementById('buildingCount').value=polys.length;
+  document.getElementById('planModelStatus').textContent='3D 매스 생성';
+}
+
+const planUpload=document.getElementById('planUpload'),planFile=document.getElementById('planFile');
+planUpload.addEventListener('click',()=>planFile.click());
+planFile.addEventListener('change',async()=>{
+  const file=planFile.files[0]; if(!file)return;
+  planUpload.querySelector('strong').textContent=file.name;
+  document.getElementById('planFileStatus').value='읽는 중…';
+  try{
+    const fd=new FormData();fd.append('file',file);fd.append('crs',document.getElementById('planCrs').value);
+    const r=await fetch('/api/plan-footprints',{method:'POST',body:fd});
+    const v=await r.json();if(!r.ok)throw Error(v.detail||'계획안 외곽선 인식 실패');
+    planFootprints=v.features||[];
+    document.getElementById('buildingCount').value=v.feature_count||planFootprints.length;
+    document.getElementById('countMetric').textContent=(v.feature_count||planFootprints.length)+'동';
+    document.getElementById('planFileStatus').value='외곽선 '+(v.feature_count||0)+'개';
+    document.getElementById('planModelStatus').textContent='외곽선 인식';
+    renderPlan3D();
+    showToast('건축물 외곽선을 읽고 3D 매스를 생성했습니다.');
+  }catch(e){
+    planFootprints=[];
+    document.getElementById('planFileStatus').value='인식 실패';
+    document.getElementById('planModelStatus').textContent='외곽선 오류';
+    showToast(e.message||'계획안 파일을 읽지 못했습니다.');
+  }
+});
 
 const modeBtns=[...document.querySelectorAll('#planMode button')];
 modeBtns.forEach(b=>b.addEventListener('click',()=>{
@@ -596,11 +699,11 @@ modeBtns.forEach(b=>b.addEventListener('click',()=>{
   document.getElementById('modelMode').classList.toggle('hidden', b.dataset.mode!=='model');
 }));
 document.getElementById('generateMass').addEventListener('click',()=>{
-  const h=Number(document.getElementById('buildingHeight').value||50), c=Number(document.getElementById('buildingCount').value||1);
-  document.getElementById('massModel').style.height=Math.min(240,90+h*1.5)+'px';
-  document.getElementById('massLabel').textContent=h+'m'; document.getElementById('heightMetric').textContent=h+' m'; document.getElementById('countMetric').textContent=c+'동';
-  showToast('계획 매스 미리보기를 갱신했습니다.');
+  if(!planFootprints.length){showToast('먼저 DXF 또는 GeoJSON 건축물 외곽선을 올리세요.');return;}
+  renderPlan3D();
+  showToast('입력 높이로 3D 매스를 다시 생성했습니다.');
 });
+document.getElementById('buildingHeight').addEventListener('change',()=>{if(planFootprints.length)renderPlan3D();});
 
 // -----------------------------
 // Day 3: VIEWPOINT CANDIDATE ENGINE
