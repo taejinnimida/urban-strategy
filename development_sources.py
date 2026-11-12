@@ -298,7 +298,10 @@ def dem(geometry,area):
         for c in range(width):
             cell=box(x0+c*dx,y0+r*dx,x0+(c+1)*dx,y0+(r+1)*dx)
             clip=cell.intersection(metric)
-            if clip.area<=0:continue
+            # Reprojected site boundaries may create sub-millimetre slivers
+            # along otherwise grid-aligned test/site edges. Ignore only
+            # numerical fragments smaller than 1e-8 of one cell.
+            if clip.area<=dx*dx*1e-8:continue
             z=val(r,c);a=clip.area
             if z is None:
                 missing+=1
