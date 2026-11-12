@@ -37,43 +37,38 @@ class BuildingSurveyTest(unittest.TestCase):
         self.assertEqual(_classify('3-7', 300), '300% 이상')
         self.assertEqual(_classify('3-5', 0), '기타(값 없음 등)')
 
-    def test_verified_and_unmatched_both_drawn(self):
+    def test_ledger_only_survey_and_unmatched_hidden(self):
         d = data()
         attach_building_themes(d, snapshot([
             feature(box(1, 1, 3, 3), 'MG001'),
             feature(box(4, 4, 6, 6)),
         ]))
         for item in d['items']:
-            self.assertEqual(len(item['features']), 2)
-            self.assertEqual(item['survey_table']['rows'][0]['count'], 2)
-            self.assertEqual(sum(e['count'] for e in item['legend']), 2)
+            self.assertEqual(len(item['features']), 1)
+            self.assertEqual(item['survey_table']['rows'][0]['count'], 1)
+            self.assertEqual(sum(e['count'] for e in item['legend']), 1)
             self.assertEqual(item['geometry_status'], 'PARTIAL')
         self.assertEqual(d['items'][0]['features'][0]['properties']['name'], '단독주택')
-        self.assertEqual(d['items'][0]['features'][1]['properties']['name'], '대장·도형 미연계')
+        self.assertEqual(d['building_fact']['counts']['unmatched_gis_hidden_from_survey'], 1)
         self.assertEqual(d['items'][2]['features'][0]['properties']['name'], '3층')
 
-    def test_integrated_gis_attributes_classify_without_register_join(self):
+    def test_gis_attributes_not_used_to_inflate_register_stats(self):
         d = data()
         geom = feature(box(1, 1, 3, 3))
         geom['properties'] = {
-            'mainPurpsCdNm': '근린생활시설',
-            'grndFlrCnt': 4,
-            'totArea': 110,
-            'bcRat': 55,
-            'vlRat': 205,
-            'useAprDay': '20010101',
+            'mainPurpsCdNm': '근린생활시설', 'grndFlrCnt': 4,
+            'totArea': 110, 'bcRat': 55, 'vlRat': 205,
         }
-        s = snapshot([], 'UNKNOWN')
-        s['_report_layers']['LT_C_BLDGINFO'] = {
-            'status': 'COMPLETE', 'features': [geom],
-        }
-        attach_building_themes(d, s)
-        self.assertEqual(d['items'][0]['features'][0]['properties']['name'], '근린생활시설')
-        self.assertEqual(d['items'][2]['features'][0]['properties']['name'], '4층')
-        self.assertEqual(d['items'][4]['features'][0]['properties']['name'], '85~115㎡')
-        self.assertEqual(d['items'][5]['features'][0]['properties']['name'], '40~70%')
-        self.assertEqual(d['items'][6]['features'][0]['properties']['name'], '200~300%')
+        ss = snapshot([], 'UNKNOWN')
+        ss['_report_layers']['LT_C_BLDGINFO'] = {'status': 'COMPLETE', 'features': [geom]}
+        attach_building_themes(d, ss)
+        self.assertEqual(d['building_fact']['counts']['mapped_shapes'], 1)
+        self.assertEqual(d['items'][0]['features'], [])
         self.assertEqual(d['items'][0]['survey_table']['rows'][0]['count'], 1)
+        self.assertEqual(d['items'][0]['survey_table']['rows'][1]['label'], '단독주택')
+        self.assertEqual(d['items'][2]['survey_table']['rows'][0]['count'], 1)
+        self.assertEqual(d['items'][2]['survey_table']['rows'][3]['count'], 1)
+        self.assertEqual(d['building_fact']['counts']['unmatched_gis_hidden_from_survey'], 1)
 
     def test_fallback_to_address_building_footprint(self):
         d = data()
@@ -82,8 +77,9 @@ class BuildingSurveyTest(unittest.TestCase):
             'status': 'UNKNOWN', 'features': [],
         }
         attach_building_themes(d, s)
-        self.assertEqual(d['items'][0]['features'][0]['properties']['name'], '대장·도형 미연계')
-        self.assertIn('보조', d['items'][0]['source'])
+        self.assertEqual(d['items'][0]['features'], [])
+        self.assertIn('건축HUB', d['items'][0]['source'])
+        self.assertEqual(d['items'][0]['survey_table']['rows'][0]['count'], 1)
 
     def test_zero_footprints_yields_real_blank_sheet_data(self):
         d = data()
@@ -92,8 +88,8 @@ class BuildingSurveyTest(unittest.TestCase):
         attach_building_themes(d, s)
         for item in d['items']:
             self.assertEqual(item['features'], [])
-            self.assertEqual(item['survey_table']['rows'][0]['count'], 0)
-            self.assertTrue(item['provider_verified'])
+            self.assertEqual(item['survey_table']['rows'][0]['count'], 1)
+            self.assertFalse(item['provider_verified'])
             self.assertEqual(item['geometry_status'], 'COMPLETE')
 
     def test_partial_empty_is_not_verified_zero(self):
@@ -101,7 +97,7 @@ class BuildingSurveyTest(unittest.TestCase):
         attach_building_themes(d, snapshot([]))
         self.assertEqual(d['building_fact']['geometry_status'], 'PARTIAL')
         self.assertFalse(d['building_fact']['counts']['zero_confirmed'])
-        self.assertEqual(d['items'][0]['survey_table']['rows'][0]['count'], 0)
+        self.assertEqual(d['items'][0]['survey_table']['rows'][0]['count'], 1)
         self.assertFalse(d['items'][0]['provider_verified'])
 
     def test_direct_join_conflict_is_not_silently_selected(self):
@@ -122,7 +118,8 @@ class BuildingSurveyTest(unittest.TestCase):
         attach_building_themes(d, snapshot([feature(box(1, 1, 3, 3))]))
         self.assertEqual(d['building_fact']['counts']['direct_register_matches'], 0)
         self.assertEqual(d['building_fact']['counts']['register_without_direct_geometry'], 1)
-        self.assertEqual(d['items'][0]['features'][0]['properties']['name'], '대장·도형 미연계')
+        self.assertEqual(d['items'][0]['features'], [])
+        self.assertEqual(d['building_fact']['counts']['unmatched_gis_hidden_from_survey'], 1)
 
     def test_duplicate_address_polygon_suppressed(self):
         d = data()
@@ -142,7 +139,8 @@ class BuildingSurveyTest(unittest.TestCase):
         s['_report_layers']['LT_C_BLDGINFO'] = {'status': 'COMPLETE', 'features': [geom]}
         attach_building_themes(d, s)
         self.assertEqual(d['building_fact']['counts']['mapped_shapes'], 2)
-        self.assertEqual(d['items'][0]['features'][1]['properties']['name'], '대장·도형 미연계')
+        self.assertEqual(d['items'][0]['features'], [])
+        self.assertEqual(d['building_fact']['counts']['unmatched_gis_hidden_from_survey'], 2)
 
     def _parcel(self, bounds, pnu='1111111111100000001'):
         return {'type': 'Feature', 'id': pnu, 'geometry': mapping(box(*bounds)),
@@ -167,7 +165,7 @@ class BuildingSurveyTest(unittest.TestCase):
         self.assertEqual(d['building_fact']['counts']['direct_register_matches'], 0)
         self.assertEqual(d['building_fact']['counts']['spatial_register_candidates'], 1)
         self.assertEqual(d['items'][0]['features'][0]['properties']['name'], '단독주택')
-        self.assertIn('잠정', d['items'][0]['survey_table']['rows'][1]['note'])
+        self.assertEqual(d['items'][0]['features'][0]['properties']['join_status'], 'PARCEL_SPATIAL_REFERENCE')
 
     def test_reference_cadastre_may_support_labelled_provisional_candidate(self):
         d = data()
@@ -222,7 +220,7 @@ class BuildingSurveyTest(unittest.TestCase):
             self.assertEqual(item['features'][0]['properties']['geometry_basis'], 'CADASTRAL_PNU')
             self.assertEqual(item['features'][0]['properties']['join_status'], 'PNU_PARCEL_REGISTER')
             self.assertEqual(item['survey_table']['rows'][0]['count'], 1)
-            self.assertIn('건물도형 0개', item['survey_table']['rows'][0]['note'])
+            self.assertIn('건물외곽선과 PNU 필지도형 구분', item['survey_table']['rows'][0]['note'])
         self.assertEqual(d['items'][2]['features'][0]['properties']['name'], '3층')
         self.assertEqual(d['statistics']['3-3']['footprint_count'], 0)
         self.assertEqual(d['statistics']['3-3']['pnu_register_parcel_features'], 1)
@@ -295,13 +293,28 @@ class BuildingSurveyTest(unittest.TestCase):
         self.assertEqual(record['attributes']['coverage']['value'], 60)
         self.assertEqual(record['attributes']['coverage']['assurance'], 'SPATIAL_REFERENCE')
 
+    def test_many_stale_overlapping_gis_footprints_not_counted_as_buildings(self):
+        d=data()
+        # Historical and duplicate footprints can occupy the same plot.
+        raw=[feature(box(1+i*.03,1,4+i*.03,4)) for i in range(20)]
+        snap=snapshot(raw)
+        attach_building_themes(d,snap)
+        self.assertEqual(d['building_fact']['counts']['mapped_shapes'],20)
+        for item in d['items']:
+            self.assertEqual(item['survey_table']['rows'][0]['count'],1)
+            self.assertEqual(item['features'],[])
+            self.assertNotIn('대장·도형 미연계',[r['label'] for r in item['survey_table']['rows']])
+        self.assertEqual(d['building_fact']['counts']['unmatched_gis_hidden_from_survey'],20)
+        self.assertEqual(d['building_fact']['display_exclusion']['historical_status'],'UNCONFIRMED')
+
     def test_failed_layer_does_not_become_zero(self):
         d = data()
         attach_building_themes(d, snapshot([], 'UNKNOWN'))
         for item in d['items']:
             self.assertEqual(item['geometry_status'], 'UNAVAILABLE')
             self.assertFalse(item['provider_verified'])
-            self.assertNotIn('survey_table', item)
+            self.assertEqual(item['survey_table']['rows'][0]['count'], 1)
+            self.assertEqual(item['features'], [])
 
 
 if __name__ == '__main__':
