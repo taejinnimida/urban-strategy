@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - fix/building-survey-maps-20261110
-      - feature/landcover-indexed-20261111
+      - urban-analysis
   workflow_dispatch:
 
 permissions:
