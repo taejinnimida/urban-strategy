@@ -108,6 +108,34 @@ class BuildingSurveyTest(unittest.TestCase):
             self.assertFalse(item['cad_exportable'])
         self.assertEqual(d['statistics']['3-5']['cadastral_parcels_excluded_from_theme'],1)
 
+    def test_65_percent_primary_parcel_with_competing_overlap_is_provisional(self):
+        d=data()
+        # Building spans two cadastral parcels: 70% in the ledger parcel,
+        # 30% in another parcel. Competing overlap must not veto the match.
+        building=feature(box(0,0,10,1),props={'mainPurpsCdNm':'근린생활시설'})
+        target=parcel(box(0,0,7,1))
+        other=feature(box(7,0,10,1),props={'pnu':'1111111111100000002'})
+        attach_building_themes(d,snapshot([building],cadastral=[target,other]))
+        p=d['items'][0]['features'][0]['properties']
+        self.assertEqual(p['join_status'],'PARCEL_SPATIAL_REFERENCE')
+        self.assertEqual(p['name'],'단독주택')
+        self.assertEqual(d['building_fact']['records'][0]['spatial_overlap_pct'],70.0)
+        self.assertEqual(d['items'][0]['survey_table']['rows'][0]['count'],1)
+        self.assertEqual(shape(d['items'][0]['features'][0]['geometry']).area,10)
+        self.assert_only_gis_footprints(d)
+
+    def test_65_percent_boundary_inclusive_and_just_below_excluded(self):
+        target=parcel(box(0,0,6.5,1))
+        other=feature(box(6.5,0,10,1),props={'pnu':'1111111111100000002'})
+        building=feature(box(0,0,10,1))
+        d=data()
+        attach_building_themes(d,snapshot([building],cadastral=[target,other]))
+        self.assertEqual(d['items'][0]['features'][0]['properties']['join_status'],'PARCEL_SPATIAL_REFERENCE')
+        below=parcel(box(0,0,6.49,1))
+        d=data()
+        attach_building_themes(d,snapshot([building],cadastral=[below,other]))
+        self.assertEqual(d['items'][0]['features'][0]['properties']['join_status'],'GIS_ONLY')
+
     def test_parcel_not_substituted_when_gis_pnu_provisional(self):
         d=data()
         geom=feature(box(1,1,3,3),props={'pnu':PNU})
