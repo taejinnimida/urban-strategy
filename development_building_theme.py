@@ -1,7 +1,7 @@
-"""Building survey maps: plot every official footprint, classify only verified attributes.
+"""Building survey maps: registry statistics with verified GIS footprint themes.
 
-VWorld building outlines and building-register rows are independent source FACTs.
-Lack of a register join does not suppress a building from maps or CAD.
+Only VWorld GIS-building footprints directly identified by a building-register
+management key can be shaded. A cadastral PNU is a parcel, not a footprint.
 """
 import hashlib
 import math
@@ -117,23 +117,10 @@ def attach_building_themes(data, snapshot):
     registered = dict(zip(ledger_keys, registers))
     n = len(registers)
 
-    # Suppress source-only polygons from the statutory-looking survey map.
-    # Keep them in building_fact.records for independent quality review.
-    # A footprint with only a spatial PNU association could be a historic,
-    # demolished shape. Do not draw it as the *current* building. Only true
-    # register management-ID equality establishes a footprint identity.
-    from development_building_fact import _parcel_geometry_index, _register_pnus
-    site = shape(snapshot['geometry'])
-    cadastral_layer = (snapshot.get('_report_layers') or {}).get('LP_PA_CBND_BUBUN') or {}
-    parcels = _parcel_geometry_index(cadastral_layer, site)
-    pnu_to_titles = defaultdict(set)
-    single_pnu_by_title = {}
-    for key, row in registered.items():
-        pnus = _register_pnus(row.get('pnus'))
-        if len(pnus) == 1:
-            pnu = next(iter(pnus))
-            single_pnu_by_title[key] = pnu
-            pnu_to_titles[pnu].add(key)
+    # A PNU identifies a parcel, not a building. Do NOT fill cadastral
+    # polygons with building attributes. Preserve PNU joins in FACT audit only.
+    # A GIS building footprint can be drawn when its management ID is an
+    # unambiguous direct match to one current building-register row.
 
     candidate_by_title = defaultdict(list)
     for r in source_shapes:
@@ -149,24 +136,8 @@ def attach_building_themes(data, snapshot):
         exact = candidate_by_title.get(key, [])
         if len(exact) > 1:
             ambiguous_titles.append(key)
-            continue
-        if len(exact) == 1:
+        elif len(exact) == 1:
             map_by_title[key] = exact[0]
-            continue
-        # 1:1 register–PNU and available cadastral geometry gives a reliable
-        # *location*, not proof of a particular building outline.
-        pnu = single_pnu_by_title.get(key)
-        if pnu and pnu in parcels and len(pnu_to_titles[pnu]) == 1:
-            map_by_title[key] = {
-                'id': 'CADASTRAL_PNU:' + pnu,
-                'geometry': mapping(parcels[pnu]),
-                'join_status': 'PNU_PARCEL_REGISTER',
-                'geometry_basis': 'CADASTRAL_PNU',
-                'quality_grade': 'P_PARCEL_LEDGER',
-                'match_basis': 'EXACT_CADASTRAL_PNU_NOT_BUILDING_FOOTPRINT',
-                'spatial_parcel_pnu': pnu,
-                'spatial_overlap_pct': None
-            }
 
     map_records = [(key, registered[key], map_by_title[key])
                    for key in ledger_keys if key in map_by_title]
@@ -181,6 +152,7 @@ def attach_building_themes(data, snapshot):
         'source_shapes_hidden': len(hidden_gis),
         'ambiguous_registers': len(ambiguous_titles),
         'historical_status': 'UNCONFIRMED',
+        'cadastral_parcels_excluded_from_building_theme': len(parcel_records),
         'provisional_footprints_excluded': sum(r.get('join_status') == 'PARCEL_SPATIAL_REFERENCE' for r in source_shapes),
         'note': '원천 GIS를 삭제하지 않고 현황도에서만 제외. 멸실 여부는 말소대장·공부와 현장자료로 확인.'
     }
@@ -220,17 +192,15 @@ def attach_building_themes(data, snapshot):
             category = categories[label]
             basis = ledger.get(field + '_basis') if field in ('coverage', 'far') else None
             derived = bool(basis and basis != '건축HUB 원문')
-            is_parcel = record.get('join_status') == 'PNU_PARCEL_REGISTER'
             features.append({
                 'type': 'Feature', 'geometry': record['geometry'],
                 'properties': {
                     'name': label, 'color': category['color'],
                     'class_code': category['class_code'],
                     'join_status': record.get('join_status'),
-                    'geometry_basis': 'CADASTRAL_PNU' if is_parcel else 'BUILDING_FOOTPRINT',
+                    'geometry_basis': 'BUILDING_FOOTPRINT',
                     'quality_grade': record.get('quality_grade'),
-                    'attribute_assurance': ('INTERNAL_CALC_PARCEL' if is_parcel else
-                                            'INTERNAL_CALC') if derived else 'DIRECT_LEDGER',
+                    'attribute_assurance': 'INTERNAL_CALC' if derived else 'DIRECT_LEDGER',
                     'join_basis': record.get('match_basis'),
                     'spatial_parcel_pnu': record.get('spatial_parcel_pnu'),
                     'spatial_overlap_pct': record.get('spatial_overlap_pct'),
@@ -245,7 +215,7 @@ def attach_building_themes(data, snapshot):
             'kind': 'total', 'label': '합계', 'count': n,
             'pct': 100.0 if n else 0.0, 'join_status': 'BUILDING_REGISTER',
             'note': (f'건축물조서 {n}건 기준 · 현황도에 표시 가능한 대장기반 도형 '
-                     f'{len(features)}개(건물외곽선과 PNU 필지도형 구분) · '
+                     f'{len(features)}개(대장 관리번호 직접일치 GIS 건물외곽선만) · '
                      f'원천 GIS 도형 수는 건축물 동수가 아님')
         }]
         for label in ordered:
@@ -263,7 +233,7 @@ def attach_building_themes(data, snapshot):
 
         note = (
             f'건축물조서 {n}건을 모집단으로 집계. 지도는 건축물조서와 연결 가능한 '
-            f'{len(features)}개 도형만 표시(대장 연계 건물도형·대장 PNU 필지대체 포함). '
+            f'{len(features)}개 GIS 건물외곽선만 표시(대장 관리번호 직접일치). '
             f'건물관리번호가 직접 연결되지 않은 GIS 도형 {len(hidden_gis)}개는 '
             '현황도·CAD에서 제외하고 검증정보에만 보관. '
             '이들은 멸실 확정이 아니라 최신성·중복 여부 미확인 도형임. '
@@ -279,20 +249,17 @@ def attach_building_themes(data, snapshot):
 
         mapped_geometry_status = (
             'COMPLETE' if n and len(features) == n and
-            fact['geometry_status'] == 'COMPLETE' and
-            not any(rec.get('join_status') == 'PNU_PARCEL_REGISTER'
-                    for _, _, rec in map_records) else
+            fact['geometry_status'] == 'COMPLETE' else
             'PARTIAL' if features else 'UNAVAILABLE'
         )
-        sources = '국토교통부 건축HUB 대장 기준 · VWorld 건물도형·연속지적 위치참고'
+        sources = '국토교통부 건축HUB 대장 기준 · VWorld GIS건물통합정보 건물외곽선(직접연계만)'
         item.update(
             features=features,
             legend=[categories[k] for k in ordered if totals.get(k)],
             thematic_type='building',
             provider_verified=bool(features) and fact['provider_verified'],
             cad_exportable=bool(features) and (
-                any(v.get('status') == 'COMPLETE'
-                    for v in fact['source_info'].values()) or bool(parcel_records)),
+                fact['source_info'].get('LT_C_BLDGINFO', {}).get('status') == 'COMPLETE'),
             geometry_status=mapped_geometry_status,
             source=sources,
             status='공간자료 확보' if mapped_geometry_status == 'COMPLETE' else
@@ -312,6 +279,7 @@ def attach_building_themes(data, snapshot):
                 source_footprint_records=len(source_shapes),
                 footprint_count=len(source_shapes),
                 pnu_register_parcel_features=len(parcel_records),
+                cadastral_parcels_excluded_from_theme=len(parcel_records),
                 displayed_registered_features=len(features),
                 hidden_unmatched_source_footprints=len(hidden_gis),
                 ambiguous_registered_geometries=len(ambiguous_titles),
@@ -320,7 +288,7 @@ def attach_building_themes(data, snapshot):
                 footprint_status=fact['geometry_status'],
                 mapped_groups=[categories[k] for k in ordered if totals.get(k)],
                 mapped_total=len(features),
-                mapped_unit='대장기반 현황도 표시단위(건물외곽선 또는 PNU 필지대체)',
+                mapped_unit='건축물대장 관리번호 직접일치 GIS 건물외곽선(개)',
                 survey_total=n,
                 note=(stat.get('note') or '') + ' ' + note
             )
