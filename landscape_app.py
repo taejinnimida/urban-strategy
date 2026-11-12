@@ -93,16 +93,22 @@ class ViewpointRankReq(BaseModel):
     target_per_band:int=5
     policy:str="top5_plus_designated"
 
+def _landscape_review_html():
+    html=(BASE/"landscape-review"/"index.html").read_text(encoding="utf-8")
+    browser_key=(os.getenv("VWORLD_CLIENT_KEY") or os.getenv("VWORLD_API_KEY") or "").strip()
+    return html.replace("__VWORLD_CLIENT_KEY__",browser_key)
+
 @app.get("/",response_class=HTMLResponse)
-def home():
-    return HTMLResponse((BASE/"landscape-review"/"selector.html").read_text(encoding="utf-8"),headers={"Cache-Control":"no-store"})
+def home(site:str|None=None):
+    return HTMLResponse(_landscape_review_html(),headers={"Cache-Control":"no-store"})
 
 @app.get("/landscape-review",response_class=HTMLResponse)
 def landscape_review(site:str|None=None):
-    html=(BASE/"landscape-review"/"index.html").read_text(encoding="utf-8")
-    browser_key=(os.getenv("VWORLD_CLIENT_KEY") or os.getenv("VWORLD_API_KEY") or "").strip()
-    html=html.replace("__VWORLD_CLIENT_KEY__",browser_key)
-    return HTMLResponse(html,headers={"Cache-Control":"no-store"})
+    return HTMLResponse(_landscape_review_html(),headers={"Cache-Control":"no-store"})
+
+@app.get("/selector",response_class=HTMLResponse)
+def selector():
+    return HTMLResponse((BASE/"landscape-review"/"selector.html").read_text(encoding="utf-8"),headers={"Cache-Control":"no-store"})
 
 
 @app.get("/landscape-review/vworld3d-adapter.js")
