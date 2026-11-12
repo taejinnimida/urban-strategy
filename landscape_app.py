@@ -1,14 +1,16 @@
 from pathlib import Path
 from uuid import uuid4
 from time import time
-import math, os, re
+import math, os, re, io, json, zipfile, tempfile
 import requests
-from fastapi import FastAPI, HTTPException, Query
+import shapefile
+import ezdxf
+from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
-from shapely.geometry import shape, Point, mapping
+from shapely.geometry import shape, Point, mapping, Polygon, MultiPolygon
 from shapely.ops import unary_union, transform
-from pyproj import Geod, Transformer
+from pyproj import Geod, Transformer, CRS
 
 BASE=Path(__file__).parent
 app=FastAPI(title="Urban Landscape Review")
@@ -173,6 +175,213 @@ def parcel_at_point(data:PointReq):
         raise
     except Exception:
         return {"status":"UNKNOWN","feature":None,"message":"클릭 지적자료를 확보하지 못했습니다."}
+
+
+
+def _polygonal_only(geom):
+    if geom is None or geom.is_empty:
+        return None
+    if geom.geom_type in ("Polygon","MultiPolygon"):
+        return geom
+    if geom.geom_type=="GeometryCollection":
+        parts=[g for g in geom.geoms if g.geom_type in ("Polygon","MultiPolygon") and not g.is_empty]
+        if not parts:
+            return None
+        return unary_union(parts)
+    return None
+
+def _to_wgs84(geom, source_crs):
+    crs=CRS.from_user_input(source_crs)
+    if crs.to_epsg()==4326:
+        return geom
+    transformer=Transformer.from_crs(crs,4326,always_xy=True).transform
+    return transform(transformer,geom)
+
+def _read_shp_zip(raw: bytes, fallback_crs: str):
+    try:
+        zf=zipfile.ZipFile(io.BytesIO(raw))
+    except Exception as exc:
+        raise HTTPException(422,"SHP ZIP 파일을 읽지 못했습니다.") from exc
+    names=[n for n in zf.namelist() if not n.endswith("/")]
+    shp_names=[n for n in names if n.lower().endswith(".shp")]
+    if not shp_names:
+        raise HTTPException(422,"ZIP 안에 .shp 파일이 없습니다.")
+    errors=[]
+    for shp_name in shp_names:
+        stem=shp_name[:-4]
+        def member(ext):
+            target=(stem+ext).lower()
+            return next((n for n in names if n.lower()==target),None)
+        dbf_name=member(".dbf")
+        shx_name=member(".shx")
+        prj_name=member(".prj")
+        if not dbf_name:
+            errors.append(f"{shp_name}: DBF 없음")
+            continue
+        kwargs={
+            "shp":io.BytesIO(zf.read(shp_name)),
+            "dbf":io.BytesIO(zf.read(dbf_name)),
+            "encoding":"cp949",
+            "encodingErrors":"replace",
+        }
+        if shx_name:
+            kwargs["shx"]=io.BytesIO(zf.read(shx_name))
+        try:
+            reader=shapefile.Reader(**kwargs)
+            geoms=[]
+            for sr in reader.iterShapeRecords():
+                try:
+                    g=shape(sr.shape.__geo_interface__)
+                    if not g.is_valid:
+                        g=g.buffer(0)
+                    g=_polygonal_only(g)
+                    if g is not None and not g.is_empty:
+                        geoms.append(g)
+                except Exception:
+                    continue
+            if not geoms:
+                errors.append(f"{shp_name}: Polygon 형상 없음")
+                continue
+            geom=unary_union(geoms)
+            source_crs=fallback_crs
+            if prj_name:
+                try:
+                    prj=zf.read(prj_name).decode("utf-8",errors="ignore").strip()
+                    if prj:
+                        source_crs=CRS.from_wkt(prj)
+                except Exception:
+                    source_crs=fallback_crs
+            geom=_to_wgs84(geom,source_crs)
+            if not geom.is_valid:
+                geom=geom.buffer(0)
+            geom=_polygonal_only(geom)
+            if geom is None or geom.is_empty:
+                raise ValueError("polygon")
+            return geom, str(CRS.from_user_input(source_crs).to_string()), shp_name
+        except HTTPException:
+            raise
+        except Exception as exc:
+            errors.append(f"{shp_name}: {str(exc)[:80]}")
+    raise HTTPException(422,"SHP 구역계를 인식하지 못했습니다. " + " / ".join(errors[:3]))
+
+def _dxf_polyline_candidates(doc):
+    out=[]
+    msp=doc.modelspace()
+    for e in msp.query("LWPOLYLINE"):
+        try:
+            if not bool(e.closed):
+                continue
+            pts=[(float(x),float(y)) for x,y in e.get_points("xy")]
+            if len(pts)>=3:
+                out.append((pts, e.dxf.layer or "0"))
+        except Exception:
+            continue
+    for e in msp.query("POLYLINE"):
+        try:
+            if not bool(e.is_closed):
+                continue
+            pts=[(float(v.dxf.location.x),float(v.dxf.location.y)) for v in e.vertices]
+            if len(pts)>=3:
+                out.append((pts, e.dxf.layer or "0"))
+        except Exception:
+            continue
+    for e in msp.query("HATCH"):
+        try:
+            for path in e.paths:
+                vertices=getattr(path,"vertices",None)
+                if not vertices or len(vertices)<3:
+                    continue
+                pts=[(float(v[0]),float(v[1])) for v in vertices]
+                out.append((pts,e.dxf.layer or "0"))
+        except Exception:
+            continue
+    return out
+
+def _read_dxf(raw: bytes, source_crs: str):
+    suffix=".dxf"
+    with tempfile.NamedTemporaryFile(suffix=suffix,delete=False) as fp:
+        fp.write(raw)
+        tmp=fp.name
+    try:
+        doc=ezdxf.readfile(tmp)
+    except Exception as exc:
+        raise HTTPException(422,"DXF 파일을 읽지 못했습니다.") from exc
+    finally:
+        try: os.unlink(tmp)
+        except Exception: pass
+    polys=[]
+    for pts,layer in _dxf_polyline_candidates(doc):
+        try:
+            if pts[0]!=pts[-1]:
+                pts=pts+[pts[0]]
+            g=Polygon(pts)
+            if not g.is_valid:
+                g=g.buffer(0)
+            g=_polygonal_only(g)
+            if g is not None and not g.is_empty and g.area>0:
+                polys.append((g,layer))
+        except Exception:
+            continue
+    if not polys:
+        raise HTTPException(422,"DXF에서 폐합 LWPOLYLINE/POLYLINE/HATCH 구역계를 찾지 못했습니다.")
+    # CAD 파일에 여러 폐합선이 있으면 면적이 가장 큰 외곽선을 기본 구역계로 사용한다.
+    polys.sort(key=lambda item:item[0].area,reverse=True)
+    geom,layer=polys[0]
+    geom=_to_wgs84(geom,source_crs)
+    if not geom.is_valid:
+        geom=geom.buffer(0)
+    geom=_polygonal_only(geom)
+    if geom is None or geom.is_empty:
+        raise HTTPException(422,"DXF 구역계 변환에 실패했습니다.")
+    return geom, str(CRS.from_user_input(source_crs).to_string()), layer, len(polys)
+
+@app.post("/api/boundary-file")
+async def boundary_file(file: UploadFile = File(...), crs: str = Form("EPSG:5179")):
+    name=(file.filename or "").strip()
+    ext=os.path.splitext(name.lower())[1]
+    raw=await file.read()
+    if not raw:
+        raise HTTPException(422,"빈 파일입니다.")
+    if len(raw)>50*1024*1024:
+        raise HTTPException(413,"구역계 파일은 50MB 이하만 지원합니다.")
+    try:
+        CRS.from_user_input(crs)
+    except Exception:
+        raise HTTPException(422,"지원하지 않는 좌표계입니다.")
+    if ext==".zip":
+        geom,source_crs,source_name=_read_shp_zip(raw,crs)
+        source_type="SHP"
+        meta={"source_file":source_name}
+    elif ext==".dxf":
+        geom,source_crs,layer,candidate_count=_read_dxf(raw,crs)
+        source_type="DXF"
+        meta={"layer":layer,"candidate_count":candidate_count}
+    elif ext in (".json",".geojson"):
+        try:
+            data=json.loads(raw.decode("utf-8-sig"))
+            g=shape(data["geometry"] if data.get("type")=="Feature" else data)
+            if data.get("type")=="FeatureCollection":
+                g=unary_union([shape(f["geometry"]) for f in data.get("features",[]) if f.get("geometry")])
+            g=_polygonal_only(g)
+            if g is None or g.is_empty:
+                raise ValueError()
+            geom=_to_wgs84(g,crs)
+            source_crs=str(CRS.from_user_input(crs).to_string())
+            source_type="GeoJSON"
+            meta={}
+        except Exception as exc:
+            raise HTTPException(422,"GeoJSON 구역계를 인식하지 못했습니다.") from exc
+    else:
+        raise HTTPException(422,"지원 형식은 SHP ZIP, DXF, GeoJSON입니다.")
+    area=abs(GEOD.geometry_area_perimeter(geom)[0])
+    return {
+        "status":"RESOLVED",
+        "source_type":source_type,
+        "source_crs":source_crs,
+        "geometry":mapping(geom),
+        "area_m2":round(area,2),
+        **meta,
+    }
 
 @app.post("/api/snapshots")
 def create_snapshot(data:SnapshotReq):
