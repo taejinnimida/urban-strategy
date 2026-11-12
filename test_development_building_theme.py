@@ -165,7 +165,30 @@ class BuildingSurveyTest(unittest.TestCase):
         self.assertEqual(d['building_fact']['counts']['direct_register_matches'], 0)
         self.assertEqual(d['building_fact']['counts']['spatial_register_candidates'], 1)
         self.assertEqual(d['items'][0]['features'][0]['properties']['name'], '단독주택')
-        self.assertEqual(d['items'][0]['features'][0]['properties']['join_status'], 'PARCEL_SPATIAL_REFERENCE')
+        self.assertEqual(d['items'][0]['features'][0]['properties']['join_status'], 'PNU_PARCEL_REGISTER')
+        self.assertEqual(d['items'][0]['features'][0]['properties']['geometry_basis'], 'CADASTRAL_PNU')
+
+    def test_same_plot_historic_shape_not_drawn_as_current(self):
+        d = data()
+        ss = snapshot([])
+        ss['_report_layers']['LT_C_BLDGINFO'] = {
+            'status': 'COMPLETE', 'features': [
+                feature(box(1, 1, 3, 3))
+            ]
+        }
+        ss['_report_layers']['LP_PA_CBND_BUBUN'] = {
+            'status': 'COMPLETE', 'features': [
+                self._parcel((0, 0, 5, 5))
+            ]
+        }
+        attach_building_themes(d, ss)
+        self.assertEqual(d['building_fact']['counts']['spatial_register_candidates'], 1)
+        self.assertEqual(d['building_fact']['display_exclusion']['provisional_footprints_excluded'], 1)
+        shape_feature = d['items'][2]['features'][0]
+        self.assertEqual(shape_feature['properties']['geometry_basis'], 'CADASTRAL_PNU')
+        self.assertEqual(shape_feature['properties']['join_status'], 'PNU_PARCEL_REGISTER')
+        self.assertEqual(shape_feature['properties']['name'], '3층')
+        self.assertEqual(d['items'][2]['survey_table']['rows'][0]['count'], 1)
 
     def test_reference_cadastre_may_support_labelled_provisional_candidate(self):
         d = data()
