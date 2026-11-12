@@ -243,7 +243,8 @@ def _elevation_groups(elevations, feature_cells, site_area_m2):
                        'class_code':f'C{pos+1:02d}','color':palette[pos%len(palette)],
                        'area_m2':round(v['area_m2'],2),
                        'pct':round(100*v['area_m2']/site_area_m2,2) if site_area_m2>0 else None,
-                       'count':v['cells'],'min_m':v['min_m'],'max_m':v['max_m']})
+                       'count':v['cells'],'min_m':v['min_m'],'max_m':v['max_m'],
+                       'range_start_m':start,'range_end_m':start+interval})
     by_idx={idx:entry for idx,entry in zip(order,legend)}
     mapped=[]
     for cell in feature_cells:
@@ -256,6 +257,44 @@ def _elevation_groups(elevations, feature_cells, site_area_m2):
     coverage=sum(a for z,a in elevations)/site_area_m2 if site_area_m2>0 else 0
     complete_map=len(mapped)==len(elevations)
     return legend,mapped,min(100.,max(0.,100*coverage)),complete_map
+
+
+def _elevation_polygonize(valid_cells, height, width, x0, y0, dx,
+                          metric, back, legend):
+    """Dissolve adjacent DEM class cells into printable source-faithful vectors.
+
+    Raster polygonization encodes a class, not an interpolated height.
+    The polygons are intersected with the exact site boundary.
+    """
+    import numpy as np
+    import rasterio.features
+    from rasterio.transform import Affine
+    class_grid=np.zeros((height,width),dtype='int16')
+    for r,c,z in valid_cells:
+        assigned=next((i+1 for i,g in enumerate(legend)
+                       if g['range_start_m']<=z<g['range_end_m']),0)
+        if assigned:
+            class_grid[height-1-r,c]=assigned
+    if not valid_cells or int(np.count_nonzero(class_grid))!=len(valid_cells):
+        return [],False
+    mapped=[]
+    affine=Affine(dx,0,x0,0,-dx,y0+height*dx)
+    for geojson,number in rasterio.features.shapes(
+            class_grid, mask=class_grid>0, transform=affine, connectivity=4):
+        cls=legend[int(number)-1]
+        clipped=shape(geojson).intersection(metric)
+        if clipped.is_empty or clipped.area<=dx*dx*1e-8:
+            continue
+        mapped.append({'type':'Feature',
+                       'geometry':mapping(transform(back.transform,clipped)),
+                       'properties':{'name':cls['name'],
+                                     'class_code':cls['class_code'],
+                                     'color':cls['color'],
+                                     'elevation_class_min_m':cls['range_start_m'],
+                                     'elevation_class_max_m':cls['range_end_m']}})
+        if len(mapped)>5000:
+            return [],False
+    return mapped,bool(mapped)
 
 
 def dem(geometry,area):
@@ -292,6 +331,7 @@ def dem(geometry,area):
         v=values[r][c]
         return None if v is None or v==nodata else finite(v)
     elevations=[];slopes=[];weight=0;slope_weight=0;missing=0;features=[]
+    valid_cells=[]
     # Each grid square is clipped to the actual site, so area is not estimated
     # from a bounding rectangle or by counting whole boundary cells.
     for r in range(height):
@@ -307,6 +347,7 @@ def dem(geometry,area):
                 missing+=1
                 continue
             elevations.append((z,a));weight+=a
+            valid_cells.append((r,c,z))
             ns=[val(r+rr,c+cc) for rr in (-1,0,1) for cc in (-1,0,1)]
             slope=None
             if all(v is not None for v in ns):
@@ -338,6 +379,14 @@ def dem(geometry,area):
         profiles.append({'axis':axis,'points':pts})
     groups,elevation_features,elevation_coverage,map_complete=(
         _elevation_groups(elevations,features,metric.area))
+    if not map_complete and groups:
+        # Only the first 5000 raw cells are retained for legacy diagnostics;
+        # polygonize the complete grid for a tractable map/CAD representation.
+        try:
+            elevation_features,map_complete=_elevation_polygonize(
+                valid_cells,height,width,x0,y0,dx,metric,back,groups)
+        except (ImportError,ValueError,TypeError):
+            elevation_features=[];map_complete=False
     elevation_status=('DATA' if missing==0 and elevation_coverage>=99.999 else
                       'PARTIAL' if elevations else 'MISSING')
     return {'status':'DATA' if elevation_status=='DATA' and slope_weight>=metric.area*(1-1e-9)
