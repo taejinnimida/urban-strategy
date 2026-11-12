@@ -317,6 +317,9 @@ const DEV_PLANNING_FILL_OPACITY=1;
 let devPlanningMap=null,devPlanningGroups=null,devPlanningStamp='',devPlanningLabels=[];
 let devPlanningParcelLines=null,devPlanningParcelText=null,devPlanningParcelTimer=null;
 let devPlanningParcelRevision=0,devPlanningParcelBusy=false,devPlanningParcelPending=false;
+const DEV_PLANNING_ZONING_LAYERS=['LT_C_UQ111','LT_C_UQ112','LT_C_UQ113','LT_C_UQ114'];
+let devPlanningViewportZoning=new Map(),devPlanningZoningRevision=0,devPlanningZoningTimer=null;
+let devPlanningZoningBusy=false,devPlanningZoningPending=false,devPlanningZoningState='대상지 용도지역 표시';
 
 async function devPlanningLoadSymbolCatalog(){
  try{
@@ -487,6 +490,63 @@ async function devPlanningFetchViewportParcels(){
   }
  }
 }
+function devPlanningViewportStatus(message){
+ devPlanningZoningState=message;
+ const el=document.getElementById('devPlanningZoningStatus');
+ if(el)el.textContent=message;
+}
+async function devPlanningFetchViewportZoning(){
+ if(!devPlanningMap||devMode!=='development'||!devPlanningGroups)return;
+ const revision=devPlanningZoningRevision;
+ if(!devPlanningMap.hasLayer(devPlanningGroups.zoning)){
+  devPlanningViewportStatus('주변 용도지역 표시 꺼짐');return;
+ }
+ if(devPlanningZoningBusy){devPlanningZoningPending=true;return;}
+ if(devPlanningMap.getZoom()<15){
+  devPlanningViewportZoning.clear();devPlanningStamp='';devPlanningRefresh();
+  devPlanningViewportStatus('주변 용도지역은 확대하면 조회합니다. 현재 대상지 교차 자료만 표시합니다.');return;
+ }
+ const geometry=devPlanningParcelBounds();
+ if(turf.area(turf.feature(geometry))>5000000){
+  devPlanningViewportZoning.clear();devPlanningStamp='';devPlanningRefresh();
+  devPlanningViewportStatus('조회범위가 5㎢를 초과합니다. 확대하면 주변 용도지역을 조회합니다.');return;
+ }
+ devPlanningZoningBusy=true;devPlanningZoningPending=false;
+ devPlanningViewportStatus('지도 화면 전체의 용도지역 조회 중…');
+ const results=new Map();let ok=0,partial=0,failed=0;
+ try{
+  for(const layer of DEV_PLANNING_ZONING_LAYERS){
+   if(revision!==devPlanningZoningRevision)break;
+   try{
+    const result=await devApi('planning-view',{geometry,layer},35000);
+    if(result.status==='COMPLETE'){results.set(layer,result);ok++;}
+    else if(result.status==='PARTIAL'){results.set(layer,result);partial++;}
+    else failed++;
+   }catch(_){failed++;}
+  }
+  if(revision!==devPlanningZoningRevision)return;
+  devPlanningViewportZoning=results;
+  devPlanningStamp='';devPlanningRefresh();
+  devPlanningViewportStatus(
+   '주변 용도지역 '+ok+'개 레이어 조회완료'
+   +(partial?' · 일부자료 '+partial+'개':'')
+   +(failed?' · 미확보 '+failed+'개(해당 레이어는 대상지 교차자료만 표시)':'')
+   +' · 화면 범위 전용, 현황보고서 FACT는 변경하지 않음'
+  );
+ }finally{
+  devPlanningZoningBusy=false;
+  if(devPlanningZoningPending||revision!==devPlanningZoningRevision){
+   devPlanningZoningPending=false;devPlanningScheduleViewportZoning();
+  }
+ }
+}
+function devPlanningScheduleViewportZoning(){
+ ++devPlanningZoningRevision;
+ if(devPlanningZoningTimer)clearTimeout(devPlanningZoningTimer);
+ if(!devPlanningMap)return;
+ devPlanningViewportZoning.clear();devPlanningStamp='';devPlanningRefresh();
+ devPlanningZoningTimer=setTimeout(devPlanningFetchViewportZoning,850);
+}
 function devPlanningScheduleViewportParcels(){
  ++devPlanningParcelRevision;
  if(devPlanningParcelTimer)clearTimeout(devPlanningParcelTimer);
@@ -498,15 +558,16 @@ function devPlanningRefresh(){
  const status=document.getElementById('devPlanningStatus');
  const complete=devFacts.filter(f=>f.status==='COMPLETE').length,reference=devFacts.filter(f=>f.status==='REFERENCE').length;
  status.textContent=`${devBusy?'자료 조회 중':'조회 종료'} · 서버 확보 ${complete}개 · 보조 참고 ${reference}개 / ${devLayerSpecs.length}개 · 대상지와 교차하는 확보 도형 표시. 빈 부분은 시설 없음이 아닙니다.`;
- const stamp=JSON.stringify(devFacts.map(f=>[f.layer,f.fact_revision,f.status,f.queried_at,f.features?.length]));
+ const drawFacts=devFacts.filter(f=>!devPlanningViewportZoning.has(f.layer)).concat([...devPlanningViewportZoning.values()]);
+ const stamp=JSON.stringify(drawFacts.map(f=>[f.layer,f.fact_revision,f.status,f.queried_at,f.features?.length, f.truncated]));
  if(stamp===devPlanningStamp)return;devPlanningStamp=stamp;
  for(const group of Object.values(devPlanningGroups))group.clearLayers();devPlanningLabels=[];
  if(devPlanningParcelLines)devPlanningGroups.parcel.addLayer(devPlanningParcelLines);
  if(devPlanningParcelText)devPlanningGroups.parcel.addLayer(devPlanningParcelText);
  const legend=document.getElementById('devPlanningLegend');legend.replaceChildren();
  const symbols=new Map([['확정 구역계',{color:'#dc2626'}]]);
- for(const fact of devFacts){
-  if(!devHasFact(fact))continue;
+ for(const fact of drawFacts){
+  if(!devHasFact(fact)&&fact.status!=='PARTIAL')continue;
   for(const f of fact.features||[]){
    if(!f.geometry)continue;
    const symbol=devPlanningSymbol(fact.layer,f);symbols.set(symbol.label,symbol);
@@ -551,7 +612,7 @@ function devInstallPlanningMap(){
  if(devMode!=='development'||devPlanningMap)return;
  const target=document.querySelector('.service-target-box');if(!target)return;
  const box=document.createElement('section');box.id='devPlanningBox';
- box.innerHTML='<h3>도시계획정보도 <small>항공사진과 위치·확대 동기화</small></h3><div id="devPlanningMap" aria-label="도시계획정보도"></div><div id="devPlanningLegend"></div><p id="devPlanningStatus" role="status">자료 조회 대기</p><p id="devPlanningParcelStatus" role="status">주변 지적 조회 대기</p><p class="dev-plan-source">자료: VWorld · 도시·군관리계획수립지침 별첨 1 ACI 색상·무늬 표기(웹은 화면규격 미리보기) · 법정 고시도면은 아닙니다.</p>';
+ box.innerHTML='<h3>도시계획정보도 <small>항공사진과 위치·확대 동기화</small></h3><div id="devPlanningMap" aria-label="도시계획정보도"></div><div id="devPlanningLegend"></div><p id="devPlanningStatus" role="status">자료 조회 대기</p><p id="devPlanningParcelStatus" role="status">주변 지적 조회 대기</p><p id="devPlanningZoningStatus" role="status">주변 용도지역 조회 대기</p><p class="dev-plan-source">자료: VWorld · 도시·군관리계획수립지침 별첨 1 ACI 색상·무늬 표기(웹은 화면규격 미리보기) · 법정 고시도면은 아닙니다.</p>';
  target.append(box);
  devPlanningMap=L.map('devPlanningMap',{attributionControl:true,zoomControl:true,crs:map.options.crs,zoomSnap:map.options.zoomSnap,minZoom:map.getMinZoom(),maxZoom:map.getMaxZoom()});
  for(const [pane,z] of [['devzoning',410],['devdistrict',415],['devarea',418],['devfacility',420],['devParcel',430],['devBoundary',440]])devPlanningMap.createPane(pane).style.zIndex=z;
@@ -568,12 +629,12 @@ function devInstallPlanningMap(){
  devPlanningMap.attributionControl.addAttribution('VWorld 공간정보');
  let syncing=false;
  const sync=(from,to)=>{if(syncing)return;syncing=true;try{to.setView(from.getCenter(),from.getZoom(),{animate:false});}finally{syncing=false;}};
- map.on('moveend',()=>{sync(map,devPlanningMap);devPlanningScheduleViewportParcels();});devPlanningMap.on('moveend',()=>{sync(devPlanningMap,map);devPlanningUpdateLabels();devPlanningScheduleViewportParcels();});
- devPlanningMap.on('overlayadd overlayremove',()=>{devPlanningUpdateLabels();devPlanningScheduleViewportParcels();});
+ map.on('moveend',()=>{sync(map,devPlanningMap);devPlanningScheduleViewportParcels();devPlanningScheduleViewportZoning();});devPlanningMap.on('moveend',()=>{sync(devPlanningMap,map);devPlanningUpdateLabels();devPlanningScheduleViewportParcels();devPlanningScheduleViewportZoning();});
+ devPlanningMap.on('overlayadd overlayremove',()=>{devPlanningUpdateLabels();devPlanningScheduleViewportParcels();devPlanningScheduleViewportZoning();});
  const resize=()=>{const original=map.getContainer(),el=document.getElementById('devPlanningMap');el.style.height=original.clientHeight+'px';el.style.width=original.clientWidth+'px';devPlanningMap.invalidateSize({pan:false});sync(map,devPlanningMap);};
  window.addEventListener('resize',resize);
  if(typeof ResizeObserver!=='undefined'){const observer=new ResizeObserver(resize);observer.observe(map.getContainer());}
- setTimeout(()=>{resize();devPlanningScheduleViewportParcels();},0);devPlanningRefresh();
+ setTimeout(()=>{resize();devPlanningScheduleViewportParcels();devPlanningScheduleViewportZoning();},0);devPlanningRefresh();
 }
 
 function devInstallLayout(){
