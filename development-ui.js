@@ -1032,7 +1032,7 @@ function devRenderSourceDetails(data){
   cadSingle.dataset.available=usable?'yes':'';
   cadSingle.disabled=!usable;cadSingle.title=usable?'확보된 공간도형 기준 CAD 출력':'검증된 공간도형이 없는 항목은 CAD 출력 불가';
   if(!cadPreparing)cadStatus.textContent=usable?(cadReady?'표준 도면 배경자료 준비 완료':'표준 도면 배경자료 준비 필요 · 준비 버튼을 누르거나 자동 조회를 확인하세요'):'이 항목은 CAD 도형 미확보 · 일괄 ZIP 목록에 미확보로 기록';
-  if(available&&cadReady&&['1-1','2-1','2-2','2-3','2-4','2-5','2-6','5-2','5-3','5-4','5-5','5-6','5-7','5-8','4-3','3-1','3-2','3-3','3-4','3-5','3-6','3-7'].includes(item.id)){
+  if(available&&cadReady&&['1-1','2-1','2-2','2-3','2-4','2-5','2-6','5-2','5-3','5-4','5-5','5-6','5-7','5-8','4-3','4-1','3-1','3-2','3-3','3-4','3-5','3-6','3-7'].includes(item.id)){
    const selected=item.id;
    sheetPreview.onload=()=>{
     if(select.value!==selected)return;
