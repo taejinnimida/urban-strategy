@@ -1040,18 +1040,23 @@ function devRenderSourceDetails(data){
   }
   info.textContent=`${item.detail} · 출처: ${item.source||'미확보'}${item.as_of?' · 자료 기준일: '+item.as_of:''}`;
   const boundary=L.geoJSON(devSite.geometry,{style:{color:'#dc2626',weight:3,fill:false}}).addTo(drawn);devSourceDetailMap.fitBounds(boundary.getBounds(),{padding:[12,12]});
-  if(item.features?.length)L.geoJSON(item.features,{style:f=>({color:f.properties?.geometry_basis==='CADASTRAL_PNU'?'#725b7d':['ownership','jimok','land_numeric','land_shape','landcover','ecobank','building'].includes(item.thematic_type)?'#526174':'#126d88',weight:f.properties?.geometry_basis==='CADASTRAL_PNU'?1.3:['ownership','jimok','land_numeric','land_shape','landcover','ecobank','building'].includes(item.thematic_type)?0.8:1.5,dashArray:f.properties?.geometry_basis==='CADASTRAL_PNU'?'4 3':null,fillColor:['ownership','jimok','land_numeric','land_shape','landcover','ecobank','building'].includes(item.thematic_type)?(f.properties?.color||'#cccccc'):'#126d88',fillOpacity:f.properties?.geometry_basis==='CADASTRAL_PNU'?.35:['ownership','jimok','land_numeric','land_shape','landcover','ecobank','building'].includes(item.thematic_type)?0.68:0.2}),onEachFeature:(f,l)=>{const label=document.createElement('span');label.textContent=f.properties?.name||'원자료';l.bindTooltip(label);if(item.thematic_type==='building'){
-  const j=f.properties?.join_status;
-  const msg=j==='PNU_PARCEL_REGISTER'?'건축HUB 대장정보와 연속지적 PNU 일치 · 해당 필지에 표시 (건물 외곽선 아님)':
-   j==='EXACT_ID'?'건축물대장 관리번호 직접 연계':
-    j==='PARCEL_SPATIAL_REFERENCE'?'건축물대장 확인 · 필지 공간중첩에 의한 잠정 도형연계 (직접 일치 아님)':
-    '건축물 공간도형 확인 · 해당 도형과 건축물대장 관리번호 미연계 (대장자료 부존재 아님)';
-  l.bindPopup(msg);
- }}}).addTo(drawn);
+  // Defense in depth: older report snapshots cannot shade cadastral parcels as buildings.
+  const drawableFeatures=(item.features||[]).filter(f=>item.thematic_type!=='building'||
+   (f.properties?.geometry_basis==='BUILDING_FOOTPRINT'&&f.properties?.join_status==='EXACT_ID'));
+  if(drawableFeatures.length)L.geoJSON(drawableFeatures,{
+   style:f=>({color:['ownership','jimok','land_numeric','land_shape','landcover','ecobank','building'].includes(item.thematic_type)?'#526174':'#126d88',
+    weight:['ownership','jimok','land_numeric','land_shape','landcover','ecobank','building'].includes(item.thematic_type)?0.8:1.5,
+    fillColor:['ownership','jimok','land_numeric','land_shape','landcover','ecobank','building'].includes(item.thematic_type)?(f.properties?.color||'#cccccc'):'#126d88',
+    fillOpacity:['ownership','jimok','land_numeric','land_shape','landcover','ecobank','building'].includes(item.thematic_type)?0.68:0.2}),
+   onEachFeature:(f,l)=>{
+    const label=document.createElement('span');label.textContent=f.properties?.name||'원자료';l.bindTooltip(label);
+    if(item.thematic_type==='building')l.bindPopup('VWorld GIS건물통합정보 건물외곽선 · 건축물대장 관리번호 직접연계');
+   }
+  }).addTo(drawn);
   if(Array.isArray(item.legend))for(const entry of item.legend){
    const row=document.createElement('span');row.style.cssText='display:inline-flex;align-items:center;gap:5px';
    const chip=document.createElement('span');chip.style.cssText='display:inline-block;width:14px;height:14px;border:1px solid #64748b;background-color:'+entry.color;
-   const title=document.createElement('span');title.textContent=item.thematic_type==='building'?entry.name+' ('+entry.count+'개 표시단위 · 건물외곽선/대장PNU필지 구분)':entry.name+' ('+entry.count+'필지 · '+entry.area_m2.toLocaleString()+'㎡)';
+   const title=document.createElement('span');title.textContent=item.thematic_type==='building'?entry.name+' ('+entry.count+'건 · 건축물대장 기준)':entry.name+' ('+entry.count+'필지 · '+entry.area_m2.toLocaleString()+'㎡)';
    row.append(chip,title);legendbox.append(row);
   }
   if(item.id==='2-6'&&item.landcover_wms&&!item.features?.length){
