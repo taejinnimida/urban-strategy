@@ -542,6 +542,57 @@ def _candidate_pedestrian_volume(row:dict):
     except Exception:
         return None
 
+
+def _overpass_viewpoint_query(lat:float,lng:float,radius:int):
+    r=max(100,min(int(radius),2000))
+    return f"""[out:json][timeout:20];
+(
+node(around:{r},{lat},{lng})["railway"="subway_entrance"];
+node(around:{r},{lat},{lng})["highway"="bus_stop"];
+node(around:{r},{lat},{lng})["public_transport"="platform"]["bus"="yes"];
+nwr(around:{r},{lat},{lng})["historic"];
+nwr(around:{r},{lat},{lng})["heritage"];
+nwr(around:{r},{lat},{lng})["leisure"="park"];
+nwr(around:{r},{lat},{lng})["place"="square"];
+node(around:{r},{lat},{lng})["tourism"="viewpoint"];
+nwr(around:{r},{lat},{lng})["amenity"~"hospital|townhall|courthouse|library|arts_centre|theatre|community_centre"];
+nwr(around:{r},{lat},{lng})["leisure"="stadium"];
+nwr(around:{r},{lat},{lng})["amenity"="university"];
+node(around:{r},{lat},{lng})["barrier"="gate"];
+node(around:{r},{lat},{lng})["entrance"="main"];
+);
+out center tags;"""
+
+@app.get("/api/viewpoint/candidates")
+def viewpoint_candidates(
+    lat:float=Query(...,ge=-90,le=90),
+    lng:float=Query(...,ge=-180,le=180),
+    radius:int=Query(1150,ge=100,le=2000)
+):
+    query=_overpass_viewpoint_query(lat,lng,radius)
+    endpoints=(
+        "https://overpass-api.de/api/interpreter",
+        "https://overpass.kumi.systems/api/interpreter",
+    )
+    errors=[]
+    for url in endpoints:
+        try:
+            r=requests.post(
+                url,
+                data={"data":query},
+                timeout=(5,24),
+                headers={"User-Agent":"urban-landscape-review/1.0"}
+            )
+            r.raise_for_status()
+            payload=r.json()
+            elements=payload.get("elements") or []
+            if not isinstance(elements,list):
+                raise ValueError("invalid elements")
+            return {"status":"OK","source":"OSM Overpass development fallback","elements":elements}
+        except Exception as exc:
+            errors.append(type(exc).__name__)
+    raise HTTPException(502,"조망점 후보 외부자료 조회 실패 · 잠시 후 다시 시도하거나 공식 데이터 어댑터 연결이 필요합니다.")
+
 @app.get("/api/integrations/status")
 def integration_status():
     return {
