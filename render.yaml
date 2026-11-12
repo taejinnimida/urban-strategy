@@ -3,7 +3,7 @@ services:
     name: urban-strategy-landscape-review
     runtime: static
     repo: https://github.com/taejinnimida/urban-strategy
-    branch: feature/landscape-review-20261112
+    branch: urban-landscape-review
     buildCommand: echo "Landscape Review static build"
     staticPublishPath: ./landscape-review
     autoDeployTrigger: commit
