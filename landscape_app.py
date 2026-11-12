@@ -44,8 +44,13 @@ def _seoul_open_data_key():
 
 
 def _domain():
-    host=(os.getenv("RENDER_EXTERNAL_HOSTNAME") or "localhost").strip()
-    return ("https://"+host) if not host.startswith("http") and host!="localhost" else ("http://localhost" if host=="localhost" else host)
+    raw=((os.getenv("VWORLD_DOMAIN") or "").strip() or (os.getenv("RENDER_EXTERNAL_HOSTNAME") or "").strip() or "localhost")
+    raw=raw.rstrip("/")
+    if raw.startswith("http://") or raw.startswith("https://"):
+        return raw
+    if raw=="localhost" or raw.startswith("localhost:"):
+        return "http://"+raw
+    return "https://"+raw
 
 def _vworld(bbox,size):
     minx,miny,maxx,maxy=[float(x) for x in bbox]
