@@ -13,6 +13,7 @@ RUN pip install --no-cache-dir \
     Pillow \
     pydantic \
     pyproj \
+    rasterio \
     pyshp \
     shapely \
     ezdxf \
