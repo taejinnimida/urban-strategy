@@ -21,8 +21,8 @@ GIS_ALIASES = {
     'structure': ('strctcdnm', 'strct_cd_nm', 'structure_nm', 'a11'),
     'floors': ('grndflrcnt', 'grnd_flr_cnt', 'ground_floor_count', 'a26'),
     'floor_area': ('totarea', 'tot_area', 'total_floor_area', 'a14'),
-    'coverage': ('bcrat', 'bc_rat', 'a17'),
-    'far': ('vlrat', 'vl_rat', 'a18'),
+    'coverage': ('bcrat', 'bc_rat'),
+    'far': ('vlrat', 'vl_rat'),
 }
 AGE_DATES = ('useaprday', 'use_apr_day', 'useconfmde', 'use_confm_de', 'a13')
 TITLE_KEYS = ('mgmbldrgstpk', 'mgm_bldrgst_pk', 'bldrgst_pk')
