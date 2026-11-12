@@ -251,8 +251,8 @@ button,input,select{font:inherit}.hidden{display:none!important}
           </div>
           <div class="rule-strip">
             <div class="rule-card"><b>거리권</b><span>대상지 내부는 제외합니다. 대상지 경계로부터 근경 0~250m · 중경 250~500m · 원경 500~1,000m로 구분합니다.</span></div>
-            <div class="rule-card"><b>후보 대상</b><span>경관계획 조망점, 지하철 출입구, 버스정류장, 대학 정문, 문화유산, 20m 이상 교차로, 공원·광장·주요시설, 전망대 등.</span></div>
-            <div class="rule-card"><b>최종선정</b><span>경관계획상 조망점은 우선 포함. 나머지는 보행량 원자료 연동 후 각 거리권에서 보행량이 많은 5개를 기본 선정합니다.</span></div>
+            <div class="rule-card"><b>후보 대상</b><span>보행자전용도로, 공원·광장, 역별 최단거리 지하철 출입구, 광역·공항버스 정류장, 대학 정문, 문화유산, 전망대, 20m 이상 교차로.</span></div>
+            <div class="rule-card"><b>최종선정</b><span>지정 조망점 별도 포함. 보행공간·공공시설 유형별 우선순위로 거리권당 5개를 선정하고, 부족분만 폭 20m 이상 교차로의 검증된 교통량 순으로 보충합니다. 지도에서 클릭하여 선정·해제할 수 있습니다.</span></div>
           </div>
           <div class="grid candidate-layout">
             <section class="card candidate-map-card">
@@ -286,12 +286,12 @@ button,input,select{font:inherit}.hidden{display:none!important}
                 <button class="btn ghost small" id="officialVpAdd" type="button">좌표 추가</button>
               </div>
               <div class="adapter-grid">
-                <div class="adapter-item"><b>보행량</b><span>원수치를 그대로 사용합니다. 별도 점수화·가중치 없이 각 거리권별 상위 5개를 선정합니다.</span></div>
-                <div class="adapter-item"><b>20m 이상 교차로</b><span>공식 도로폭원/도로축 데이터 어댑터 연결 전까지 자동확정하지 않습니다.</span></div>
+                <div class="adapter-item"><b>유형별 우선순위</b><span>보행자전용도로 → 공원·광장 → 지하철 → 주요 버스 → 대학 → 문화유산 → 전망대 순. 동순위는 대상지와 가까운 순.</span></div>
+                <div class="adapter-item"><b>20m 이상 교차로</b><span>교차로 위치·도로폭원·차량교통량 원자료가 확인된 후보만 보충 선정합니다.</span></div>
                 <div class="adapter-item"><b>경관계획 조망점</b><span>공식 DB 구축 전에는 업로드한 지정 조망점을 의무후보로 처리합니다.</span></div>
                 <div class="adapter-item"><b>개발용 후보 API</b><span>현재 기능검증은 OSM 공개 API를 사용하며 최종 성과품 근거로 사용하지 않습니다.</span></div>
               </div>
-              <div class="candidate-note">선정 로직: 경관계획상 지정 조망점은 우선 포함하고, 남은 자리는 보행량 원수치가 확보된 일반 후보를 큰 값 순서대로 채웁니다. 보행량 원수치가 없으면 일반 후보를 임의 선정하지 않습니다.</div>
+              <div class="candidate-note">선정 로직: 유형별 우선순위로 거리권당 최대 5개를 자동선정하고 부족분만 교통량 검증 교차로로 채웁니다. 선택한 점은 진하게, 미선정 점은 50% 투명하게 표시하며 지도 또는 목록을 클릭해 수정할 수 있습니다. 의무 조망점은 별도 포함합니다.</div>
             </section>
           </div>
           <div class="actions"><button class="btn ghost prev" data-prev="2">이전</button><button class="btn primary next" data-next="4">3D 시뮬레이션으로</button></div>
@@ -905,8 +905,8 @@ const ZONING_LAYERS=[
   ['LT_C_UQ114','자연환경보전지역','#5da884']
 ];
 let candidateMap=null,candidateSiteLayers=[],candidateRangeLayers=[],candidateLayers=null,candidateZoningLayer=null,candidateItems=[],officialViewpoints=[],candidateBandFilter='all';
-let candidateBaseLayers=null,viewpointRanking=null;
-const categoryLabels={designated:'경관계획 조망점',subway:'지하철 출입구',bus:'버스정류장',university:'대학 정문 후보',heritage:'문화유산',intersection:'20m+ 교차로',park:'공원',square:'광장',facility:'주요시설',viewpoint:'원거리 조망가능 지점'};
+let candidateBaseLayers=null,viewpointRanking=null,trafficIntersectionItems=[],candidateLookupRows=[];
+const categoryLabels={designated:'경관계획 조망점',pedestrian:'보행자전용도로',subway:'지하철 출입구',bus:'광역·공항버스 정류장',university:'대학 정문',heritage:'문화유산',intersection:'20m 이상 주요교차로',park:'공원',square:'광장',viewpoint:'전망대'};
 
 function initCandidateMap(){
   if(candidateMap||typeof L==='undefined') return;
@@ -1048,12 +1048,55 @@ function bandFor(d){return d<0?null:d<=250?'near':d<=500?'mid':d<=1000?'far':nul
 function bandLabel(b){return b==='near'?'근경':b==='mid'?'중경':b==='far'?'원경':'범위외';}
 function direction(lat,lng){if(!siteState.center)return'-';const[a,b]=siteState.center,r=Math.PI/180,y=Math.sin((lng-b)*r)*Math.cos(lat*r),x=Math.cos(a*r)*Math.sin(lat*r)-Math.sin(a*r)*Math.cos(lat*r)*Math.cos((lng-b)*r),deg=(Math.atan2(y,x)*180/Math.PI+360)%360,dirs=['북','북동','동','남동','남','남서','서','북서'];return dirs[Math.round(deg/45)%8];}
 function elLL(el){return Number.isFinite(el.lat)&&Number.isFinite(el.lon)?[el.lat,el.lon]:el.center&&Number.isFinite(el.center.lat)&&Number.isFinite(el.center.lon)?[el.center.lat,el.center.lon]:null;}
-function osmCat(t){if(t.railway==='subway_entrance')return'subway';if(t.highway==='bus_stop'||(t.public_transport==='platform'&&t.bus==='yes'))return'bus';if(t.historic||t.heritage)return'heritage';if(t.leisure==='park')return'park';if(t.place==='square')return'square';if(t.tourism==='viewpoint')return'viewpoint';if(['hospital','townhall','courthouse','library','arts_centre','theatre','community_centre'].includes(t.amenity)||t.leisure==='stadium')return'facility';return null;}
-function overpassQuery(lat,lng,r){return `[out:json][timeout:25];(node(around:${r},${lat},${lng})["railway"="subway_entrance"];node(around:${r},${lat},${lng})["highway"="bus_stop"];node(around:${r},${lat},${lng})["public_transport"="platform"]["bus"="yes"];nwr(around:${r},${lat},${lng})["historic"];nwr(around:${r},${lat},${lng})["heritage"];nwr(around:${r},${lat},${lng})["leisure"="park"];nwr(around:${r},${lat},${lng})["place"="square"];node(around:${r},${lat},${lng})["tourism"="viewpoint"];nwr(around:${r},${lat},${lng})["amenity"~"hospital|townhall|courthouse|library|arts_centre|theatre|community_centre"];nwr(around:${r},${lat},${lng})["leisure"="stadium"];nwr(around:${r},${lat},${lng})["amenity"="university"];node(around:${r},${lat},${lng})["barrier"="gate"];node(around:${r},${lat},${lng})["entrance"="main"];);out center tags;`;}
+function osmCat(t){
+  if(t.highway==='pedestrian')return 'pedestrian';
+  if(t.leisure==='park')return 'park';
+  if(t.place==='square')return 'square';
+  if(t.railway==='subway_entrance')return 'subway';
+  if(t.historic||t.heritage)return 'heritage';
+  if(t.tourism==='viewpoint')return 'viewpoint';
+  return null;
+}
 function normalizeOsm(els){
-  const out=[],unis=els.filter(e=>(e.tags||{}).amenity==='university'&&elLL(e)),gates=els.filter(e=>{const t=e.tags||{};return(t.barrier==='gate'||t.entrance==='main')&&elLL(e);});
-  els.forEach(e=>{const cat=osmCat(e.tags||{}),ll=elLL(e);if(!cat||!ll)return;out.push({id:`osm-${e.type}-${e.id}-${cat}`,lat:ll[0],lng:ll[1],category:cat,name:e.tags?.name||e.tags?.['name:ko']||categoryLabels[cat],source:'OSM 개발용',mandatory:false,pedestrianVolume:null,verification:'공식 API 교체 전 개발후보'});});
-  unis.forEach((u,i)=>{const ull=elLL(u);let best=null,bd=Infinity;gates.forEach(g=>{const ll=elLL(g),d=haversine(ull[0],ull[1],ll[0],ll[1]);if(d<bd&&d<=350){best=ll;bd=d;}});const ll=best||ull;out.push({id:`univ-${u.id}-${i}`,lat:ll[0],lng:ll[1],category:'university',name:(u.tags?.name||u.tags?.['name:ko']||'대학교')+(best?' 정문 후보':' 대표지점'),source:'OSM 개발용',mandatory:false,pedestrianVolume:null,verification:best?'정문 후보 · 확인 필요':'정문 좌표 미확인'});});
+  const out=[],valid=els.filter(e=>elLL(e));
+  const stationKeys=new Map();
+  const stations=valid.filter(e=>e.tags?.railway==='station'&&(e.tags?.station==='subway'||e.tags?.subway==='yes'));
+  const stationEntrance=valid.filter(e=>e.tags?.railway==='subway_entrance');
+  const grouped=new Map();
+  stationEntrance.forEach(e=>{
+    const ll=elLL(e),t=e.tags||{};
+    let key=String(t['ref:station']||t['station:ref']||t['railway:ref']||'').trim();
+    if(!key){
+      const named=String(t['name:ko']||t.name||'').replace(/\s*\d+\s*번?\s*출구.*$/,'').replace(/\s*출입구.*$/,'').trim();
+      if(named&&named!==String(t.name||'').trim())key=named;
+    }
+    if(!key){
+      let nearest=null,best=Infinity;
+      stations.forEach(st=>{const p=elLL(st),d=haversine(ll[0],ll[1],p[0],p[1]);if(d<best&&d<=250){best=d;nearest=st;}});
+      if(nearest)key='station-'+nearest.id;
+    }
+    if(!key){key='entrance-'+e.id;}
+    const d=distanceToSite(ll[0],ll[1]);
+    if(!grouped.has(key)||d<grouped.get(key).distance)grouped.set(key,{e,ll,distance:d});
+  });
+  for(const [key,{e,ll}] of grouped){
+    out.push({id:'subway-'+key,lat:ll[0],lng:ll[1],category:'subway',name:e.tags?.name||e.tags?.['name:ko']||'지하철 출입구',source:'OSM 개발용',verification:'역별 최단거리 출입구 · 역 식별 검증 필요'});
+  }
+  const unis=valid.filter(e=>e.tags?.amenity==='university');
+  const gates=valid.filter(e=>e.tags?.entrance==='main'||e.tags?.barrier==='gate');
+  unis.forEach(u=>{
+    const ull=elLL(u),name=u.tags?.name||u.tags?.['name:ko']||'대학교';
+    let best=null,dist=Infinity;
+    gates.forEach(g=>{const p=elLL(g),d=haversine(ull[0],ull[1],p[0],p[1]);if(d<dist&&d<=350){best=p;dist=d;}});
+    if(best)out.push({id:'university-'+u.id,lat:best[0],lng:best[1],category:'university',name:name+' 정문 후보',source:'OSM 개발용',verification:'정문 후보 · 현장 확인 필요'});
+  });
+  valid.forEach(e=>{
+    const t=e.tags||{},cat=osmCat(t),ll=elLL(e);
+    if(!cat||cat==='subway')return;
+    out.push({id:'osm-'+e.type+'-'+e.id+'-'+cat,lat:ll[0],lng:ll[1],category:cat,name:t.name||t['name:ko']||categoryLabels[cat],source:'OSM 개발용',verification:cat==='pedestrian'?'도로 대표점 · 조망 가능 위치 확인 필요':cat==='park'||cat==='square'?'시설 대표점 · 출입부 확인 필요':'공식자료 확인 필요'});
+  });
+  // Stop route types cannot be verified from OSM stop tags alone.
+  // Do not auto-select local/ordinary bus stops as express/airport buses.
   return out;
 }
 function enrich(rows){
@@ -1062,58 +1105,64 @@ function enrich(rows){
 }
 function selection(rows){
   const out={near:[],mid:[],far:[],pending:{near:0,mid:0,far:0}};
-  if(viewpointRanking?.bands){
-    ['near','mid','far'].forEach(b=>{
-      const ids=new Set(viewpointRanking.bands[b]?.selected_ids||[]);
-      out[b]=rows.filter(r=>r.band===b&&ids.has(r.id));
-      out.pending[b]=Math.max(0,VIEW_RULES.targetPerBand-(viewpointRanking.bands[b]?.measured_count||0));
-    });
-    return out;
-  }
   ['near','mid','far'].forEach(b=>{
-    const br=rows.filter(r=>r.band===b&&!r.userExcluded),must=br.filter(r=>r.mandatory),manual=br.filter(r=>r.userSelected&&!r.mandatory);
-    out[b]=[...manual,...must];
-    out.pending[b]=VIEW_RULES.targetPerBand;
+    const ids=new Set(viewpointRanking?.bands?.[b]?.selected_ids||[]);
+    out[b]=rows.filter(r=>r.band===b&&ids.has(r.id));
+    out.pending[b]=viewpointRanking?.bands?.[b]?.auto_shortfall??VIEW_RULES.targetPerBand;
   });
   return out;
 }
 async function rankViewpointCandidates(){
   try{
-    const res=await fetch('/api/viewpoint/rank',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({candidates:candidateItems,target_per_band:VIEW_RULES.targetPerBand,policy:'top5_plus_designated'})});
-    if(!res.ok)throw new Error('rank');
+    const res=await fetch('/api/viewpoint/rank',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({candidates:candidateItems,target_per_band:VIEW_RULES.targetPerBand,policy:'priority_then_verified_traffic'})});
+    if(!res.ok)throw new Error('rank HTTP '+res.status);
     viewpointRanking=await res.json();
   }catch(e){
+    console.error('viewpoint rank',e);
     viewpointRanking=null;
   }
 }
-
+async function toggleCandidate(id){
+  const r=candidateItems.find(x=>x.id===id);
+  if(!r)return;
+  if(r.mandatory){showToast('경관계획 지정 조망점은 의무 포함입니다.');return;}
+  const selected=new Set(viewpointRanking?.selected_ids||[]);
+  if(selected.has(id)){r.userExcluded=true;r.userSelected=false;}
+  else{r.userSelected=true;r.userExcluded=false;}
+  await rankViewpointCandidates();renderCandidates();
+}
+function refreshCandidateRows(){
+  const overrides=new Map(candidateItems.map(r=>[r.id,{userSelected:r.userSelected,userExcluded:r.userExcluded,directionOverride:r.directionOverride}]));
+  candidateItems=enrich([...officialViewpoints,...candidateLookupRows,...trafficIntersectionItems]).map(r=>({...r,...(overrides.get(r.id)||{})}));
+}
 function renderCandidates(){
-  initCandidateMap();if(candidateLayers)candidateLayers.clearLayers();const sel=selection(candidateItems),ids=new Set(['near','mid','far'].flatMap(b=>sel[b].map(x=>x.id)));
+  initCandidateMap();if(candidateLayers)candidateLayers.clearLayers();
+  const sel=selection(candidateItems),ids=new Set(viewpointRanking?.selected_ids||[]);
   candidateItems.forEach(r=>{
-    const state=r.mandatory?'mandatory':ids.has(r.id)?'selected':'pending';
-    const selected=r.mandatory||ids.has(r.id);
-    const opacity=viewpointRanking? (selected?1:.5) : 1;
-    const color=r.mandatory?DESIGNATED_COLOR:(BAND_COLORS[r.band]||'#475569');
-    const markerText=r.mandatory?'경':bandLabel(r.band)[0];
-    const icon=L.divIcon({className:'',html:`<div class="vp-marker ${state}" style="background:${color};border-color:#fff;opacity:${opacity}">${markerText}</div>`,iconSize:[28,28],iconAnchor:[14,14]});
+    const selected=ids.has(r.id),opacity=selected?1:.5,color=r.mandatory?DESIGNATED_COLOR:(BAND_COLORS[r.band]||'#475569');
+    const icon=L.divIcon({className:'',html:`<div class="vp-marker ${selected?'selected':'pending'}" style="background:${color};border-color:#fff">${r.mandatory?'경':bandLabel(r.band)[0]}</div>`,iconSize:[28,28],iconAnchor:[14,14]});
     const m=L.marker([r.lat,r.lng],{icon,opacity}).addTo(candidateLayers);
-    m.bindTooltip(`${escapeHtml(r.name)}<br>${r.mandatory?'경관계획 지정 조망점 · ':''}${bandLabel(r.band)} · 대상지 경계에서 ${r.distance}m<br>${r.lat.toFixed(6)}, ${r.lng.toFixed(6)}`);
-    m.on('click',()=>candidateMap.setView([r.lat,r.lng],17));
+    m.bindTooltip(`${escapeHtml(r.name)}<br>${bandLabel(r.band)} · ${r.distance}m · ${r.lat.toFixed(6)}, ${r.lng.toFixed(6)}<br>${selected?'선정':'미선정'} · 클릭하여 전환`);
+    m.on('click',()=>toggleCandidate(r.id));
   });
   ['near','mid','far'].forEach((b,i)=>document.getElementById(['nearSummary','midSummary','farSummary'][i]).textContent=`${sel[b].length} / ${VIEW_RULES.targetPerBand}`);
   document.getElementById('candidateCount').textContent=`${candidateItems.length}개`;
-  const list=document.getElementById('candidateList'),ord={near:0,mid:1,far:2},filtered=candidateItems.filter(r=>candidateBandFilter==='all'||r.band===candidateBandFilter).sort((a,b)=>ord[a.band]-ord[b.band]||Number(b.mandatory)-Number(a.mandatory)||a.distance-b.distance);
-  list.innerHTML=filtered.length?filtered.map(r=>{let state='보행량 연동 대기',cls='';if(r.mandatory){state='의무 포함';cls='mandatory';}else if(ids.has(r.id)){state='선정';cls='ready';}return `<div class="candidate-row ${ids.has(r.id)||r.mandatory?'selected':viewpointRanking?'rejected':''}" data-id="${escapeHtml(r.id)}"><div class="top"><div><b>${escapeHtml(r.name)}</b><em>${bandLabel(r.band)} · ${r.distance}m · ${r.direction}측 · ${r.lat.toFixed(6)}, ${r.lng.toFixed(6)} · ${r.source}</em></div><span class="state-badge ${cls}">${state}</span></div><div style="margin-top:6px;display:flex;gap:5px;flex-wrap:wrap"><span class="type-badge">${escapeHtml(categoryLabels[r.category])}</span><span class="type-badge">${escapeHtml(r.verification||'')}</span></div><div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap"><button class="btn ghost small vp-pick" data-action="pick" data-id="${escapeHtml(r.id)}">${r.userSelected?'선택해제':'선택'}</button><button class="btn ghost small vp-exclude" data-action="exclude" data-id="${escapeHtml(r.id)}">${r.userExcluded?'복원':'제외'}</button><button class="btn ghost small vp-direction" data-action="direction" data-id="${escapeHtml(r.id)}">조망방향 수정</button></div></div>`;}).join(''):'<div class="candidate-note">표시할 후보가 없습니다.</div>';
-  list.querySelectorAll('.candidate-row').forEach(x=>x.addEventListener('click',ev=>{if(ev.target.closest('button'))return;const r=candidateItems.find(v=>v.id===x.dataset.id);if(r)candidateMap.setView([r.lat,r.lng],17);}));
-  list.querySelectorAll('[data-action="pick"]').forEach(btn=>btn.onclick=()=>{const r=candidateItems.find(v=>v.id===btn.dataset.id);if(!r||r.mandatory)return;if(r.userExcluded)r.userExcluded=false;r.userSelected=!r.userSelected;rankViewpointCandidates().then(renderCandidates);});
-  list.querySelectorAll('[data-action="exclude"]').forEach(btn=>btn.onclick=()=>{const r=candidateItems.find(v=>v.id===btn.dataset.id);if(!r||r.mandatory)return;r.userExcluded=!r.userExcluded;if(r.userExcluded)r.userSelected=false;rankViewpointCandidates().then(renderCandidates);});
-  list.querySelectorAll('[data-action="direction"]').forEach(btn=>btn.onclick=()=>{const r=candidateItems.find(v=>v.id===btn.dataset.id);if(!r)return;const v=prompt('조망방향을 입력하세요. 예: 북, 북동, 동, 남동, 남, 남서, 서, 북서',r.direction||'');if(v===null)return;r.directionOverride=v.trim();if(r.directionOverride)r.direction=r.directionOverride;rankViewpointCandidates().then(renderCandidates);});
-  const pending=sel.pending.near+sel.pending.mid+sel.pending.far;
-  if(viewpointRanking?.bands){
-    const measured=['near','mid','far'].reduce((n,b)=>n+(viewpointRanking.bands[b]?.measured_count||0),0);
-    const missing=['near','mid','far'].reduce((n,b)=>n+(viewpointRanking.bands[b]?.missing_volume_count||0),0);
-    updateCandidateStatus(viewpointRanking.auto_selection_complete?`보행량 원수치 확보 후보 ${measured}개 · 자동선정 완료`:`보행량 원수치 ${measured}개 / 미확보 ${missing}개 · 자동선정 보류`);
-  }else updateCandidateStatus(pending?`보행량 원수치 미연동으로 자동선정 보류`:'기본 선정수 충족');
+  const list=document.getElementById('candidateList'),ord={near:0,mid:1,far:2};
+  const filtered=candidateItems.filter(r=>candidateBandFilter==='all'||r.band===candidateBandFilter).sort((a,b)=>ord[a.band]-ord[b.band]||Number(b.mandatory)-Number(a.mandatory)||a.distance-b.distance);
+  list.innerHTML=filtered.length?filtered.map(r=>{
+    const selected=ids.has(r.id),state=r.mandatory?'의무 포함':selected?'선정':'미선정';
+    const traffic=r.category==='intersection'?` · 폭 ${r.roadWidthM}m · 교통량 ${Number(r.trafficVolume).toLocaleString()}`:'';
+    return `<div class="candidate-row ${selected?'selected':'rejected'}" data-id="${escapeHtml(r.id)}"><div class="top"><div><b>${escapeHtml(r.name)}</b><em>${bandLabel(r.band)} · ${r.distance}m · ${r.direction}측${traffic} · ${r.lat.toFixed(6)}, ${r.lng.toFixed(6)}</em></div><span class="state-badge ${selected?'ready':''}">${state}</span></div><div style="margin-top:6px;display:flex;gap:5px;flex-wrap:wrap"><span class="type-badge">${escapeHtml(categoryLabels[r.category]||r.category)}</span><span class="type-badge">${escapeHtml(r.verification||'')}</span></div><div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap"><button class="btn ghost small" data-action="toggle" data-id="${escapeHtml(r.id)}" ${r.mandatory?'disabled':''}>${selected?'선정 해제':'선정 추가'}</button><button class="btn ghost small" data-action="direction" data-id="${escapeHtml(r.id)}">조망방향 수정</button></div></div>`;
+  }).join(''):'<div class="candidate-note">표시할 후보가 없습니다.</div>';
+  list.querySelectorAll('.candidate-row').forEach(x=>x.addEventListener('click',ev=>{if(ev.target.closest('button'))return;toggleCandidate(x.dataset.id);}));
+  list.querySelectorAll('[data-action="toggle"]').forEach(btn=>btn.onclick=()=>toggleCandidate(btn.dataset.id));
+  list.querySelectorAll('[data-action="direction"]').forEach(btn=>btn.onclick=()=>{
+    const r=candidateItems.find(v=>v.id===btn.dataset.id);if(!r)return;
+    const v=prompt('조망방향을 입력하세요.',r.direction||'');if(v===null)return;
+    r.directionOverride=v.trim();if(r.directionOverride)r.direction=r.directionOverride;renderCandidates();
+  });
+  const shortfall=['near','mid','far'].reduce((n,b)=>n+(viewpointRanking?.bands?.[b]?.auto_shortfall||0),0);
+  updateCandidateStatus(viewpointRanking?`유형별 우선순위 자동선정 · 부족 ${shortfall}개 · 클릭하여 선정/해제 · 교차로는 검증된 교통량만 적용`:'선정 엔진 연결 확인 필요');
 }
 async function fetchCandidates(){
   if(!siteState.center){showToast('대상지를 먼저 지정하세요.');return;}
@@ -1127,13 +1176,12 @@ async function fetchCandidates(){
     if(!res.ok)throw new Error('HTTP '+res.status);
     const data=await res.json();
     if(data.status!=='OK')throw new Error('후보 응답 오류');
-    candidateItems=enrich([...officialViewpoints,...normalizeOsm(data.elements||[])]);
-    await rankViewpointCandidates();renderCandidates();
+    candidateLookupRows=normalizeOsm(data.elements||[]);
+    refreshCandidateRows();await rankViewpointCandidates();renderCandidates();
     showToast('기준 충족 후보 '+candidateItems.length+'개를 수집했습니다.');
   }catch(e){
     console.error('viewpoint candidate lookup',e);
-    candidateItems=enrich([...officialViewpoints]);
-    await rankViewpointCandidates();renderCandidates();
+    refreshCandidateRows();await rankViewpointCandidates();renderCandidates();
     updateCandidateStatus('후보 조회 실패 · '+e.message);
     showToast('후보 API 조회에 실패했습니다.');
   }finally{button.disabled=false;button.textContent=old;}
@@ -1141,16 +1189,16 @@ async function fetchCandidates(){
 function repPoint(f){if(f?.geometry?.type==='Point')return[f.geometry.coordinates[1],f.geometry.coordinates[0]];const c=[];(function walk(x){if(!Array.isArray(x))return;if(typeof x[0]==='number'&&typeof x[1]==='number')c.push(x);else x.forEach(walk);})(f?.geometry?.coordinates);if(!c.length)return null;return[c.reduce((a,b)=>a+b[1],0)/c.length,c.reduce((a,b)=>a+b[0],0)/c.length];}
 function parseOfficial(j){const fs=j.type==='FeatureCollection'?j.features:j.type==='Feature'?[j]:j.type==='Point'?[{type:'Feature',properties:{},geometry:j}]:[];return fs.map((f,i)=>{const ll=repPoint(f);if(!ll)return null;return{id:`designated-${i}-${ll[0]}-${ll[1]}`,lat:ll[0],lng:ll[1],category:'designated',name:f.properties?.name||f.properties?.title||`경관계획 조망점 ${i+1}`,source:f.properties?.source||'사용자 제공 공식 조망점 DB',mandatory:true,pedestrianVolume:null,verification:'경관계획상 지정'};}).filter(Boolean);}
 document.getElementById('fetchCandidates').onclick=fetchCandidates;
-document.getElementById('clearCandidates').onclick=async()=>{candidateItems=enrich([...officialViewpoints]);await rankViewpointCandidates();renderCandidates();};
+document.getElementById('clearCandidates').onclick=async()=>{candidateLookupRows=[];trafficIntersectionItems=[];refreshCandidateRows();await rankViewpointCandidates();renderCandidates();};
 document.querySelectorAll('#candidateFilter button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#candidateFilter button').forEach(x=>x.classList.remove('active'));b.classList.add('active');candidateBandFilter=b.dataset.band;renderCandidates();});
-const officialVpFile=document.getElementById('officialVpFile');document.getElementById('officialVpUpload').onclick=()=>officialVpFile.click();officialVpFile.onchange=async()=>{const f=officialVpFile.files[0];if(!f)return;try{officialViewpoints=parseOfficial(JSON.parse(await f.text()));document.getElementById('officialVpFileName').value=`${f.name} · ${officialViewpoints.length}개`;candidateItems=enrich([...officialViewpoints,...candidateItems.filter(x=>x.source==='OSM 개발용')]);await rankViewpointCandidates();renderCandidates();showToast(`지정 조망점 ${officialViewpoints.length}개 추가 반영`);}catch(e){showToast('GeoJSON을 읽지 못했습니다.');}};
+const officialVpFile=document.getElementById('officialVpFile');document.getElementById('officialVpUpload').onclick=()=>officialVpFile.click();officialVpFile.onchange=async()=>{const f=officialVpFile.files[0];if(!f)return;try{officialViewpoints=parseOfficial(JSON.parse(await f.text()));document.getElementById('officialVpFileName').value=`${f.name} · ${officialViewpoints.length}개`;refreshCandidateRows();await rankViewpointCandidates();renderCandidates();showToast(`지정 조망점 ${officialViewpoints.length}개 추가 반영`);}catch(e){showToast('GeoJSON을 읽지 못했습니다.');}};
 document.getElementById('officialVpAdd').onclick=async()=>{
   const name=(document.getElementById('officialVpName').value||'').trim()||'경관계획 지정 조망점';
   const lat=Number(document.getElementById('officialVpLat').value),lng=Number(document.getElementById('officialVpLng').value);
   if(!isFiniteCoord(lat,lng)){showToast('위도·경도를 확인하세요.');return;}
   const row={id:'designated-manual-'+Date.now(),lat,lng,category:'designated',name,source:'경관계획 공식좌표 입력',mandatory:true,pedestrianVolume:null,verification:'경관계획상 지정'};
   officialViewpoints=[...officialViewpoints,row];
-  candidateItems=enrich([...officialViewpoints,...candidateItems.filter(x=>x.source==='OSM 개발용')]);
+  refreshCandidateRows();
   await rankViewpointCandidates();renderCandidates();
   document.getElementById('officialVpName').value='';document.getElementById('officialVpLat').value='';document.getElementById('officialVpLng').value='';
   document.getElementById('officialVpFileName').value=`경관계획 지정 조망점 · ${officialViewpoints.length}개`;
@@ -1180,7 +1228,7 @@ let boundaryAutoHideDone=false;
 function simulationRows(){
   const ids=new Set(viewpointRanking?.selected_ids||[]);
   const selected=candidateItems.filter(r=>ids.has(r.id));
-  const base=selected.length?selected:candidateItems;
+  const base=selected;
   return [...base].filter(r=>Number.isFinite(r.lat)&&Number.isFinite(r.lng))
     .sort((a,b)=>Number(b.mandatory)-Number(a.mandatory)||a.distance-b.distance);
 }
