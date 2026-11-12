@@ -199,8 +199,8 @@ def test_no_fake_success_with_blank_cadastre():
 
 
 def test_partial_building_cad_export_has_layers_and_a3_layout():
-    # A footprint with parcel-spatial provisional attributes must remain
-    # exportable, even when provider_verified=False (PARTIAL building FACT).
+    # Even a PARTIAL report can export proven GIS building footprints,
+    # but cannot shade a provisional parcel intersection as a building.
     provider = FakeVworld()
     client, snapshots = make_app(provider)
     prepare_background(client)
@@ -212,7 +212,7 @@ def test_partial_building_cad_export_has_layers_and_a3_layout():
         'features': [{'type': 'Feature',
                       'geometry': mapping(transform(INVERSE, box(CX-20, CY-10, CX+20, CY+10))),
                       'properties': {'name': '3층', 'class_code': 'C03', 'color': '#228833',
-                                     'join_status': 'PARCEL_SPATIAL_REFERENCE'}}],
+                                     'join_status': 'EXACT_ID', 'geometry_basis': 'BUILDING_FOOTPRINT'}}],
         'legend': [{'name': '3층', 'class_code': 'C03', 'color': '#228833',
                     'count': 1, 'pct': 100.0}],
     }
@@ -223,6 +223,13 @@ def test_partial_building_cad_export_has_layers_and_a3_layout():
     assert 'SURVEY_A3' in doc.layouts
     assert len(list(doc.modelspace().query('HATCH[layer=="SURVEY_3_3_C03"]'))) > 0
     assert len(list(doc.modelspace().query('LWPOLYLINE[layer=="SURVEY_3_3_C03"]'))) > 0
+    # Old PNU-substitute data must fail rather than silently export land as buildings.
+    item['features'][0]['properties'] = {**item['features'][0]['properties'],
+        'join_status': 'PNU_PARCEL_REGISTER', 'geometry_basis': 'CADASTRAL_PNU'}
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as exc:
+        dxf_bytes(item, snapshots['test-token'], {})
+    assert exc.value.status_code == 409
 
 
 def test_unavailable_item_rejected():
