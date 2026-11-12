@@ -59,6 +59,23 @@ class Tests(unittest.TestCase):
   self.assertGreater(d.shape(result['features'][0]['geometry']).area,d.shape(self.g).area)
   self.assertEqual(self.c.get('/api/development/snapshots/'+base['id']+'/layers').json()['layers'],{})
   self.assertEqual(fn.call_count,1)
+ def test_viewport_skips_broken_geometry_but_keeps_third_residential(self):
+  viewport=mapping(box(126.969,37.559,126.973,37.563))
+  class Response:
+   def json(self):
+    return {'response':{'status':'OK','result':{'featureCollection':{'features':[
+     {'id':'bad','type':'Feature','geometry':None,'properties':{'uname':'제2종일반주거지역'}},
+     {'id':'zone-3','type':'Feature','geometry':mapping(box(126.970,37.560,126.972,37.562)),
+      'properties':{'uname':'제3종일반주거지역'}}]}}}}
+   def close(self):pass
+  with patch.object(d.VWorldChannel,'request',return_value=(Response(),'mock')):
+   result=self.c.post('/api/development/planning-view',json={'geometry':viewport,'layer':'LT_C_UQ111'}).json()
+  self.assertEqual(result['status'],'PARTIAL')
+  self.assertEqual(result['received'],2)
+  self.assertEqual(result['skipped_invalid_features'],1)
+  self.assertEqual(result['count'],1)
+  self.assertEqual(result['subtype_counts'].get('제3종일반주거지역'),1)
+  self.assertTrue(result['display_only'])
  def test_planning_view_allowlist_and_bounds(self):
   self.assertEqual(self.c.post('/api/development/planning-view',json={'geometry':self.g,'layer':'LT_C_UPISUQ151'}).status_code,422)
   wide=mapping(box(126.95,37.54,127.01,37.60))
