@@ -90,7 +90,7 @@ class BuildingSurveyTest(unittest.TestCase):
             self.assertEqual(item['features'], [])
             self.assertEqual(item['survey_table']['rows'][0]['count'], 1)
             self.assertFalse(item['provider_verified'])
-            self.assertEqual(item['geometry_status'], 'COMPLETE')
+            self.assertEqual(item['geometry_status'], 'UNAVAILABLE')
 
     def test_partial_empty_is_not_verified_zero(self):
         d = data()
