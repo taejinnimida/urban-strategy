@@ -581,8 +581,61 @@ def enrich(data,snapshot,area):
             }
     terrain=facts.get('dem',{})
     for item,key in [('4-1','elevation'),('4-2','slope'),('4-8','profiles')]:
-        got=terrain.get(key);results[item]={'status':'참고 분석자료' if got else '자료 필요','detail':terrain.get('detail','공식 DEM 자료 미조회'),'source':terrain.get('source') or '국토지리정보원 등 공공 DEM','source_url':OFFICIAL_LINKS[item]}
-        if got:statistics[item]={'values':got,'resolution_m':terrain.get('resolution_m'),'elevation_coverage_pct':terrain.get('elevation_coverage_pct'),'slope_coverage_pct':terrain.get('slope_coverage_pct')};results[item]['features']=terrain.get('features',[])
+        got=terrain.get(key)
+        results[item]={'status':'참고 분석자료' if got else '자료 필요',
+                       'detail':terrain.get('detail','공식 DEM 자료 미조회'),
+                       'source':terrain.get('source') or '국토지리정보원 등 공공 DEM',
+                       'source_url':terrain.get('source_url') or OFFICIAL_LINKS[item]}
+        if got:
+            statistics[item]={'values':got,'resolution_m':terrain.get('resolution_m'),
+                              'elevation_coverage_pct':terrain.get('elevation_coverage_pct'),
+                              'slope_coverage_pct':terrain.get('slope_coverage_pct')}
+            if item!='4-1':
+                results[item]['features']=terrain.get('features',[])
+    # 4-1 elevation is an independent, register-backed thematic survey.
+    # Maps, legend and printed table must derive from the same DEM FACT.
+    elevation=terrain.get('elevation')
+    if elevation:
+        groups=terrain.get('elevation_groups') or []
+        complete=terrain.get('elevation_status')=='DATA'
+        mapped_complete=terrain.get('elevation_map_complete') is True
+        features=terrain.get('elevation_features') or []
+        total_area=sum(g['area_m2'] for g in groups)
+        site_area=transform(Transformer.from_crs(4326,5179,always_xy=True).transform,
+                            shape(snapshot['geometry'])).area
+        rows=[{'kind':'category','label':g['name'],'area_m2':g['area_m2'],
+               'pct':g['pct'],'count':g['count'],
+               'note':f"표고 {g['min_m']:.2f}~{g['max_m']:.2f}m, DEM {terrain['resolution_m']:g}m"}
+              for g in groups]
+        results['4-1'].update({
+            'status':'공간자료 확보' if complete and mapped_complete else '일부 확보',
+            'features':features,
+            'legend':groups,
+            'thematic_type':'elevation',
+            'provider_verified':complete and mapped_complete,
+            'cad_exportable':complete and mapped_complete,
+            'geometry_status':'COMPLETE' if complete and mapped_complete else 'PARTIAL',
+            'detail':(terrain['detail']+
+                      f" · 표고 유효면적 {terrain.get('elevation_coverage_pct',0):.2f}%"
+                      f" · 원본 표고 범위 {elevation['min']:.2f}~{elevation['max']:.2f}m"
+                      f" · 면적가중 평균 {elevation['mean']:.2f}m"
+                      + (' · 지도 도형 상한에 따른 일부 미표시' if not mapped_complete else '')),
+            'survey_table':{'title':'[표 4-1 표고현황]','status':'COMPLETE' if complete else 'PARTIAL',
+                            'rows':[{'kind':'total','label':'유효 표고 합계',
+                                     'area_m2':round(total_area,2),
+                                     'pct':round(100*total_area/site_area,2) if site_area else None,
+                                     'count':sum(g['count'] for g in groups),
+                                     'note':'DEM 유효격자와 대상지의 실제 중첩면적 기준'}]+rows,
+                            'source':terrain['source'],'as_of':terrain.get('as_of'),
+                            'notes':['도면과 표는 동일 공식 DEM 분석 결과 사용',
+                                     '완전성은 DEM 유효격자 대상지 수록률에 따름']},
+        })
+        statistics['4-1'].update({
+            'groups':groups,'mapped_groups':groups,'mapped_area_m2':round(total_area,2),
+            'overlap_area_m2':round(total_area,2),'site_area_m2':site_area,
+            'map_complete':mapped_complete,'missing_elevation_cells':terrain.get('missing_elevation_cells'),
+            'note':'원본 표고 최저·최고 및 면적가중 평균. 표·지도·범례가 동일 DEM FACT 참조',
+        })
     e=facts.get('ecvam',{})
     if e.get('status')=='MAP_ONLY' and results.get('4-4',{}).get('status') not in ('공식 파일자료 확보','일부 확보'):results['4-4']={'status':'도면 확보','detail':e['detail'],'source':e['source'],'map_available':True}
     elif e.get('status')=='ERROR' and results.get('4-4',{}).get('status') not in ('공식 파일자료 확보','일부 확보'):results['4-4']={'status':'미확보','detail':e.get('detail','공식 WMS 연결 실패')+' · 등급별 면적은 원도형 별도 필요','source':'국토환경성평가지도'}
