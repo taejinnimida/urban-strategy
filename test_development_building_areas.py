@@ -83,9 +83,15 @@ def test_provisional_map_does_not_label_calculation_as_register_original():
     assert record['attributes']['coverage']['value'] == 50
     assert record['attributes']['coverage']['assurance'] == 'INTERNAL_CALC_PROVISIONAL'
     assert record['attributes']['far']['assurance'] == 'INTERNAL_CALC_PROVISIONAL'
-    # A cadastral PNU is not a building outline: keep calculations in the
-    # ledger table, but never fill the parcel as a building on map/CAD.
-    assert data['items'][5]['features'] == []
+    # The source GIS building outline is shown, but the cadastral parcel
+    # is never painted. Do not pass a provisional platform-derived ratio
+    # to a GIS-only footprint as though it were a measured GIS attribute.
+    shapes = data['items'][5]['features']
+    assert len(shapes) == 1
+    assert shapes[0]['properties']['geometry_source'] == 'LT_C_BLDGINFO'
+    assert shapes[0]['properties']['geometry_basis'] == 'BUILDING_FOOTPRINT'
+    assert shapes[0]['properties']['join_status'] == 'GIS_ONLY'
+    assert shapes[0]['properties']['attribute_assurance'] == 'UNKNOWN'
     assert data['items'][5]['survey_table']['rows'][0]['count'] == 1
     assert data['items'][5]['survey_table']['rows'][3]['count'] == 1
 
