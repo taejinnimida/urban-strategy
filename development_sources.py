@@ -647,6 +647,62 @@ def enrich(data,snapshot,area):
                               'slope_coverage_pct':terrain.get('slope_coverage_pct')}
             if item!='4-1':
                 results[item]['features']=terrain.get('features',[])
+    # Prefer contour-derived TIN for 4-2; never label raster Horn slope
+    # as the statutory 10m/TIN method. Preserve incomplete/source diagnostics.
+    contour=facts.get('contour_tin') or {}
+    if contour.get('status') in ('DATA','PARTIAL') and contour.get('valid_grid_count'):
+        verified=(contour.get('status')=='DATA' and
+                  contour.get('map_complete') is True)
+        full_area=contour.get('site_area_m2') or 0.0
+        covered_area=contour.get('covered_area_m2') or 0.0
+        classes=contour.get('legend') or []
+        rows=[{'kind':'total','label':'TIN 경사도 분석면적',
+               'area_m2':round(covered_area,2),
+               'pct':round(100*covered_area/full_area,2) if full_area else None,
+               'count':contour.get('valid_grid_count'),
+               'note':'10m 격자 내 삼각면의 면적가중 경사도 산출'}]
+        rows.extend({'kind':'category','label':g['name'],
+                     'area_m2':g['area_m2'],'pct':g['pct'],'count':g['count'],
+                     'note':'대상지 면적 대비 · 수치지형도 등고선 기반'}
+                    for g in classes)
+        results['4-2']={
+            'status':'참고 분석자료',
+            'detail':(contour['detail']+
+                      f" · 면적가중 평균경사도 {contour['mean_slope_deg']:.2f}°"
+                      f" · TIN 대상지 수록률 {contour['coverage_pct']:.2f}%"
+                      ' · 법정 제출용 검증 미완료'),
+            'source':contour.get('source'),
+            'source_url':contour.get('source_url'),
+            'as_of':contour.get('as_of'),
+            'features':contour.get('features') or [],
+            'legend':classes,
+            'thematic_type':'slope_tin',
+            'provider_verified':False,
+            'cad_exportable':False,
+            'geometry_status':'PARTIAL' if not verified else 'REFERENCE',
+            'survey_table':{'title':'[표 4-2 경사도현황(TIN 10m 참고분석)]',
+                            'status':'REFERENCE' if verified else 'PARTIAL',
+                            'rows':rows,'source':contour.get('source'),
+                            'as_of':contour.get('as_of'),
+                            'notes':[contour['legal_review_note']]},
+        }
+        statistics['4-2']={
+            'values':{'mean':contour['mean_slope_deg'],
+                      'over_25_pct':contour['steep_25deg_pct_of_site']},
+            'grid_size_m':10,'method':contour.get('tin_method'),
+            'mapped_groups':classes,'groups':classes,
+            'site_area_m2':full_area,'mapped_area_m2':covered_area,
+            'overlap_area_m2':covered_area,
+            'coverage_pct':contour['coverage_pct'],
+            'valid_grid_count':contour['valid_grid_count'],
+            'legal_submission_ready':False,
+            'note':contour['legal_review_note'],
+        }
+    elif contour:
+        results['4-2'].update({
+            'status':'자료 필요','detail':contour.get('detail','TIN 분석자료 미확보'),
+            'source':contour.get('source') or '수치지형도 등고선',
+        })
     # 4-1 elevation is an independent, register-backed thematic survey.
     # Maps, legend and printed table must derive from the same DEM FACT.
     elevation=terrain.get('elevation')
@@ -722,7 +778,7 @@ def register_sources(router,service,snapshots,lock,output,get_snapshot,fetch_lay
     def jobs(token:str):
         s=fixed(token)
         if '_report' not in s:raise HTTPException(409,'조서 조회를 먼저 실행하세요.')
-        return {'jobs':[{'id':'vector:'+k,'label':v} for k,v in {**{'LT_C_BLDGINFO':'GIS건물통합정보'},**{f'LT_C_UQ11{i}':'용도지역' for i in range(1,5)},**{f'LT_C_UPISUQ15{i}':'도시계획시설' for i in range(1,10)},**EXTRA_LAYERS}.items()]+[{'id':'ned:'+p,'label':'필지 토지이용계획 '+p} for p in s['_report']['land']]+[{'id':'characteristics:'+p,'label':'토지특성 '+p} for p in s['_report']['land']]+[{'id':'file:'+k,'label':v} for k,v in FILE_ITEMS.items() if k!='4-3']+[{'id':'landcover_wms','label':'2025년 세분류 토지피복 WMS 지도'},{'id':'landcover_wfs','label':'세분류 토지피복 원도형 WFS 제공 여부 확인'},{'id':'ecobank','label':'생태·자연도 WFS 원도형'},{'id':'weather','label':'기상청 관측 일자료'},{'id':'dem','label':'표고·경사·단면'},{'id':'ecvam','label':'국토환경성평가 WMS'}]}
+        return {'jobs':[{'id':'vector:'+k,'label':v} for k,v in {**{'LT_C_BLDGINFO':'GIS건물통합정보'},**{f'LT_C_UQ11{i}':'용도지역' for i in range(1,5)},**{f'LT_C_UPISUQ15{i}':'도시계획시설' for i in range(1,10)},**EXTRA_LAYERS}.items()]+[{'id':'ned:'+p,'label':'필지 토지이용계획 '+p} for p in s['_report']['land']]+[{'id':'characteristics:'+p,'label':'토지특성 '+p} for p in s['_report']['land']]+[{'id':'file:'+k,'label':v} for k,v in FILE_ITEMS.items() if k!='4-3']+[{'id':'landcover_wms','label':'2025년 세분류 토지피복 WMS 지도'},{'id':'landcover_wfs','label':'세분류 토지피복 원도형 WFS 제공 여부 확인'},{'id':'ecobank','label':'생태·자연도 WFS 원도형'},{'id':'weather','label':'기상청 관측 일자료'},{'id':'dem','label':'표고·경사·단면'},{'id':'contour_tin','label':'수치지형도 등고선 TIN·10m 경사도'},{'id':'ecvam','label':'국토환경성평가 WMS'}]}
     @router.post('/reports/{token}/source-jobs/{job}')
     def collect(token:str,job:str):
         s=fixed(token);allowed={v['id'] for v in jobs(token)['jobs']}
@@ -739,7 +795,7 @@ def register_sources(router,service,snapshots,lock,output,get_snapshot,fetch_lay
                 'tpgrphFrmCodeNm' not in (old.get('record') or {})
             )
             if old and old.get('status') in ('DATA','ATTRIBUTE_ONLY','MAP_ONLY') and not stale_characteristics:
-                return {k:v for k,v in old.items() if k not in ('_image','features','rows','profiles')}
+                return {k:v for k,v in old.items() if k not in ('_image','features','rows','profiles','grid_records')}
             try:
                 if job.startswith('vector:'):
                     k=job.split(':',1)[1];f=s.get('_report_layers',{}).get(k)
@@ -766,13 +822,16 @@ def register_sources(router,service,snapshots,lock,output,get_snapshot,fetch_lay
                         result=official_vector('2-6',s['geometry'],area)
                 elif job.startswith('file:'):result=official_vector(job.split(':',1)[1],s['geometry'],area)
                 elif job=='dem':result=dem(s['geometry'],area)
+                elif job=='contour_tin':
+                    from development_contour_tin import analyze
+                    result=analyze(s['geometry'])
                 else:result=ecvam_map(service,s['geometry'])
             except Exception as exc:
-                stage='LAND_USE' if job.startswith('ned:') else 'LAND_CHARACTERISTICS' if job.startswith('characteristics:') else 'WEATHER' if job=='weather' else 'ECOBANK_WFS' if job=='ecobank' else 'LOCAL_SOURCE' if job=='dem' or job.startswith('file:') else 'SOURCE_COLLECTION'
+                stage='LAND_USE' if job.startswith('ned:') else 'LAND_CHARACTERISTICS' if job.startswith('characteristics:') else 'WEATHER' if job=='weather' else 'ECOBANK_WFS' if job=='ecobank' else 'LOCAL_SOURCE' if job in ('dem','contour_tin') or job.startswith('file:') else 'SOURCE_COLLECTION'
                 result=source_failure(exc,stage)
             result['queried_at']=datetime.now(__import__('zoneinfo').ZoneInfo('Asia/Seoul')).isoformat(timespec='seconds')
             with lock:s.setdefault('_national_sources',{})[job]=result
-            return {k:v for k,v in result.items() if k not in ('_image','features','rows','profiles')}
+            return {k:v for k,v in result.items() if k not in ('_image','features','rows','profiles','grid_records')}
         finally:gate.release()
     @router.get('/reports/{token}/landcover.png')
     def landcover_image(token:str):
