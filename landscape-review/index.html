@@ -281,10 +281,18 @@ button,input,select{font:inherit}.hidden{display:none!important}
         </article>
 
         <article class="panel step-panel" data-panel="4">
-          <div class="panel-head"><div><h2>3D 경관 시뮬레이션</h2><p>동일 조망점·동일 카메라 조건에서 사업시행 전·후를 비교하는 화면 목업입니다.</p></div><span class="chip">핵심기능</span></div>
-          <section class="card sim-controls"><div><label>조망점</label><select id="vpSelect"><option>A · 근경 북측</option><option>B · 근경 남측</option><option>C · 중경 서측</option><option>D · 중경 동측</option></select></div><div><label>카메라 높이</label><input value="1.7 m" readonly /></div><div><label>조망거리</label><input value="120 m" readonly /></div><div><label>FOV</label><input value="60°" readonly /></div></section>
-          <div class="grid two sim-grid"><section class="card scene-card"><div class="scene-head"><b>사업시행 전</b><span>VIEW A</span></div><div class="city-scene before"><div class="skyline low s1"></div><div class="skyline low s2"></div><div class="skyline mid s3"></div><div class="skyline low s4"></div><div class="street"></div><div class="camera-mark">●</div></div></section><section class="card scene-card"><div class="scene-head"><b>사업시행 후</b><span>VIEW A</span></div><div class="city-scene after"><div class="skyline low s1"></div><div class="skyline low s2"></div><div class="skyline project s5"></div><div class="skyline mid s3"></div><div class="skyline low s4"></div><div class="street"></div><div class="camera-mark">●</div></div></section></div>
-          <section class="card analysis-card"><div><span>자동 경관분석</span><b>Day 11 연결 예정</b></div><p>예시: 대상지는 주요 가로에서 조망되는 계획건축물로서 주변 건축물과의 높이 관계 및 가로경관 연속성을 검토합니다.</p></section>
+          <div class="panel-head"><div><h2>3D 경관 시뮬레이션</h2><p>조망점의 실제 좌표와 동일한 카메라 조건에서 계획 매스 적용 전·후를 비교합니다.</p></div><span class="chip">실제 3D 연결</span></div>
+          <section class="card sim-controls">
+            <div><label>조망점</label><select id="vpSelect"><option value="">조망점 후보 조회 필요</option></select></div>
+            <div><label>카메라 높이</label><input id="simCameraHeight" value="1.7 m" readonly /></div>
+            <div><label>조망거리</label><input id="simDistance" value="-" readonly /></div>
+            <div><label>FOV</label><input id="simFov" value="60°" readonly /></div>
+          </section>
+          <div class="grid two sim-grid">
+            <section class="card scene-card"><div class="scene-head"><b>사업시행 전</b><span id="beforeViewLabel">대상지 기준</span></div><div id="simBefore3d" style="height:420px;background:#eef1f4"></div></section>
+            <section class="card scene-card"><div class="scene-head"><b>사업시행 후</b><span id="afterViewLabel">계획 매스</span></div><div id="simAfter3d" style="height:420px;background:#eef1f4"></div></section>
+          </div>
+          <section class="card analysis-card"><div><span>시뮬레이션 상태</span><b id="simStatus">조망점과 계획안을 준비하세요.</b></div><p id="simAnalysis">현재 단계는 대상지·조망점·동별 계획 매스의 좌표 연결을 검증합니다. 주변 기존 건축물과 지형은 후속 데이터 연동에서 추가합니다.</p></section>
           <div class="actions"><button class="btn ghost prev" data-prev="3">이전</button><button class="btn primary next" data-next="5">검토서 미리보기</button></div>
         </article>
 
@@ -332,6 +340,9 @@ function go(step){
   if(step===3){
     initCandidateMap();
     setTimeout(()=>{ if(candidateMap){candidateMap.invalidateSize();syncCandidateSite();} },100);
+  }
+  if(step===4){
+    setTimeout(()=>{syncSimulationViewpoints();initSimulation3D();renderSimulation();},100);
   }
 }
 steps.forEach(s=>s.addEventListener('click',()=>go(+s.dataset.step)));
@@ -922,6 +933,127 @@ document.getElementById('fetchCandidates').onclick=fetchCandidates;
 document.getElementById('clearCandidates').onclick=()=>{candidateItems=enrich([...officialViewpoints]);renderCandidates();};
 document.querySelectorAll('#candidateFilter button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#candidateFilter button').forEach(x=>x.classList.remove('active'));b.classList.add('active');candidateBandFilter=b.dataset.band;renderCandidates();});
 const officialVpFile=document.getElementById('officialVpFile');document.getElementById('officialVpUpload').onclick=()=>officialVpFile.click();officialVpFile.onchange=async()=>{const f=officialVpFile.files[0];if(!f)return;try{officialViewpoints=parseOfficial(JSON.parse(await f.text()));document.getElementById('officialVpFileName').value=`${f.name} · ${officialViewpoints.length}개`;candidateItems=enrich([...officialViewpoints,...candidateItems.filter(x=>x.source==='OSM 개발용')]);renderCandidates();showToast(`지정 조망점 ${officialViewpoints.length}개 반영`);}catch(e){showToast('GeoJSON을 읽지 못했습니다.');}};
+
+// -----------------------------
+// Step 4: actual viewpoint -> plan mass simulation
+// -----------------------------
+let simBeforeScene=null,simAfterScene=null,simBeforeCamera=null,simAfterCamera=null;
+let simBeforeRenderer=null,simAfterRenderer=null,simBeforeControls=null,simAfterControls=null;
+let simReady=false,simSelectedViewId='';
+
+function simLocal(lon,lat){
+  if(!siteState.center)return [0,0];
+  const lat0=siteState.center[0],lon0=siteState.center[1],r=Math.PI/180;
+  return [(Number(lon)-lon0)*111320*Math.cos(lat0*r),(Number(lat)-lat0)*110540];
+}
+function simClear(scene){
+  if(!scene)return;
+  [...scene.children].forEach(o=>{
+    if(o.userData?.persistent)return;
+    scene.remove(o);
+    o.traverse?.(x=>{if(x.geometry)x.geometry.dispose();if(x.material){if(Array.isArray(x.material))x.material.forEach(m=>m.dispose());else x.material.dispose();}});
+  });
+}
+function simBaseScene(scene){
+  const ground=new THREE.Mesh(new THREE.PlaneGeometry(2400,2400),new THREE.MeshStandardMaterial({color:0xd7dcdf,roughness:1}));
+  ground.userData.persistent=false;scene.add(ground);
+  if(siteState.boundary){
+    const rs=ringsOf(siteState.boundary);
+    rs.forEach(ring=>{
+      const pts=ring.map(p=>{const [x,y]=simLocal(p[0],p[1]);return new THREE.Vector3(x,y,.15);});
+      if(pts.length>1){
+        const g=new THREE.BufferGeometry().setFromPoints(pts);
+        scene.add(new THREE.Line(g,new THREE.LineBasicMaterial({color:0xb27a3b})));
+      }
+    });
+  }
+}
+function simAddPlanMasses(scene){
+  if(!planBuildings.length)return;
+  planBuildings.forEach((b,index)=>{
+    const poly=b.coords,outer=poly[0]||[];if(outer.length<4)return;
+    const sh=new THREE.Shape();
+    outer.forEach((p,i)=>{const [x,y]=simLocal(p[0],p[1]);if(i===0)sh.moveTo(x,y);else sh.lineTo(x,y);});
+    for(const holeRing of poly.slice(1)){
+      if(holeRing.length<4)continue;
+      const hole=new THREE.Path();
+      holeRing.forEach((p,i)=>{const [x,y]=simLocal(p[0],p[1]);if(i===0)hole.moveTo(x,y);else hole.lineTo(x,y);});
+      sh.holes.push(hole);
+    }
+    const h=Math.max(1,Number(b.height||50));
+    const geo=new THREE.ExtrudeGeometry(sh,{depth:h,bevelEnabled:false,steps:1});
+    geo.computeVertexNormals();
+    const mesh=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({color:0xb47a3c,roughness:.72,metalness:.04}));
+    mesh.userData.buildingIndex=index;scene.add(mesh);
+    scene.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo),new THREE.LineBasicMaterial({color:0x65401f})));
+  });
+}
+function createSimScene(hostId){
+  const host=document.getElementById(hostId),w=host.clientWidth||560,h=host.clientHeight||420;
+  const scene=new THREE.Scene();scene.background=new THREE.Color(0xdfe9ef);
+  const camera=new THREE.PerspectiveCamera(60,w/h,.1,5000);camera.up.set(0,0,1);
+  const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));renderer.setSize(w,h);host.innerHTML='';host.appendChild(renderer.domElement);
+  const hemi=new THREE.HemisphereLight(0xffffff,0x76818a,1.5);hemi.userData.persistent=true;scene.add(hemi);
+  const sun=new THREE.DirectionalLight(0xffffff,1.25);sun.position.set(200,-120,300);sun.userData.persistent=true;scene.add(sun);
+  const controls=new THREE.OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.enabled=false;
+  return {scene,camera,renderer,controls,host};
+}
+function initSimulation3D(){
+  if(simReady)return;
+  if(typeof THREE==='undefined'){window.addEventListener('three-ready',()=>{initSimulation3D();renderSimulation();},{once:true});return;}
+  const a=createSimScene('simBefore3d'),b=createSimScene('simAfter3d');
+  simBeforeScene=a.scene;simBeforeCamera=a.camera;simBeforeRenderer=a.renderer;simBeforeControls=a.controls;
+  simAfterScene=b.scene;simAfterCamera=b.camera;simAfterRenderer=b.renderer;simAfterControls=b.controls;
+  simReady=true;
+  const animate=()=>{requestAnimationFrame(animate);simBeforeControls?.update();simAfterControls?.update();simBeforeRenderer?.render(simBeforeScene,simBeforeCamera);simAfterRenderer?.render(simAfterScene,simAfterCamera);};animate();
+  window.addEventListener('resize',()=>{
+    [['simBefore3d',simBeforeRenderer,simBeforeCamera],['simAfter3d',simAfterRenderer,simAfterCamera]].forEach(([id,r,c])=>{
+      if(!r||!c)return;const host=document.getElementById(id),w=host.clientWidth||560,h=host.clientHeight||420;c.aspect=w/h;c.updateProjectionMatrix();r.setSize(w,h);
+    });
+  });
+}
+function simulationRows(){
+  return [...candidateItems].filter(r=>Number.isFinite(r.lat)&&Number.isFinite(r.lng)).sort((a,b)=>Number(b.mandatory)-Number(a.mandatory)||a.distance-b.distance);
+}
+function syncSimulationViewpoints(){
+  const select=document.getElementById('vpSelect'),rows=simulationRows();
+  const previous=simSelectedViewId||select.value;
+  if(!rows.length){select.innerHTML='<option value="">조망점 후보 조회 필요</option>';simSelectedViewId='';return;}
+  select.innerHTML=rows.map((r,i)=>'<option value="'+escapeHtml(r.id)+'">'+String.fromCharCode(65+i)+' · '+escapeHtml(r.name)+' · '+bandLabel(r.band)+' · '+r.distance+'m</option>').join('');
+  if(rows.some(r=>r.id===previous))select.value=previous;
+  simSelectedViewId=select.value;
+}
+function renderSimulation(){
+  initSimulation3D();if(!simReady)return;
+  const status=document.getElementById('simStatus'),analysis=document.getElementById('simAnalysis');
+  simClear(simBeforeScene);simClear(simAfterScene);simBaseScene(simBeforeScene);simBaseScene(simAfterScene);simAddPlanMasses(simAfterScene);
+  const row=candidateItems.find(r=>r.id===(document.getElementById('vpSelect').value||simSelectedViewId));
+  if(!row||!siteState.center){
+    status.textContent='조망점 후보를 먼저 조회하세요.';
+    analysis.textContent='조망점 분석 단계에서 후보를 조회한 뒤 시뮬레이션할 지점을 선택하세요.';
+    return;
+  }
+  simSelectedViewId=row.id;
+  const [cx,cy]=simLocal(row.lng,row.lat),cameraHeight=1.7;
+  const maxH=planBuildings.length?Math.max(...planBuildings.map(b=>Number(b.height||0))):30;
+  const target=new THREE.Vector3(0,0,Math.max(8,Math.min(maxH*.35,35)));
+  [simBeforeCamera,simAfterCamera].forEach(c=>{
+    c.fov=60;c.aspect=(c===simBeforeCamera?document.getElementById('simBefore3d'):document.getElementById('simAfter3d')).clientWidth/420;
+    c.position.set(cx,cy,cameraHeight);c.lookAt(target);c.updateProjectionMatrix();
+  });
+  simBeforeControls.target.copy(target);simAfterControls.target.copy(target);
+  document.getElementById('simDistance').value=Math.round(row.distance||Math.hypot(cx,cy))+' m';
+  document.getElementById('beforeViewLabel').textContent=row.name;
+  document.getElementById('afterViewLabel').textContent=row.name;
+  if(planBuildings.length){
+    status.textContent='조망점 좌표와 동별 계획 매스 연결 완료';
+    analysis.textContent=row.name+'에서 대상지를 바라보는 동일 카메라 조건입니다. 사업시행 후 화면에는 '+planBuildings.length+'개 동의 개별 높이값이 반영됩니다.';
+  }else{
+    status.textContent='계획 매스가 없습니다.';
+    analysis.textContent='계획안 입력 단계에서 DXF/GeoJSON 외곽선과 동별 높이를 입력해야 사업시행 후 모델이 표시됩니다.';
+  }
+}
+document.getElementById('vpSelect').addEventListener('change',e=>{simSelectedViewId=e.target.value;renderSimulation();});
 
 const reportBtns=[...document.querySelectorAll('.report-type')];
 const output=document.getElementById('outputList');
