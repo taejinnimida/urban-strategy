@@ -245,6 +245,38 @@ def attach_building_themes(data, snapshot):
                      if r.get('geometry_source') == 'LT_C_BLDGINFO']
     parcel_records = fact.get('parcel_register_records') or []
 
+    # Parcel vacancy follows verified data absence, never an unavailable GIS
+    # response. A register title without a matched footprint is NOT vacant.
+    from development_building_fact import _register_pnus, _parcel_geometry_index
+    cadastral_layer=(snapshot.get('_report_layers') or {}).get('LP_PA_CBND_BUBUN') or {}
+    gis_layer=(snapshot.get('_report_layers') or {}).get('LT_C_BLDGINFO') or {}
+    cadastral_shapes=_parcel_geometry_index(cadastral_layer,shape(snapshot['geometry']))
+    registered_pnus=set()
+    for row in registers:
+        registered_pnus.update(_register_pnus(row.get('pnus')))
+    parcel_building_status={}
+    for pnu, parcel_geometry in cadastral_shapes.items():
+        if pnu in registered_pnus:
+            status='BUILDING_REGISTERED'
+        elif any(shape(r['geometry']).intersects(parcel_geometry) and
+                 shape(r['geometry']).intersection(parcel_geometry).area>0
+                 for r in source_shapes):
+            status='GIS_FOOTPRINT_WITHOUT_REGISTER'
+        elif cadastral_layer.get('status')=='COMPLETE' and gis_layer.get('status')=='COMPLETE' and not fact['counts'].get('invalid_provider_shapes'):
+            status='VACANT_BY_VERIFIED_SOURCE'
+        else:
+            status='UNCONFIRMED'
+        parcel_building_status[pnu]=status
+    fact['parcel_building_status']=parcel_building_status
+    fact['counts']['source_verified_vacant_parcels']=sum(
+        status=='VACANT_BY_VERIFIED_SOURCE'
+        for status in parcel_building_status.values())
+    fact['counts']['parcels_with_register_no_footprint']=sum(
+        pnu in registered_pnus and not any(
+            shape(r['geometry']).intersects(parcels_geom) and
+            shape(r['geometry']).intersection(parcels_geom).area>0
+            for r in source_shapes)
+        for pnu,parcels_geom in cadastral_shapes.items())
     matches, omitted = _parcel_register_matches(source_shapes, registers, ledger_keys)
     mapped_keys = {a['ledger_key'] for a in matches if a.get('ledger_key')}
     role_totals = Counter(a['role'] for a in matches)
