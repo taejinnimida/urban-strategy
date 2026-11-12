@@ -553,13 +553,39 @@ function devPlanningScheduleViewportParcels(){
  if(devPlanningMap)devPlanningParcelTimer=setTimeout(devPlanningFetchViewportParcels,550);
 }
 
+// A viewport query supplements, never replaces, authoritative site-bound FACT.
+// Incomplete provider viewport results must not erase already collected subtypes.
+function devPlanningMergeDisplayFacts(siteFacts,viewportZoning){
+ const merged=siteFacts.filter(f=>!viewportZoning.has(f.layer));
+ for(const [layer,viewport] of viewportZoning){
+  const site=siteFacts.find(f=>f.layer===layer&&devHasFact(f));
+  if(!site||!site.features?.length){merged.push(viewport);continue;}
+  const features=[],ids=new Map();
+  const stableId=f=>{
+   const p=f.properties||{};
+   const key=f.id||p.unq_mnno||p.UNQ_MNNO||p.mnum||p.MNUM;
+   return key==null||String(key).trim()===''?null:String(key);
+  };
+  const add=(f,preferSite=false)=>{
+   const id=stableId(f),index=id==null?undefined:ids.get(id);
+   if(index!==undefined){if(preferSite)features[index]=f;}
+   else{if(id!=null)ids.set(id,features.length);features.push(f);}
+  };
+  for(const f of viewport.features||[])add(f);
+  for(const f of site.features)add(f,true);
+  merged.push({...viewport,features,
+   preserved_site_fact_revision:site.fact_revision||site.queried_at||null,
+   preserved_site_features:site.features.length});
+ }
+ return merged;
+}
 function devPlanningRefresh(){
  if(!devPlanningMap)return;
  const status=document.getElementById('devPlanningStatus');
  const complete=devFacts.filter(f=>f.status==='COMPLETE').length,reference=devFacts.filter(f=>f.status==='REFERENCE').length;
  status.textContent=`${devBusy?'자료 조회 중':'조회 종료'} · 서버 확보 ${complete}개 · 보조 참고 ${reference}개 / ${devLayerSpecs.length}개 · 대상지와 교차하는 확보 도형 표시. 빈 부분은 시설 없음이 아닙니다.`;
- const drawFacts=devFacts.filter(f=>!devPlanningViewportZoning.has(f.layer)).concat([...devPlanningViewportZoning.values()]);
- const stamp=JSON.stringify(drawFacts.map(f=>[f.layer,f.fact_revision,f.status,f.queried_at,f.features?.length, f.truncated]));
+ const drawFacts=devPlanningMergeDisplayFacts(devFacts,devPlanningViewportZoning);
+ const stamp=JSON.stringify(drawFacts.map(f=>[f.layer,f.fact_revision,f.status,f.queried_at,f.features?.length,f.truncated,f.preserved_site_fact_revision,f.preserved_site_features]));
  if(stamp===devPlanningStamp)return;devPlanningStamp=stamp;
  for(const group of Object.values(devPlanningGroups))group.clearLayers();devPlanningLabels=[];
  if(devPlanningParcelLines)devPlanningGroups.parcel.addLayer(devPlanningParcelLines);
