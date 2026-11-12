@@ -144,7 +144,13 @@ def _parcel_geometry_index(layer, site):
 
 
 def _spatial_parcel_candidate(building, parcels):
-    """Find a near-contained, unambiguous parcel; never an exact building identity."""
+    """Find the parcel containing >=65% of a GIS footprint, as a provisional PNU join.
+
+    Use the single largest overlap; do not reject a building because it also
+    overlaps other cadastral parcels. This allows for cadastral/physical
+    boundary mismatches, especially in non-planned areas. The association is
+    never proof of the legal building's identity or a current/demolished status.
+    """
     geom = building['geometry']
     if not parcels or geom.is_empty or geom.area <= 0:
         return None
@@ -155,12 +161,14 @@ def _spatial_parcel_candidate(building, parcels):
         ratio = geom.intersection(parcel).area / geom.area
         if ratio > 0:
             scores.append((ratio, pnu))
-    scores.sort(reverse=True)
-    if not scores or scores[0][0] < 0.95:
+    if not scores:
         return None
-    if len(scores) > 1 and scores[1][0] > 0.03:
+    # Maximum overlap wins; other parcel intersections do not disqualify it.
+    # Sort by PNU for deterministic ties without treating a tie as exact identity.
+    ratio, pnu = sorted(scores, key=lambda s: (-s[0], s[1]))[0]
+    if ratio < 0.65:
         return None
-    return scores[0][1], round(100 * scores[0][0], 2)
+    return pnu, round(100 * ratio, 2)
 
 
 def _register_pnus(value):
@@ -204,10 +212,10 @@ def assemble_building_fact(data, snapshot):
         by_title.setdefault(key, []).append(row)
 
     # A footprint and a building-register row may have no common identifier.
-    # Allow a labelled, provisional association ONLY where one cadastral parcel
-    # contains >=95% of the footprint, no competing parcel exceeds 3% and
-    # exactly one register title belongs to that parcel. No forced matching by
-    # counts, order, addresses, or coincident coverage/FAR.
+    # A provisional PNU candidate is allowed when the largest parcel overlap
+    # covers >=65% of the footprint, regardless of other parcel overlap.
+    # A unique register title on the candidate parcel is still required;
+    # this is a spatial hypothesis, never direct register-ID identity.
     parcels = _parcel_geometry_index(layers.get('LP_PA_CBND_BUBUN') or {}, site)
     titles_by_pnu = defaultdict(set)
     for key, rows in by_title.items():
