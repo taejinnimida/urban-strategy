@@ -119,47 +119,69 @@ def attach_building_themes(data, snapshot):
 
     # Suppress source-only polygons from the statutory-looking survey map.
     # Keep them in building_fact.records for independent quality review.
-    attached = [r for r in source_shapes
-                if r.get('join_status') in ('EXACT_ID', 'PARCEL_SPATIAL_REFERENCE')]
+    # A footprint with only a spatial PNU association could be a historic,
+    # demolished shape. Do not draw it as the *current* building. Only true
+    # register management-ID equality establishes a footprint identity.
+    from development_building_fact import _parcel_geometry_index, _register_pnus
+    site = shape(snapshot['geometry'])
+    cadastral_layer = (snapshot.get('_report_layers') or {}).get('LP_PA_CBND_BUBUN') or {}
+    parcels = _parcel_geometry_index(cadastral_layer, site)
+    pnu_to_titles = defaultdict(set)
+    single_pnu_by_title = {}
+    for key, row in registered.items():
+        pnus = _register_pnus(row.get('pnus'))
+        if len(pnus) == 1:
+            pnu = next(iter(pnus))
+            single_pnu_by_title[key] = pnu
+            pnu_to_titles[pnu].add(key)
+
     candidate_by_title = defaultdict(list)
-    for r in attached:
+    for r in source_shapes:
+        if r.get('join_status') != 'EXACT_ID':
+            continue
         key = r.get('register_row_key') or r.get('register_id')
         if key in registered:
             candidate_by_title[key].append(r)
-    for r in parcel_records:
-        key = r.get('register_id')
-        if key in registered:
-            candidate_by_title[key].append(r)
-    precedence = {'EXACT_ID': 3, 'PARCEL_SPATIAL_REFERENCE': 2,
-                  'PNU_PARCEL_REGISTER': 1}
-    # One registered building => at most one displayed polygon. Where two
-    # different polygons claim the same title at the same confidence, avoid
-    # arbitrarily retaining one and show neither until geometry is verified.
+
     map_by_title = {}
     ambiguous_titles = []
     for key in ledger_keys:
-        choices = candidate_by_title.get(key, [])
-        if not choices:
-            continue
-        highest = max(precedence.get(r.get('join_status'), 0) for r in choices)
-        best = [r for r in choices if precedence.get(r.get('join_status'), 0) == highest]
-        if len(best) != 1:
+        exact = candidate_by_title.get(key, [])
+        if len(exact) > 1:
             ambiguous_titles.append(key)
             continue
-        map_by_title[key] = best[0]
+        if len(exact) == 1:
+            map_by_title[key] = exact[0]
+            continue
+        # 1:1 register–PNU and available cadastral geometry gives a reliable
+        # *location*, not proof of a particular building outline.
+        pnu = single_pnu_by_title.get(key)
+        if pnu and pnu in parcels and len(pnu_to_titles[pnu]) == 1:
+            map_by_title[key] = {
+                'id': 'CADASTRAL_PNU:' + pnu,
+                'geometry': mapping(parcels[pnu]),
+                'join_status': 'PNU_PARCEL_REGISTER',
+                'geometry_basis': 'CADASTRAL_PNU',
+                'quality_grade': 'P_PARCEL_LEDGER',
+                'match_basis': 'EXACT_CADASTRAL_PNU_NOT_BUILDING_FOOTPRINT',
+                'spatial_parcel_pnu': pnu,
+                'spatial_overlap_pct': None
+            }
+
     map_records = [(key, registered[key], map_by_title[key])
                    for key in ledger_keys if key in map_by_title]
     hidden_gis = [r for r in source_shapes if
-                  r.get('join_status') == 'UNMATCHED']
+                  r.get('join_status') != 'EXACT_ID']
     fact['counts']['ledger_survey_rows'] = n
     fact['counts']['ledger_survey_mapped'] = len(map_records)
     fact['counts']['unmatched_gis_hidden_from_survey'] = len(hidden_gis)
     fact['counts']['ambiguous_ledger_geometry_hidden'] = len(ambiguous_titles)
     fact['display_exclusion'] = {
-        'reason': 'UNMATCHED_GIS_NOT_PROOF_OF_CURRENT_BUILDING',
+        'reason': 'NON_EXACT_GIS_NOT_PROOF_OF_CURRENT_BUILDING',
         'source_shapes_hidden': len(hidden_gis),
         'ambiguous_registers': len(ambiguous_titles),
         'historical_status': 'UNCONFIRMED',
+        'provisional_footprints_excluded': sum(r.get('join_status') == 'PARCEL_SPATIAL_REFERENCE' for r in source_shapes),
         'note': '원천 GIS를 삭제하지 않고 현황도에서만 제외. 멸실 여부는 말소대장·공부와 현장자료로 확인.'
     }
 
@@ -242,7 +264,7 @@ def attach_building_themes(data, snapshot):
         note = (
             f'건축물조서 {n}건을 모집단으로 집계. 지도는 건축물조서와 연결 가능한 '
             f'{len(features)}개 도형만 표시(대장 연계 건물도형·대장 PNU 필지대체 포함). '
-            f'대장과 미연계된 원천 GIS 도형 {len(hidden_gis)}개는 '
+            f'건물관리번호가 직접 연결되지 않은 GIS 도형 {len(hidden_gis)}개는 '
             '현황도·CAD에서 제외하고 검증정보에만 보관. '
             '이들은 멸실 확정이 아니라 최신성·중복 여부 미확인 도형임. '
             '건축물대장 없는 건축물의 실제 부존재를 뜻하지 않음. '
