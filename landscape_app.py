@@ -6,7 +6,7 @@ import requests
 import shapefile
 import ezdxf
 from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
 from shapely.geometry import shape, Point, mapping, Polygon, MultiPolygon
 from shapely.ops import unary_union, transform
@@ -70,6 +70,11 @@ class AddressReq(BaseModel):
 class SnapshotReq(BaseModel):
     geometry:dict
 
+class ViewpointRankReq(BaseModel):
+    candidates:list[dict]
+    target_per_band:int=5
+    policy:str="top5_plus_designated"
+
 @app.get("/",response_class=HTMLResponse)
 def home():
     return HTMLResponse((BASE/"landscape-review"/"selector.html").read_text(encoding="utf-8"),headers={"Cache-Control":"no-store"})
@@ -77,6 +82,11 @@ def home():
 @app.get("/landscape-review",response_class=HTMLResponse)
 def landscape_review(site:str|None=None):
     return HTMLResponse((BASE/"landscape-review"/"index.html").read_text(encoding="utf-8"),headers={"Cache-Control":"no-store"})
+
+
+@app.get("/landscape-review/xdworld-adapter.js")
+def xdworld_adapter():
+    return FileResponse(BASE/"landscape-review"/"xdworld-adapter.js",media_type="application/javascript",headers={"Cache-Control":"no-store"})
 
 @app.post("/api/address")
 def address(data:AddressReq):
@@ -495,6 +505,107 @@ async def plan_footprints(file: UploadFile = File(...), crs: str = Form("EPSG:51
         "features":out,
         **meta,
     }
+
+
+def _candidate_score(row:dict):
+    raw=row.get("pedestrianScore",row.get("pedestrian_score"))
+    try:
+        score=float(raw)
+        return score if math.isfinite(score) else None
+    except Exception:
+        return None
+
+@app.get("/api/integrations/status")
+def integration_status():
+    return {
+        "seoul_open_data":{"configured":bool((os.getenv("SEOUL_OPEN_DATA_KEY") or "").strip()),"purpose":"pedestrian/population ranking"},
+        "smap_openlab":{"configured":bool((os.getenv("SMAP_OPENLAB_APP_KEY") or "").strip()),"purpose":"Seoul 3D base integration"},
+        "xdworld":{"adapter":"prepared","engine_runtime_required":True,"boundary_exclude_supported":True,"plan_mass_polygon_supported":True},
+        "viewpoint_policy":{
+            "target_per_band":5,
+            "bands":{"near":"0-250m","mid":"250-500m","far":"500-1000m"},
+            "designated_policy":"top5_plus_designated",
+            "unscored_candidates":"never auto-selected"
+        },
+        "candidate_adapters":{
+            "transit_park_heritage":"development fallback currently available",
+            "road_intersection_20m":"official road-width adapter required",
+            "landscape_plan_viewpoint":"official dataset adapter/upload required",
+            "pedestrian":"SEOUL_OPEN_DATA_KEY + spatial score adapter required"
+        }
+    }
+
+@app.post("/api/viewpoint/rank")
+def viewpoint_rank(data:ViewpointRankReq):
+    target=max(1,min(int(data.target_per_band or 5),20))
+    policy=(data.policy or "top5_plus_designated").strip()
+    bands=("near","mid","far")
+    result={"policy":policy,"target_per_band":target,"bands":{},"selected_ids":[],"designated_ids":[]}
+    selected_ids=[]
+    designated_ids=[]
+    for band in bands:
+        rows=[dict(r) for r in data.candidates if str(r.get("band") or "")==band and not bool(r.get("userExcluded"))]
+        designated=[r for r in rows if bool(r.get("mandatory")) or str(r.get("category") or "")=="designated"]
+        manual=[r for r in rows if bool(r.get("userSelected")) and r not in designated]
+        scored=[]
+        unresolved=[]
+        for r in rows:
+            if r in designated or r in manual:
+                continue
+            score=_candidate_score(r)
+            if score is None:
+                unresolved.append(r)
+            else:
+                r["_score"]=score
+                scored.append(r)
+        scored.sort(key=lambda r:(-r["_score"],float(r.get("distance") or 1e18),str(r.get("id") or "")))
+        if policy=="designated_within_target":
+            pool=[]
+            seen=set()
+            for r in designated+manual+scored:
+                rid=str(r.get("id") or "")
+                if rid and rid not in seen:
+                    seen.add(rid);pool.append(r)
+            selected=pool[:target]
+        else:
+            selected=[]
+            seen=set()
+            # top N regular/manual first, then append all designated viewpoints.
+            for r in manual+scored:
+                rid=str(r.get("id") or "")
+                if rid and rid not in seen and len(selected)<target:
+                    seen.add(rid);selected.append(r)
+            for r in designated:
+                rid=str(r.get("id") or "")
+                if rid and rid not in seen:
+                    seen.add(rid);selected.append(r)
+        band_designated=[str(r.get("id") or "") for r in designated if r.get("id")]
+        band_selected=[str(r.get("id") or "") for r in selected if r.get("id")]
+        designated_ids.extend(band_designated)
+        selected_ids.extend(band_selected)
+        ranked=[{
+            "id":str(r.get("id") or ""),
+            "name":r.get("name"),
+            "score":r["_score"],
+            "distance":r.get("distance"),
+            "category":r.get("category"),
+            "rank":i+1
+        } for i,r in enumerate(scored)]
+        result["bands"][band]={
+            "candidate_count":len(rows),
+            "scored_count":len(scored),
+            "unscored_count":len(unresolved),
+            "designated_count":len(designated),
+            "manual_count":len(manual),
+            "selected_ids":band_selected,
+            "designated_ids":band_designated,
+            "ranked":ranked,
+            "auto_selection_complete":len(scored)>=target
+        }
+    result["selected_ids"]=list(dict.fromkeys(selected_ids))
+    result["designated_ids"]=list(dict.fromkeys(designated_ids))
+    result["auto_selection_complete"]=all(result["bands"][b]["auto_selection_complete"] for b in bands)
+    return result
 
 @app.post("/api/snapshots")
 def create_snapshot(data:SnapshotReq):
