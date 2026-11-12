@@ -30,6 +30,19 @@ def _vworld_key():
         raise HTTPException(503,"VWorld API 키(VWORLD_API_KEY)가 설정되지 않았습니다.")
     return key
 
+def _seoul_open_data_key():
+    for env_name in ("SEOUL_OPEN_DATA_KEY","data.seoul.go.kr_KEY","DATA_SEOUL_GO_KR_KEY"):
+        value=(os.getenv(env_name) or "").strip()
+        if value:
+            return value
+    aliases={"seoulopendatakey","dataseoulgokrkey"}
+    for env_name,raw in os.environ.items():
+        normalized=re.sub(r"[^a-z0-9]","",str(env_name).lower())
+        if normalized in aliases and str(raw or "").strip():
+            return str(raw).strip()
+    return ""
+
+
 def _domain():
     host=(os.getenv("RENDER_EXTERNAL_HOSTNAME") or "localhost").strip()
     return ("https://"+host) if not host.startswith("http") and host!="localhost" else ("http://localhost" if host=="localhost" else host)
@@ -518,7 +531,7 @@ def _candidate_score(row:dict):
 @app.get("/api/integrations/status")
 def integration_status():
     return {
-        "seoul_open_data":{"configured":bool((os.getenv("SEOUL_OPEN_DATA_KEY") or "").strip()),"purpose":"pedestrian/population ranking"},
+        "seoul_open_data":{"configured":bool(_seoul_open_data_key()),"purpose":"pedestrian/population ranking"},
         "smap_openlab":{"configured":bool((os.getenv("SMAP_OPENLAB_APP_KEY") or "").strip()),"purpose":"Seoul 3D base integration"},
         "xdworld":{"adapter":"prepared","engine_runtime_required":True,"boundary_exclude_supported":True,"plan_mass_polygon_supported":True},
         "viewpoint_policy":{
