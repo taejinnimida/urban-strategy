@@ -15,7 +15,7 @@ header h1{font-size:20px;margin:0}header small{display:block;color:#657386;margi
 main{padding:12px}.card{background:#fff;border:1px solid #dce3eb;border-radius:10px;margin-bottom:10px}
 .title{padding:14px 16px;border-bottom:1px solid #e5eaf0}.title h2{font-size:17px;margin:0 0 5px}.title p{margin:0;color:#657386;font-size:12px}
 .tabs{display:grid;grid-template-columns:repeat(3,1fr);border-bottom:1px solid #dce3eb}.tabs button{border:0;border-right:1px solid #dce3eb;background:#fff;padding:13px;font-weight:700;cursor:pointer}.tabs button:last-child{border-right:0}.tabs button.active{background:#111c2d;color:white}
-.tools{padding:12px}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.btn{border:1px solid #bdc9d6;background:#fff;padding:9px 14px;border-radius:5px;font-weight:700;cursor:pointer}.btn.primary{background:#285fae;color:#fff;border-color:#285fae}.btn.landscape{background:#1f6b5d;color:#fff;border-color:#1f6b5d}.btn.danger{color:#c62828}.btn:disabled{opacity:.4;cursor:not-allowed}
+.tools{padding:12px}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.btn{border:1px solid #bdc9d6;background:#fff;padding:9px 14px;border-radius:5px;font-weight:700;cursor:pointer}.btn.primary{background:#285fae;color:#fff;border-color:#285fae}.btn.landscape{background:#1f6b5d;color:#fff;border-color:#1f6b5d;display:inline-flex;align-items:center;gap:8px}.landscape-icon{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}.btn.danger{color:#c62828}.btn:disabled{opacity:.4;cursor:not-allowed}
 .panel{display:none}.panel.active{display:block}.help{font-size:12px;color:#687689;margin:8px 0}.input{width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:5px}
 .action-box{padding:14px 16px}.action-box h3{margin:0 0 5px;font-size:16px}.action-box p{font-size:12px;color:#657386;margin:0 0 12px}
 #map{height:560px;border-top:1px solid #dce3eb;background:#eef2f6}.map-status{padding:8px 12px;font-size:12px;color:#526174;border-top:1px solid #dce3eb}
@@ -74,7 +74,7 @@ main{padding:12px}.card{background:#fff;border:1px solid #dce3eb;border-radius:1
   <p>대상지를 확정한 뒤 필요한 검토 기능을 선택합니다.</p>
   <div class="row">
     <button class="btn primary" id="surveyBtn" disabled>기초현황조사</button>
-    <button class="btn landscape" id="landscapeBtn" disabled>경관성 검토</button>
+    <button class="btn landscape" id="landscapeBtn" disabled><svg class="landscape-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="17.5" cy="6.5" r="2.2"></circle><path d="M3 18.5 8.4 11l3.3 4.1 2.1-2.6 7.2 6H3Z"></path><path d="M3 20.5h18"></path></svg><span>경관성 검토</span></button>
   </div>
 </section>
 
