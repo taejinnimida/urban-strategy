@@ -13,7 +13,31 @@ async function devApi(path,data,timeoutMs=0){
  finally{if(timer)clearTimeout(timer);}
 }
 function devStatus(text){const el=document.getElementById('devStatus');if(el){el.textContent=text;el.hidden=!text;}}
-function devRefresh(){if(devMode!=='select')return;const same=!!devSite&&devSignature===JSON.stringify(activeGeometry);const a=document.getElementById('siteReviewBtn'),b=document.getElementById('devNational'),c=document.getElementById('devSeoulReviewAction');if(a){a.disabled=!same||devBusy||devSite?.region!=='SEOUL';}if(c){c.disabled=!same||devBusy||devSite?.region!=='SEOUL';}if(b)b.disabled=!same||devBusy;if(a)a.title=!same?'먼저 구역계를 확정하세요.':devSite?.region==='SEOUL'?'서울 대상지 확인됨':devSite?.region==='OUTSIDE_OR_MIXED'?'서울 외 또는 경계 혼합 대상지입니다.':'서울 행정경계 확인이 필요합니다.';if(devSite&&!same)devStatus('구역계 변경: 다시 확정하세요. 이전 검토창의 대상지는 유지됩니다.');}
+function devEnsureBaseMap(){
+ if(devMode!=='select'||typeof map==='undefined'||!map)return;
+ const hasFallback=[...Object.values(map._layers||{})].some(layer=>layer?._devBaseFallback);
+ if(!hasFallback){
+  const fallback=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
+   maxZoom:19,attribution:'&copy; OpenStreetMap contributors',crossOrigin:true
+  });
+  fallback._devBaseFallback=true;
+  fallback.addTo(map);
+  if(typeof fallback.setZIndex==='function')fallback.setZIndex(-100);
+ }
+ const visibleTiles=[];
+ map.eachLayer(layer=>{if(layer instanceof L.TileLayer&&map.hasLayer(layer)&&!layer._devBaseFallback)visibleTiles.push(layer);});
+ if(!visibleTiles.length&&devClientReady()){
+  const url='https://api.vworld.kr/req/wmts/1.0.0/'+encodeURIComponent(VWORLD_CLIENT_KEY)+'/Base/{z}/{y}/{x}.png';
+  const vworld=L.tileLayer(url,{maxZoom:19,attribution:'VWorld'});
+  let loaded=false,errors=0;
+  vworld.on('tileload',()=>{loaded=true;});
+  vworld.on('tileerror',()=>{errors++;if(errors>=4&&!loaded)devStatus('VWorld 기본지도 인증 또는 허용 도메인을 확인하세요. 임시 배경지도를 표시합니다.');});
+  vworld.addTo(map);
+ }
+ setTimeout(()=>{try{map.invalidateSize(false);}catch(e){}},0);
+}
+
+function devRefresh(){if(devMode!=='select')return;const same=!!devSite&&devSignature===JSON.stringify(activeGeometry);const a=document.getElementById('siteReviewBtn'),b=document.getElementById('devNational'),c=document.getElementById('devSeoulReviewAction'),l=document.getElementById('devLandscapeReview');if(a){a.disabled=!same||devBusy||devSite?.region!=='SEOUL';}if(c){c.disabled=!same||devBusy||devSite?.region!=='SEOUL';}if(b)b.disabled=!same||devBusy;if(l)l.disabled=!same||devBusy;if(a)a.title=!same?'먼저 구역계를 확정하세요.':devSite?.region==='SEOUL'?'서울 대상지 확인됨':devSite?.region==='OUTSIDE_OR_MIXED'?'서울 외 또는 경계 혼합 대상지입니다.':'서울 행정경계 확인이 필요합니다.';if(devSite&&!same)devStatus('구역계 변경: 다시 확정하세요. 이전 검토창의 대상지는 유지됩니다.');}
 renderBoundaryParcelSelectionSummary=function(){devSummaryOriginal();devRefresh();};
 confirmCurrentBoundary=async function(){
  if(devMode!=='select'||devBusy)return;devBusy=true;devRefresh();
@@ -708,7 +732,7 @@ function devNormalizeResultActionFonts(){
   style.textContent='html[data-review-mode="select"] .dev-result-action-font{font-size:14px!important;line-height:1.4!important}';
   document.head.append(style);
  }
- const labels=/^(?:기초현황조사|도시정비검토|도시개발검토|건축시뮬레이션|서울도시정보|도시개발정보)$/;
+ const labels=/^(?:기초현황조사|도시정비검토|도시개발검토|경관성검토|건축시뮬레이션|서울도시정보|도시개발정보)$/;
  document.querySelectorAll('button,a,[role="button"],input[type="button"]').forEach(el=>{
   const text=String(el.tagName==='INPUT'?el.value:el.textContent||'').replace(/\s+/g,'').trim();
   if(el.id==='siteReviewBtn'||el.id==='devNational'||labels.test(text))el.classList.add('dev-result-action-font');
@@ -737,13 +761,14 @@ function devInstallWorkflowActions(){
  document.head.append(style);
  const section=document.createElement('section');section.id='devWorkflow';section.setAttribute('aria-label','결과물 작성 및 후속 검토');
  const title=document.createElement('h3');title.textContent='결과물 작성';
- const note=document.createElement('p');note.textContent='① 기초현황조사 → ② 사업방식 검토 → ③ 건축시뮬레이션. 도시개발검토와 건축시뮬레이션은 아직 제공하지 않습니다.';
+ const note=document.createElement('p');note.textContent='① 기초현황조사 → ② 사업방식 검토 → ③ 경관성 검토. 도시개발검토는 준비 중이며 경관성 검토는 별도 경관검토 엔진으로 연결합니다.';
  const actions=document.createElement('div');actions.className='dev-flow-steps';
  const survey=document.createElement('button');survey.type='button';survey.id='devNational';survey.textContent='기초현황조사';survey.disabled=true;survey.onclick=()=>devOpen('development');
  const seoulAction=document.createElement('button');seoulAction.type='button';seoulAction.id='devSeoulReviewAction';seoulAction.textContent='도시정비검토';seoulAction.disabled=true;seoulAction.title='서울 대상지에 한하여 기존 서울도시정비플랫폼을 실행합니다.';seoulAction.onclick=()=>devOpen('seoul');
  const development=document.createElement('button');development.type='button';development.id='devDevelopmentReview';development.textContent='도시개발검토 · 준비 중';development.disabled=true;development.title='전국 도시개발 사업검토는 아직 구현되지 않았습니다.';
- const simulation=document.createElement('button');simulation.type='button';simulation.id='devBuildingSimulation';simulation.textContent='건축시뮬레이션 · 추후 제공';simulation.disabled=true;simulation.title='후속 확장 예정입니다.';
- actions.append(survey,seoulAction,development,simulation);section.append(title,note,actions);
+ const landscape=document.createElement('button');landscape.type='button';landscape.id='devLandscapeReview';landscape.textContent='경관성 검토';landscape.disabled=true;landscape.title='확정 대상지를 기준으로 경관성 검토 플랫폼을 엽니다.';
+ landscape.onclick=()=>{if(landscape.disabled)return;const w=window.open('https://urban-landscape-review.onrender.com/','_blank');if(w)w.opener=null;else devStatus('팝업이 차단되었습니다. 새 창 열기를 허용하세요.');};
+ actions.append(survey,seoulAction,development,landscape);section.append(title,note,actions);
  const placement=seoul.closest('.boundary-review-bar')||seoul.parentElement;
  if(placement)placement.after(section);else document.getElementById('map')?.before(section);
 }
@@ -758,8 +783,8 @@ function devInstallSurveyNextActions(){
  const actions=document.createElement('div');actions.className='dev-actions';actions.style.margin='12px 14px';
  const seoul=document.createElement('button');seoul.type='button';seoul.textContent='서울 도시정비검토 열기';seoul.disabled=devSite?.region!=='SEOUL';seoul.title=seoul.disabled?'서울 지역이 확인된 대상지만 이용 가능합니다.':'기존 서울도시정비 분석을 새 창으로 엽니다.';seoul.onclick=()=>devOpen('seoul');
  const development=document.createElement('button');development.type='button';development.disabled=true;development.textContent='도시개발검토 · 준비 중';
- const simulation=document.createElement('button');simulation.type='button';simulation.disabled=true;simulation.textContent='건축시뮬레이션 · 추후 제공';
- actions.append(seoul,development,simulation);section.append(title,note,actions);parent.append(section);
+ const landscape=document.createElement('button');landscape.type='button';landscape.textContent='경관성 검토 열기';landscape.onclick=()=>{const w=window.open('https://urban-landscape-review.onrender.com/','_blank');if(w)w.opener=null;};
+ actions.append(seoul,development,landscape);section.append(title,note,actions);parent.append(section);
 }
 
 function devExport(){const blob=new Blob([JSON.stringify({snapshot:devSite,facts:devFacts,rule_status:'NOT_IMPLEMENTED'},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='development-review.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}
@@ -768,6 +793,7 @@ async function devInit(){
  const status=document.createElement('p');status.id='devStatus';status.setAttribute('role','status');status.style.cssText='padding:12px;background:#edf6fa;color:#143852';head?.after(status);
  if(devMode!=='seoul'){const h=document.querySelector('.cc-header h1');if(h)h.textContent='도시계획 기초현황조사·사업검토 플랫폼';const sub=document.querySelector('.cc-header .sub');if(sub)sub.textContent='대상지 선정';document.querySelectorAll('.main-map-layer-note').forEach(e=>e.textContent='전국 VWorld 용도지역·지적·시설 표시용 도면. 확대하여 확인하세요. 자료 미확보는 시설 없음이 아닙니다.');}
  if(devMode==='select'){
+ devEnsureBaseMap();
  devInstallParcelSelection();
  devInstallParcelView();
  devInstallWorkflowActions();devNormalizeResultActionFonts();
