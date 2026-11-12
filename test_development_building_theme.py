@@ -146,6 +146,29 @@ class BuildingSurveyTest(unittest.TestCase):
         self.assertFalse(d['items'][0]['cad_exportable'])
         self.assertEqual(d['items'][0]['survey_table']['rows'][0]['count'],1)
 
+    def test_land_without_register_or_gis_is_vacant_if_complete(self):
+        d=data()
+        attach_building_themes(d,snapshot([],status='COMPLETE',
+             cadastral=[parcel(box(0,0,3,3),PNU2),
+                        parcel(box(4,4,6,6),PNU)]))
+        ps=d['building_fact']['parcel_building_status']
+        self.assertEqual(ps[PNU2],'VACANT_BY_VERIFIED_SOURCE')
+        self.assertEqual(ps[PNU],'BUILDING_REGISTERED')
+        self.assertEqual(d['building_fact']['counts']['source_verified_vacant_parcels'],1)
+        self.assertEqual(d['building_fact']['counts']['parcels_with_register_no_footprint'],1)
+
+    def test_failed_gis_or_unregistered_footprint_never_vacant(self):
+        d=data()
+        attach_building_themes(d,snapshot([],status='UNKNOWN',
+             cadastral=[parcel(box(0,0,3,3),PNU2)]))
+        self.assertEqual(d['building_fact']['parcel_building_status'][PNU2],'UNCONFIRMED')
+        d=data()
+        attach_building_themes(d,snapshot([feature(box(0,0,2,2),props={'A2':PNU2})],
+             cadastral=[parcel(box(0,0,3,3),PNU2)]))
+        self.assertEqual(d['building_fact']['parcel_building_status'][PNU2],
+                         'GIS_FOOTPRINT_WITHOUT_REGISTER')
+        self.assertEqual(d['items'][0]['features'],[])
+
     def test_failed_gis_is_not_vacant(self):
         d=data()
         attach_building_themes(d,snapshot([],status='UNKNOWN'))
