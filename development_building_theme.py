@@ -97,12 +97,11 @@ def _gis_value(field, props, as_of):
 
 
 def attach_building_themes(data, snapshot):
-    """Ledger-first survey: registered buildings are statistical units.
+    """Keep the legal register table and the GIS footprint drawing independent.
 
-    The GIS observation set is retained for diagnostics only. Unlinked
-    footprints may represent demolition history, duplicate source polygons,
-    ancillary structures, or valid unregistered buildings; none can be
-    declared current OR demolished solely from an unmatched spatial shape.
+    Only LT_C_BLDGINFO provides building geometry. Every accepted footprint
+    is drawn, while the legend states how its thematic attribute was obtained.
+    PNU cadastral parcels are *never* shaded as buildings.
     """
     from collections import defaultdict
     from development_building_fact import assemble_building_fact
@@ -110,51 +109,51 @@ def attach_building_themes(data, snapshot):
     fact = assemble_building_fact(data, snapshot)
     data['building_fact'] = fact
     registers = list(data.get('buildings') or [])
-    source_shapes = fact['records']
-    parcel_records = fact.get('parcel_register_records') or []
     ledger_keys = [(str(row.get('id') or '').strip() or
-                    'UNKEYED_REGISTER_ROW:' + str(i)) for i, row in enumerate(registers)]
+                    'UNKEYED_REGISTER_ROW:' + str(i))
+                   for i, row in enumerate(registers)]
     registered = dict(zip(ledger_keys, registers))
     n = len(registers)
+    source_shapes = [r for r in fact['records']
+                     if r.get('geometry_source') == 'LT_C_BLDGINFO']
+    parcel_records = fact.get('parcel_register_records') or []
 
-    # A PNU identifies a parcel, not a building. Do NOT fill cadastral
-    # polygons with building attributes. Preserve PNU joins in FACT audit only.
-    # A GIS building footprint can be drawn when its management ID is an
-    # unambiguous direct match to one current building-register row.
-
-    candidate_by_title = defaultdict(list)
-    for r in source_shapes:
-        if r.get('join_status') != 'EXACT_ID':
+    direct_by_key = defaultdict(list)
+    provisional_by_key = defaultdict(list)
+    for record in source_shapes:
+        key = record.get('register_row_key') or record.get('register_id')
+        if key not in registered:
             continue
-        key = r.get('register_row_key') or r.get('register_id')
-        if key in registered:
-            candidate_by_title[key].append(r)
+        if record.get('join_status') == 'EXACT_ID':
+            direct_by_key[key].append(record)
+        elif record.get('join_status') == 'PARCEL_SPATIAL_REFERENCE':
+            provisional_by_key[key].append(record)
+    ambiguous = {key for key, records in direct_by_key.items() if len(records) != 1}
+    direct_keys = {key for key, records in direct_by_key.items() if len(records) == 1}
+    provisional_keys = {key for key, records in provisional_by_key.items()
+                        if len(records) == 1 and key not in direct_keys}
+    mapped_keys = direct_keys | provisional_keys
 
-    map_by_title = {}
-    ambiguous_titles = []
-    for key in ledger_keys:
-        exact = candidate_by_title.get(key, [])
-        if len(exact) > 1:
-            ambiguous_titles.append(key)
-        elif len(exact) == 1:
-            map_by_title[key] = exact[0]
-
-    map_records = [(key, registered[key], map_by_title[key])
-                   for key in ledger_keys if key in map_by_title]
-    hidden_gis = [r for r in source_shapes if
-                  r.get('join_status') != 'EXACT_ID']
+    # The building-register row count is the table denominator. GIS outlines
+    # are map observations, not a count of legally extant buildings.
     fact['counts']['ledger_survey_rows'] = n
-    fact['counts']['ledger_survey_mapped'] = len(map_records)
-    fact['counts']['unmatched_gis_hidden_from_survey'] = len(hidden_gis)
-    fact['counts']['ambiguous_ledger_geometry_hidden'] = len(ambiguous_titles)
+    fact['counts']['ledger_survey_mapped'] = len(mapped_keys)
+    fact['counts']['source_gis_footprints_drawn'] = len(source_shapes)
+    fact['counts']['direct_geometry_titles'] = len(direct_keys)
+    fact['counts']['provisional_geometry_titles'] = len(provisional_keys)
+    fact['counts']['unlinked_gis_footprints_drawn'] = sum(
+        r.get('join_status') == 'UNMATCHED' for r in source_shapes)
+    fact['counts']['ambiguous_ledger_geometry_hidden'] = len(ambiguous)
     fact['display_exclusion'] = {
-        'reason': 'NON_EXACT_GIS_NOT_PROOF_OF_CURRENT_BUILDING',
-        'source_shapes_hidden': len(hidden_gis),
-        'ambiguous_registers': len(ambiguous_titles),
-        'historical_status': 'UNCONFIRMED',
+        'reason': 'CADASTRAL_PARCELS_ARE_NOT_BUILDING_FOOTPRINTS',
+        'source_shapes_hidden': 0,
+        'source_shapes_drawn': len(source_shapes),
         'cadastral_parcels_excluded_from_building_theme': len(parcel_records),
-        'provisional_footprints_excluded': sum(r.get('join_status') == 'PARCEL_SPATIAL_REFERENCE' for r in source_shapes),
-        'note': '원천 GIS를 삭제하지 않고 현황도에서만 제외. 멸실 여부는 말소대장·공부와 현장자료로 확인.'
+        'ambiguous_registers': len(ambiguous),
+        'historical_status': 'UNCONFIRMED',
+        'note': ('GIS건물통합정보 건물 외곽선은 출처 그대로 표시하되, 현재 건축물 '
+                 '존재·멸실 여부와 대장 일치 여부는 별도 확인 필요. '
+                 '연속지적 필지는 건축물 외곽선으로 대체하지 않음.'),
     }
 
     for item in data['items']:
@@ -162,116 +161,144 @@ def attach_building_themes(data, snapshot):
         field = FIELDS.get(item_id)
         if not field:
             continue
-
-        # One row in 건축물조서 is one statistical observation. Even where
-        # polygons are unavailable, registered attributes remain countable.
         ledger_labels = [_classify(item_id, row.get(field)) for row in registers]
-        totals = Counter(ledger_labels)
+        ledger_totals = Counter(ledger_labels)
         ordered = list(BINS.get(item_id) or [])
         if not ordered:
-            ordered = sorted((k for k in totals if k != OTHER),
-                             key=lambda k: (-totals[k], k))
-        if totals.get(OTHER):
+            ordered = sorted((k for k in ledger_totals if k != OTHER),
+                             key=lambda k: (-ledger_totals[k], k))
+        if ledger_totals.get(OTHER):
             ordered.append(OTHER)
+
         categories = {}
-        for index, label in enumerate(ordered):
-            if label == OTHER:
-                code, color = 'C98', '#d6d3d1'
-            else:
-                code, color = f'C{index + 1:02d}', PALETTE[index % len(PALETTE)]
-            categories[label] = {
-                'name': label, 'class_code': code, 'color': color,
-                'count': totals.get(label, 0),
-                'pct': round(100 * totals.get(label, 0) / n, 1) if n else 0
-            }
+        def category_for(label):
+            if label not in categories:
+                if label in (OTHER, UNKNOWN):
+                    code, color = ('C98', '#d6d3d1') if label == OTHER else ('C99', '#b8c0c9')
+                else:
+                    index = sum(k not in (OTHER, UNKNOWN) for k in categories)
+                    code, color = f'C{index + 1:02d}', PALETTE[index % len(PALETTE)]
+                categories[label] = {'name': label, 'class_code': code,
+                                     'color': color,
+                                     'count': ledger_totals.get(label, 0),
+                                     'pct': round(100 * ledger_totals.get(label, 0) / n, 1)
+                                            if n else 0}
+            return categories[label]
+        for label in ordered:
+            category_for(label)
 
         features = []
-        feature_labels = Counter()
-        for key, ledger, record in map_records:
-            label = _classify(item_id, ledger.get(field))
-            category = categories[label]
-            basis = ledger.get(field + '_basis') if field in ('coverage', 'far') else None
-            derived = bool(basis and basis != '건축HUB 원문')
-            features.append({
-                'type': 'Feature', 'geometry': record['geometry'],
-                'properties': {
-                    'name': label, 'color': category['color'],
-                    'class_code': category['class_code'],
-                    'join_status': record.get('join_status'),
-                    'geometry_basis': 'BUILDING_FOOTPRINT',
-                    'quality_grade': record.get('quality_grade'),
-                    'attribute_assurance': 'INTERNAL_CALC' if derived else 'DIRECT_LEDGER',
-                    'join_basis': record.get('match_basis'),
-                    'spatial_parcel_pnu': record.get('spatial_parcel_pnu'),
-                    'spatial_overlap_pct': record.get('spatial_overlap_pct'),
-                    'source': 'PLATFORM_DERIVED' if derived else 'BUILDING_REGISTER',
-                    'building_fact_id': record.get('id'),
-                    'register_id': ledger.get('id'),
-                }
-            })
-            feature_labels[label] += 1
+        map_totals = Counter()
+        join_totals = Counter()
+        for record in source_shapes:
+            key = record.get('register_row_key') or record.get('register_id')
+            joined = record.get('join_status')
+            if joined == 'EXACT_ID' and key in direct_keys:
+                row = registered[key]
+                value = row.get(field)
+                basis = row.get(field + '_basis') if field in ('coverage', 'far') else None
+                assurance = ('INTERNAL_CALC' if basis and basis != '건축HUB 원문'
+                             else 'DIRECT_LEDGER')
+                display_join = 'EXACT_ID'
+            elif joined == 'PARCEL_SPATIAL_REFERENCE' and key in provisional_keys:
+                row = registered[key]
+                value = row.get(field)
+                if value is None or value == '':
+                    value = (record.get('attributes') or {}).get(field, {}).get('value')
+                assurance = 'PROVISIONAL_PNU'
+                display_join = 'PARCEL_SPATIAL_REFERENCE'
+            else:
+                field_record = (record.get('attributes') or {}).get(field) or {}
+                value = field_record.get('value') if (
+                    field_record.get('source') == 'GIS_BUILDING') else None
+                assurance = 'GIS_ATTRIBUTE' if value is not None else 'UNKNOWN'
+                display_join = 'GIS_ONLY'
+            label = _classify(item_id, value) if assurance != 'UNKNOWN' else UNKNOWN
+            category = category_for(label)
+            properties = {
+                'name': label, 'color': category['color'],
+                'class_code': category['class_code'],
+                'join_status': display_join,
+                'source_join_status': joined,
+                'geometry_basis': 'BUILDING_FOOTPRINT',
+                'geometry_source': 'LT_C_BLDGINFO',
+                'quality_grade': record.get('quality_grade'),
+                'attribute_assurance': assurance,
+                'join_basis': record.get('match_basis'),
+                'source': 'GIS_BUILDING',
+                'building_fact_id': record.get('id'),
+                'register_id': key if display_join != 'GIS_ONLY' else None,
+            }
+            features.append({'type': 'Feature', 'geometry': record['geometry'],
+                             'properties': properties})
+            map_totals[label] += 1
+            join_totals[display_join] += 1
 
         rows = [{
             'kind': 'total', 'label': '합계', 'count': n,
             'pct': 100.0 if n else 0.0, 'join_status': 'BUILDING_REGISTER',
-            'note': (f'건축물조서 {n}건 기준 · 현황도에 표시 가능한 대장기반 도형 '
-                     f'{len(features)}개(대장 관리번호 직접일치 GIS 건물외곽선만) · '
-                     f'원천 GIS 도형 수는 건축물 동수가 아님')
+            'note': (f'건축물조서 {n}건 기준 · GIS건물통합정보 외곽선 '
+                     f'{len(features)}개 별도 표시(직접 {join_totals["EXACT_ID"]} · '
+                     f'PNU 잠정 {join_totals["PARCEL_SPATIAL_REFERENCE"]} · '
+                     f'GIS 단독 {join_totals["GIS_ONLY"]}) · '
+                     'GIS 도형 수는 실제 건축물 동수와 다를 수 있음'),
         }]
         for label in ordered:
-            category = categories[label]
-            mapped_count = feature_labels[label]
+            category = category_for(label)
             rows.append({
                 'kind': 'category', 'label': label,
                 'count': category['count'], 'pct': category['pct'],
                 'join_status': 'BUILDING_REGISTER',
-                'note': (f'대장 {category["count"]}건 · 현황도 표시 {mapped_count}개'
+                'note': (f'대장 {category["count"]}건 · GIS 현황도 분류 {map_totals[label]}개'
                          + (' · 대장값 없음/미확보' if label == OTHER else '')
-                         + (' · 건폐율·용적률은 대장 원문과 내부산정 구분'
-                            if field in ('coverage', 'far') else ''))
+                         + (' · 건폐율·용적률 내부산정은 법정 확정치 아님'
+                            if field in ('coverage', 'far') else '')),
             })
 
         note = (
-            f'건축물조서 {n}건을 모집단으로 집계. 지도는 건축물조서와 연결 가능한 '
-            f'{len(features)}개 GIS 건물외곽선만 표시(대장 관리번호 직접일치). '
-            f'건물관리번호가 직접 연결되지 않은 GIS 도형 {len(hidden_gis)}개는 '
-            '현황도·CAD에서 제외하고 검증정보에만 보관. '
-            '이들은 멸실 확정이 아니라 최신성·중복 여부 미확인 도형임. '
-            '건축물대장 없는 건축물의 실제 부존재를 뜻하지 않음. '
-            '건폐율·용적률 플랫폼 내부산정은 법정 확정치와 구별.'
+            f'통계는 건축물조서 {n}건, 현황도는 GIS건물통합정보 건물외곽선 '
+            f'{len(features)}개를 별도 단위로 작성. 색상은 대장관리번호 직접일치, '
+            'PNU에 의한 잠정연계, GIS 원천속성 순으로 분류하며 '
+            '속성 미확보 건물은 회색으로 표시. PNU 지적 필지는 색칠하지 않음. '
+            'GIS 건물도형의 최신성·멸실 여부는 자동 확정하지 않으며 '
+            '대장 수치와 도형 수가 달라도 임의로 일치시키지 않음. '
+            '건폐율·용적률 내부산정은 법정 확정치와 구분.'
         )
-        if ambiguous_titles:
-            note += f' 대장 {len(ambiguous_titles)}건의 동일관리번호 중복후보는 도면 표시 보류.'
-        if len(features) != n:
-            note += f' 대장 {n-len(features)}건은 통계에 포함하되 표시할 확정 공간도형이 없음.'
+        if ambiguous:
+            note += f' 동일관리번호 중복 GIS 후보 {len(ambiguous)}개 관리번호는 직접연계로 인정하지 않음.'
+        if n > len(mapped_keys):
+            note += f' 대장 {n-len(mapped_keys)}건은 GIS 외곽선과 직접·잠정 연계 미확인.'
         if fact['geometry_status'] != 'COMPLETE':
-            note += ' GIS 자료는 일부·보조 수신일 수 있으며 전체 건물도형 확보를 보장하지 않음.'
+            note += ' GIS 자료는 부분·보조 수신일 수 있어 전체 외곽선 확보를 보장하지 않음.'
 
-        mapped_geometry_status = (
-            'COMPLETE' if n and len(features) == n and
-            fact['geometry_status'] == 'COMPLETE' else
-            'PARTIAL' if features else 'UNAVAILABLE'
-        )
-        sources = '국토교통부 건축HUB 대장 기준 · VWorld GIS건물통합정보 건물외곽선(직접연계만)'
+        gis_complete = fact['source_info'].get('LT_C_BLDGINFO', {}).get('status') == 'COMPLETE'
+        full_match = bool(features) and gis_complete and len(features) == n and (
+            join_totals['EXACT_ID'] == len(features))
+        geometry_status = 'COMPLETE' if full_match else (
+            'PARTIAL' if features else 'UNAVAILABLE')
+        sources = ('국토교통부 건축HUB 대장 통계 · '
+                   'VWorld GIS건물통합정보 건물 외곽선 · PNU 필지 대체표시 없음')
         item.update(
             features=features,
-            legend=[categories[k] for k in ordered if totals.get(k)],
+            legend=[{**categories[label], 'count': map_totals[label],
+                     'pct': round(100 * map_totals[label] / len(features), 1)
+                            if features else 0,
+                     'unit': 'GIS건물도형'}
+                    for label in categories if map_totals[label]],
             thematic_type='building',
-            provider_verified=bool(features) and fact['provider_verified'],
-            cad_exportable=bool(features) and (
-                fact['source_info'].get('LT_C_BLDGINFO', {}).get('status') == 'COMPLETE'),
-            geometry_status=mapped_geometry_status,
+            provider_verified=bool(features) and gis_complete,
+            cad_exportable=bool(features) and gis_complete,
+            geometry_status=geometry_status,
             source=sources,
-            status='공간자료 확보' if mapped_geometry_status == 'COMPLETE' else
-                   '일부 공간자료 확보' if features else
-                   '대장 통계 확보·도면 미연계' if n else '대장·도형 미확보',
+            status=('공간자료 확보' if geometry_status == 'COMPLETE'
+                    else '일부 공간자료 확보' if features else
+                    '대장 통계 확보·도면 미연계' if n else '대장·도형 미확보'),
             detail=(item.get('detail') or '') + ' · ' + note,
-            survey_table={
-                'title': f'[표 {item_id} {TITLES[item_id]} 현황]',
-                'status': 'COMPLETE' if n and not totals.get(OTHER) else 'PARTIAL',
-                'rows': rows, 'source': sources, 'as_of': data.get('as_of'),
-                'notes': [note]
-            })
+            survey_table={'title': f'[표 {item_id} {TITLES[item_id]} 현황]',
+                          'status': 'COMPLETE' if n and not ledger_totals.get(OTHER) else 'PARTIAL',
+                          'rows': rows, 'source': sources, 'as_of': data.get('as_of'),
+                          'notes': [note]},
+        )
         stat = data.get('statistics', {}).get(item_id)
         if isinstance(stat, dict):
             stat.update(
@@ -280,15 +307,18 @@ def attach_building_themes(data, snapshot):
                 footprint_count=len(source_shapes),
                 pnu_register_parcel_features=len(parcel_records),
                 cadastral_parcels_excluded_from_theme=len(parcel_records),
-                displayed_registered_features=len(features),
-                hidden_unmatched_source_footprints=len(hidden_gis),
-                ambiguous_registered_geometries=len(ambiguous_titles),
-                verified_ledger_joins=fact['counts']['direct_register_matches'],
-                provisional_spatial_joins=fact['counts']['spatial_register_candidates'],
+                displayed_registered_features=len(mapped_keys),
+                displayed_gis_footprints=len(features),
+                hidden_unmatched_source_footprints=0,
+                ambiguous_registered_geometries=len(ambiguous),
+                verified_ledger_joins=join_totals['EXACT_ID'],
+                provisional_spatial_joins=join_totals['PARCEL_SPATIAL_REFERENCE'],
+                gis_only_footprints=join_totals['GIS_ONLY'],
                 footprint_status=fact['geometry_status'],
-                mapped_groups=[categories[k] for k in ordered if totals.get(k)],
+                mapped_groups=[{**categories[label], 'count': map_totals[label]}
+                               for label in categories if map_totals[label]],
                 mapped_total=len(features),
-                mapped_unit='건축물대장 관리번호 직접일치 GIS 건물외곽선(개)',
+                mapped_unit='VWorld GIS건물통합정보 건물외곽선(개)',
                 survey_total=n,
-                note=(stat.get('note') or '') + ' ' + note
+                note=(stat.get('note') or '') + ' ' + note,
             )
