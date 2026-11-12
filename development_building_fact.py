@@ -13,15 +13,18 @@ from collections import Counter, defaultdict
 from shapely.geometry import mapping, shape
 
 FIELDS = ('use', 'structure', 'floors', 'age', 'floor_area', 'coverage', 'far')
+# VWorld API variants can expose either named fields or the documented
+# GIS building integration A-series schema. A2 identifies a PARCEL (PNU),
+# not a building-register title; A19 is NOT treated as mgmBldrgstPk.
 GIS_ALIASES = {
-    'use': ('mainpurpscdnm', 'main_prpos_code_nm', 'mainprposcodenm', 'main_prpos_nm', 'mainpurpsnm'),
-    'structure': ('strctcdnm', 'strct_cd_nm', 'structure_nm'),
-    'floors': ('grndflrcnt', 'grnd_flr_cnt', 'ground_floor_count'),
-    'floor_area': ('totarea', 'tot_area', 'total_floor_area'),
-    'coverage': ('bcrat', 'bc_rat'),
-    'far': ('vlrat', 'vl_rat'),
+    'use': ('mainpurpscdnm', 'main_prpos_code_nm', 'mainprposcodenm', 'main_prpos_nm', 'mainpurpsnm', 'a9'),
+    'structure': ('strctcdnm', 'strct_cd_nm', 'structure_nm', 'a11'),
+    'floors': ('grndflrcnt', 'grnd_flr_cnt', 'ground_floor_count', 'a26'),
+    'floor_area': ('totarea', 'tot_area', 'total_floor_area', 'a14'),
+    'coverage': ('bcrat', 'bc_rat', 'a17'),
+    'far': ('vlrat', 'vl_rat', 'a18'),
 }
-AGE_DATES = ('useaprday', 'use_apr_day', 'useconfmde', 'use_confm_de')
+AGE_DATES = ('useaprday', 'use_apr_day', 'useconfmde', 'use_confm_de', 'a13')
 TITLE_KEYS = ('mgmbldrgstpk', 'mgm_bldrgst_pk', 'bldrgst_pk')
 ADDRESS_KEYS = ('bd_mgt_sn', 'bdmgtsn')
 PNU_PATTERN = re.compile(r'^\d{19}$')
@@ -86,14 +89,18 @@ def _source_features(layer, site, code):
             props = {str(k).lower(): v for k, v in (feature.get('properties') or {}).items()}
             key = next((str(props[k]).strip() for k in TITLE_KEYS if _nonempty(props.get(k))), None)
             address_id = next((str(props[k]).strip() for k in ADDRESS_KEYS if _nonempty(props.get(k))), None)
-            pnu = str(props.get('pnu') or '').strip()
+            # Some GIS건물통합정보 distributions expose the source parcel
+            # key as A2 (not "pnu"). Reject anything that is not 19 digits.
+            pnu_key = next((k for k in ('pnu', 'a2')
+                            if PNU_PATTERN.fullmatch(str(props.get(k) or '').strip())), None)
+            pnu = str(props[pnu_key]).strip() if pnu_key else None
             native_id = str(feature.get('id') or '').strip()
             digest = hashlib.sha256(json.dumps([code, native_id, mapping(clipped)], sort_keys=True,
                                                ensure_ascii=False).encode('utf-8')).hexdigest()[:20]
             result.append({'id': code + ':' + digest, 'geometry': clipped,
                            'props': props, 'source': code, 'title_key': key,
                            'address_id': address_id,
-                           'provider_pnu': pnu if PNU_PATTERN.fullmatch(pnu) else None})
+                           'provider_pnu': pnu, 'provider_pnu_field': pnu_key})
         except Exception:
             # A single malformed provider geometry cannot erase accepted peers.
             # The omission stays visible in the quality/coverage counters.
@@ -344,6 +351,7 @@ def assemble_building_fact(data, snapshot):
                             'PARCEL_SPATIAL_REFERENCE' if provisional_ledger else 'UNMATCHED'),
             'quality_grade': grade,
             'provider_pnu': observation['provider_pnu'],
+            'provider_pnu_field': observation.get('provider_pnu_field'),
             'spatial_parcel_pnu': candidate['parcel_pnu'] if candidate else None,
             'spatial_overlap_pct': candidate['overlap_pct'] if candidate else None,
             'match_basis': ('BUILDING_REGISTER_ID' if exact_ledger else
@@ -442,6 +450,8 @@ def assemble_building_fact(data, snapshot):
     counts = {
         'mapped_shapes': len(records),
         'gis_shapes': len(gis),
+        'gis_source_pnu_available': sum(bool(g.get('provider_pnu')) for g in gis),
+        'gis_source_a2_pnu_available': sum(g.get('provider_pnu_field') == 'a2' for g in gis),
         'address_shapes': len(address),
         'address_duplicates_suppressed': secondary_duplicate,
         'address_overlaps_needing_review': secondary_overlap_review,
