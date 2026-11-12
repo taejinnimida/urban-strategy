@@ -1042,7 +1042,7 @@ function devRenderSourceDetails(data){
   const boundary=L.geoJSON(devSite.geometry,{style:{color:'#dc2626',weight:3,fill:false}}).addTo(drawn);devSourceDetailMap.fitBounds(boundary.getBounds(),{padding:[12,12]});
   // Defense in depth: older report snapshots cannot shade cadastral parcels as buildings.
   const drawableFeatures=(item.features||[]).filter(f=>item.thematic_type!=='building'||
-   (f.properties?.geometry_basis==='BUILDING_FOOTPRINT'&&f.properties?.join_status==='EXACT_ID'));
+   (f.properties?.geometry_basis==='BUILDING_FOOTPRINT'&&f.properties?.geometry_source==='LT_C_BLDGINFO'));
   if(drawableFeatures.length)L.geoJSON(drawableFeatures,{
    style:f=>({color:['ownership','jimok','land_numeric','land_shape','landcover','ecobank','building'].includes(item.thematic_type)?'#526174':'#126d88',
     weight:['ownership','jimok','land_numeric','land_shape','landcover','ecobank','building'].includes(item.thematic_type)?0.8:1.5,
@@ -1050,7 +1050,11 @@ function devRenderSourceDetails(data){
     fillOpacity:['ownership','jimok','land_numeric','land_shape','landcover','ecobank','building'].includes(item.thematic_type)?0.68:0.2}),
    onEachFeature:(f,l)=>{
     const label=document.createElement('span');label.textContent=f.properties?.name||'원자료';l.bindTooltip(label);
-    if(item.thematic_type==='building')l.bindPopup('VWorld GIS건물통합정보 건물외곽선 · 건축물대장 관리번호 직접연계');
+    if(item.thematic_type==='building'){
+     const status=f.properties?.join_status;
+     const assurance=status==='EXACT_ID'?'대장 관리번호 직접일치':status==='PARCEL_SPATIAL_REFERENCE'?'대장 PNU 잠정연계 · 실제 건물 동일성 미확정':'대장 미연계 · GIS 원천속성만 참조';
+     l.bindPopup('VWorld GIS건물통합정보 건물 외곽선 · '+assurance);
+    }
    }
   }).addTo(drawn);
   if(Array.isArray(item.legend))for(const entry of item.legend){
