@@ -12,10 +12,8 @@ RUN pip install --no-cache-dir \
     pydantic \
     pyproj \
     pyshp \
-    shapely \
-    ezdxf \
-    "psycopg[binary]"
+    shapely
 
 COPY . .
 
-CMD ["sh", "-c", "uvicorn app:app --host 0.0.0.0 --port ${PORT:-10000}"]
+CMD ["sh", "-c", "uvicorn landscape_app:app --host 0.0.0.0 --port ${PORT:-10000}"]
