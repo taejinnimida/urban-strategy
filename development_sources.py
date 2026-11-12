@@ -161,48 +161,192 @@ def official_vector(item,geometry,area):
         out.append({'type':'Feature','geometry':mapping(clip),'properties':{'name':name,**values}})
     return {'status':'PARTIAL' if missing else 'DATA','detail':f'공식 원자료 교차 {len(out)}건 · 분류 누락 {missing}건 · 법정 판정 미적용','source':entry['provider'],'source_url':entry['source_url'],'as_of':entry['as_of'],'features':out,'rows':rows,'overlap_area_m2':area(unary_union(parts)) if parts else 0,'scope':'5km' if item=='1-2' else 'fixed_site'}
 
+def _dem_grid(entry, root, target):
+    """Read only the site window from a registered official DEM raster.
+
+    JSON retains the legacy small-grid format. GeoTIFF/IMG/ASC use the actual
+    embedded CRS, geotransform and nodata; no reprojected height is invented.
+    Grid rows returned here run south-to-north, as expected by dem().
+    """
+    path=local_path(root,entry['file'])
+    if path.suffix.lower()=='.json':
+        doc=safe_json(path)
+        return doc['values'],finite(doc['cell_size_m']),finite(doc['x0']),finite(doc['y0']),doc['crs'],doc.get('nodata')
+    if path.suffix.lower() not in ('.tif','.tiff','.img','.asc'):
+        raise ValueError('DEM source must be JSON, GeoTIFF, IMG or ASCII Grid')
+    import rasterio
+    from rasterio.windows import Window
+    with rasterio.open(path) as ds:
+        if ds.count<1 or ds.crs is None or ds.transform.a<=0 or ds.transform.e>=0:
+            raise ValueError('DEM raster CRS/orientation')
+        if abs(ds.transform.b)>1e-9 or abs(ds.transform.d)>1e-9:
+            raise ValueError('rotated DEM grid unsupported')
+        dx=float(ds.transform.a)
+        if abs(dx+float(ds.transform.e))>1e-6*dx:
+            raise ValueError('DEM must use square metre cells')
+        crs=ds.crs.to_string()
+        to=Transformer.from_crs('EPSG:4326',crs,always_xy=True)
+        metric=transform(to.transform,target)
+        xmin,ymin,xmax,ymax=metric.bounds
+        # One-cell ring enables Horn 3x3 slope calculations near boundaries.
+        c0=max(0,math.floor((xmin-ds.bounds.left)/dx)-2)
+        c1=min(ds.width,math.ceil((xmax-ds.bounds.left)/dx)+2)
+        r0=max(0,math.floor((ds.bounds.top-ymax)/dx)-2)
+        r1=min(ds.height,math.ceil((ds.bounds.top-ymin)/dx)+2)
+        if c1<=c0 or r1<=r0:
+            return [],dx,None,None,crs,ds.nodata
+        if (c1-c0)*(r1-r0)>160000:
+            raise ValueError('DEM area exceeds 160000 cells; register a local site extract')
+        data=ds.read(1,window=Window(c0,r0,c1-c0,r1-r0),masked=True)
+        # Masked arrays preserve nodata; JSON None is not a valid elevation.
+        rows=[[None if bool(data.mask[j,i]) else float(data[j,i])
+               for i in range(data.shape[1])] for j in range(data.shape[0]-1,-1,-1)]
+        x0=float(ds.bounds.left+c0*dx)
+        y0=float(ds.bounds.top-r1*dx)
+        return rows,dx,x0,y0,crs,ds.nodata
+
+
+def _elevation_groups(elevations, feature_cells, site_area_m2):
+    """One shared FACT for elevation distribution, legend and mapped polygons."""
+    if not elevations:
+        return [],[],0.0,False
+    heights=[z for z,a in elevations]
+    minimum=min(heights);maximum=max(heights)
+    # Aligned intervals; no arbitrary 5-bin percentiles or invented values.
+    steps=(5,10,20,25,50,100,200,500,1000)
+    interval=next((s for s in steps
+                   if math.floor(maximum/s)-math.floor(minimum/s)+1<=8),1000)
+    low=math.floor(minimum/interval)*interval
+    categories={}
+    palette=('#2764a5','#438ec2','#68b5b4','#91bf86',
+             '#d2c86c','#dfa25d','#db7950','#b84948')
+    def category(z):
+        index=int(math.floor(z/interval)*interval-low)//interval
+        return index
+    for z,a in elevations:
+        idx=category(z)
+        state=categories.setdefault(idx,{'area_m2':0.0,'cells':0,'min_m':z,'max_m':z})
+        state['area_m2']+=a
+        state['cells']+=1
+        state['min_m']=min(state['min_m'],z)
+        state['max_m']=max(state['max_m'],z)
+    order=sorted(categories)
+    legend=[]
+    for pos,idx in enumerate(order):
+        v=categories[idx]
+        start=low+idx*interval
+        legend.append({'name':f'{start:g}~{start+interval:g}m 미만',
+                       'class_code':f'C{pos+1:02d}','color':palette[pos%len(palette)],
+                       'area_m2':round(v['area_m2'],2),
+                       'pct':round(100*v['area_m2']/site_area_m2,2) if site_area_m2>0 else None,
+                       'count':v['cells'],'min_m':v['min_m'],'max_m':v['max_m']})
+    by_idx={idx:entry for idx,entry in zip(order,legend)}
+    mapped=[]
+    for cell in feature_cells:
+        z=cell['properties']['elevation_m']
+        cls=by_idx[category(z)]
+        mapped.append({'type':'Feature','geometry':cell['geometry'],
+                       'properties':{**cell['properties'],
+                                     'name':cls['name'],'class_code':cls['class_code'],
+                                     'color':cls['color']}})
+    coverage=sum(a for z,a in elevations)/site_area_m2 if site_area_m2>0 else 0
+    complete_map=len(mapped)==len(elevations)
+    return legend,mapped,min(100.,max(0.,100*coverage)),complete_map
+
+
 def dem(geometry,area):
     entry,root=manifest_entry('dem')
-    if not entry:return {'status':'MISSING_SOURCE','error_code':'AUTOMATIC_ACQUISITION_NOT_IMPLEMENTED','acquisition':'OFFICIAL_FILE','detail':'DEM 자동 취득 미구현 · 공식 DEM 격자 파일 등록 필요','source':None}
+    if not entry:
+        return {'status':'MISSING_SOURCE','error_code':'AUTOMATIC_ACQUISITION_NOT_IMPLEMENTED',
+                'acquisition':'OFFICIAL_FILE',
+                'detail':'공식 DEM 원본 미등록 · 국토정보플랫폼에서 취득한 DEM을 등록해야 표고분석 가능',
+                'source':None}
     target=shape(geometry)
-    if not shape(entry['coverage']).covers(target):return {'status':'OUTSIDE_COVERAGE','detail':'DEM 수록범위 밖'}
-    doc=safe_json(local_path(root,entry['file']));values=doc['values'];dx=finite(doc['cell_size_m']);x0=finite(doc['x0']);y0=finite(doc['y0'])
-    if not dx or dx<=0 or x0 is None or y0 is None or not values or len(values)*len(values[0])>100000:raise ValueError('DEM grid')
-    crs=doc['crs'];to=Transformer.from_crs(4326,crs,always_xy=True);back=Transformer.from_crs(crs,4326,always_xy=True)
-    if not to.target_crs.is_projected or any(a.unit_name!='metre' for a in to.target_crs.axis_info[:2]):raise ValueError('DEM needs metre CRS')
-    metric=transform(to.transform,target);height=len(values);width=len(values[0]);nodata=doc.get('nodata')
-    if any(len(row)!=width for row in values):raise ValueError('grid shape')
+    if not target.is_valid or target.is_empty or target.area<=0:
+        raise ValueError('invalid DEM site geometry')
+    if not shape(entry['coverage']).covers(target):
+        return {'status':'OUTSIDE_COVERAGE','detail':'DEM 공식 수록범위 밖',
+                'source':entry['provider'],'source_url':entry['source_url']}
+    values,dx,x0,y0,crs,nodata=_dem_grid(entry,root,target)
+    if not values or not dx or dx<=0 or x0 is None or y0 is None:
+        return {'status':'OUTSIDE_COVERAGE','detail':'DEM 원본 격자가 대상지와 겹치지 않음',
+                'source':entry['provider']}
+    height=len(values);width=len(values[0])
+    if width*height>160000 or any(len(row)!=width for row in values):
+        raise ValueError('DEM grid size or shape')
+    to=Transformer.from_crs(4326,crs,always_xy=True)
+    back=Transformer.from_crs(crs,4326,always_xy=True)
+    if not to.target_crs.is_projected or any(a.unit_name!='metre' for a in to.target_crs.axis_info[:2]):
+        raise ValueError('DEM requires projected metre CRS')
+    metric=transform(to.transform,target)
     frame=box(x0,y0,x0+width*dx,y0+height*dx)
-    if not frame.covers(metric):return {'status':'OUTSIDE_COVERAGE','detail':'DEM 격자가 대상지를 덮지 못합니다.'}
+    if not frame.covers(metric):
+        return {'status':'OUTSIDE_COVERAGE','detail':'DEM 유효 격자가 대상지 전체를 덮지 못함',
+                'source':entry['provider']}
     def val(r,c):
         if not (0<=r<height and 0<=c<width):return None
         v=values[r][c]
         return None if v is None or v==nodata else finite(v)
     elevations=[];slopes=[];weight=0;slope_weight=0;missing=0;features=[]
+    # Each grid square is clipped to the actual site, so area is not estimated
+    # from a bounding rectangle or by counting whole boundary cells.
     for r in range(height):
         for c in range(width):
-            cell=box(x0+c*dx,y0+r*dx,x0+(c+1)*dx,y0+(r+1)*dx);clip=cell.intersection(metric)
+            cell=box(x0+c*dx,y0+r*dx,x0+(c+1)*dx,y0+(r+1)*dx)
+            clip=cell.intersection(metric)
             if clip.area<=0:continue
             z=val(r,c);a=clip.area
-            if z is None:missing+=1;continue
+            if z is None:
+                missing+=1
+                continue
             elevations.append((z,a));weight+=a
             ns=[val(r+rr,c+cc) for rr in (-1,0,1) for cc in (-1,0,1)]
             slope=None
             if all(v is not None for v in ns):
-                gx=((ns[2]+2*ns[5]+ns[8])-(ns[0]+2*ns[3]+ns[6]))/(8*dx);gy=((ns[6]+2*ns[7]+ns[8])-(ns[0]+2*ns[1]+ns[2]))/(8*dx)
-                slope=math.degrees(math.atan(math.hypot(gx,gy)));slopes.append((slope,a));slope_weight+=a
-            if len(features)<5000:features.append({'type':'Feature','geometry':mapping(transform(back.transform,clip)),'properties':{'name':f'{z:.2f}m','elevation_m':z,'slope_deg':slope}})
-    def stats(seq):return {'min':min(v for v,a in seq),'max':max(v for v,a in seq),'mean':sum(v*a for v,a in seq)/sum(a for v,a in seq)} if seq else None
-    center=metric.representative_point();xmin,ymin,xmax,ymax=metric.bounds;profiles=[]
+                gx=((ns[2]+2*ns[5]+ns[8])-(ns[0]+2*ns[3]+ns[6]))/(8*dx)
+                gy=((ns[6]+2*ns[7]+ns[8])-(ns[0]+2*ns[1]+ns[2]))/(8*dx)
+                slope=math.degrees(math.atan(math.hypot(gx,gy)))
+                slopes.append((slope,a));slope_weight+=a
+            if len(features)<5000:
+                features.append({'type':'Feature',
+                                 'geometry':mapping(transform(back.transform,clip)),
+                                 'properties':{'name':f'{z:.2f}m',
+                                               'elevation_m':z,'slope_deg':slope,
+                                               'area_m2':a}})
+    def stats(seq):
+        return {'min':min(v for v,a in seq),'max':max(v for v,a in seq),
+                'mean':sum(v*a for v,a in seq)/sum(a for v,a in seq)} if seq else None
+    center=metric.representative_point();xmin,ymin,xmax,ymax=metric.bounds
+    profiles=[]
     for axis in ('동서','남북'):
         pts=[]
         for i in range(101):
-            x=xmin+(xmax-xmin)*i/100 if axis=='동서' else center.x;y=center.y if axis=='동서' else ymin+(ymax-ymin)*i/100
+            x=xmin+(xmax-xmin)*i/100 if axis=='동서' else center.x
+            y=center.y if axis=='동서' else ymin+(ymax-ymin)*i/100
             from shapely.geometry import Point
-            inside=metric.covers(Point(x,y));z=val(math.floor((y-y0)/dx),math.floor((x-x0)/dx)) if inside else None
-            pts.append({'distance_m':(xmax-xmin if axis=='동서' else ymax-ymin)*i/100,'elevation_m':z})
+            inside=metric.covers(Point(x,y))
+            z=val(math.floor((y-y0)/dx),math.floor((x-x0)/dx)) if inside else None
+            pts.append({'distance_m':(xmax-xmin if axis=='동서' else ymax-ymin)*i/100,
+                        'elevation_m':z})
         profiles.append({'axis':axis,'points':pts})
-    return {'status':'DATA' if missing==0 and weight>0 and slope_weight>=metric.area*(1-1e-9) else 'PARTIAL','detail':'공식 DEM 격자 기반. 경사는 Horn 3×3 도수(°), 면적가중 평균. 단면은 내부 대표점을 지나는 동서·남북 자동선의 최근접 격자 참고값.','source':entry['provider'],'source_url':entry['source_url'],'as_of':entry['as_of'],'resolution_m':dx,'elevation':stats(elevations),'slope':stats(slopes),'elevation_coverage_pct':100*weight/metric.area,'slope_coverage_pct':100*slope_weight/metric.area,'profiles':profiles,'features':features,'map_truncated':len(elevations)>5000}
+    groups,elevation_features,elevation_coverage,map_complete=(
+        _elevation_groups(elevations,features,metric.area))
+    elevation_status=('DATA' if missing==0 and elevation_coverage>=99.999 else
+                      'PARTIAL' if elevations else 'MISSING')
+    return {'status':'DATA' if elevation_status=='DATA' and slope_weight>=metric.area*(1-1e-9)
+            else 'PARTIAL',
+            'elevation_status':elevation_status,
+            'detail':('공식 DEM 원본 등록자료 · 경계 셀 실제 교차면적을 반영한 표고 분포. '
+                      '표고구간은 실측 최저·최고에 따라 자동 구분. 경사는 Horn 3×3 도수(°). '
+                      '단면은 대상지 내부 대표점의 참고값.'),
+            'source':entry['provider'],'source_url':entry['source_url'],'as_of':entry['as_of'],
+            'resolution_m':dx,'elevation':stats(elevations),'slope':stats(slopes),
+            'elevation_groups':groups,'elevation_features':elevation_features,
+            'elevation_map_complete':map_complete,'elevation_coverage_pct':elevation_coverage,
+            'slope_coverage_pct':min(100.,100*slope_weight/metric.area),
+            'profiles':profiles,'features':features,
+            'map_truncated':len(elevations)>len(features),
+            'missing_elevation_cells':missing}
 
 def fetch_ned(service,pnu):
     rows=service._land_use_rows_for_pnu(pnu)
