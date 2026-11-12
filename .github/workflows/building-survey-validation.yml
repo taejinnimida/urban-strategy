@@ -39,6 +39,8 @@ jobs:
         run: python -m unittest -v test_development_review.Tests.test_planning_view_zoning_full_viewport_without_mutating_site_fact test_development_review.Tests.test_planning_view_allowlist_and_bounds
       - name: CAD DXF, building-area and A3 regression tests
         run: python -m pytest -q test_development_cad.py test_development_building_areas.py
+      - name: Viewport zoning scope and FACT isolation regression tests
+        run: python -m unittest -v test_development_planning_view
       - name: National planning symbols ACI/geometry regression tests
         run: python -m unittest -v test_development_planning_symbols
       - name: Private R2 land-cover adapter isolated regression tests
