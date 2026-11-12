@@ -272,8 +272,20 @@ button,input,select{font:inherit}.hidden{display:none!important}
     </main>
   </div>
   <div class="toast" id="toast"></div>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.164.1/examples/js/controls/OrbitControls.js"></script>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module">
+    import * as ThreeCore from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    window.THREE = Object.assign({}, ThreeCore, { OrbitControls });
+    window.dispatchEvent(new Event('three-ready'));
+  </script>
   <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"></script>
   <script>
 const steps = [...document.querySelectorAll('.step')];
@@ -586,7 +598,8 @@ let planScene=null,planCamera=null,planRenderer=null,planControls=null,planMassG
 
 function initPlan3D(){
   const host=document.getElementById('plan3d');
-  if(!host || planRenderer || typeof THREE==='undefined') return;
+  if(!host || planRenderer) return;
+  if(typeof THREE==='undefined'){window.addEventListener('three-ready',initPlan3D,{once:true});return;}
   const w=host.clientWidth||640,h=host.clientHeight||420;
   planScene=new THREE.Scene();
   planScene.background=new THREE.Color(0xf1f3f5);
