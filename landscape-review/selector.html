@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Urban Planning Platform · 대상지 선정</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/shpjs@6.1.0/dist/shp.min.js"></script>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Pretendard,"Noto Sans KR",Arial,sans-serif;color:#18212b;background:#f5f7fa}
+header{height:58px;background:#fff;border-bottom:1px solid #dce3eb;padding:10px 18px;display:flex;justify-content:space-between;align-items:center}
+header h1{font-size:20px;margin:0}header small{display:block;color:#657386;margin-top:2px}
+main{padding:12px}.card{background:#fff;border:1px solid #dce3eb;border-radius:10px;margin-bottom:10px}
+.title{padding:14px 16px;border-bottom:1px solid #e5eaf0}.title h2{font-size:17px;margin:0 0 5px}.title p{margin:0;color:#657386;font-size:12px}
+.tabs{display:grid;grid-template-columns:repeat(3,1fr);border-bottom:1px solid #dce3eb}.tabs button{border:0;border-right:1px solid #dce3eb;background:#fff;padding:13px;font-weight:700;cursor:pointer}.tabs button:last-child{border-right:0}.tabs button.active{background:#111c2d;color:white}
+.tools{padding:12px}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.btn{border:1px solid #bdc9d6;background:#fff;padding:9px 14px;border-radius:5px;font-weight:700;cursor:pointer}.btn.primary{background:#285fae;color:#fff;border-color:#285fae}.btn.landscape{background:#1f6b5d;color:#fff;border-color:#1f6b5d}.btn.danger{color:#c62828}.btn:disabled{opacity:.4;cursor:not-allowed}
+.panel{display:none}.panel.active{display:block}.help{font-size:12px;color:#687689;margin:8px 0}.input{width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:5px}
+.action-box{padding:14px 16px}.action-box h3{margin:0 0 5px;font-size:16px}.action-box p{font-size:12px;color:#657386;margin:0 0 12px}
+#map{height:560px;border-top:1px solid #dce3eb;background:#eef2f6}.map-status{padding:8px 12px;font-size:12px;color:#526174;border-top:1px solid #dce3eb}
+.selected-summary{font-size:12px;padding:10px;background:#f7f9fb;border:1px solid #e0e6ed;border-radius:6px;margin-top:10px}.selected-summary b{display:block;margin-bottom:5px}
+.parcel-label{background:transparent;border:0;color:white;font:bold 11px Arial;text-shadow:-1px -1px 2px #111,1px 1px 2px #111;white-space:nowrap}
+@media(max-width:800px){#map{height:430px}.tabs{grid-template-columns:1fr}.row{align-items:stretch}.btn{flex:1}}
+</style>
+</head>
+<body>
+<header><div><h1>Urban Planning Platform</h1><small>대상지 선정</small></div><div style="font-size:12px;color:#657386">경관성 검토 독립 개발</div></header>
+<main>
+<section class="card">
+  <div class="title"><h2>검토대상지</h2><p>지도·지번·SHP/GeoJSON 중 하나로 구역계를 설정합니다.</p></div>
+  <div class="tabs">
+    <button class="active" data-tab="draw">지도에 그리기</button>
+    <button data-tab="parcel">지번으로 찾기</button>
+    <button data-tab="file">SHP 구역계</button>
+  </div>
+  <div class="tools">
+    <div class="panel active" data-panel="draw">
+      <div class="help">아래 <b>지도에서 구역계 그리기</b>를 누른 뒤 경계 꼭짓점을 순서대로 클릭하고, 마지막에 <b>그리기 완료</b>를 누르세요.</div>
+      <div class="row"><button class="btn" id="drawBtn">지도에서 구역계 그리기</button><button class="btn" id="finishBtn" disabled>그리기 완료</button></div>
+    </div>
+    <div class="panel" data-panel="parcel">
+      <div class="row"><input class="input" id="parcelAddress" placeholder="예: 서울 동대문구 장안동 314-1"><button class="btn" id="addressBtn">주소로 이동</button><button class="btn" id="parcelClickBtn">필지 클릭 켜기</button></div>
+      <div class="help">필지 클릭을 켠 뒤 지도에서 필지 안쪽을 클릭하면 연속지적을 조회해 다중 선택합니다.</div>
+      <div class="selected-summary"><b id="parcelCount">선택 0필지</b><span id="parcelList">선택된 필지가 없습니다.</span></div>
+      <div class="row" style="margin-top:8px"><button class="btn" id="applyParcelsBtn" disabled>선택필지 구역계 적용</button><button class="btn danger" id="clearParcelsBtn">선택 해제</button></div>
+    </div>
+    <div class="panel" data-panel="file">
+      <input class="input" id="fileInput" type="file" accept=".zip,.json,.geojson">
+      <div class="help">SHP는 .shp/.shx/.dbf/.prj를 하나의 ZIP으로 올리세요. GeoJSON도 지원합니다.</div>
+    </div>
+  </div>
+  <div class="tools" style="border-top:1px solid #e5eaf0">
+    <div class="row">
+      <button class="btn" id="confirmBtn" disabled>구역계 확정</button>
+      <button class="btn" id="viewBtn">선택필지 보기</button>
+      <button class="btn danger" id="resetBtn">구역계 재검토</button>
+    </div>
+    <div class="selected-summary"><b id="boundaryStatus">구역계 미지정</b><span id="boundaryMeta">지도그리기·지번·SHP 중 하나를 사용하세요.</span></div>
+  </div>
+</section>
+
+<section class="card action-box">
+  <h3>결과물 작성</h3>
+  <p>대상지를 확정한 뒤 필요한 검토 기능을 선택합니다.</p>
+  <div class="row">
+    <button class="btn primary" id="surveyBtn" disabled>기초현황조사</button>
+    <button class="btn landscape" id="landscapeBtn" disabled>경관성 검토</button>
+  </div>
+</section>
+
+<section class="card">
+  <div class="tools row"><label><input id="parcelViewToggle" type="checkbox" checked> 지적선·지번</label><button class="btn" id="parcelViewRetry">다시 조회</button><span id="parcelViewStatus" class="help">지도를 확대하면 지적선·지번을 표시합니다.</span></div>
+  <div id="map"></div>
+  <div class="map-status" id="mapStatus">대상지를 설정하세요.</div>
+</section>
+</main>
+<script>
+const map=L.map('map').setView([37.5665,126.9780],12);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
+let mode='draw', drawing=false, draft=[], draftLayer=null, boundary=null, boundaryLayer=null, confirmedSite=null;
+let parcelClick=false, parcelViewLayer=L.geoJSON(null,{style:{color:'#64748b',weight:1,fillOpacity:0}}).addTo(map), parcelLabelLayer=L.layerGroup().addTo(map);
+let selected=new Map(), selectedLayer=L.geoJSON(null,{style:{color:'#ef4444',weight:3,fillColor:'#ef4444',fillOpacity:.25}}).addTo(map);
+function setStatus(t){document.getElementById('mapStatus').textContent=t}
+function geometryOf(v){if(v?.type==='Feature')return v.geometry;if(v?.type==='FeatureCollection'){const fs=v.features||[];if(!fs.length)return null;return turf.combine(v).features[0]?.geometry||null}if(v?.type==='Polygon'||v?.type==='MultiPolygon')return v;return null}
+function setBoundary(v,label='구역계'){const g=geometryOf(v);if(!g)return alert('Polygon/MultiPolygon 구역계가 필요합니다.');boundary=g;confirmedSite=null;if(boundaryLayer)map.removeLayer(boundaryLayer);boundaryLayer=L.geoJSON(g,{style:{color:'#dc2626',weight:4,fillOpacity:.06}}).addTo(map);map.fitBounds(boundaryLayer.getBounds(),{padding:[30,30]});const a=Math.round(turf.area(turf.feature(g)));document.getElementById('boundaryStatus').textContent=label+' · '+a.toLocaleString()+'㎡';document.getElementById('boundaryMeta').textContent='구역계가 설정되었습니다. 확정 후 검토 기능을 선택하세요.';document.getElementById('confirmBtn').disabled=false;document.getElementById('surveyBtn').disabled=true;document.getElementById('landscapeBtn').disabled=true;setStatus('구역계 설정 · 확정 필요')}
+function reset(){boundary=null;confirmedSite=null;if(boundaryLayer){map.removeLayer(boundaryLayer);boundaryLayer=null}selected.clear();renderSelected();document.getElementById('boundaryStatus').textContent='구역계 미지정';document.getElementById('boundaryMeta').textContent='지도그리기·지번·SHP 중 하나를 사용하세요.';document.getElementById('confirmBtn').disabled=true;document.getElementById('surveyBtn').disabled=true;document.getElementById('landscapeBtn').disabled=true;setStatus('대상지를 설정하세요.')}
+document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{mode=b.dataset.tab;document.querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('active',x===b));document.querySelectorAll('[data-panel]').forEach(x=>x.classList.toggle('active',x.dataset.panel===mode));});
+document.getElementById('drawBtn').onclick=()=>{drawing=!drawing;draft=[];if(draftLayer){map.removeLayer(draftLayer);draftLayer=null}document.getElementById('finishBtn').disabled=true;document.getElementById('drawBtn').textContent=drawing?'그리기 취소':'지도에서 구역계 그리기';setStatus(drawing?'지도에서 구역계 꼭짓점을 클릭하세요.':'그리기 취소')};
+document.getElementById('finishBtn').onclick=()=>{if(draft.length<3)return;const c=draft.map(p=>[p.lng,p.lat]);c.push(c[0]);drawing=false;document.getElementById('drawBtn').textContent='지도에서 구역계 그리기';if(draftLayer){map.removeLayer(draftLayer);draftLayer=null}setBoundary({type:'Polygon',coordinates:[c]},'지도 그리기')};
+document.getElementById('parcelClickBtn').onclick=()=>{parcelClick=!parcelClick;document.getElementById('parcelClickBtn').textContent=parcelClick?'필지 클릭 끄기':'필지 클릭 켜기';setStatus(parcelClick?'필지 안쪽을 클릭하세요.':'필지 클릭 꺼짐')};
+map.on('click',async e=>{if(drawing){draft.push(e.latlng);if(draftLayer)map.removeLayer(draftLayer);draftLayer=L.polyline(draft,{color:'#dc2626',weight:3,dashArray:'7 5'}).addTo(map);document.getElementById('finishBtn').disabled=draft.length<3;return}if(parcelClick){await chooseParcel(e.latlng);}});
+async function chooseParcel(ll){setStatus('클릭 필지 조회 중…');try{const r=await fetch('/api/parcel-at-point',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({lon:ll.lng,lat:ll.lat})});const v=await r.json();if(!r.ok)throw Error(v.detail||'조회 실패');if(v.status!=='RESOLVED')throw Error(v.message||'필지를 찾지 못했습니다.');const f=v.feature,pnu=String(f.properties?.pnu||f.id||'');if(selected.has(pnu))selected.delete(pnu);else selected.set(pnu,f);renderSelected();setStatus(selected.size+'개 필지 선택')}catch(e){setStatus(e.message)}}
+function renderSelected(){selectedLayer.clearLayers();if(selected.size)selectedLayer.addData({type:'FeatureCollection',features:[...selected.values()]});const names=[...selected.values()].map(f=>f.properties?.jibun||f.properties?.pnu||'필지');document.getElementById('parcelCount').textContent='선택 '+selected.size+'필지';document.getElementById('parcelList').textContent=names.length?names.join(', '):'선택된 필지가 없습니다.';document.getElementById('applyParcelsBtn').disabled=!selected.size}
+document.getElementById('clearParcelsBtn').onclick=()=>{selected.clear();renderSelected()};
+document.getElementById('applyParcelsBtn').onclick=()=>{if(!selected.size)return;let fc={type:'FeatureCollection',features:[...selected.values()]};try{const u=turf.union(fc);setBoundary(u,'선택 필지')}catch(e){setBoundary(turf.combine(fc).features[0],'선택 필지')}};
+document.getElementById('fileInput').onchange=async e=>{const file=e.target.files[0];if(!file)return;try{let gj;if(file.name.toLowerCase().endsWith('.zip'))gj=await shp(await file.arrayBuffer());else gj=JSON.parse(await file.text());setBoundary(gj,file.name)}catch(err){alert('구역계 파일을 읽지 못했습니다.')}};
+document.getElementById('addressBtn').onclick=async()=>{const q=document.getElementById('parcelAddress').value.trim();if(!q)return;try{const r=await fetch('/api/geocode?q='+encodeURIComponent(q));const v=await r.json();if(!r.ok)throw Error(v.detail||'검색 실패');map.setView([v.lat,v.lon],18);setStatus(v.display_name||q)}catch(e){setStatus(e.message)}};
+document.getElementById('confirmBtn').onclick=async()=>{if(!boundary)return;document.getElementById('confirmBtn').disabled=true;setStatus('구역계 확정 중…');try{const r=await fetch('/api/snapshots',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({geometry:boundary})});const v=await r.json();if(!r.ok)throw Error(v.detail||'확정 실패');confirmedSite=v;document.getElementById('surveyBtn').disabled=false;document.getElementById('landscapeBtn').disabled=false;document.getElementById('boundaryMeta').textContent='확정 완료 · '+Math.round(v.area_m2).toLocaleString()+'㎡';setStatus('구역계 확정 완료')}catch(e){document.getElementById('confirmBtn').disabled=false;setStatus(e.message)}};
+document.getElementById('surveyBtn').onclick=()=>alert('기초현황조사는 이 경관 독립 브랜치에서 실행하지 않습니다. 공통 플랫폼 연계 시 연결합니다.');
+document.getElementById('landscapeBtn').onclick=()=>{if(!confirmedSite)return;const w=window.open('/landscape-review?site='+encodeURIComponent(confirmedSite.id),'_blank');if(!w)alert('팝업 차단을 해제하세요.')};
+document.getElementById('resetBtn').onclick=reset;
+document.getElementById('viewBtn').onclick=()=>{if(boundaryLayer)map.fitBounds(boundaryLayer.getBounds(),{padding:[30,30]});else if(selected.size)map.fitBounds(selectedLayer.getBounds(),{padding:[30,30]})};
+async function loadParcelView(){parcelViewLayer.clearLayers();parcelLabelLayer.clearLayers();if(!document.getElementById('parcelViewToggle').checked)return;if(map.getZoom()<16){document.getElementById('parcelViewStatus').textContent='지적선·지번을 보려면 지도를 확대하세요.';return}const b=map.getBounds();try{document.getElementById('parcelViewStatus').textContent='주변 지적선·지번 조회 중…';const r=await fetch('/api/parcel-view',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({bbox:[b.getWest(),b.getSouth(),b.getEast(),b.getNorth()]})});const v=await r.json();if(!r.ok)throw Error(v.detail||'조회 실패');parcelViewLayer.addData({type:'FeatureCollection',features:v.features||[]});for(const f of v.features||[]){const label=f.properties?.jibun||'';if(!label)continue;let p;try{p=turf.pointOnFeature(f).geometry.coordinates}catch(e){continue}L.marker([p[1],p[0]],{interactive:false,icon:L.divIcon({className:'parcel-label',html:label,iconSize:[70,18],iconAnchor:[35,9]})}).addTo(parcelLabelLayer)}document.getElementById('parcelViewStatus').textContent=(v.features||[]).length+'필지 표시'}catch(e){document.getElementById('parcelViewStatus').textContent=e.message}}
+let viewTimer;map.on('moveend zoomend',()=>{clearTimeout(viewTimer);viewTimer=setTimeout(loadParcelView,450)});document.getElementById('parcelViewRetry').onclick=loadParcelView;document.getElementById('parcelViewToggle').onchange=loadParcelView;
+</script>
+</body></html>
