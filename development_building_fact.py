@@ -25,7 +25,7 @@ AGE_DATES = ('useaprday', 'use_apr_day', 'useconfmde', 'use_confm_de')
 TITLE_KEYS = ('mgmbldrgstpk', 'mgm_bldrgst_pk', 'bldrgst_pk')
 ADDRESS_KEYS = ('bd_mgt_sn', 'bdmgtsn')
 PNU_PATTERN = re.compile(r'^\d{19}$')
-SOURCE_NAMES = ('LT_C_BLDGINFO', 'LT_C_SPBD')
+SOURCE_NAMES = ('LT_C_BLDGINFO',)
 
 
 def _nonempty(value):
@@ -184,26 +184,12 @@ def assemble_building_fact(data, snapshot):
                          'queried_at': (layers.get(key) or {}).get('queried_at')}
                    for key in SOURCE_NAMES}
     gis, gis_invalid = _source_features(layers.get(SOURCE_NAMES[0]) or {}, site, SOURCE_NAMES[0])
-    address, address_invalid = _source_features(layers.get(SOURCE_NAMES[1]) or {}, site, SOURCE_NAMES[1])
-
-    # Preserve GIS records first. Add address polygons only when truly disjoint.
-    # Ambiguous overlaps are never silently counted twice.
+    # GIS building integration is the sole spatial building source.
+    # Previously stored LT_C_SPBD snapshots are intentionally ignored.
     selected = list(gis)
+    address = []
+    address_invalid = 0
     secondary_duplicate = secondary_overlap_review = 0
-    for extra in address:
-        if gis:
-            outcomes = {_overlap_class(extra['geometry'], parent['geometry']) for parent in gis
-                        if extra['geometry'].bounds[0] <= parent['geometry'].bounds[2]
-                        and extra['geometry'].bounds[2] >= parent['geometry'].bounds[0]
-                        and extra['geometry'].bounds[1] <= parent['geometry'].bounds[3]
-                        and extra['geometry'].bounds[3] >= parent['geometry'].bounds[1]}
-            if 'SAME_SHAPE_CANDIDATE' in outcomes:
-                secondary_duplicate += 1
-                continue
-            if 'OVERLAP_REVIEW' in outcomes:
-                secondary_overlap_review += 1
-                continue
-        selected.append(extra)
 
     by_title = {}
     unkeyed_register_rows = 0
