@@ -1,0 +1,600 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>경관성 검토 플랫폼 — Day 2 대상지 설정</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="anonymous" />
+  <style>
+:root{
+  --bg:#f4f6f8; --panel:#fff; --ink:#17202a; --muted:#6f7b86; --line:#dfe5ea;
+  --brand:#203a57; --brand2:#315f82; --soft:#eaf0f5; --accent:#b27a3b; --ok:#3d7d69;
+  --shadow:0 14px 38px rgba(17,36,55,.08);
+}
+*{box-sizing:border-box} body{margin:0;font-family:Pretendard,"Noto Sans KR",system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+button,input,select{font:inherit}.hidden{display:none!important}
+.app-shell{min-height:100vh;display:grid;grid-template-columns:252px 1fr}
+.sidebar{background:#182b3d;color:#fff;padding:28px 20px;display:flex;flex-direction:column;gap:30px;position:sticky;top:0;height:100vh}
+.brand{display:flex;gap:12px;align-items:center}.brand-mark{width:42px;height:42px;border:1px solid rgba(255,255,255,.35);display:grid;place-items:center;font-size:22px}.brand strong{display:block;font-size:17px}.brand span{display:block;color:#9db0bf;font-size:12px;margin-top:4px}
+.steps{display:flex;flex-direction:column;gap:8px}.step{border:0;background:transparent;color:#9db0bf;padding:11px 12px;display:flex;gap:11px;align-items:center;text-align:left;border-radius:9px;cursor:pointer}.step span{width:25px;height:25px;border:1px solid #617486;border-radius:50%;display:grid;place-items:center;font-size:12px}.step em{font-style:normal}.step.active{background:#243f55;color:#fff}.step.active span{background:#fff;color:#243f55;border-color:#fff}
+.sidebar-note{margin-top:auto;border-top:1px solid rgba(255,255,255,.15);padding-top:18px}.sidebar-note b{font-size:12px;letter-spacing:.08em}.sidebar-note p{font-size:12px;line-height:1.6;color:#9db0bf;margin:8px 0 0}
+.main{min-width:0}.topbar{padding:28px 34px 20px;display:flex;align-items:flex-end;justify-content:space-between}.eyebrow{margin:0 0 5px;color:var(--muted);font-size:12px;letter-spacing:.04em}.topbar h1{margin:0;font-size:28px}.status-group{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:7px}.status-dot{width:8px;height:8px;border-radius:50%;background:var(--ok)}
+.workspace{padding:0 34px 34px}.panel{display:none}.panel.active{display:block}.panel-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:16px}.panel-head h2{margin:0 0 8px;font-size:20px}.panel-head p{margin:0;color:var(--muted);font-size:13px}.chip{background:#e8f0ec;color:#416b5d;padding:7px 10px;font-size:11px;border-radius:999px}.chip.warn{background:#f7efe4;color:#926430}
+.grid{display:grid;gap:16px}.grid.two{grid-template-columns:1fr 1.1fr}.grid.compact{grid-template-columns:1fr 1fr;gap:12px}.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}.form-card{padding:22px}.form-card label,.sim-controls label{display:block;font-size:12px;color:#52606b;margin:0 0 7px}.form-card input,.sim-controls input,.sim-controls select{width:100%;border:1px solid var(--line);background:#fff;padding:11px 12px;border-radius:8px;outline:none;margin-bottom:16px}.form-card input:focus{border-color:#8da5b7}.inline{display:grid;grid-template-columns:1fr auto;gap:8px}
+.btn{border:0;border-radius:8px;padding:10px 15px;cursor:pointer;font-weight:700}.btn.primary{background:var(--brand);color:#fff}.btn.secondary{background:var(--soft);color:var(--brand)}.btn.ghost{background:#fff;color:#43515d;border:1px solid var(--line)}.btn.full{width:100%;margin-top:10px}.btn.small{padding:7px 10px;font-size:11px}
+.upload-box{border:1px dashed #aab8c3;border-radius:10px;padding:22px;text-align:center;background:#fafbfc;margin-bottom:18px;cursor:pointer}.upload-box strong{display:block;font-size:13px}.upload-box span{display:block;font-size:11px;color:var(--muted);margin-top:6px}.summary-box{background:#f7f9fa;padding:14px;border-radius:9px}.summary-box span{display:block;font-size:11px;color:var(--muted)}.summary-box b{display:block;margin-top:4px;font-size:13px}
+.map-card{overflow:hidden}.map-toolbar{height:50px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 16px;font-size:12px;font-weight:700}.mini{border:0;background:transparent;color:var(--muted);font-size:11px;padding:6px 8px;cursor:pointer}.mini.active{background:var(--soft);color:var(--brand);border-radius:6px}.mock-map{height:430px;position:relative;overflow:hidden;background:linear-gradient(90deg,transparent 24px,#eef2f4 25px,transparent 26px),linear-gradient(transparent 24px,#eef2f4 25px,transparent 26px),#fbfcfd;background-size:50px 50px}.road{position:absolute;background:#d9dee2;border:1px solid #cbd1d5}.road-a{width:125%;height:34px;left:-10%;top:47%;transform:rotate(-8deg)}.road-b{width:36px;height:120%;left:58%;top:-10%;transform:rotate(7deg)}.road-c{width:110%;height:18px;left:-6%;top:20%;transform:rotate(5deg)}.block{position:absolute;background:#e6ebee;border:1px solid #d4dade}.b1{width:130px;height:90px;left:18%;top:25%;transform:rotate(-5deg)}.b2{width:105px;height:120px;right:15%;top:58%;transform:rotate(6deg)}.b3{width:150px;height:70px;left:20%;bottom:10%;transform:rotate(8deg)}.site-polygon{position:absolute;width:130px;height:92px;left:48%;top:38%;background:rgba(178,122,59,.25);border:3px solid var(--accent);transform:rotate(-6deg);z-index:5;display:grid;place-items:center;font-weight:800;color:#7e5425}.site-polygon.shown{display:grid!important}.map-label{position:absolute;font-size:10px;color:#7e8b95;z-index:7}.l1{left:7%;top:41%;transform:rotate(-8deg)}.l2{right:33%;top:9%;transform:rotate(7deg)}.north{position:absolute;right:16px;top:16px;font-size:11px;font-weight:800;color:#52606b;z-index:9}
+.actions{display:flex;justify-content:space-between;margin-top:18px}.segmented{display:grid;grid-template-columns:1fr 1fr;background:#f0f3f5;border-radius:9px;padding:4px;margin-bottom:18px}.segmented button{border:0;background:transparent;padding:9px;border-radius:7px;cursor:pointer}.segmented button.active{background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.08);font-weight:800}.preview-card{padding:20px}.preview-title{font-size:12px;font-weight:800;margin-bottom:10px}.mass-preview{height:330px;background:linear-gradient(#dfeaf2 0 58%,#d9dedf 58% 100%);position:relative;overflow:hidden;border-radius:10px;perspective:700px}.ground{position:absolute;left:-10%;bottom:-18%;width:120%;height:48%;background:#cdd3d4;transform:rotateX(58deg)}.mass{position:absolute;left:43%;bottom:29%;width:110px;height:160px;background:linear-gradient(135deg,#7890a3,#314f67);transform:skewY(-4deg);box-shadow:16px 14px 0 rgba(28,54,73,.25);display:flex;align-items:flex-start;justify-content:flex-end;padding:8px;color:#fff;font-weight:800;transition:.3s}.mass-shadow{position:absolute;left:48%;bottom:22%;width:180px;height:45px;background:rgba(0,0,0,.08);transform:rotate(-12deg);filter:blur(4px)}.metric-row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}.metric-row div{background:#f7f9fa;padding:11px;border-radius:8px}.metric-row span{display:block;color:var(--muted);font-size:10px}.metric-row b{display:block;margin-top:4px;font-size:13px}
+.viewpoint-layout{grid-template-columns:1.2fr .8fr}.viewpoint-map{height:470px}.vp{position:absolute;z-index:10;width:34px;height:34px;border-radius:50%;border:2px solid #fff;background:#253f55;color:#fff;font-weight:800;box-shadow:0 3px 12px rgba(0,0,0,.2);cursor:pointer}.vp:not(.active){opacity:.25}.vp-a{left:45%;top:14%}.vp-b{left:52%;bottom:12%}.vp-c{left:8%;top:45%}.vp-d{right:8%;top:47%}.view-ray{position:absolute;height:2px;background:rgba(32,58,87,.45);transform-origin:left center;z-index:8}.ray-a{left:47%;top:19%;width:110px;transform:rotate(73deg)}.ray-b{left:53%;bottom:17%;width:100px;transform:rotate(-92deg)}.ray-c{left:13%;top:49%;width:180px;transform:rotate(-6deg)}.ray-d{right:13%;top:51%;width:180px;transform:rotate(185deg)}.vp-list-card{padding:16px}.vp-list-head{display:flex;justify-content:space-between;font-size:12px;margin-bottom:10px}.vp-list{display:flex;flex-direction:column;gap:8px}.vp-row{display:grid;grid-template-columns:auto 32px 1fr;gap:8px;align-items:center;padding:12px;border:1px solid var(--line);border-radius:9px;cursor:pointer}.vp-row.selected{background:#f7fafb;border-color:#b9c9d4}.vp-row input{accent-color:var(--brand)}.vp-code{width:28px;height:28px;background:var(--brand);color:#fff;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:800}.vp-row b{display:block;font-size:12px}.vp-row em{display:block;font-style:normal;font-size:10px;color:var(--muted);margin-top:4px;line-height:1.45}
+.sim-controls{padding:14px;display:grid;grid-template-columns:2fr repeat(3,1fr);gap:10px;margin-bottom:16px}.sim-controls input,.sim-controls select{margin:0;background:#f9fafb}.sim-grid{grid-template-columns:1fr 1fr}.scene-card{overflow:hidden}.scene-head{height:44px;padding:0 14px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);font-size:11px}.scene-head span{color:var(--muted)}.city-scene{height:340px;position:relative;background:linear-gradient(#dce8f0 0 60%,#d6dbdd 60% 100%);overflow:hidden}.street{position:absolute;left:-10%;bottom:0;width:120%;height:85px;background:#aeb7bd;clip-path:polygon(25% 0,75% 0,100% 100%,0 100%)}.skyline{position:absolute;bottom:80px;background:#8a969d;border:1px solid rgba(255,255,255,.5)}.skyline.low{width:80px;height:80px}.skyline.mid{width:90px;height:130px}.s1{left:6%}.s2{left:28%;height:95px}.s3{right:25%}.s4{right:4%;height:70px}.skyline.project{width:92px;height:220px;left:48%;transform:translateX(-50%);background:#3d5d73}.camera-mark{position:absolute;bottom:22px;left:50%;color:#8d3d3d;z-index:5}.analysis-card{margin-top:16px;padding:17px}.analysis-card div{display:flex;justify-content:space-between;font-size:12px}.analysis-card div b{color:var(--accent)}.analysis-card p{font-size:12px;color:var(--muted);line-height:1.65;margin-bottom:0}
+.report-type-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}.report-type{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px;text-align:left;cursor:pointer}.report-type.active{border-color:#7891a4;box-shadow:0 0 0 2px #dbe5ec}.report-type span{display:block;font-size:11px;color:var(--muted)}.report-type b{display:block;font-size:18px;margin-top:5px}.report-type em{display:block;font-style:normal;font-size:11px;line-height:1.5;color:#68757f;margin-top:7px}.report-layout{grid-template-columns:1.35fr .65fr}.report-preview{padding:18px;background:#e9edf0}.paper{width:min(100%,620px);min-height:680px;margin:auto;background:#fff;box-shadow:0 10px 30px rgba(0,0,0,.12);padding:36px;position:relative;overflow:hidden}.paper-top{font-size:11px;color:var(--muted);border-bottom:2px solid var(--brand);padding-bottom:9px}.paper h3{font-size:20px;margin:18px 0 22px}.paper-map{height:190px;background:linear-gradient(90deg,#eef2f4 1px,transparent 1px),linear-gradient(#eef2f4 1px,transparent 1px),#fafbfc;background-size:30px 30px;position:relative;display:grid;place-items:center;color:#71808a;font-size:12px}.paper-map i{position:absolute;width:24px;height:24px;border-radius:50%;background:var(--brand);color:#fff;display:grid;place-items:center;font-style:normal;font-size:10px}.paper-map i:nth-of-type(1){left:26%;top:20%}.paper-map i:nth-of-type(2){left:55%;bottom:14%}.paper-map i:nth-of-type(3){left:8%;top:58%}.paper-map i:nth-of-type(4){right:7%;top:48%}.paper-row{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:12px}.thumb{height:150px;display:grid;place-items:center;font-size:11px;color:#fff}.before-thumb{background:linear-gradient(#a9bcc7 0 65%,#7f8b91 65%)}.after-thumb{background:linear-gradient(#95adbc 0 65%,#6b7a82 65%)}.paper-text{margin-top:14px;font-size:11px;line-height:1.6}.paper-text p{color:#68757f}.watermark{position:absolute;inset:0;display:grid;place-items:center;font-size:72px;font-weight:900;color:rgba(130,140,150,.08);transform:rotate(-28deg);pointer-events:none}.output-card{padding:20px}.output-card h3{margin:0 0 14px}.output-card ul{padding-left:18px;margin:0}.output-card li{font-size:12px;margin:9px 0;color:#4c5963}.divider{border-top:1px solid var(--line);margin:18px 0}.fineprint{font-size:10px;color:var(--muted);line-height:1.55}
+.toast{position:fixed;right:26px;bottom:24px;background:#172a3b;color:#fff;padding:12px 16px;border-radius:9px;font-size:12px;box-shadow:var(--shadow);opacity:0;transform:translateY(10px);pointer-events:none;transition:.2s}.toast.show{opacity:1;transform:translateY(0)}
+@media(max-width:980px){.app-shell{grid-template-columns:1fr}.sidebar{position:relative;height:auto}.steps{display:grid;grid-template-columns:repeat(5,1fr)}.step{justify-content:center}.step em{display:none}.grid.two,.viewpoint-layout,.sim-grid,.report-layout,.report-type-grid{grid-template-columns:1fr}.sim-controls{grid-template-columns:1fr 1fr}.workspace,.topbar{padding-left:18px;padding-right:18px}}
+
+/* Day 2 — live site setup */
+.site-grid{align-items:stretch}.live-map-card{min-height:650px;display:flex;flex-direction:column}.live-map{height:570px;min-height:520px;z-index:1;background:#eef2f4}.live-map-card .map-toolbar{height:58px}.map-toolbar>div:first-child{display:flex;flex-direction:column;gap:3px}.map-toolbar small{font-size:10px;color:var(--muted);font-weight:500}.map-status{min-height:62px;padding:12px 16px;border-top:1px solid var(--line);display:flex;flex-direction:column;justify-content:center;background:#fff}.map-status b{font-size:12px}.map-status span{font-size:10px;color:var(--muted);margin-top:4px}.helper{font-size:10px;line-height:1.55;color:var(--muted);margin:-8px 0 16px}.coordinate-grid input{margin-bottom:4px!important}.btn.no-top{margin-top:0;margin-bottom:18px}.site-actions{display:grid;grid-template-columns:1.5fr 1fr .8fr;gap:7px;margin-bottom:16px}.site-actions .btn{padding:9px 8px;font-size:11px}.site-actions .btn:disabled{opacity:.4;cursor:not-allowed}.site-summary-box{padding:14px}.site-summary-box>div:first-child b{max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.site-summary-box dl{display:grid;gap:7px;margin:12px 0 0;padding-top:10px;border-top:1px solid #e5eaee}.site-summary-box dl div{display:grid;grid-template-columns:64px 1fr;gap:10px}.site-summary-box dt{font-size:10px;color:var(--muted)}.site-summary-box dd{font-size:10px;margin:0;text-align:right;overflow-wrap:anywhere}.save-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.leaflet-container{font-family:Pretendard,"Noto Sans KR",system-ui,sans-serif}.leaflet-control-attribution{font-size:9px!important}.leaflet-popup-content{font-size:11px}
+@media(max-width:980px){.live-map{height:460px;min-height:420px}.live-map-card{min-height:0}.site-actions{grid-template-columns:1fr 1fr}.site-actions .btn:last-child{grid-column:1/-1}}
+
+/* Day 3 — viewpoint candidate engine */
+.rule-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px}
+.rule-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;box-shadow:var(--shadow)}
+.rule-card b{display:block;font-size:12px;margin-bottom:6px}.rule-card span{font-size:10px;line-height:1.55;color:var(--muted)}
+.candidate-layout{grid-template-columns:1.25fr .75fr;align-items:stretch}
+.candidate-map-card{overflow:hidden;min-height:650px;display:flex;flex-direction:column}
+.candidate-map{height:570px;min-height:520px;background:#eef2f4}
+.candidate-toolbar{gap:10px}.candidate-toolbar .toolbar-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.candidate-status{min-height:62px;padding:11px 15px;border-top:1px solid var(--line);display:flex;flex-direction:column;justify-content:center;background:#fff}
+.candidate-status b{font-size:11px}.candidate-status span{font-size:10px;color:var(--muted);margin-top:3px;line-height:1.45}
+.candidate-panel{padding:14px;display:flex;flex-direction:column;min-height:650px}
+.band-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:10px}
+.band-box{background:#f7f9fa;border:1px solid var(--line);border-radius:9px;padding:9px;text-align:center}
+.band-box span{display:block;font-size:9px;color:var(--muted)}.band-box b{display:block;font-size:12px;margin-top:4px}
+.candidate-filter{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin:3px 0 10px}
+.candidate-filter button{border:1px solid var(--line);background:#fff;padding:7px 5px;border-radius:7px;font-size:10px;cursor:pointer}
+.candidate-filter button.active{background:var(--brand);color:#fff;border-color:var(--brand)}
+.candidate-list{display:flex;flex-direction:column;gap:7px;overflow:auto;max-height:430px;padding-right:2px}
+.candidate-row{border:1px solid var(--line);border-radius:9px;padding:10px;background:#fff;cursor:pointer}
+.candidate-row:hover{border-color:#aebdca}.candidate-row.selected{border-color:#7b9a8e;background:#f4f8f6}
+.candidate-row .top{display:flex;gap:7px;align-items:center;justify-content:space-between}
+.candidate-row .top>div{min-width:0}.candidate-row b{font-size:11px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.candidate-row em{font-style:normal;font-size:9px;color:var(--muted);display:block;margin-top:3px;line-height:1.45}
+.type-badge,.state-badge{font-size:8px;border-radius:999px;padding:4px 6px;white-space:nowrap}
+.type-badge{background:#eaf0f5;color:#315f82}.state-badge{background:#f6f1e8;color:#8b642f}
+.state-badge.mandatory,.state-badge.ready{background:#e7f1ec;color:#3d705d}
+.candidate-note{margin-top:10px;padding:10px;border-radius:8px;background:#faf7f1;font-size:9px;line-height:1.55;color:#765a35}
+.adapter-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:10px}
+.adapter-item{border:1px solid var(--line);border-radius:8px;padding:8px;background:#fafbfc}
+.adapter-item b{font-size:9px;display:block}.adapter-item span{font-size:8px;color:var(--muted);display:block;margin-top:3px;line-height:1.35}
+.vp-marker{width:28px;height:28px;border-radius:50%;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.25);display:grid;place-items:center;font-size:9px;font-weight:800;color:#fff;background:#315f82}
+.vp-marker.mandatory{background:#3d7d69}.vp-marker.pending{background:#8b7357}.vp-marker.selected{outline:3px solid rgba(61,125,105,.28)}
+.vp-site-icon{width:18px;height:18px;border-radius:4px;background:#b27a3b;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+.upload-inline{display:grid;grid-template-columns:1fr auto;gap:6px;margin-top:10px}.upload-inline .btn{font-size:10px;padding:8px}
+@media(max-width:980px){
+  .rule-strip,.candidate-layout{grid-template-columns:1fr}
+  .candidate-map-card{min-height:0}.candidate-map{height:430px;min-height:390px}
+  .candidate-panel{min-height:0}.candidate-list{max-height:520px}
+  .adapter-grid{grid-template-columns:1fr 1fr}
+}
+
+</style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">景</div>
+        <div><strong>경관성 검토</strong><span>Landscape Review</span></div>
+      </div>
+      <nav class="steps" aria-label="작업 단계">
+        <button class="step active" data-step="1"><span>1</span><em>대상지 설정</em></button>
+        <button class="step" data-step="2"><span>2</span><em>계획안 입력</em></button>
+        <button class="step" data-step="3"><span>3</span><em>조망점 분석</em></button>
+        <button class="step" data-step="4"><span>4</span><em>3D 시뮬레이션</em></button>
+        <button class="step" data-step="5"><span>5</span><em>검토서</em></button>
+      </nav>
+      <div class="sidebar-note"><b>Day 3 · Viewpoint Candidates</b><p>조망점 후보군 생성·거리권 분류·선정상태 표시를 실제 기능으로 연결합니다.</p></div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div><p class="eyebrow">서울 지구단위계획 경관성 검토</p><h1 id="pageTitle">대상지 설정</h1></div>
+        <div class="status-group"><span class="status-dot"></span><span>Prototype v0.3</span></div>
+      </header>
+
+      <section class="workspace">
+        <article class="panel step-panel active" data-panel="1">
+          <div class="panel-head">
+            <div><h2>대상지 설정</h2><p>주소, 좌표, 지도 클릭 또는 GeoJSON으로 대상지를 지정하고 저장합니다.</p></div>
+            <span class="chip">Day 2 실제기능</span>
+          </div>
+
+          <div class="grid two site-grid">
+            <section class="card form-card">
+              <label>사업명</label>
+              <input id="projectName" type="text" value="장안동 314-1 일대 경관성 검토" />
+
+              <label>주소 / 지번 검색</label>
+              <div class="inline">
+                <input id="siteSearch" type="text" placeholder="예: 서울 동대문구 장안동 314-1" />
+                <button class="btn secondary" id="searchBtn">검색</button>
+              </div>
+              <p class="helper">개발용 주소검색입니다. 상용 배포 전 국내 공간정보 API 어댑터로 교체합니다.</p>
+
+              <label>중심좌표 직접 입력 (WGS84)</label>
+              <div class="grid two compact coordinate-grid">
+                <div><input id="latInput" type="number" step="0.000001" placeholder="위도 37.566500" /></div>
+                <div><input id="lngInput" type="number" step="0.000001" placeholder="경도 126.978000" /></div>
+              </div>
+              <button class="btn ghost full no-top" id="applyCoord">좌표 적용</button>
+
+              <label>구역계 입력</label>
+              <div class="upload-box" id="siteUpload">
+                <strong>GeoJSON 구역계 업로드</strong>
+                <span>Polygon / MultiPolygon 지원 · DXF/SHP는 후속 어댑터</span>
+                <input id="siteFile" type="file" accept=".json,.geojson,application/geo+json,application/json" hidden />
+              </div>
+
+              <div class="site-actions">
+                <button class="btn secondary" id="drawPolygon">지도에서 구역계 그리기</button>
+                <button class="btn ghost" id="finishPolygon" disabled>그리기 완료</button>
+                <button class="btn ghost" id="clearSite">초기화</button>
+              </div>
+
+              <div class="summary-box site-summary-box">
+                <div><span>현재 대상지</span><b id="siteSummary">미지정</b></div>
+                <dl>
+                  <div><dt>입력방식</dt><dd id="siteMethod">-</dd></div>
+                  <div><dt>중심좌표</dt><dd id="siteCoord">-</dd></div>
+                  <div><dt>구역계</dt><dd id="siteBoundary">없음</dd></div>
+                </dl>
+              </div>
+
+              <div class="save-row">
+                <button class="btn primary" id="saveSite">대상지 저장</button>
+                <button class="btn ghost" id="loadSite">저장값 불러오기</button>
+              </div>
+            </section>
+
+            <section class="card map-card live-map-card">
+              <div class="map-toolbar">
+                <div><span>대상지 지도</span><small id="mapHint">지도 클릭 시 중심점을 지정할 수 있습니다.</small></div>
+                <div><button class="mini active" data-basemap="osm">일반지도</button><button class="mini" disabled title="후속 구현">항공사진</button></div>
+              </div>
+              <div id="siteMap" class="live-map" aria-label="대상지 지도"></div>
+              <div class="map-status" id="mapStatus"><b>대상지 미지정</b><span>주소·좌표·지도·GeoJSON 중 하나를 사용하세요.</span></div>
+            </section>
+          </div>
+
+          <div class="actions"><span></span><button class="btn primary next" data-next="2">계획안 입력으로</button></div>
+        </article>
+
+        <article class="panel step-panel" data-panel="2">
+          <div class="panel-head"><div><h2>계획안 입력</h2><p>초기 버전은 외곽선과 높이값으로 단순 3D 매스를 생성하는 방식을 기본으로 합니다.</p></div><span class="chip">필수</span></div>
+          <div class="grid two">
+            <section class="card form-card">
+              <label>계획안 입력 방식</label>
+              <div class="segmented" id="planMode"><button class="active" data-mode="mass">외곽선 + 높이</button><button data-mode="model">3D 모델</button></div>
+              <div id="massMode">
+                <label>건축물 외곽선</label>
+                <div class="upload-box" id="planUpload"><strong>배치도 / 외곽선 파일</strong><span>DXF / GeoJSON · 목업</span><input id="planFile" type="file" hidden /></div>
+                <div class="grid two compact"><div><label>건축물 높이(m)</label><input id="buildingHeight" type="number" value="50" min="1" /></div><div><label>건축물 동수</label><input id="buildingCount" type="number" value="1" min="1" /></div></div>
+              </div>
+              <div id="modelMode" class="hidden"><label>3D 모델 업로드</label><div class="upload-box"><strong>GLB / glTF / OBJ</strong><span>직접 SketchUp 입력은 후속 검토</span></div></div>
+              <button class="btn secondary full" id="generateMass">계획 매스 미리보기</button>
+            </section>
+            <section class="card preview-card"><div class="preview-title">계획안 개념 미리보기</div><div class="mass-preview"><div class="ground"></div><div class="mass" id="massModel"><span id="massLabel">50m</span></div><div class="mass-shadow"></div></div><div class="metric-row"><div><span>계획높이</span><b id="heightMetric">50 m</b></div><div><span>동수</span><b id="countMetric">1동</b></div><div><span>상태</span><b>계획안</b></div></div></section>
+          </div>
+          <div class="actions"><button class="btn ghost prev" data-prev="1">이전</button><button class="btn primary next" data-next="3">조망점 분석으로</button></div>
+        </article>
+
+        <article class="panel step-panel" data-panel="3">
+          <div class="panel-head">
+            <div><h2>조망점 후보 생성</h2><p>대상지 주변의 조망점 후보를 수집하고 근경·중경·원경으로 분류합니다.</p></div>
+            <span class="chip">Day 3 실제기능</span>
+          </div>
+          <div class="rule-strip">
+            <div class="rule-card"><b>거리권</b><span>근경 0~250m · 중경 250~500m · 원경 500m 이상. 원경 검색상한은 개발 기본값 1,000m이며 법정 상한으로 쓰지 않습니다.</span></div>
+            <div class="rule-card"><b>후보 대상</b><span>경관계획 조망점, 지하철 출입구, 버스정류장, 대학 정문, 문화유산, 20m 이상 교차로, 공원·광장·주요시설, 전망대 등.</span></div>
+            <div class="rule-card"><b>최종선정</b><span>경관계획상 조망점은 우선 포함. 나머지는 보행량 자료 연동 후 각 거리권 4개를 기본 선정합니다.</span></div>
+          </div>
+          <div class="grid candidate-layout">
+            <section class="card candidate-map-card">
+              <div class="map-toolbar candidate-toolbar">
+                <div><span>조망점 후보 지도</span><small>현재 개발용 공간후보 조회 · 최종 보고서는 공식 데이터로 교체</small></div>
+                <div class="toolbar-actions"><button class="btn secondary small" id="fetchCandidates">후보 조회</button><button class="btn ghost small" id="clearCandidates">후보 지우기</button></div>
+              </div>
+              <div id="candidateMap" class="candidate-map"></div>
+              <div class="candidate-status" id="candidateStatus"><b>대상지를 먼저 지정하세요.</b><span>대상지 중심 또는 구역계가 있으면 반경 1km 범위의 후보를 조회합니다.</span></div>
+            </section>
+            <section class="card candidate-panel">
+              <div class="vp-list-head"><span>후보 및 선정상태</span><b id="candidateCount">0개</b></div>
+              <div class="band-summary">
+                <div class="band-box"><span>근경</span><b id="nearSummary">0 / 4</b></div>
+                <div class="band-box"><span>중경</span><b id="midSummary">0 / 4</b></div>
+                <div class="band-box"><span>원경</span><b id="farSummary">0 / 4</b></div>
+              </div>
+              <div class="candidate-filter" id="candidateFilter">
+                <button class="active" data-band="all">전체</button><button data-band="near">근경</button><button data-band="mid">중경</button><button data-band="far">원경</button>
+              </div>
+              <div class="candidate-list" id="candidateList"><div class="candidate-note">아직 후보를 조회하지 않았습니다. 경관계획상 지정 조망점은 아래 GeoJSON으로 추가하면 의무후보로 처리됩니다.</div></div>
+              <div class="upload-inline">
+                <input id="officialVpFileName" value="경관계획 조망점 GeoJSON (선택)" readonly />
+                <button class="btn ghost" id="officialVpUpload">불러오기</button><input id="officialVpFile" type="file" accept=".json,.geojson,application/geo+json,application/json" hidden />
+              </div>
+              <div class="adapter-grid">
+                <div class="adapter-item"><b>보행량</b><span>Day 4 연동 예정. 값이 없으면 일반 후보는 최종선정을 보류합니다.</span></div>
+                <div class="adapter-item"><b>20m 이상 교차로</b><span>공식 도로폭원/도로축 데이터 어댑터 연결 전까지 자동확정하지 않습니다.</span></div>
+                <div class="adapter-item"><b>경관계획 조망점</b><span>공식 DB 구축 전에는 업로드한 지정 조망점을 의무후보로 처리합니다.</span></div>
+                <div class="adapter-item"><b>개발용 후보 API</b><span>현재 기능검증은 OSM 공개 API를 사용하며 최종 성과품 근거로 사용하지 않습니다.</span></div>
+              </div>
+              <div class="candidate-note">선정 로직: 경관계획상 지정 조망점은 우선 포함하고, 남은 자리는 보행량 값이 확보된 일반 후보를 높은 순서대로 채웁니다. 보행량 미연동 상태에서는 일반 후보를 임의 선정하지 않습니다.</div>
+            </section>
+          </div>
+          <div class="actions"><button class="btn ghost prev" data-prev="2">이전</button><button class="btn primary next" data-next="4">3D 시뮬레이션으로</button></div>
+        </article>
+
+        <article class="panel step-panel" data-panel="4">
+          <div class="panel-head"><div><h2>3D 경관 시뮬레이션</h2><p>동일 조망점·동일 카메라 조건에서 사업시행 전·후를 비교하는 화면 목업입니다.</p></div><span class="chip">핵심기능</span></div>
+          <section class="card sim-controls"><div><label>조망점</label><select id="vpSelect"><option>A · 근경 북측</option><option>B · 근경 남측</option><option>C · 중경 서측</option><option>D · 중경 동측</option></select></div><div><label>카메라 높이</label><input value="1.7 m" readonly /></div><div><label>조망거리</label><input value="120 m" readonly /></div><div><label>FOV</label><input value="60°" readonly /></div></section>
+          <div class="grid two sim-grid"><section class="card scene-card"><div class="scene-head"><b>사업시행 전</b><span>VIEW A</span></div><div class="city-scene before"><div class="skyline low s1"></div><div class="skyline low s2"></div><div class="skyline mid s3"></div><div class="skyline low s4"></div><div class="street"></div><div class="camera-mark">●</div></div></section><section class="card scene-card"><div class="scene-head"><b>사업시행 후</b><span>VIEW A</span></div><div class="city-scene after"><div class="skyline low s1"></div><div class="skyline low s2"></div><div class="skyline project s5"></div><div class="skyline mid s3"></div><div class="skyline low s4"></div><div class="street"></div><div class="camera-mark">●</div></div></section></div>
+          <section class="card analysis-card"><div><span>자동 경관분석</span><b>Day 11 연결 예정</b></div><p>예시: 대상지는 주요 가로에서 조망되는 계획건축물로서 주변 건축물과의 높이 관계 및 가로경관 연속성을 검토합니다.</p></section>
+          <div class="actions"><button class="btn ghost prev" data-prev="3">이전</button><button class="btn primary next" data-next="5">검토서 미리보기</button></div>
+        </article>
+
+        <article class="panel step-panel" data-panel="5">
+          <div class="panel-head"><div><h2>경관성 검토서</h2><p>일반형과 상세형을 동일 엔진에서 생성하되, 분석범위와 페이지 구성을 다르게 합니다.</p></div><span class="chip">산출물</span></div>
+          <div class="report-type-grid"><button class="report-type active" data-report="general"><span>일반형</span><b>20만원형</b><em>기본방향 · 조망점 · 전후 시뮬레이션 · 조망점별 분석 · 종합검토</em></button><button class="report-type" data-report="detail"><span>상세형</span><b>30만원형</b><em>일반형 + 경관현황 · 관련기준 · 경관구조 · 조건부 스카이라인 · 저감방안</em></button></div>
+          <div class="grid report-layout"><section class="card report-preview"><div class="paper"><div class="paper-top">경관성 검토서</div><h3 id="reportProject">장안동 314-1 일대 경관성 검토</h3><div class="paper-map"><span>조망점 위치도</span><i>A</i><i>B</i><i>C</i><i>D</i></div><div class="paper-row"><div class="thumb before-thumb">사업시행 전</div><div class="thumb after-thumb">사업시행 후</div></div><div class="paper-text"><b>조망점 A 경관분석</b><p>대상지와 주변 건축물의 높이 및 가로경관 연속성을 검토한 결과를 자동 작성합니다.</p></div><div class="watermark">MOCKUP</div></div></section><section class="card output-card"><h3>산출물 구성</h3><ul id="outputList"><li>경관성 검토 개요</li><li>기본방향 및 관련 경관계획</li><li>조망점 선정</li><li>사업시행 전·후 시뮬레이션</li><li>조망점별 경관분석</li><li>종합검토</li></ul><div class="divider"></div><button class="btn secondary full" id="previewBtn">5페이지 미리보기</button><button class="btn primary full" id="mockDownload">목업 PDF 생성 흐름 확인</button><p class="fineprint">실제 PDF/HWPX·워터마크·결제는 후속 단계에서 구현합니다.</p></section></div>
+          <div class="actions"><button class="btn ghost prev" data-prev="4">이전</button><button class="btn primary" id="restartBtn">처음부터 다시보기</button></div>
+        </article>
+      </section>
+    </main>
+  </div>
+  <div class="toast" id="toast"></div>
+  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"></script>
+  <script>
+const steps = [...document.querySelectorAll('.step')];
+const panels = [...document.querySelectorAll('.step-panel')];
+const pageTitle = document.getElementById('pageTitle');
+const titles = {1:'대상지 설정',2:'계획안 입력',3:'조망점 분석',4:'3D 경관 시뮬레이션',5:'경관성 검토서'};
+const toast = document.getElementById('toast');
+
+function showToast(msg){
+  toast.textContent=msg; toast.classList.add('show');
+  clearTimeout(showToast._t); showToast._t=setTimeout(()=>toast.classList.remove('show'),2200);
+}
+function go(step){
+  steps.forEach(s=>s.classList.toggle('active', s.dataset.step===String(step)));
+  panels.forEach(p=>p.classList.toggle('active', p.dataset.panel===String(step)));
+  pageTitle.textContent=titles[step]; window.scrollTo({top:0,behavior:'smooth'});
+  if(step===1 && siteMap) setTimeout(()=>siteMap.invalidateSize(),80);
+  if(step===3){
+    initCandidateMap();
+    setTimeout(()=>{ if(candidateMap){candidateMap.invalidateSize();syncCandidateSite();} },100);
+  }
+}
+steps.forEach(s=>s.addEventListener('click',()=>go(+s.dataset.step)));
+document.querySelectorAll('.next').forEach(b=>b.addEventListener('click',()=>go(+b.dataset.next)));
+document.querySelectorAll('.prev').forEach(b=>b.addEventListener('click',()=>go(+b.dataset.prev)));
+
+// -----------------------------
+// Day 2: SITE SETUP
+// -----------------------------
+const STORAGE_KEY='landscapeReview.site.v1';
+const SEOUL_CENTER=[37.5665,126.9780];
+let siteMap=null, siteMarker=null, siteBoundaryLayer=null, draftLine=null;
+let drawing=false, draftLatLngs=[];
+let geocodeLockedUntil=0;
+let siteState={projectName:'', label:'', method:'', center:null, boundary:null};
+
+function initSiteMap(){
+  if(typeof L==='undefined'){
+    document.getElementById('mapStatus').innerHTML='<b>지도 라이브러리 로드 실패</b><span>인터넷 연결 후 다시 열어주세요.</span>';
+    return;
+  }
+  siteMap=L.map('siteMap',{zoomControl:true,preferCanvas:true}).setView(SEOUL_CENTER,12);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    maxZoom:19,
+    attribution:'&copy; OpenStreetMap contributors'
+  }).addTo(siteMap);
+  siteMap.on('click',e=>{
+    if(drawing){ addDraftPoint(e.latlng); return; }
+    setCenter([e.latlng.lat,e.latlng.lng],'지도 클릭',`${e.latlng.lat.toFixed(6)}, ${e.latlng.lng.toFixed(6)}`);
+  });
+}
+
+function isFiniteCoord(lat,lng){ return Number.isFinite(lat)&&Number.isFinite(lng)&&lat>=-90&&lat<=90&&lng>=-180&&lng<=180; }
+function centerFromBoundary(geojson){
+  try{
+    const temp=L.geoJSON(geojson); const c=temp.getBounds().getCenter(); temp.remove(); return [c.lat,c.lng];
+  }catch(_){ return null; }
+}
+function clearMapGeometry(){
+  if(siteMarker){siteMap.removeLayer(siteMarker);siteMarker=null;}
+  if(siteBoundaryLayer){siteMap.removeLayer(siteBoundaryLayer);siteBoundaryLayer=null;}
+  if(draftLine){siteMap.removeLayer(draftLine);draftLine=null;}
+  draftLatLngs=[]; drawing=false;
+  document.getElementById('finishPolygon').disabled=true;
+  document.getElementById('drawPolygon').textContent='지도에서 구역계 그리기';
+}
+function renderBoundary(geojson,fit=true){
+  if(!siteMap || !geojson) return;
+  if(siteBoundaryLayer) siteMap.removeLayer(siteBoundaryLayer);
+  siteBoundaryLayer=L.geoJSON(geojson,{style:{color:'#b27a3b',weight:3,fillColor:'#b27a3b',fillOpacity:.18}}).addTo(siteMap);
+  if(fit && siteBoundaryLayer.getBounds().isValid()) siteMap.fitBounds(siteBoundaryLayer.getBounds(),{padding:[40,40]});
+}
+function renderMarker(center,fit=false){
+  if(!siteMap || !center) return;
+  if(siteMarker) siteMap.removeLayer(siteMarker);
+  siteMarker=L.marker(center).addTo(siteMap).bindPopup('대상지 중심점');
+  if(fit) siteMap.setView(center,17);
+}
+function setCenter(center,method,label,fit=true){
+  const [lat,lng]=center.map(Number);
+  if(!isFiniteCoord(lat,lng)){showToast('올바른 위도·경도를 입력하세요.');return;}
+  if(siteBoundaryLayer){siteMap.removeLayer(siteBoundaryLayer);siteBoundaryLayer=null;}
+  siteState.boundary=null;
+  siteState.center=[lat,lng]; siteState.method=method; siteState.label=label||`${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+  document.getElementById('latInput').value=lat.toFixed(6);
+  document.getElementById('lngInput').value=lng.toFixed(6);
+  renderMarker([lat,lng],fit); updateSiteSummary();
+}
+function setBoundary(geojson,method,label){
+  const center=centerFromBoundary(geojson);
+  if(!center){showToast('구역계 도형을 읽을 수 없습니다.');return;}
+  siteState.boundary=geojson; siteState.center=center; siteState.method=method; siteState.label=label||'구역계';
+  document.getElementById('latInput').value=center[0].toFixed(6);
+  document.getElementById('lngInput').value=center[1].toFixed(6);
+  renderBoundary(geojson,true); renderMarker(center,false); updateSiteSummary();
+}
+function updateSiteSummary(){
+  const c=siteState.center;
+  document.getElementById('siteSummary').textContent=siteState.label||'미지정';
+  document.getElementById('siteMethod').textContent=siteState.method||'-';
+  document.getElementById('siteCoord').textContent=c?`${c[0].toFixed(6)}, ${c[1].toFixed(6)}`:'-';
+  document.getElementById('siteBoundary').textContent=siteState.boundary?'있음':'없음';
+  document.getElementById('mapStatus').innerHTML=c
+    ? `<b>${escapeHtml(siteState.label||'대상지')}</b><span>${escapeHtml(siteState.method||'입력')} · ${c[0].toFixed(6)}, ${c[1].toFixed(6)}${siteState.boundary?' · 구역계 확보':''}</span>`
+    : '<b>대상지 미지정</b><span>주소·좌표·지도·GeoJSON 중 하나를 사용하세요.</span>';
+}
+function escapeHtml(s){return String(s).replace(/[&<>'"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[m]));}
+
+async function geocodeAddress(query){
+  if(location.protocol==='file:'){showToast('주소검색은 로컬 정적서버에서 실행하세요. 좌표·지도·GeoJSON은 바로 사용할 수 있습니다.');return;}
+  const q=query.trim(); if(!q){showToast('검색할 주소를 입력하세요.');return;}
+  const cacheKey='geocode:'+q.toLowerCase();
+  const cached=localStorage.getItem(cacheKey);
+  if(cached){
+    const hit=JSON.parse(cached); setCenter([+hit.lat,+hit.lon],'주소 검색',hit.display_name,true); showToast('캐시된 주소검색 결과를 불러왔습니다.'); return;
+  }
+  const now=Date.now();
+  if(now<geocodeLockedUntil){showToast('주소검색은 1초에 1회만 가능합니다.');return;}
+  geocodeLockedUntil=now+1100;
+  const btn=document.getElementById('searchBtn'); const old=btn.textContent; btn.disabled=true; btn.textContent='검색 중…';
+  try{
+    const url='https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=kr&q='+encodeURIComponent(q);
+    const res=await fetch(url,{headers:{'Accept':'application/json','Accept-Language':'ko'}});
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const rows=await res.json();
+    if(!rows.length){showToast('검색결과가 없습니다.');return;}
+    const hit=rows[0]; localStorage.setItem(cacheKey,JSON.stringify({lat:hit.lat,lon:hit.lon,display_name:hit.display_name}));
+    setCenter([+hit.lat,+hit.lon],'주소 검색',hit.display_name,true); showToast('주소검색 결과를 적용했습니다.');
+  }catch(err){
+    showToast('주소검색 실패 — 좌표/지도/GeoJSON 입력을 사용하세요.');
+  }finally{btn.disabled=false;btn.textContent=old;}
+}
+
+document.getElementById('searchBtn').addEventListener('click',()=>geocodeAddress(document.getElementById('siteSearch').value));
+document.getElementById('siteSearch').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();geocodeAddress(e.currentTarget.value);}});
+document.getElementById('applyCoord').addEventListener('click',()=>{
+  const lat=Number(document.getElementById('latInput').value), lng=Number(document.getElementById('lngInput').value);
+  setCenter([lat,lng],'좌표 입력',`${lat.toFixed(6)}, ${lng.toFixed(6)}`,true);
+});
+
+const siteUpload=document.getElementById('siteUpload'), siteFile=document.getElementById('siteFile');
+siteUpload.addEventListener('click',()=>siteFile.click());
+siteFile.addEventListener('change',async()=>{
+  const file=siteFile.files[0]; if(!file) return;
+  try{
+    const json=JSON.parse(await file.text());
+    const geojson=normalizeGeoJSON(json);
+    setBoundary(geojson,'GeoJSON 업로드',file.name);
+    siteUpload.querySelector('strong').textContent=file.name;
+    showToast('GeoJSON 구역계를 적용했습니다.');
+  }catch(err){showToast('GeoJSON 파일을 읽지 못했습니다.');}
+});
+function normalizeGeoJSON(json){
+  if(json.type==='FeatureCollection') return json;
+  if(json.type==='Feature') return json;
+  if(['Polygon','MultiPolygon'].includes(json.type)) return {type:'Feature',properties:{},geometry:json};
+  throw new Error('Unsupported GeoJSON');
+}
+
+function addDraftPoint(latlng){
+  draftLatLngs.push(latlng);
+  if(draftLine) siteMap.removeLayer(draftLine);
+  draftLine=L.polyline(draftLatLngs,{color:'#b27a3b',weight:3,dashArray:'7 6'}).addTo(siteMap);
+  document.getElementById('finishPolygon').disabled=draftLatLngs.length<3;
+  document.getElementById('mapHint').textContent=`구역계 그리기: ${draftLatLngs.length}개 점 · 3개 이상 찍고 완료`;
+}
+document.getElementById('drawPolygon').addEventListener('click',()=>{
+  if(!siteMap){showToast('지도가 준비되지 않았습니다.');return;}
+  drawing=!drawing;
+  if(drawing){
+    draftLatLngs=[]; if(draftLine){siteMap.removeLayer(draftLine);draftLine=null;}
+    document.getElementById('drawPolygon').textContent='그리기 취소';
+    document.getElementById('finishPolygon').disabled=true;
+    document.getElementById('mapHint').textContent='구역계 꼭짓점을 지도에서 순서대로 클릭하세요.';
+    showToast('지도에서 구역계 꼭짓점을 클릭하세요.');
+  }else{
+    if(draftLine){siteMap.removeLayer(draftLine);draftLine=null;} draftLatLngs=[];
+    document.getElementById('drawPolygon').textContent='지도에서 구역계 그리기';
+    document.getElementById('finishPolygon').disabled=true;
+    document.getElementById('mapHint').textContent='지도 클릭 시 중심점을 지정할 수 있습니다.';
+  }
+});
+document.getElementById('finishPolygon').addEventListener('click',()=>{
+  if(draftLatLngs.length<3) return;
+  const coords=draftLatLngs.map(p=>[p.lng,p.lat]); coords.push(coords[0]);
+  const feature={type:'Feature',properties:{source:'map-draw'},geometry:{type:'Polygon',coordinates:[coords]}};
+  if(draftLine){siteMap.removeLayer(draftLine);draftLine=null;}
+  drawing=false; draftLatLngs=[];
+  document.getElementById('drawPolygon').textContent='지도에서 구역계 그리기';
+  document.getElementById('finishPolygon').disabled=true;
+  document.getElementById('mapHint').textContent='지도 클릭 시 중심점을 지정할 수 있습니다.';
+  setBoundary(feature,'지도 구역계 입력','사용자 작성 구역계'); showToast('구역계를 확정했습니다.');
+});
+
+document.getElementById('clearSite').addEventListener('click',()=>{
+  clearMapGeometry(); siteState={projectName:'',label:'',method:'',center:null,boundary:null};
+  ['siteSearch','latInput','lngInput'].forEach(id=>document.getElementById(id).value='');
+  siteUpload.querySelector('strong').textContent='GeoJSON 구역계 업로드'; updateSiteSummary();
+  if(siteMap) siteMap.setView(SEOUL_CENTER,12); showToast('대상지 입력을 초기화했습니다.');
+});
+document.getElementById('saveSite').addEventListener('click',()=>{
+  if(!siteState.center){showToast('저장할 대상지를 먼저 지정하세요.');return;}
+  siteState.projectName=document.getElementById('projectName').value.trim();
+  localStorage.setItem(STORAGE_KEY,JSON.stringify(siteState)); showToast('대상지를 브라우저에 저장했습니다.');
+});
+document.getElementById('loadSite').addEventListener('click',()=>{
+  const raw=localStorage.getItem(STORAGE_KEY); if(!raw){showToast('저장된 대상지가 없습니다.');return;}
+  try{
+    siteState=JSON.parse(raw);
+    if(siteState.projectName){document.getElementById('projectName').value=siteState.projectName;document.getElementById('reportProject').textContent=siteState.projectName;}
+    clearMapGeometry();
+    if(siteState.boundary) renderBoundary(siteState.boundary,true);
+    if(siteState.center){renderMarker(siteState.center,!siteState.boundary);document.getElementById('latInput').value=siteState.center[0].toFixed(6);document.getElementById('lngInput').value=siteState.center[1].toFixed(6);}
+    updateSiteSummary(); showToast('저장된 대상지를 불러왔습니다.');
+  }catch(_){showToast('저장값을 읽지 못했습니다.');}
+});
+
+// -----------------------------
+// Existing Day 1 mock functions kept intact
+// -----------------------------
+function bindUpload(boxId,inputId){
+  const box=document.getElementById(boxId), input=document.getElementById(inputId);
+  box.addEventListener('click',()=>input.click());
+  input.addEventListener('change',()=>{
+    if(!input.files[0]) return;
+    box.querySelector('strong').textContent=input.files[0].name;
+    showToast('파일 선택 흐름을 확인했습니다.');
+  });
+}
+bindUpload('planUpload','planFile');
+
+const modeBtns=[...document.querySelectorAll('#planMode button')];
+modeBtns.forEach(b=>b.addEventListener('click',()=>{
+  modeBtns.forEach(x=>x.classList.remove('active')); b.classList.add('active');
+  document.getElementById('massMode').classList.toggle('hidden', b.dataset.mode!=='mass');
+  document.getElementById('modelMode').classList.toggle('hidden', b.dataset.mode!=='model');
+}));
+document.getElementById('generateMass').addEventListener('click',()=>{
+  const h=Number(document.getElementById('buildingHeight').value||50), c=Number(document.getElementById('buildingCount').value||1);
+  document.getElementById('massModel').style.height=Math.min(240,90+h*1.5)+'px';
+  document.getElementById('massLabel').textContent=h+'m'; document.getElementById('heightMetric').textContent=h+' m'; document.getElementById('countMetric').textContent=c+'동';
+  showToast('계획 매스 미리보기를 갱신했습니다.');
+});
+
+// -----------------------------
+// Day 3: VIEWPOINT CANDIDATE ENGINE
+// -----------------------------
+const VIEW_RULES={nearMax:250,midMax:500,farMax:1000,targetPerBand:4};
+let candidateMap=null,candidateSiteLayers=[],candidateLayers=null,candidateItems=[],officialViewpoints=[],candidateBandFilter='all';
+const categoryLabels={designated:'경관계획 조망점',subway:'지하철 출입구',bus:'버스정류장',university:'대학 정문 후보',heritage:'문화유산',intersection:'20m+ 교차로',park:'공원',square:'광장',facility:'주요시설',viewpoint:'원거리 조망가능 지점'};
+
+function initCandidateMap(){
+  if(candidateMap||typeof L==='undefined') return;
+  candidateMap=L.map('candidateMap',{zoomControl:true,preferCanvas:true}).setView(siteState.center||SEOUL_CENTER,14);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'}).addTo(candidateMap);
+  candidateLayers=L.layerGroup().addTo(candidateMap); syncCandidateSite();
+}
+function syncCandidateSite(){
+  if(!candidateMap) return;
+  candidateSiteLayers.forEach(x=>candidateMap.removeLayer(x));candidateSiteLayers=[];
+  if(siteState.boundary){
+    const layer=L.geoJSON(siteState.boundary,{style:{color:'#b27a3b',weight:3,fillColor:'#b27a3b',fillOpacity:.14}}).addTo(candidateMap);
+    candidateSiteLayers.push(layer);if(layer.getBounds().isValid())candidateMap.fitBounds(layer.getBounds(),{padding:[45,45],maxZoom:16});
+  }else if(siteState.center){
+    const icon=L.divIcon({className:'',html:'<div class="vp-site-icon"></div>',iconSize:[18,18],iconAnchor:[9,9]});
+    candidateSiteLayers.push(L.marker(siteState.center,{icon}).addTo(candidateMap).bindTooltip('대상지 중심'));candidateMap.setView(siteState.center,15);
+  }
+  updateCandidateStatus();
+}
+function updateCandidateStatus(extra=''){
+  const el=document.getElementById('candidateStatus');
+  if(!siteState.center){el.innerHTML='<b>대상지를 먼저 지정하세요.</b><span>대상지 중심 또는 구역계가 있어야 후보를 조회할 수 있습니다.</span>';return;}
+  const basis=siteState.boundary?'구역계 경계거리 기준':'중심점 거리 기준';
+  el.innerHTML=`<b>${candidateItems.length?candidateItems.length+'개 후보 확보':'후보 조회 준비'}</b><span>${basis} · 근경 250m · 중경 500m · 원경 1,000m 이내${extra?' · '+escapeHtml(extra):''}</span>`;
+}
+function haversine(a,b,c,d){const R=6371000,r=Math.PI/180,p1=a*r,p2=c*r,da=(c-a)*r,do_=(d-b)*r,x=Math.sin(da/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(do_/2)**2;return 2*R*Math.asin(Math.sqrt(x));}
+function localPt(lat,lng,lat0,lng0){const r=Math.PI/180;return{x:(lng-lng0)*111320*Math.cos(lat0*r),y:(lat-lat0)*110540};}
+function segDist(p,a,b){const vx=b.x-a.x,vy=b.y-a.y,wx=p.x-a.x,wy=p.y-a.y,c1=vx*wx+vy*wy;if(c1<=0)return Math.hypot(p.x-a.x,p.y-a.y);const c2=vx*vx+vy*vy;if(c2<=c1)return Math.hypot(p.x-b.x,p.y-b.y);const t=c1/c2;return Math.hypot(p.x-a.x-t*vx,p.y-a.y-t*vy);}
+function inRing(pt,ring){let inside=false;for(let i=0,j=ring.length-1;i<ring.length;j=i++){const xi=ring[i][0],yi=ring[i][1],xj=ring[j][0],yj=ring[j][1];if(((yi>pt[1])!==(yj>pt[1]))&&(pt[0]<(xj-xi)*(pt[1]-yi)/(yj-yi+1e-12)+xi))inside=!inside;}return inside;}
+function ringsOf(gj){const out=[],add=g=>{if(!g)return;if(g.type==='Polygon')g.coordinates.forEach(r=>out.push(r));if(g.type==='MultiPolygon')g.coordinates.forEach(p=>p.forEach(r=>out.push(r)));};if(gj.type==='FeatureCollection')gj.features.forEach(f=>add(f.geometry));else if(gj.type==='Feature')add(gj.geometry);else add(gj);return out;}
+function distanceToSite(lat,lng){
+  if(!siteState.center)return Infinity;if(!siteState.boundary)return haversine(siteState.center[0],siteState.center[1],lat,lng);
+  const rings=ringsOf(siteState.boundary);if(rings.some(r=>inRing([lng,lat],r)))return 0;
+  const [lat0,lng0]=siteState.center,p=localPt(lat,lng,lat0,lng0);let min=Infinity;
+  rings.forEach(r=>{for(let i=1;i<r.length;i++){min=Math.min(min,segDist(p,localPt(r[i-1][1],r[i-1][0],lat0,lng0),localPt(r[i][1],r[i][0],lat0,lng0)));}});return min;
+}
+function bandFor(d){return d<=250?'near':d<=500?'mid':d<=1000?'far':null;}
+function bandLabel(b){return b==='near'?'근경':b==='mid'?'중경':b==='far'?'원경':'범위외';}
+function direction(lat,lng){if(!siteState.center)return'-';const[a,b]=siteState.center,r=Math.PI/180,y=Math.sin((lng-b)*r)*Math.cos(lat*r),x=Math.cos(a*r)*Math.sin(lat*r)-Math.sin(a*r)*Math.cos(lat*r)*Math.cos((lng-b)*r),deg=(Math.atan2(y,x)*180/Math.PI+360)%360,dirs=['북','북동','동','남동','남','남서','서','북서'];return dirs[Math.round(deg/45)%8];}
+function elLL(el){return Number.isFinite(el.lat)&&Number.isFinite(el.lon)?[el.lat,el.lon]:el.center&&Number.isFinite(el.center.lat)&&Number.isFinite(el.center.lon)?[el.center.lat,el.center.lon]:null;}
+function osmCat(t){if(t.railway==='subway_entrance')return'subway';if(t.highway==='bus_stop'||(t.public_transport==='platform'&&t.bus==='yes'))return'bus';if(t.historic||t.heritage)return'heritage';if(t.leisure==='park')return'park';if(t.place==='square')return'square';if(t.tourism==='viewpoint')return'viewpoint';if(['hospital','townhall','courthouse','library','arts_centre','theatre','community_centre'].includes(t.amenity)||t.leisure==='stadium')return'facility';return null;}
+function overpassQuery(lat,lng,r){return `[out:json][timeout:25];(node(around:${r},${lat},${lng})["railway"="subway_entrance"];node(around:${r},${lat},${lng})["highway"="bus_stop"];node(around:${r},${lat},${lng})["public_transport"="platform"]["bus"="yes"];nwr(around:${r},${lat},${lng})["historic"];nwr(around:${r},${lat},${lng})["heritage"];nwr(around:${r},${lat},${lng})["leisure"="park"];nwr(around:${r},${lat},${lng})["place"="square"];node(around:${r},${lat},${lng})["tourism"="viewpoint"];nwr(around:${r},${lat},${lng})["amenity"~"hospital|townhall|courthouse|library|arts_centre|theatre|community_centre"];nwr(around:${r},${lat},${lng})["leisure"="stadium"];nwr(around:${r},${lat},${lng})["amenity"="university"];node(around:${r},${lat},${lng})["barrier"="gate"];node(around:${r},${lat},${lng})["entrance"="main"];);out center tags;`;}
+function normalizeOsm(els){
+  const out=[],unis=els.filter(e=>(e.tags||{}).amenity==='university'&&elLL(e)),gates=els.filter(e=>{const t=e.tags||{};return(t.barrier==='gate'||t.entrance==='main')&&elLL(e);});
+  els.forEach(e=>{const cat=osmCat(e.tags||{}),ll=elLL(e);if(!cat||!ll)return;out.push({id:`osm-${e.type}-${e.id}-${cat}`,lat:ll[0],lng:ll[1],category:cat,name:e.tags?.name||e.tags?.['name:ko']||categoryLabels[cat],source:'OSM 개발용',mandatory:false,pedestrianScore:null,verification:'공식 API 교체 전 개발후보'});});
+  unis.forEach((u,i)=>{const ull=elLL(u);let best=null,bd=Infinity;gates.forEach(g=>{const ll=elLL(g),d=haversine(ull[0],ull[1],ll[0],ll[1]);if(d<bd&&d<=350){best=ll;bd=d;}});const ll=best||ull;out.push({id:`univ-${u.id}-${i}`,lat:ll[0],lng:ll[1],category:'university',name:(u.tags?.name||u.tags?.['name:ko']||'대학교')+(best?' 정문 후보':' 대표지점'),source:'OSM 개발용',mandatory:false,pedestrianScore:null,verification:best?'정문 후보 · 확인 필요':'정문 좌표 미확인'});});
+  return out;
+}
+function enrich(rows){
+  const seen=new Map();rows.forEach(r=>{const k=`${r.category}:${r.lat.toFixed(5)}:${r.lng.toFixed(5)}`;if(!seen.has(k)||r.mandatory)seen.set(k,r);});
+  return [...seen.values()].map(r=>{const d=Math.round(distanceToSite(r.lat,r.lng));return{...r,distance:d,band:bandFor(d),direction:direction(r.lat,r.lng)};}).filter(r=>r.band);
+}
+function selection(rows){
+  const out={near:[],mid:[],far:[],pending:{near:0,mid:0,far:0}};
+  ['near','mid','far'].forEach(b=>{const br=rows.filter(r=>r.band===b),must=br.filter(r=>r.mandatory),scored=br.filter(r=>!r.mandatory&&Number.isFinite(r.pedestrianScore)).sort((a,b)=>b.pedestrianScore-a.pedestrianScore),target=Math.max(4,must.length);out[b]=[...must,...scored.slice(0,Math.max(0,target-must.length))];out.pending[b]=Math.max(0,4-out[b].length);});return out;
+}
+function renderCandidates(){
+  initCandidateMap();if(candidateLayers)candidateLayers.clearLayers();const sel=selection(candidateItems),ids=new Set(['near','mid','far'].flatMap(b=>sel[b].map(x=>x.id)));
+  candidateItems.forEach(r=>{const state=r.mandatory?'mandatory':ids.has(r.id)?'selected':'pending',icon=L.divIcon({className:'',html:`<div class="vp-marker ${state}">${bandLabel(r.band)[0]}</div>`,iconSize:[28,28],iconAnchor:[14,14]});const m=L.marker([r.lat,r.lng],{icon}).addTo(candidateLayers);m.bindTooltip(`${escapeHtml(r.name)}<br>${bandLabel(r.band)} · ${r.distance}m · ${escapeHtml(categoryLabels[r.category])}`);m.on('click',()=>candidateMap.setView([r.lat,r.lng],17));});
+  ['near','mid','far'].forEach((b,i)=>document.getElementById(['nearSummary','midSummary','farSummary'][i]).textContent=`${sel[b].length} / 4`);
+  document.getElementById('candidateCount').textContent=`${candidateItems.length}개`;
+  const list=document.getElementById('candidateList'),ord={near:0,mid:1,far:2},filtered=candidateItems.filter(r=>candidateBandFilter==='all'||r.band===candidateBandFilter).sort((a,b)=>ord[a.band]-ord[b.band]||Number(b.mandatory)-Number(a.mandatory)||a.distance-b.distance);
+  list.innerHTML=filtered.length?filtered.map(r=>{let state='보행량 연동 대기',cls='';if(r.mandatory){state='의무 포함';cls='mandatory';}else if(ids.has(r.id)){state='선정';cls='ready';}return `<div class="candidate-row ${ids.has(r.id)?'selected':''}" data-id="${escapeHtml(r.id)}"><div class="top"><div><b>${escapeHtml(r.name)}</b><em>${bandLabel(r.band)} · ${r.distance}m · ${r.direction}측 · ${r.source}</em></div><span class="state-badge ${cls}">${state}</span></div><div style="margin-top:6px;display:flex;gap:5px;flex-wrap:wrap"><span class="type-badge">${escapeHtml(categoryLabels[r.category])}</span><span class="type-badge">${escapeHtml(r.verification||'')}</span></div></div>`;}).join(''):'<div class="candidate-note">표시할 후보가 없습니다.</div>';
+  list.querySelectorAll('[data-id]').forEach(x=>x.onclick=()=>{const r=candidateItems.find(v=>v.id===x.dataset.id);if(r)candidateMap.setView([r.lat,r.lng],17);});
+  const pending=sel.pending.near+sel.pending.mid+sel.pending.far;updateCandidateStatus(pending?`보행량 미연동으로 ${pending}개 일반 선정 슬롯 보류`:'기본 선정수 충족');
+}
+async function fetchCandidates(){
+  if(!siteState.center){showToast('대상지를 먼저 지정하세요.');return;}initCandidateMap();const b=document.getElementById('fetchCandidates'),old=b.textContent;b.disabled=true;b.textContent='조회 중…';updateCandidateStatus('개발용 후보 API 조회 중');
+  try{const[lat,lng]=siteState.center,q=overpassQuery(lat,lng,1150),res=await fetch('https://overpass-api.de/api/interpreter',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:'data='+encodeURIComponent(q)});if(!res.ok)throw new Error(res.status);const d=await res.json();candidateItems=enrich([...officialViewpoints,...normalizeOsm(d.elements||[])]);renderCandidates();showToast(`후보 ${candidateItems.length}개를 불러왔습니다.`);}
+  catch(e){candidateItems=enrich([...officialViewpoints]);renderCandidates();updateCandidateStatus('개발용 후보 API 조회 실패 · 공식 API 어댑터 연결 필요');showToast('후보 API 조회에 실패했습니다.');}
+  finally{b.disabled=false;b.textContent=old;}
+}
+function repPoint(f){if(f?.geometry?.type==='Point')return[f.geometry.coordinates[1],f.geometry.coordinates[0]];const c=[];(function walk(x){if(!Array.isArray(x))return;if(typeof x[0]==='number'&&typeof x[1]==='number')c.push(x);else x.forEach(walk);})(f?.geometry?.coordinates);if(!c.length)return null;return[c.reduce((a,b)=>a+b[1],0)/c.length,c.reduce((a,b)=>a+b[0],0)/c.length];}
+function parseOfficial(j){const fs=j.type==='FeatureCollection'?j.features:j.type==='Feature'?[j]:j.type==='Point'?[{type:'Feature',properties:{},geometry:j}]:[];return fs.map((f,i)=>{const ll=repPoint(f);if(!ll)return null;return{id:`designated-${i}-${ll[0]}-${ll[1]}`,lat:ll[0],lng:ll[1],category:'designated',name:f.properties?.name||f.properties?.title||`경관계획 조망점 ${i+1}`,source:f.properties?.source||'사용자 제공 공식 조망점 DB',mandatory:true,pedestrianScore:null,verification:'경관계획상 지정'};}).filter(Boolean);}
+document.getElementById('fetchCandidates').onclick=fetchCandidates;
+document.getElementById('clearCandidates').onclick=()=>{candidateItems=enrich([...officialViewpoints]);renderCandidates();};
+document.querySelectorAll('#candidateFilter button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#candidateFilter button').forEach(x=>x.classList.remove('active'));b.classList.add('active');candidateBandFilter=b.dataset.band;renderCandidates();});
+const officialVpFile=document.getElementById('officialVpFile');document.getElementById('officialVpUpload').onclick=()=>officialVpFile.click();officialVpFile.onchange=async()=>{const f=officialVpFile.files[0];if(!f)return;try{officialViewpoints=parseOfficial(JSON.parse(await f.text()));document.getElementById('officialVpFileName').value=`${f.name} · ${officialViewpoints.length}개`;candidateItems=enrich([...officialViewpoints,...candidateItems.filter(x=>x.source==='OSM 개발용')]);renderCandidates();showToast(`지정 조망점 ${officialViewpoints.length}개 반영`);}catch(e){showToast('GeoJSON을 읽지 못했습니다.');}};
+
+const reportBtns=[...document.querySelectorAll('.report-type')];
+const output=document.getElementById('outputList');
+const general=['경관성 검토 개요','기본방향 및 관련 경관계획','조망점 선정','사업시행 전·후 시뮬레이션','조망점별 경관분석','종합검토'];
+const detail=[...general.slice(0,2),'경관현황 상세분석','관련계획 및 기준 검토','경관구조 분석','조망점 선정','사업시행 전·후 시뮬레이션','조망점별 경관분석','조건부 스카이라인 분석','종합평가 및 저감방안'];
+function setReport(type){reportBtns.forEach(b=>b.classList.toggle('active',b.dataset.report===type));output.innerHTML=(type==='detail'?detail:general).map(x=>`<li>${x}</li>`).join('');}
+reportBtns.forEach(b=>b.addEventListener('click',()=>setReport(b.dataset.report)));
+document.getElementById('previewBtn').addEventListener('click',()=>showToast('실제 워터마크 출력은 후속 구현입니다.'));
+document.getElementById('mockDownload').addEventListener('click',()=>showToast('Day 10에서 실제 PDF 생성 기능을 연결합니다.'));
+document.getElementById('restartBtn').addEventListener('click',()=>go(1));
+document.getElementById('projectName').addEventListener('input',e=>document.getElementById('reportProject').textContent=e.target.value||'경관성 검토');
+
+initSiteMap();
+updateSiteSummary();
+updateCandidateStatus();
+
+</script>
+</body>
+</html>
