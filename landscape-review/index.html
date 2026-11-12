@@ -244,7 +244,7 @@ button,input,select{font:inherit}.hidden{display:none!important}
             <span class="chip">Day 3 실제기능</span>
           </div>
           <div class="rule-strip">
-            <div class="rule-card"><b>거리권</b><span>근경 0~250m · 중경 250~500m · 원경 500m 이상. 원경 검색상한은 개발 기본값 1,000m이며 법정 상한으로 쓰지 않습니다.</span></div>
+            <div class="rule-card"><b>거리권</b><span>대상지 내부는 제외합니다. 대상지 경계로부터 근경 0~250m · 중경 250~500m · 원경 500~1,000m로 구분합니다.</span></div>
             <div class="rule-card"><b>후보 대상</b><span>경관계획 조망점, 지하철 출입구, 버스정류장, 대학 정문, 문화유산, 20m 이상 교차로, 공원·광장·주요시설, 전망대 등.</span></div>
             <div class="rule-card"><b>최종선정</b><span>경관계획상 조망점은 우선 포함. 나머지는 보행량 자료 연동 후 각 거리권 5개를 기본 선정합니다.</span></div>
           </div>
@@ -255,7 +255,7 @@ button,input,select{font:inherit}.hidden{display:none!important}
                 <div class="toolbar-actions"><button class="btn secondary small" id="fetchCandidates">후보 조회</button><button class="btn ghost small" id="clearCandidates">후보 지우기</button></div>
               </div>
               <div id="candidateMap" class="candidate-map"></div>
-              <div class="candidate-status" id="candidateStatus"><b>대상지를 먼저 지정하세요.</b><span>대상지 중심 또는 구역계가 있으면 반경 1km 범위의 후보를 조회합니다.</span></div>
+              <div class="candidate-status" id="candidateStatus"><b>대상지를 먼저 지정하세요.</b><span>대상지 내부는 제외하고, 대상지 경계로부터 1km 범위의 후보를 조회합니다.</span></div>
             </section>
             <section class="card candidate-panel">
               <div class="vp-list-head"><span>후보 및 선정상태</span><b id="candidateCount">0개</b></div>
@@ -883,32 +883,111 @@ document.getElementById('selectedBuildingHeight').addEventListener('input',e=>{
 // Day 3: VIEWPOINT CANDIDATE ENGINE
 // -----------------------------
 const VIEW_RULES={nearMax:250,midMax:500,farMax:1000,targetPerBand:5};
-let candidateMap=null,candidateSiteLayers=[],candidateLayers=null,candidateItems=[],officialViewpoints=[],candidateBandFilter='all';
-let viewpointRanking=null;
+const BAND_COLORS={near:'#ef4444',mid:'#f59e0b',far:'#2563eb'};
+const ZONING_LAYERS=[
+  ['LT_C_UQ111','도시지역','#eabf43'],
+  ['LT_C_UQ112','관리지역','#d4ae73'],
+  ['LT_C_UQ113','농림지역','#9dc66a'],
+  ['LT_C_UQ114','자연환경보전지역','#5da884']
+];
+let candidateMap=null,candidateSiteLayers=[],candidateRangeLayers=[],candidateLayers=null,candidateZoningLayer=null,candidateItems=[],officialViewpoints=[],candidateBandFilter='all';
+let candidateBaseLayers=null,viewpointRanking=null;
 const categoryLabels={designated:'경관계획 조망점',subway:'지하철 출입구',bus:'버스정류장',university:'대학 정문 후보',heritage:'문화유산',intersection:'20m+ 교차로',park:'공원',square:'광장',facility:'주요시설',viewpoint:'원거리 조망가능 지점'};
 
 function initCandidateMap(){
   if(candidateMap||typeof L==='undefined') return;
   candidateMap=L.map('candidateMap',{zoomControl:true,preferCanvas:true}).setView(siteState.center||SEOUL_CENTER,14);
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'}).addTo(candidateMap);
-  candidateLayers=L.layerGroup().addTo(candidateMap); syncCandidateSite();
+  const osm=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'});
+  const aerial=vworldReady()?L.tileLayer('https://api.vworld.kr/req/wmts/1.0.0/'+encodeURIComponent(VWORLD_CLIENT_KEY)+'/Satellite/{z}/{y}/{x}.jpeg',{maxZoom:19,attribution:'VWorld'}):osm;
+  aerial.addTo(candidateMap);
+  candidateBaseLayers={'항공사진':aerial,'일반지도':osm};
+  candidateZoningLayer=L.layerGroup().addTo(candidateMap);
+  candidateLayers=L.layerGroup().addTo(candidateMap);
+  L.control.layers(candidateBaseLayers,{'용도지역':candidateZoningLayer},{collapsed:false}).addTo(candidateMap);
+  L.control.scale({imperial:false}).addTo(candidateMap);
+  syncCandidateSite();
+}
+function siteBoundaryFeature(){
+  if(!siteState.boundary)return null;
+  try{
+    if(siteState.boundary.type==='Feature')return siteState.boundary;
+    if(siteState.boundary.type==='FeatureCollection'){
+      const fs=(siteState.boundary.features||[]).filter(f=>['Polygon','MultiPolygon'].includes(f.geometry?.type));
+      if(!fs.length)return null;
+      return fs.length===1?fs[0]:turf.combine({type:'FeatureCollection',features:fs}).features[0];
+    }
+    if(['Polygon','MultiPolygon'].includes(siteState.boundary.type))return turf.feature(siteState.boundary);
+  }catch(_){}
+  return null;
+}
+function drawCandidateRanges(){
+  candidateRangeLayers.forEach(x=>candidateMap.removeLayer(x));candidateRangeLayers=[];
+  const base=siteBoundaryFeature();
+  const styles=[
+    [1000,BAND_COLORS.far,'원경 1km'],
+    [500,BAND_COLORS.mid,'중경 500m'],
+    [250,BAND_COLORS.near,'근경 250m']
+  ];
+  for(const [meters,color,label] of styles){
+    try{
+      let layer;
+      if(base){
+        const buffered=turf.buffer(base,meters/1000,{units:'kilometers'});
+        layer=L.geoJSON(buffered,{interactive:false,style:{color,weight:2,dashArray:'7 6',fillColor:color,fillOpacity:.035}});
+      }else if(siteState.center){
+        layer=L.circle(siteState.center,{radius:meters,color,weight:2,dashArray:'7 6',fillColor:color,fillOpacity:.035,interactive:false});
+      }
+      if(layer){layer.addTo(candidateMap);layer.bindTooltip(label,{permanent:false});candidateRangeLayers.push(layer);}
+    }catch(_){}
+  }
+}
+async function loadCandidateZoning(){
+  if(!candidateZoningLayer)return;
+  candidateZoningLayer.clearLayers();
+  const base=siteBoundaryFeature();
+  if(!base||!vworldReady())return;
+  let queryGeometry=base.geometry;
+  try{queryGeometry=turf.buffer(base,1.05,{units:'kilometers'}).geometry;}catch(_){}
+  const results=await Promise.allSettled(ZONING_LAYERS.map(([id])=>vworldRequest(queryGeometry,id,1,1000)));
+  results.forEach((result,i)=>{
+    if(result.status!=='fulfilled')return;
+    const [id,label,color]=ZONING_LAYERS[i];
+    const fs=result.value?.response?.result?.featureCollection?.features||[];
+    if(!Array.isArray(fs)||!fs.length)return;
+    L.geoJSON({type:'FeatureCollection',features:fs},{
+      style:{color,weight:1.2,fillColor:color,fillOpacity:.22},
+      onEachFeature:(feature,layer)=>{
+        const p=feature.properties||{};
+        const name=p.uname||p.UNAME||p.dgm_nm||p.DGM_NM||label;
+        layer.bindTooltip(String(name));
+      }
+    }).addTo(candidateZoningLayer);
+  });
 }
 function syncCandidateSite(){
   if(!candidateMap) return;
   candidateSiteLayers.forEach(x=>candidateMap.removeLayer(x));candidateSiteLayers=[];
+  drawCandidateRanges();
   if(siteState.boundary){
-    const layer=L.geoJSON(siteState.boundary,{style:{color:'#b27a3b',weight:3,fillColor:'#b27a3b',fillOpacity:.14}}).addTo(candidateMap);
-    candidateSiteLayers.push(layer);if(layer.getBounds().isValid())candidateMap.fitBounds(layer.getBounds(),{padding:[45,45],maxZoom:16});
+    const layer=L.geoJSON(siteState.boundary,{style:{color:'#dc2626',weight:3,fillColor:'#dc2626',fillOpacity:.12}}).addTo(candidateMap);
+    candidateSiteLayers.push(layer);
+    try{
+      const base=siteBoundaryFeature(), outer=base?turf.buffer(base,1,{units:'kilometers'}):null;
+      if(outer){
+        const ol=L.geoJSON(outer);if(ol.getBounds().isValid())candidateMap.fitBounds(ol.getBounds(),{padding:[35,35],maxZoom:16});
+      }else if(layer.getBounds().isValid())candidateMap.fitBounds(layer.getBounds(),{padding:[45,45],maxZoom:16});
+    }catch(_){if(layer.getBounds().isValid())candidateMap.fitBounds(layer.getBounds(),{padding:[45,45],maxZoom:16});}
+    loadCandidateZoning();
   }else if(siteState.center){
     const icon=L.divIcon({className:'',html:'<div class="vp-site-icon"></div>',iconSize:[18,18],iconAnchor:[9,9]});
-    candidateSiteLayers.push(L.marker(siteState.center,{icon}).addTo(candidateMap).bindTooltip('대상지 중심'));candidateMap.setView(siteState.center,15);
+    candidateSiteLayers.push(L.marker(siteState.center,{icon}).addTo(candidateMap).bindTooltip('대상지 중심'));candidateMap.setView(siteState.center,14);
   }
   updateCandidateStatus();
 }
 function updateCandidateStatus(extra=''){
   const el=document.getElementById('candidateStatus');
   if(!siteState.center){el.innerHTML='<b>대상지를 먼저 지정하세요.</b><span>대상지 중심 또는 구역계가 있어야 후보를 조회할 수 있습니다.</span>';return;}
-  const basis=siteState.boundary?'구역계 경계거리 기준':'중심점 거리 기준';
+  const basis=siteState.boundary?'대상지 내부 제외 · 구역계 경계거리 기준':'중심점 거리 기준';
   el.innerHTML=`<b>${candidateItems.length?candidateItems.length+'개 후보 확보':'후보 조회 준비'}</b><span>${basis} · 근경 250m · 중경 500m · 원경 1,000m 이내${extra?' · '+escapeHtml(extra):''}</span>`;
 }
 function haversine(a,b,c,d){const R=6371000,r=Math.PI/180,p1=a*r,p2=c*r,da=(c-a)*r,do_=(d-b)*r,x=Math.sin(da/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(do_/2)**2;return 2*R*Math.asin(Math.sqrt(x));}
@@ -916,13 +995,23 @@ function localPt(lat,lng,lat0,lng0){const r=Math.PI/180;return{x:(lng-lng0)*1113
 function segDist(p,a,b){const vx=b.x-a.x,vy=b.y-a.y,wx=p.x-a.x,wy=p.y-a.y,c1=vx*wx+vy*wy;if(c1<=0)return Math.hypot(p.x-a.x,p.y-a.y);const c2=vx*vx+vy*vy;if(c2<=c1)return Math.hypot(p.x-b.x,p.y-b.y);const t=c1/c2;return Math.hypot(p.x-a.x-t*vx,p.y-a.y-t*vy);}
 function inRing(pt,ring){let inside=false;for(let i=0,j=ring.length-1;i<ring.length;j=i++){const xi=ring[i][0],yi=ring[i][1],xj=ring[j][0],yj=ring[j][1];if(((yi>pt[1])!==(yj>pt[1]))&&(pt[0]<(xj-xi)*(pt[1]-yi)/(yj-yi+1e-12)+xi))inside=!inside;}return inside;}
 function ringsOf(gj){const out=[],add=g=>{if(!g)return;if(g.type==='Polygon')g.coordinates.forEach(r=>out.push(r));if(g.type==='MultiPolygon')g.coordinates.forEach(p=>p.forEach(r=>out.push(r)));};if(gj.type==='FeatureCollection')gj.features.forEach(f=>add(f.geometry));else if(gj.type==='Feature')add(gj.geometry);else add(gj);return out;}
+function pointInsideSite(lat,lng){
+  if(!siteState.boundary)return false;
+  const point=turf.point([lng,lat]);
+  try{
+    const fs=siteState.boundary.type==='FeatureCollection'?(siteState.boundary.features||[]):[siteState.boundary.type==='Feature'?siteState.boundary:turf.feature(siteState.boundary)];
+    return fs.some(f=>['Polygon','MultiPolygon'].includes(f.geometry?.type)&&turf.booleanPointInPolygon(point,f));
+  }catch(_){return false;}
+}
 function distanceToSite(lat,lng){
-  if(!siteState.center)return Infinity;if(!siteState.boundary)return haversine(siteState.center[0],siteState.center[1],lat,lng);
-  const rings=ringsOf(siteState.boundary);if(rings.some(r=>inRing([lng,lat],r)))return 0;
+  if(!siteState.center)return Infinity;
+  if(!siteState.boundary)return haversine(siteState.center[0],siteState.center[1],lat,lng);
+  if(pointInsideSite(lat,lng))return -1;
+  const rings=ringsOf(siteState.boundary);
   const [lat0,lng0]=siteState.center,p=localPt(lat,lng,lat0,lng0);let min=Infinity;
   rings.forEach(r=>{for(let i=1;i<r.length;i++){min=Math.min(min,segDist(p,localPt(r[i-1][1],r[i-1][0],lat0,lng0),localPt(r[i][1],r[i][0],lat0,lng0)));}});return min;
 }
-function bandFor(d){return d<=250?'near':d<=500?'mid':d<=1000?'far':null;}
+function bandFor(d){return d<0?null:d<=250?'near':d<=500?'mid':d<=1000?'far':null;}
 function bandLabel(b){return b==='near'?'근경':b==='mid'?'중경':b==='far'?'원경':'범위외';}
 function direction(lat,lng){if(!siteState.center)return'-';const[a,b]=siteState.center,r=Math.PI/180,y=Math.sin((lng-b)*r)*Math.cos(lat*r),x=Math.cos(a*r)*Math.sin(lat*r)-Math.sin(a*r)*Math.cos(lat*r)*Math.cos((lng-b)*r),deg=(Math.atan2(y,x)*180/Math.PI+360)%360,dirs=['북','북동','동','남동','남','남서','서','북서'];return dirs[Math.round(deg/45)%8];}
 function elLL(el){return Number.isFinite(el.lat)&&Number.isFinite(el.lon)?[el.lat,el.lon]:el.center&&Number.isFinite(el.center.lat)&&Number.isFinite(el.center.lon)?[el.center.lat,el.center.lon]:null;}
@@ -967,7 +1056,7 @@ async function rankViewpointCandidates(){
 
 function renderCandidates(){
   initCandidateMap();if(candidateLayers)candidateLayers.clearLayers();const sel=selection(candidateItems),ids=new Set(['near','mid','far'].flatMap(b=>sel[b].map(x=>x.id)));
-  candidateItems.forEach(r=>{const state=r.mandatory?'mandatory':ids.has(r.id)?'selected':'pending',icon=L.divIcon({className:'',html:`<div class="vp-marker ${state}">${bandLabel(r.band)[0]}</div>`,iconSize:[28,28],iconAnchor:[14,14]});const m=L.marker([r.lat,r.lng],{icon}).addTo(candidateLayers);m.bindTooltip(`${escapeHtml(r.name)}<br>${bandLabel(r.band)} · ${r.distance}m · ${escapeHtml(categoryLabels[r.category])}`);m.on('click',()=>candidateMap.setView([r.lat,r.lng],17));});
+  candidateItems.forEach(r=>{const state=r.mandatory?'mandatory':ids.has(r.id)?'selected':'pending',color=BAND_COLORS[r.band]||'#475569',icon=L.divIcon({className:'',html:`<div class="vp-marker ${state}" style="background:${color};border-color:#fff">${bandLabel(r.band)[0]}</div>`,iconSize:[28,28],iconAnchor:[14,14]});const m=L.marker([r.lat,r.lng],{icon}).addTo(candidateLayers);m.bindTooltip(`${escapeHtml(r.name)}<br>${bandLabel(r.band)} · 대상지 경계에서 ${r.distance}m · ${escapeHtml(categoryLabels[r.category])}`);m.on('click',()=>candidateMap.setView([r.lat,r.lng],17));});
   ['near','mid','far'].forEach((b,i)=>document.getElementById(['nearSummary','midSummary','farSummary'][i]).textContent=`${sel[b].length} / ${VIEW_RULES.targetPerBand}`);
   document.getElementById('candidateCount').textContent=`${candidateItems.length}개`;
   const list=document.getElementById('candidateList'),ord={near:0,mid:1,far:2},filtered=candidateItems.filter(r=>candidateBandFilter==='all'||r.band===candidateBandFilter).sort((a,b)=>ord[a.band]-ord[b.band]||Number(b.mandatory)-Number(a.mandatory)||a.distance-b.distance);
