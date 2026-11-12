@@ -242,7 +242,7 @@ button,input,select{font:inherit}.hidden{display:none!important}
           <div class="rule-strip">
             <div class="rule-card"><b>거리권</b><span>근경 0~250m · 중경 250~500m · 원경 500m 이상. 원경 검색상한은 개발 기본값 1,000m이며 법정 상한으로 쓰지 않습니다.</span></div>
             <div class="rule-card"><b>후보 대상</b><span>경관계획 조망점, 지하철 출입구, 버스정류장, 대학 정문, 문화유산, 20m 이상 교차로, 공원·광장·주요시설, 전망대 등.</span></div>
-            <div class="rule-card"><b>최종선정</b><span>경관계획상 조망점은 우선 포함. 나머지는 보행량 자료 연동 후 각 거리권 4개를 기본 선정합니다.</span></div>
+            <div class="rule-card"><b>최종선정</b><span>경관계획상 조망점은 우선 포함. 나머지는 보행량 자료 연동 후 각 거리권 5개를 기본 선정합니다.</span></div>
           </div>
           <div class="grid candidate-layout">
             <section class="card candidate-map-card">
@@ -256,9 +256,9 @@ button,input,select{font:inherit}.hidden{display:none!important}
             <section class="card candidate-panel">
               <div class="vp-list-head"><span>후보 및 선정상태</span><b id="candidateCount">0개</b></div>
               <div class="band-summary">
-                <div class="band-box"><span>근경</span><b id="nearSummary">0 / 4</b></div>
-                <div class="band-box"><span>중경</span><b id="midSummary">0 / 4</b></div>
-                <div class="band-box"><span>원경</span><b id="farSummary">0 / 4</b></div>
+                <div class="band-box"><span>근경</span><b id="nearSummary">0 / 5</b></div>
+                <div class="band-box"><span>중경</span><b id="midSummary">0 / 5</b></div>
+                <div class="band-box"><span>원경</span><b id="farSummary">0 / 5</b></div>
               </div>
               <div class="candidate-filter" id="candidateFilter">
                 <button class="active" data-band="all">전체</button><button data-band="near">근경</button><button data-band="mid">중경</button><button data-band="far">원경</button>
@@ -852,7 +852,7 @@ document.getElementById('selectedBuildingHeight').addEventListener('input',e=>{
 // -----------------------------
 // Day 3: VIEWPOINT CANDIDATE ENGINE
 // -----------------------------
-const VIEW_RULES={nearMax:250,midMax:500,farMax:1000,targetPerBand:4};
+const VIEW_RULES={nearMax:250,midMax:500,farMax:1000,targetPerBand:5};
 let candidateMap=null,candidateSiteLayers=[],candidateLayers=null,candidateItems=[],officialViewpoints=[],candidateBandFilter='all';
 const categoryLabels={designated:'경관계획 조망점',subway:'지하철 출입구',bus:'버스정류장',university:'대학 정문 후보',heritage:'문화유산',intersection:'20m+ 교차로',park:'공원',square:'광장',facility:'주요시설',viewpoint:'원거리 조망가능 지점'};
 
@@ -905,20 +905,34 @@ function normalizeOsm(els){
 }
 function enrich(rows){
   const seen=new Map();rows.forEach(r=>{const k=`${r.category}:${r.lat.toFixed(5)}:${r.lng.toFixed(5)}`;if(!seen.has(k)||r.mandatory)seen.set(k,r);});
-  return [...seen.values()].map(r=>{const d=Math.round(distanceToSite(r.lat,r.lng));return{...r,distance:d,band:bandFor(d),direction:direction(r.lat,r.lng)};}).filter(r=>r.band);
+  return [...seen.values()].map(r=>{const d=Math.round(distanceToSite(r.lat,r.lng));return{...r,distance:d,band:bandFor(d),direction:r.directionOverride||direction(r.lat,r.lng),userSelected:!!r.userSelected,userExcluded:!!r.userExcluded};}).filter(r=>r.band);
 }
 function selection(rows){
   const out={near:[],mid:[],far:[],pending:{near:0,mid:0,far:0}};
-  ['near','mid','far'].forEach(b=>{const br=rows.filter(r=>r.band===b),must=br.filter(r=>r.mandatory),scored=br.filter(r=>!r.mandatory&&Number.isFinite(r.pedestrianScore)).sort((a,b)=>b.pedestrianScore-a.pedestrianScore),target=Math.max(4,must.length);out[b]=[...must,...scored.slice(0,Math.max(0,target-must.length))];out.pending[b]=Math.max(0,4-out[b].length);});return out;
+  ['near','mid','far'].forEach(b=>{
+    const br=rows.filter(r=>r.band===b&&!r.userExcluded);
+    const must=br.filter(r=>r.mandatory);
+    const manual=br.filter(r=>r.userSelected&&!r.mandatory);
+    const manualIds=new Set(manual.map(r=>r.id));
+    const scored=br.filter(r=>!r.mandatory&&!manualIds.has(r.id)&&Number.isFinite(r.pedestrianScore))
+      .sort((a,b)=>b.pedestrianScore-a.pedestrianScore);
+    const target=Math.max(VIEW_RULES.targetPerBand,must.length+manual.length);
+    out[b]=[...must,...manual,...scored.slice(0,Math.max(0,target-must.length-manual.length))];
+    out.pending[b]=Math.max(0,VIEW_RULES.targetPerBand-out[b].length);
+  });
+  return out;
 }
 function renderCandidates(){
   initCandidateMap();if(candidateLayers)candidateLayers.clearLayers();const sel=selection(candidateItems),ids=new Set(['near','mid','far'].flatMap(b=>sel[b].map(x=>x.id)));
   candidateItems.forEach(r=>{const state=r.mandatory?'mandatory':ids.has(r.id)?'selected':'pending',icon=L.divIcon({className:'',html:`<div class="vp-marker ${state}">${bandLabel(r.band)[0]}</div>`,iconSize:[28,28],iconAnchor:[14,14]});const m=L.marker([r.lat,r.lng],{icon}).addTo(candidateLayers);m.bindTooltip(`${escapeHtml(r.name)}<br>${bandLabel(r.band)} · ${r.distance}m · ${escapeHtml(categoryLabels[r.category])}`);m.on('click',()=>candidateMap.setView([r.lat,r.lng],17));});
-  ['near','mid','far'].forEach((b,i)=>document.getElementById(['nearSummary','midSummary','farSummary'][i]).textContent=`${sel[b].length} / 4`);
+  ['near','mid','far'].forEach((b,i)=>document.getElementById(['nearSummary','midSummary','farSummary'][i]).textContent=`${sel[b].length} / ${VIEW_RULES.targetPerBand}`);
   document.getElementById('candidateCount').textContent=`${candidateItems.length}개`;
   const list=document.getElementById('candidateList'),ord={near:0,mid:1,far:2},filtered=candidateItems.filter(r=>candidateBandFilter==='all'||r.band===candidateBandFilter).sort((a,b)=>ord[a.band]-ord[b.band]||Number(b.mandatory)-Number(a.mandatory)||a.distance-b.distance);
-  list.innerHTML=filtered.length?filtered.map(r=>{let state='보행량 연동 대기',cls='';if(r.mandatory){state='의무 포함';cls='mandatory';}else if(ids.has(r.id)){state='선정';cls='ready';}return `<div class="candidate-row ${ids.has(r.id)?'selected':''}" data-id="${escapeHtml(r.id)}"><div class="top"><div><b>${escapeHtml(r.name)}</b><em>${bandLabel(r.band)} · ${r.distance}m · ${r.direction}측 · ${r.source}</em></div><span class="state-badge ${cls}">${state}</span></div><div style="margin-top:6px;display:flex;gap:5px;flex-wrap:wrap"><span class="type-badge">${escapeHtml(categoryLabels[r.category])}</span><span class="type-badge">${escapeHtml(r.verification||'')}</span></div></div>`;}).join(''):'<div class="candidate-note">표시할 후보가 없습니다.</div>';
-  list.querySelectorAll('[data-id]').forEach(x=>x.onclick=()=>{const r=candidateItems.find(v=>v.id===x.dataset.id);if(r)candidateMap.setView([r.lat,r.lng],17);});
+  list.innerHTML=filtered.length?filtered.map(r=>{let state='보행량 연동 대기',cls='';if(r.mandatory){state='의무 포함';cls='mandatory';}else if(ids.has(r.id)){state='선정';cls='ready';}return `<div class="candidate-row ${ids.has(r.id)?'selected':''}" data-id="${escapeHtml(r.id)}"><div class="top"><div><b>${escapeHtml(r.name)}</b><em>${bandLabel(r.band)} · ${r.distance}m · ${r.direction}측 · ${r.source}</em></div><span class="state-badge ${cls}">${state}</span></div><div style="margin-top:6px;display:flex;gap:5px;flex-wrap:wrap"><span class="type-badge">${escapeHtml(categoryLabels[r.category])}</span><span class="type-badge">${escapeHtml(r.verification||'')}</span></div><div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap"><button class="btn ghost small vp-pick" data-action="pick" data-id="${escapeHtml(r.id)}">${r.userSelected?'선택해제':'선택'}</button><button class="btn ghost small vp-exclude" data-action="exclude" data-id="${escapeHtml(r.id)}">${r.userExcluded?'복원':'제외'}</button><button class="btn ghost small vp-direction" data-action="direction" data-id="${escapeHtml(r.id)}">조망방향 수정</button></div></div>`;}).join(''):'<div class="candidate-note">표시할 후보가 없습니다.</div>';
+  list.querySelectorAll('.candidate-row').forEach(x=>x.addEventListener('click',ev=>{if(ev.target.closest('button'))return;const r=candidateItems.find(v=>v.id===x.dataset.id);if(r)candidateMap.setView([r.lat,r.lng],17);}));
+  list.querySelectorAll('[data-action="pick"]').forEach(btn=>btn.onclick=()=>{const r=candidateItems.find(v=>v.id===btn.dataset.id);if(!r||r.mandatory)return;if(r.userExcluded)r.userExcluded=false;r.userSelected=!r.userSelected;renderCandidates();});
+  list.querySelectorAll('[data-action="exclude"]').forEach(btn=>btn.onclick=()=>{const r=candidateItems.find(v=>v.id===btn.dataset.id);if(!r||r.mandatory)return;r.userExcluded=!r.userExcluded;if(r.userExcluded)r.userSelected=false;renderCandidates();});
+  list.querySelectorAll('[data-action="direction"]').forEach(btn=>btn.onclick=()=>{const r=candidateItems.find(v=>v.id===btn.dataset.id);if(!r)return;const v=prompt('조망방향을 입력하세요. 예: 북, 북동, 동, 남동, 남, 남서, 서, 북서',r.direction||'');if(v===null)return;r.directionOverride=v.trim();if(r.directionOverride)r.direction=r.directionOverride;renderCandidates();});
   const pending=sel.pending.near+sel.pending.mid+sel.pending.far;updateCandidateStatus(pending?`보행량 미연동으로 ${pending}개 일반 선정 슬롯 보류`:'기본 선정수 충족');
 }
 async function fetchCandidates(){
