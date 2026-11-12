@@ -97,9 +97,9 @@ def landscape_review(site:str|None=None):
     return HTMLResponse((BASE/"landscape-review"/"index.html").read_text(encoding="utf-8"),headers={"Cache-Control":"no-store"})
 
 
-@app.get("/landscape-review/xdworld-adapter.js")
-def xdworld_adapter():
-    return FileResponse(BASE/"landscape-review"/"xdworld-adapter.js",media_type="application/javascript",headers={"Cache-Control":"no-store"})
+@app.get("/landscape-review/vworld3d-adapter.js")
+def vworld3d_adapter():
+    return FileResponse(BASE/"landscape-review"/"vworld3d-adapter.js",media_type="application/javascript",headers={"Cache-Control":"no-store"})
 
 @app.post("/api/address")
 def address(data:AddressReq):
@@ -532,8 +532,7 @@ def _candidate_score(row:dict):
 def integration_status():
     return {
         "seoul_open_data":{"configured":bool(_seoul_open_data_key()),"purpose":"pedestrian/population ranking"},
-        "smap_openlab":{"configured":bool((os.getenv("SMAP_OPENLAB_APP_KEY") or "").strip()),"purpose":"Seoul 3D base integration"},
-        "xdworld":{"adapter":"prepared","engine_runtime_required":True,"boundary_exclude_supported":True,"plan_mass_polygon_supported":True},
+        "vworld3d":{"configured":bool((_vworld_key() if (os.getenv("VWORLD_API_KEY") or "").strip() else "")),"adapter":"prepared","engine":"WebGL 3D API 3.0","building_feature_hide":True,"plan_mass_polygon_supported":True,"glb_supported":True},
         "viewpoint_policy":{
             "target_per_band":5,
             "bands":{"near":"0-250m","mid":"250-500m","far":"500-1000m"},
