@@ -12,7 +12,9 @@ RUN pip install --no-cache-dir \
     pydantic \
     pyproj \
     pyshp \
-    shapely
+    shapely \
+    ezdxf \
+    python-multipart
 
 COPY . .
 
