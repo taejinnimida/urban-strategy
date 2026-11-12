@@ -293,7 +293,7 @@ def register(app,service):
         try:
             if not service._vworld_key():raise ChannelFailure('SERVICE_NOT_READY')
             a,b,c,d=g.bounds
-            fs=[];seen=set();started=time.monotonic();last_route=None
+            fs=[];seen=set();started=time.monotonic();last_route=None;items=[]
             page_limit=4
             for page in range(1,page_limit+1):
                 if time.monotonic()-started>23:raise ChannelFailure('TIMEOUT')
