@@ -545,21 +545,24 @@ def _candidate_pedestrian_volume(row:dict):
 
 def _overpass_viewpoint_query(lat:float,lng:float,radius:int):
     r=max(100,min(int(radius),2000))
+    # Development fallback only. Road-width and traffic-volume evidence is NOT
+    # inferred from OSM tags; intersection candidates require verified inputs.
     return f"""[out:json][timeout:20];
 (
-node(around:{r},{lat},{lng})["railway"="subway_entrance"];
-node(around:{r},{lat},{lng})["highway"="bus_stop"];
-node(around:{r},{lat},{lng})["public_transport"="platform"]["bus"="yes"];
-nwr(around:{r},{lat},{lng})["historic"];
-nwr(around:{r},{lat},{lng})["heritage"];
+way(around:{r},{lat},{lng})["highway"="pedestrian"];
 nwr(around:{r},{lat},{lng})["leisure"="park"];
 nwr(around:{r},{lat},{lng})["place"="square"];
-node(around:{r},{lat},{lng})["tourism"="viewpoint"];
-nwr(around:{r},{lat},{lng})["amenity"~"hospital|townhall|courthouse|library|arts_centre|theatre|community_centre"];
-nwr(around:{r},{lat},{lng})["leisure"="stadium"];
+node(around:{r},{lat},{lng})["railway"="subway_entrance"];
+nwr(around:{r},{lat},{lng})["railway"="station"]["station"="subway"];
+nwr(around:{r},{lat},{lng})["railway"="station"]["subway"="yes"];
+node(around:{r},{lat},{lng})["highway"="bus_stop"];
+node(around:{r},{lat},{lng})["public_transport"="platform"]["bus"="yes"];
 nwr(around:{r},{lat},{lng})["amenity"="university"];
-node(around:{r},{lat},{lng})["barrier"="gate"];
 node(around:{r},{lat},{lng})["entrance"="main"];
+node(around:{r},{lat},{lng})["barrier"="gate"];
+nwr(around:{r},{lat},{lng})["historic"];
+nwr(around:{r},{lat},{lng})["heritage"];
+nwr(around:{r},{lat},{lng})["tourism"="viewpoint"];
 );
 out center tags;"""
 
@@ -601,87 +604,127 @@ def integration_status():
         "viewpoint_policy":{
             "target_per_band":5,
             "bands":{"near":"0-250m","mid":"250-500m","far":"500-1000m"},
-            "designated_policy":"top5_plus_designated",
-            "missing_pedestrian_volume":"never auto-selected"
+            "designated_policy":"mandatory_outside_top5",
+            "selection":"priority_top5_then_manual_toggle",
+            "intersection_fallback":"verified_width_20m_plus_raw_traffic"
         },
         "candidate_adapters":{
             "transit_park_heritage":"development fallback currently available",
-            "road_intersection_20m":"official road-width adapter required",
+            "road_intersection_20m":"requires verified intersection point + road width + traffic volume; file import supported",
             "landscape_plan_viewpoint":"2016 Seoul Landscape Plan official coordinates to be embedded",
-            "pedestrian":"SEOUL_OPEN_DATA_KEY + raw-volume spatial matching adapter required"
+            "pedestrian":"not required for nationwide priority selection"
         }
     }
+
+# Nationwide priority rules: first public pedestrian places, then only
+# verified >=20 m intersections with measured traffic volumes.
+VIEWPOINT_CATEGORY_PRIORITY={
+    "pedestrian":0,
+    "park":1,
+    "square":1,
+    "subway":2,
+    "bus":3,
+    "university":4,
+    "heritage":5,
+    "viewpoint":6,
+    "intersection":7,
+}
+
+def _viewpoint_traffic(row:dict):
+    raw=row.get("trafficVolume",row.get("traffic_volume"))
+    try:
+        value=float(raw)
+        return value if math.isfinite(value) and value>=0 else None
+    except (TypeError,ValueError):
+        return None
+
+def _viewpoint_width(row:dict):
+    raw=row.get("roadWidthM",row.get("road_width_m"))
+    try:
+        value=float(raw)
+        return value if math.isfinite(value) else None
+    except (TypeError,ValueError):
+        return None
+
+def _viewpoint_auto_eligible(row:dict):
+    category=str(row.get("category") or "")
+    if category not in VIEWPOINT_CATEGORY_PRIORITY:
+        return False
+    if category=="intersection":
+        width=_viewpoint_width(row)
+        return width is not None and width>=20 and _viewpoint_traffic(row) is not None
+    return True
+
+def _viewpoint_sort_key(row:dict):
+    category=str(row.get("category") or "")
+    priority=VIEWPOINT_CATEGORY_PRIORITY.get(category,99)
+    try:
+        distance=float(row.get("distance"))
+        if not math.isfinite(distance):distance=1e18
+    except (TypeError,ValueError):
+        distance=1e18
+    if category=="intersection":
+        # Traffic is used ONLY for the intersection fallback; no composite score.
+        return (priority,-_viewpoint_traffic(row),distance,str(row.get("id") or ""))
+    return (priority,distance,str(row.get("id") or ""))
 
 @app.post("/api/viewpoint/rank")
 def viewpoint_rank(data:ViewpointRankReq):
     target=max(1,min(int(data.target_per_band or 5),20))
-    policy=(data.policy or "top5_plus_designated").strip()
-    bands=("near","mid","far")
-    result={"policy":policy,"target_per_band":target,"bands":{},"selected_ids":[],"designated_ids":[]}
-    selected_ids=[]
-    designated_ids=[]
-    for band in bands:
-        rows=[dict(r) for r in data.candidates if str(r.get("band") or "")==band and not bool(r.get("userExcluded"))]
+    result={"policy":"priority_then_verified_traffic","target_per_band":target,"bands":{},"selected_ids":[],"designated_ids":[]}
+    selected_all=[]
+    designated_all=[]
+    for band in ("near","mid","far"):
+        rows=[dict(r) for r in data.candidates if str(r.get("band") or "")==band and r.get("id")]
         designated=[r for r in rows if bool(r.get("mandatory")) or str(r.get("category") or "")=="designated"]
-        manual=[r for r in rows if bool(r.get("userSelected")) and r not in designated]
-        measured=[]
-        unresolved=[]
-        for r in rows:
-            if r in designated or r in manual:
-                continue
-            volume=_candidate_pedestrian_volume(r)
-            if volume is None:
-                unresolved.append(r)
-            else:
-                r["_pedestrian_volume"]=volume
-                measured.append(r)
-        measured.sort(key=lambda r:(-r["_pedestrian_volume"],float(r.get("distance") or 1e18),str(r.get("id") or "")))
-        if policy=="designated_within_target":
-            pool=[]
-            seen=set()
-            for r in designated+manual+measured:
-                rid=str(r.get("id") or "")
-                if rid and rid not in seen:
-                    seen.add(rid);pool.append(r)
-            selected=pool[:target]
-        else:
-            selected=[]
-            seen=set()
-            # top N regular/manual first, then append all designated viewpoints.
-            for r in manual+measured:
-                rid=str(r.get("id") or "")
-                if rid and rid not in seen and len(selected)<target:
-                    seen.add(rid);selected.append(r)
-            for r in designated:
-                rid=str(r.get("id") or "")
-                if rid and rid not in seen:
-                    seen.add(rid);selected.append(r)
-        band_designated=[str(r.get("id") or "") for r in designated if r.get("id")]
-        band_selected=[str(r.get("id") or "") for r in selected if r.get("id")]
-        designated_ids.extend(band_designated)
-        selected_ids.extend(band_selected)
-        ranked=[{
-            "id":str(r.get("id") or ""),
-            "name":r.get("name"),
-            "pedestrian_volume":r["_pedestrian_volume"],
-            "distance":r.get("distance"),
-            "category":r.get("category"),
-            "rank":i+1
-        } for i,r in enumerate(measured)]
+        regular=[r for r in rows if r not in designated]
+        eligible=sorted((r for r in regular if _viewpoint_auto_eligible(r)),key=_viewpoint_sort_key)
+        baseline=eligible[:target]
+        baseline_ids={str(r["id"]) for r in baseline}
+        # Manual correction does not trigger automatic backfilling:
+        # click a selected point -> exclude; click a dim point -> add.
+        selected=[r for r in baseline if not bool(r.get("userExcluded"))]
+        selected_ids={str(r["id"]) for r in selected}
+        for r in regular:
+            rid=str(r["id"])
+            if bool(r.get("userSelected")) and not bool(r.get("userExcluded")) and rid not in selected_ids:
+                selected.append(r)
+                selected_ids.add(rid)
+        for r in designated:
+            rid=str(r["id"])
+            if rid not in selected_ids:
+                selected.append(r)
+                selected_ids.add(rid)
+        band_ids=[str(r["id"]) for r in selected]
+        band_designated=[str(r["id"]) for r in designated]
+        selected_all.extend(band_ids)
+        designated_all.extend(band_designated)
+        intersection_eligible=[r for r in eligible if r.get("category")=="intersection"]
         result["bands"][band]={
             "candidate_count":len(rows),
-            "measured_count":len(measured),
-            "missing_volume_count":len(unresolved),
+            "priority_candidate_count":len(eligible)-len(intersection_eligible),
+            "traffic_intersection_count":len(intersection_eligible),
+            "auto_selected_count":len(baseline),
+            "auto_shortfall":max(0,target-len(baseline)),
+            "manual_added_count":len([r for r in selected if r not in baseline and r not in designated]),
+            "manual_excluded_count":len([r for r in baseline if bool(r.get("userExcluded"))]),
             "designated_count":len(designated),
-            "manual_count":len(manual),
-            "selected_ids":band_selected,
+            "selected_ids":band_ids,
+            "baseline_ids":[str(r["id"]) for r in baseline],
             "designated_ids":band_designated,
-            "ranked":ranked,
-            "auto_selection_complete":len(measured)>=target
+            "ranked":[{
+                "id":str(r["id"]),
+                "category":r.get("category"),
+                "priority":VIEWPOINT_CATEGORY_PRIORITY.get(str(r.get("category") or "")),
+                "distance":r.get("distance"),
+                "traffic_volume":_viewpoint_traffic(r) if r.get("category")=="intersection" else None,
+                "road_width_m":_viewpoint_width(r) if r.get("category")=="intersection" else None,
+            } for r in eligible],
+            "auto_selection_complete":len(baseline)>=target
         }
-    result["selected_ids"]=list(dict.fromkeys(selected_ids))
-    result["designated_ids"]=list(dict.fromkeys(designated_ids))
-    result["auto_selection_complete"]=all(result["bands"][b]["auto_selection_complete"] for b in bands)
+    result["selected_ids"]=list(dict.fromkeys(selected_all))
+    result["designated_ids"]=list(dict.fromkeys(designated_all))
+    result["auto_selection_complete"]=all(result["bands"][b]["auto_selection_complete"] for b in ("near","mid","far"))
     return result
 
 @app.post("/api/snapshots")
