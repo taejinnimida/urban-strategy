@@ -83,7 +83,11 @@ def test_provisional_map_does_not_label_calculation_as_register_original():
     assert record['attributes']['coverage']['value'] == 50
     assert record['attributes']['coverage']['assurance'] == 'INTERNAL_CALC_PROVISIONAL'
     assert record['attributes']['far']['assurance'] == 'INTERNAL_CALC_PROVISIONAL'
-    assert data['items'][5]['features'][0]['properties']['name'] == '40~70%'
+    # A cadastral PNU is not a building outline: keep calculations in the
+    # ledger table, but never fill the parcel as a building on map/CAD.
+    assert data['items'][5]['features'] == []
+    assert data['items'][5]['survey_table']['rows'][0]['count'] == 1
+    assert data['items'][5]['survey_table']['rows'][2]['count'] == 1
 
 
 def test_two_five_is_not_an_active_survey_item():
