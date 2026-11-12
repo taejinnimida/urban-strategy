@@ -1060,7 +1060,7 @@ function devRenderSourceDetails(data){
   if(Array.isArray(item.legend))for(const entry of item.legend){
    const row=document.createElement('span');row.style.cssText='display:inline-flex;align-items:center;gap:5px';
    const chip=document.createElement('span');chip.style.cssText='display:inline-block;width:14px;height:14px;border:1px solid #64748b;background-color:'+entry.color;
-   const title=document.createElement('span');title.textContent=item.thematic_type==='building'?entry.name+' ('+entry.count+'건 · 건축물대장 기준)':entry.name+' ('+entry.count+'필지 · '+entry.area_m2.toLocaleString()+'㎡)';
+   const title=document.createElement('span');title.textContent=item.thematic_type==='building'?entry.name+' ('+entry.count+'개 GIS 건물외곽선)':entry.name+' ('+entry.count+'필지 · '+entry.area_m2.toLocaleString()+'㎡)';
    row.append(chip,title);legendbox.append(row);
   }
   if(item.id==='2-6'&&item.landcover_wms&&!item.features?.length){
