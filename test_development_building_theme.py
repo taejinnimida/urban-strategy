@@ -50,7 +50,7 @@ class BuildingSurveyTest(unittest.TestCase):
             self.assertEqual(item['geometry_status'], 'COMPLETE')
         self.assertEqual(d['items'][0]['features'][0]['properties']['name'], '단독주택')
         self.assertEqual(d['building_fact']['counts']['unmatched_gis_hidden_from_survey'], 1)
-        self.assertEqual(d['items'][2]['features'][0]['properties']['name'], '3층')
+        self.assertEqual(d['items'][2]['features'], [])
 
     def test_gis_attributes_not_used_to_inflate_register_stats(self):
         d = data()
@@ -174,9 +174,8 @@ class BuildingSurveyTest(unittest.TestCase):
         self.assertEqual(record['attributes']['use']['assurance'], 'SPATIAL_REFERENCE')
         self.assertEqual(d['building_fact']['counts']['direct_register_matches'], 0)
         self.assertEqual(d['building_fact']['counts']['spatial_register_candidates'], 1)
-        self.assertEqual(d['items'][0]['features'][0]['properties']['name'], '단독주택')
-        self.assertEqual(d['items'][0]['features'][0]['properties']['join_status'], 'PNU_PARCEL_REGISTER')
-        self.assertEqual(d['items'][0]['features'][0]['properties']['geometry_basis'], 'CADASTRAL_PNU')
+        self.assertEqual(d['items'][0]['features'], [])
+        self.assertEqual(d['items'][0]['survey_table']['rows'][0]['count'], 1)
 
     def test_same_plot_historic_shape_not_drawn_as_current(self):
         d = data()
@@ -194,10 +193,8 @@ class BuildingSurveyTest(unittest.TestCase):
         attach_building_themes(d, ss)
         self.assertEqual(d['building_fact']['counts']['spatial_register_candidates'], 1)
         self.assertEqual(d['building_fact']['display_exclusion']['provisional_footprints_excluded'], 1)
-        shape_feature = d['items'][2]['features'][0]
-        self.assertEqual(shape_feature['properties']['geometry_basis'], 'CADASTRAL_PNU')
-        self.assertEqual(shape_feature['properties']['join_status'], 'PNU_PARCEL_REGISTER')
-        self.assertEqual(shape_feature['properties']['name'], '3층')
+        self.assertEqual(d['items'][2]['features'], [])
+        self.assertEqual(d['building_fact']['display_exclusion']['cadastral_parcels_excluded_from_building_theme'], 1)
         self.assertEqual(d['items'][2]['survey_table']['rows'][0]['count'], 1)
 
     def test_reference_cadastre_may_support_labelled_provisional_candidate(self):
@@ -212,7 +209,7 @@ class BuildingSurveyTest(unittest.TestCase):
         self.assertEqual(d['building_fact']['counts']['spatial_register_candidates'], 1)
         self.assertEqual(d['building_fact']['counts']['spatial_candidates_from_reference_cadastre'], 1)
         self.assertEqual(d['building_fact']['records'][0]['match_basis'], 'REFERENCE_PARCEL_OVERLAY_PROVISIONAL')
-        self.assertEqual(d['items'][2]['features'][0]['properties']['name'], '3층')
+        self.assertEqual(d['items'][2]['features'], [])
 
     def test_provider_pnu_provisional_candidate_without_cadastral_polygon(self):
         d = data()
@@ -252,14 +249,25 @@ class BuildingSurveyTest(unittest.TestCase):
         self.assertEqual(d['building_fact']['counts']['register_with_cadastral_pnu'], 1)
         for item in d['items']:
             self.assertEqual(item['thematic_type'], 'building')
-            self.assertEqual(len(item['features']), 1)
-            self.assertEqual(item['features'][0]['properties']['geometry_basis'], 'CADASTRAL_PNU')
-            self.assertEqual(item['features'][0]['properties']['join_status'], 'PNU_PARCEL_REGISTER')
+            self.assertEqual(item['features'], [])
             self.assertEqual(item['survey_table']['rows'][0]['count'], 1)
-            self.assertIn('건물외곽선과 PNU 필지도형 구분', item['survey_table']['rows'][0]['note'])
+            self.assertIn('건물외곽선만', item['survey_table']['rows'][0]['note'])
         self.assertEqual(d['items'][2]['features'][0]['properties']['name'], '3층')
         self.assertEqual(d['statistics']['3-3']['footprint_count'], 0)
         self.assertEqual(d['statistics']['3-3']['pnu_register_parcel_features'], 1)
+
+    def test_cadastral_polygon_never_becomes_building_theme_even_with_ledger_match(self):
+        d = data()
+        cadastral = self._parcel((0, 0, 4, 4))
+        s = snapshot([], 'COMPLETE')
+        s['_report_layers']['LP_PA_CBND_BUBUN'] = {'status': 'COMPLETE', 'features': [cadastral]}
+        attach_building_themes(d, s)
+        for item in d['items']:
+            self.assertEqual(item['features'], [])
+            self.assertEqual(item['survey_table']['rows'][0]['count'], 1)
+            self.assertEqual(item['geometry_status'], 'UNAVAILABLE')
+            self.assertFalse(item['cad_exportable'])
+        self.assertEqual(d['statistics']['3-5']['cadastral_parcels_excluded_from_theme'], 1)
 
     def test_pnu_register_parcel_not_double_counted_when_footprint_already_joined(self):
         d = data()
