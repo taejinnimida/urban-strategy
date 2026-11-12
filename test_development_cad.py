@@ -212,7 +212,7 @@ def test_partial_building_cad_export_has_layers_and_a3_layout():
         'features': [{'type': 'Feature',
                       'geometry': mapping(transform(INVERSE, box(CX-20, CY-10, CX+20, CY+10))),
                       'properties': {'name': '3층', 'class_code': 'C03', 'color': '#228833',
-                                     'join_status': 'EXACT_ID', 'geometry_basis': 'BUILDING_FOOTPRINT'}}],
+                                     'join_status': 'EXACT_ID', 'geometry_basis': 'BUILDING_FOOTPRINT', 'geometry_source': 'LT_C_BLDGINFO'}}],
         'legend': [{'name': '3층', 'class_code': 'C03', 'color': '#228833',
                     'count': 1, 'pct': 100.0}],
     }
@@ -223,6 +223,12 @@ def test_partial_building_cad_export_has_layers_and_a3_layout():
     assert 'SURVEY_A3' in doc.layouts
     assert len(list(doc.modelspace().query('HATCH[layer=="SURVEY_3_3_C03"]'))) > 0
     assert len(list(doc.modelspace().query('LWPOLYLINE[layer=="SURVEY_3_3_C03"]'))) > 0
+    # A GIS-only polygon can be exported with explicit provenance, even
+    # when the legal-register management number is unavailable.
+    item['features'][0]['properties']['join_status']='GIS_ONLY'
+    doc2 = load_dxf(dxf_bytes(item, snapshots['test-token'] | {
+        '_cad_background': snapshots['test-token']['_cad_background']}, {}))
+    assert len(list(doc2.modelspace().query('HATCH[layer=="SURVEY_3_3_C03"]'))) > 0
     # Old PNU-substitute data must fail rather than silently export land as buildings.
     item['features'][0]['properties'] = {**item['features'][0]['properties'],
         'join_status': 'PNU_PARCEL_REGISTER', 'geometry_basis': 'CADASTRAL_PNU'}
