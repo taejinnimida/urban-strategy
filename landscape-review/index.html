@@ -292,7 +292,7 @@ button,input,select{font:inherit}.hidden{display:none!important}
             <section class="card scene-card"><div class="scene-head"><b>사업시행 전</b><span id="beforeViewLabel">대상지 기준</span></div><div id="simBefore3d" style="height:420px;background:#eef1f4"></div></section>
             <section class="card scene-card"><div class="scene-head"><b>사업시행 후</b><span id="afterViewLabel">계획 매스</span></div><div id="simAfter3d" style="height:420px;background:#eef1f4"></div></section>
           </div>
-          <section class="card analysis-card"><div><span>시뮬레이션 상태</span><b id="simStatus">조망점과 계획안을 준비하세요.</b></div><p id="simAnalysis">현재 단계는 대상지·조망점·동별 계획 매스의 좌표 연결을 검증합니다. 주변 기존 건축물과 지형은 후속 데이터 연동에서 추가합니다.</p></section>
+          <section class="card analysis-card"><div><span>시뮬레이션 상태</span><b id="simStatus">조망점과 계획안을 준비하세요.</b></div><p id="simAnalysis">현재 단계는 대상지·조망점·동별 계획 매스의 좌표 연결을 검증합니다.</p><p id="smapIntegrationStatus" style="font-size:10px;color:#68757f;margin-top:8px">S-MAP/XDWorld 연동상태 확인 중…</p></section>
           <div class="actions"><button class="btn ghost prev" data-prev="3">이전</button><button class="btn primary next" data-next="5">검토서 미리보기</button></div>
         </article>
 
@@ -320,6 +320,7 @@ button,input,select{font:inherit}.hidden{display:none!important}
     window.THREE = Object.assign({}, ThreeCore, { OrbitControls });
     window.dispatchEvent(new Event('three-ready'));
   </script>
+  <script src="/landscape-review/xdworld-adapter.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"></script>
   <script>
 const steps = [...document.querySelectorAll('.step')];
@@ -342,7 +343,7 @@ function go(step){
     setTimeout(()=>{ if(candidateMap){candidateMap.invalidateSize();syncCandidateSite();} },100);
   }
   if(step===4){
-    setTimeout(()=>{syncSimulationViewpoints();initSimulation3D();renderSimulation();},100);
+    setTimeout(()=>{syncSimulationViewpoints();initSimulation3D();renderSimulation();refreshIntegrationStatus();},100);
   }
 }
 steps.forEach(s=>s.addEventListener('click',()=>go(+s.dataset.step)));
@@ -854,6 +855,7 @@ document.getElementById('selectedBuildingHeight').addEventListener('input',e=>{
 // -----------------------------
 const VIEW_RULES={nearMax:250,midMax:500,farMax:1000,targetPerBand:5};
 let candidateMap=null,candidateSiteLayers=[],candidateLayers=null,candidateItems=[],officialViewpoints=[],candidateBandFilter='all';
+let viewpointRanking=null;
 const categoryLabels={designated:'경관계획 조망점',subway:'지하철 출입구',bus:'버스정류장',university:'대학 정문 후보',heritage:'문화유산',intersection:'20m+ 교차로',park:'공원',square:'광장',facility:'주요시설',viewpoint:'원거리 조망가능 지점'};
 
 function initCandidateMap(){
@@ -909,19 +911,31 @@ function enrich(rows){
 }
 function selection(rows){
   const out={near:[],mid:[],far:[],pending:{near:0,mid:0,far:0}};
+  if(viewpointRanking?.bands){
+    ['near','mid','far'].forEach(b=>{
+      const ids=new Set(viewpointRanking.bands[b]?.selected_ids||[]);
+      out[b]=rows.filter(r=>r.band===b&&ids.has(r.id));
+      out.pending[b]=Math.max(0,VIEW_RULES.targetPerBand-(viewpointRanking.bands[b]?.scored_count||0));
+    });
+    return out;
+  }
   ['near','mid','far'].forEach(b=>{
-    const br=rows.filter(r=>r.band===b&&!r.userExcluded);
-    const must=br.filter(r=>r.mandatory);
-    const manual=br.filter(r=>r.userSelected&&!r.mandatory);
-    const manualIds=new Set(manual.map(r=>r.id));
-    const scored=br.filter(r=>!r.mandatory&&!manualIds.has(r.id)&&Number.isFinite(r.pedestrianScore))
-      .sort((a,b)=>b.pedestrianScore-a.pedestrianScore);
-    const target=Math.max(VIEW_RULES.targetPerBand,must.length+manual.length);
-    out[b]=[...must,...manual,...scored.slice(0,Math.max(0,target-must.length-manual.length))];
-    out.pending[b]=Math.max(0,VIEW_RULES.targetPerBand-out[b].length);
+    const br=rows.filter(r=>r.band===b&&!r.userExcluded),must=br.filter(r=>r.mandatory),manual=br.filter(r=>r.userSelected&&!r.mandatory);
+    out[b]=[...manual,...must];
+    out.pending[b]=VIEW_RULES.targetPerBand;
   });
   return out;
 }
+async function rankViewpointCandidates(){
+  try{
+    const res=await fetch('/api/viewpoint/rank',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({candidates:candidateItems,target_per_band:VIEW_RULES.targetPerBand,policy:'top5_plus_designated'})});
+    if(!res.ok)throw new Error('rank');
+    viewpointRanking=await res.json();
+  }catch(e){
+    viewpointRanking=null;
+  }
+}
+
 function renderCandidates(){
   initCandidateMap();if(candidateLayers)candidateLayers.clearLayers();const sel=selection(candidateItems),ids=new Set(['near','mid','far'].flatMap(b=>sel[b].map(x=>x.id)));
   candidateItems.forEach(r=>{const state=r.mandatory?'mandatory':ids.has(r.id)?'selected':'pending',icon=L.divIcon({className:'',html:`<div class="vp-marker ${state}">${bandLabel(r.band)[0]}</div>`,iconSize:[28,28],iconAnchor:[14,14]});const m=L.marker([r.lat,r.lng],{icon}).addTo(candidateLayers);m.bindTooltip(`${escapeHtml(r.name)}<br>${bandLabel(r.band)} · ${r.distance}m · ${escapeHtml(categoryLabels[r.category])}`);m.on('click',()=>candidateMap.setView([r.lat,r.lng],17));});
@@ -930,23 +944,38 @@ function renderCandidates(){
   const list=document.getElementById('candidateList'),ord={near:0,mid:1,far:2},filtered=candidateItems.filter(r=>candidateBandFilter==='all'||r.band===candidateBandFilter).sort((a,b)=>ord[a.band]-ord[b.band]||Number(b.mandatory)-Number(a.mandatory)||a.distance-b.distance);
   list.innerHTML=filtered.length?filtered.map(r=>{let state='보행량 연동 대기',cls='';if(r.mandatory){state='의무 포함';cls='mandatory';}else if(ids.has(r.id)){state='선정';cls='ready';}return `<div class="candidate-row ${ids.has(r.id)?'selected':''}" data-id="${escapeHtml(r.id)}"><div class="top"><div><b>${escapeHtml(r.name)}</b><em>${bandLabel(r.band)} · ${r.distance}m · ${r.direction}측 · ${r.source}</em></div><span class="state-badge ${cls}">${state}</span></div><div style="margin-top:6px;display:flex;gap:5px;flex-wrap:wrap"><span class="type-badge">${escapeHtml(categoryLabels[r.category])}</span><span class="type-badge">${escapeHtml(r.verification||'')}</span></div><div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap"><button class="btn ghost small vp-pick" data-action="pick" data-id="${escapeHtml(r.id)}">${r.userSelected?'선택해제':'선택'}</button><button class="btn ghost small vp-exclude" data-action="exclude" data-id="${escapeHtml(r.id)}">${r.userExcluded?'복원':'제외'}</button><button class="btn ghost small vp-direction" data-action="direction" data-id="${escapeHtml(r.id)}">조망방향 수정</button></div></div>`;}).join(''):'<div class="candidate-note">표시할 후보가 없습니다.</div>';
   list.querySelectorAll('.candidate-row').forEach(x=>x.addEventListener('click',ev=>{if(ev.target.closest('button'))return;const r=candidateItems.find(v=>v.id===x.dataset.id);if(r)candidateMap.setView([r.lat,r.lng],17);}));
-  list.querySelectorAll('[data-action="pick"]').forEach(btn=>btn.onclick=()=>{const r=candidateItems.find(v=>v.id===btn.dataset.id);if(!r||r.mandatory)return;if(r.userExcluded)r.userExcluded=false;r.userSelected=!r.userSelected;renderCandidates();});
-  list.querySelectorAll('[data-action="exclude"]').forEach(btn=>btn.onclick=()=>{const r=candidateItems.find(v=>v.id===btn.dataset.id);if(!r||r.mandatory)return;r.userExcluded=!r.userExcluded;if(r.userExcluded)r.userSelected=false;renderCandidates();});
-  list.querySelectorAll('[data-action="direction"]').forEach(btn=>btn.onclick=()=>{const r=candidateItems.find(v=>v.id===btn.dataset.id);if(!r)return;const v=prompt('조망방향을 입력하세요. 예: 북, 북동, 동, 남동, 남, 남서, 서, 북서',r.direction||'');if(v===null)return;r.directionOverride=v.trim();if(r.directionOverride)r.direction=r.directionOverride;renderCandidates();});
-  const pending=sel.pending.near+sel.pending.mid+sel.pending.far;updateCandidateStatus(pending?`보행량 미연동으로 ${pending}개 일반 선정 슬롯 보류`:'기본 선정수 충족');
+  list.querySelectorAll('[data-action="pick"]').forEach(btn=>btn.onclick=()=>{const r=candidateItems.find(v=>v.id===btn.dataset.id);if(!r||r.mandatory)return;if(r.userExcluded)r.userExcluded=false;r.userSelected=!r.userSelected;rankViewpointCandidates().then(renderCandidates);});
+  list.querySelectorAll('[data-action="exclude"]').forEach(btn=>btn.onclick=()=>{const r=candidateItems.find(v=>v.id===btn.dataset.id);if(!r||r.mandatory)return;r.userExcluded=!r.userExcluded;if(r.userExcluded)r.userSelected=false;rankViewpointCandidates().then(renderCandidates);});
+  list.querySelectorAll('[data-action="direction"]').forEach(btn=>btn.onclick=()=>{const r=candidateItems.find(v=>v.id===btn.dataset.id);if(!r)return;const v=prompt('조망방향을 입력하세요. 예: 북, 북동, 동, 남동, 남, 남서, 서, 북서',r.direction||'');if(v===null)return;r.directionOverride=v.trim();if(r.directionOverride)r.direction=r.directionOverride;rankViewpointCandidates().then(renderCandidates);});
+  const pending=sel.pending.near+sel.pending.mid+sel.pending.far;
+  if(viewpointRanking?.bands){
+    const scored=['near','mid','far'].reduce((n,b)=>n+(viewpointRanking.bands[b]?.scored_count||0),0);
+    const unscored=['near','mid','far'].reduce((n,b)=>n+(viewpointRanking.bands[b]?.unscored_count||0),0);
+    updateCandidateStatus(viewpointRanking.auto_selection_complete?`보행량 점수 후보 ${scored}개 · 자동선정 완료`:`보행량 점수 ${scored}개 / 미점수 ${unscored}개 · 자동선정 보류`);
+  }else updateCandidateStatus(pending?`보행량 미연동으로 자동선정 보류`:'기본 선정수 충족');
 }
 async function fetchCandidates(){
   if(!siteState.center){showToast('대상지를 먼저 지정하세요.');return;}initCandidateMap();const b=document.getElementById('fetchCandidates'),old=b.textContent;b.disabled=true;b.textContent='조회 중…';updateCandidateStatus('개발용 후보 API 조회 중');
-  try{const[lat,lng]=siteState.center,q=overpassQuery(lat,lng,1150),res=await fetch('https://overpass-api.de/api/interpreter',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:'data='+encodeURIComponent(q)});if(!res.ok)throw new Error(res.status);const d=await res.json();candidateItems=enrich([...officialViewpoints,...normalizeOsm(d.elements||[])]);renderCandidates();showToast(`후보 ${candidateItems.length}개를 불러왔습니다.`);}
-  catch(e){candidateItems=enrich([...officialViewpoints]);renderCandidates();updateCandidateStatus('개발용 후보 API 조회 실패 · 공식 API 어댑터 연결 필요');showToast('후보 API 조회에 실패했습니다.');}
+  try{const[lat,lng]=siteState.center,q=overpassQuery(lat,lng,1150),res=await fetch('https://overpass-api.de/api/interpreter',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:'data='+encodeURIComponent(q)});if(!res.ok)throw new Error(res.status);const d=await res.json();candidateItems=enrich([...officialViewpoints,...normalizeOsm(d.elements||[])]);await rankViewpointCandidates();renderCandidates();showToast(`기준 충족 후보 ${candidateItems.length}개를 수집했습니다.`);}
+  catch(e){candidateItems=enrich([...officialViewpoints]);await rankViewpointCandidates();renderCandidates();updateCandidateStatus('후보 API 조회 실패 · 공식 데이터 어댑터 연결 필요');showToast('후보 API 조회에 실패했습니다.');}
   finally{b.disabled=false;b.textContent=old;}
 }
 function repPoint(f){if(f?.geometry?.type==='Point')return[f.geometry.coordinates[1],f.geometry.coordinates[0]];const c=[];(function walk(x){if(!Array.isArray(x))return;if(typeof x[0]==='number'&&typeof x[1]==='number')c.push(x);else x.forEach(walk);})(f?.geometry?.coordinates);if(!c.length)return null;return[c.reduce((a,b)=>a+b[1],0)/c.length,c.reduce((a,b)=>a+b[0],0)/c.length];}
 function parseOfficial(j){const fs=j.type==='FeatureCollection'?j.features:j.type==='Feature'?[j]:j.type==='Point'?[{type:'Feature',properties:{},geometry:j}]:[];return fs.map((f,i)=>{const ll=repPoint(f);if(!ll)return null;return{id:`designated-${i}-${ll[0]}-${ll[1]}`,lat:ll[0],lng:ll[1],category:'designated',name:f.properties?.name||f.properties?.title||`경관계획 조망점 ${i+1}`,source:f.properties?.source||'사용자 제공 공식 조망점 DB',mandatory:true,pedestrianScore:null,verification:'경관계획상 지정'};}).filter(Boolean);}
 document.getElementById('fetchCandidates').onclick=fetchCandidates;
-document.getElementById('clearCandidates').onclick=()=>{candidateItems=enrich([...officialViewpoints]);renderCandidates();};
+document.getElementById('clearCandidates').onclick=async()=>{candidateItems=enrich([...officialViewpoints]);await rankViewpointCandidates();renderCandidates();};
 document.querySelectorAll('#candidateFilter button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#candidateFilter button').forEach(x=>x.classList.remove('active'));b.classList.add('active');candidateBandFilter=b.dataset.band;renderCandidates();});
-const officialVpFile=document.getElementById('officialVpFile');document.getElementById('officialVpUpload').onclick=()=>officialVpFile.click();officialVpFile.onchange=async()=>{const f=officialVpFile.files[0];if(!f)return;try{officialViewpoints=parseOfficial(JSON.parse(await f.text()));document.getElementById('officialVpFileName').value=`${f.name} · ${officialViewpoints.length}개`;candidateItems=enrich([...officialViewpoints,...candidateItems.filter(x=>x.source==='OSM 개발용')]);renderCandidates();showToast(`지정 조망점 ${officialViewpoints.length}개 반영`);}catch(e){showToast('GeoJSON을 읽지 못했습니다.');}};
+const officialVpFile=document.getElementById('officialVpFile');document.getElementById('officialVpUpload').onclick=()=>officialVpFile.click();officialVpFile.onchange=async()=>{const f=officialVpFile.files[0];if(!f)return;try{officialViewpoints=parseOfficial(JSON.parse(await f.text()));document.getElementById('officialVpFileName').value=`${f.name} · ${officialViewpoints.length}개`;candidateItems=enrich([...officialViewpoints,...candidateItems.filter(x=>x.source==='OSM 개발용')]);await rankViewpointCandidates();renderCandidates();showToast(`지정 조망점 ${officialViewpoints.length}개 추가 반영`);}catch(e){showToast('GeoJSON을 읽지 못했습니다.');}};
+
+async function refreshIntegrationStatus(){
+  const el=document.getElementById('smapIntegrationStatus');if(!el)return;
+  try{
+    const r=await fetch('/api/integrations/status',{cache:'no-store'}),v=await r.json();
+    const smap=v?.smap_openlab?.configured?'S-MAP 키 연결':'S-MAP 키 미연결';
+    const ped=v?.seoul_open_data?.configured?'보행량 데이터 키 연결':'보행량 데이터 키 미연결';
+    el.textContent=smap+' · '+ped+' · XDWorld 구역 내부 건물 제외 어댑터 준비';
+  }catch(e){el.textContent='연동상태 확인 실패';}
+}
 
 // -----------------------------
 // Step 4: actual viewpoint -> plan mass simulation
