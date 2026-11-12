@@ -38,4 +38,30 @@ class Tests(unittest.TestCase):
  def test_address(self):
   self.s._vworld_get=lambda *a,**k:(R({'response':{'status':'OK','result':{'items':[{'address':{'parcel':'다른 주소'}}]}}}),'mock');v=self.c.post('/api/development/address',json={'address':'경기도 화성시 봉담읍 수영리 1'}).json();self.assertEqual(v['status'],'not_found');self.assertIsNone(v['feature'])
  def test_wms(self):self.assertEqual(self.c.get('/api/development/wms/cadastral?bbox=0,0,1,1').status_code,422)
+ def test_planning_view_zoning_full_viewport_without_mutating_site_fact(self):
+  base=self.create().json()
+  viewport=mapping(box(126.969,37.559,126.973,37.563))
+  # Returned zoning polygon extends well beyond the selected analysis site.
+  class Response:
+   def json(self):
+    return {'response':{'status':'OK','result':{'featureCollection':{'features':[
+     {'id':'zone-1','type':'Feature','geometry':mapping(box(126.968,37.558,126.975,37.565)),
+      'properties':{'uname':'제2종일반주거지역'}}]}}}}
+   def close(self):pass
+  with patch.object(d.VWorldChannel,'request',return_value=(Response(),'mock')) as fn:
+   result=self.c.post('/api/development/planning-view',json={'geometry':viewport,'layer':'LT_C_UQ111'}).json()
+  self.assertEqual(result['status'],'COMPLETE')
+  self.assertTrue(result['display_only'])
+  self.assertEqual(len(result['features']),1)
+  self.assertEqual(result['features'][0]['geometry']['type'],'Polygon')
+  # The map-only response is clipped to the full view, not the selected site.
+  self.assertAlmostEqual(d.shape(result['features'][0]['geometry']).area,d.shape(viewport).area,places=8)
+  self.assertGreater(d.shape(result['features'][0]['geometry']).area,d.shape(self.g).area)
+  self.assertEqual(self.c.get('/api/development/snapshots/'+base['id']+'/layers').json()['layers'],{})
+  self.assertEqual(fn.call_count,1)
+ def test_planning_view_allowlist_and_bounds(self):
+  self.assertEqual(self.c.post('/api/development/planning-view',json={'geometry':self.g,'layer':'LT_C_UPISUQ151'}).status_code,422)
+  wide=mapping(box(126.95,37.54,127.01,37.60))
+  self.assertEqual(self.c.post('/api/development/planning-view',json={'geometry':wide,'layer':'LT_C_UQ111'}).status_code,422)
+
 if __name__=='__main__':unittest.main(verbosity=2)
