@@ -96,6 +96,133 @@ def _gis_value(field, props, as_of):
     return None
 
 
+def _parcel_register_matches(source_shapes, registers, keys):
+    """Assign GIS-building outlines by related PNU without imposing 1:1 counts.
+
+    The register remains authoritative for building statistics. A footprint is
+    only a map candidate if it belongs to a PNU related to a register title.
+    For a single title, largest outline is the main building and remaining
+    outlines are auxiliary. For multiple titles, explicit building IDs and
+    unique GIS attribute agreements establish individual title matching;
+    otherwise the PNU group is preserved without inventing a title identity.
+    Extra unverified standalone outlines are not automatically counted.
+    """
+    from collections import defaultdict
+    from development_building_fact import _register_pnus
+
+    keyed = dict(zip(keys, registers))
+    by_pnu = defaultdict(set)
+    for key, row in keyed.items():
+        for pnu in _register_pnus(row.get('pnus')):
+            by_pnu[pnu].add(key)
+    groups = defaultdict(list)
+    omitted = []
+    for record in source_shapes:
+        pnu = record.get('spatial_parcel_pnu') or record.get('provider_pnu')
+        if not pnu and record.get('join_status') == 'EXACT_ID':
+            key = record.get('register_row_key') or record.get('register_id')
+            if key in keyed:
+                pnus = _register_pnus(keyed[key].get('pnus'))
+                if len(pnus) == 1:
+                    pnu = next(iter(pnus))
+        if pnu and pnu in by_pnu:
+            groups[pnu].append(record)
+        else:
+            omitted.append({'record': record, 'reason': 'NO_REGISTER_PNU'
+                            if pnu else 'NO_SPATIAL_PNU'})
+    assigned = []
+    def geom_area(r):
+        try:
+            return shape(r['geometry']).area
+        except (TypeError, KeyError, ValueError):
+            return 0
+    def gis_field(r, field):
+        v=(r.get('attributes') or {}).get(field) or {}
+        if v.get('source') in ('GIS_BUILDING','GIS+BUILDING_REGISTER'):
+            return v.get('value')
+        if v.get('gis_value') is not None:
+            return v['gis_value']
+        return None
+    for pnu, records in groups.items():
+        title_keys=sorted(by_pnu[pnu])
+        ordered=sorted(records, key=lambda r:(-geom_area(r),r['id']))
+        if len(title_keys)==1:
+            key=title_keys[0]
+            exact=[r for r in ordered if r.get('join_status')=='EXACT_ID' and
+                   (r.get('register_row_key') or r.get('register_id'))==key]
+            main=exact[0] if exact else ordered[0]
+            for r in ordered:
+                assigned.append({'record':r,'ledger_key':key,'pnu':pnu,
+                                 'role':'MAIN' if r is main else 'AUXILIARY',
+                                 'assurance':'EXACT_ID' if r in exact else 'PNU_GROUP',
+                                 'title_count':1})
+            continue
+        available=set(title_keys)
+        matched={}
+        for r in ordered:
+            key=r.get('register_row_key') or r.get('register_id')
+            if r.get('join_status')=='EXACT_ID' and key in available:
+                matched[r['id']]=key
+                available.remove(key)
+        # Unambiguous attribute matches only: do not use order or parcel
+        # number to invent which building-register title a GIS polygon is.
+        for r in ordered:
+            if r['id'] in matched or not available:
+                continue
+            scores={}
+            for key in sorted(available):
+                ledger=keyed[key]
+                score=0
+                evidence=0
+                for fld,weight in (('use',4),('structure',2),('floors',3),('floor_area',2)):
+                    gv=gis_field(r,fld);tv=ledger.get(fld)
+                    if gv is None or tv is None:
+                        continue
+                    evidence+=1
+                    if fld in ('use','structure'):
+                        if str(gv).replace(' ','')==str(tv).replace(' ',''):
+                            score+=weight
+                    else:
+                        try:
+                            v=float(gv);t=float(tv)
+                            if abs(v-t)<=max(1,abs(t)*.12):score+=weight
+                        except (ValueError,TypeError):
+                            pass
+                if evidence:
+                    scores[key]=score
+            if scores:
+                best=max(scores.values())
+                winners=[k for k,v in scores.items() if v==best]
+                if best>=4 and len(winners)==1:
+                    key=winners[0]
+                    matched[r['id']]=key
+                    available.remove(key)
+        # Known PNU group, with ambiguous individual records:
+        # retain up to the remaining number of registered building titles as
+        # candidates; only smaller leftovers are plausible auxiliary buildings.
+        unresolved=[r for r in ordered if r['id'] not in matched]
+        candidate_count=min(len(available),len(unresolved))
+        main_candidates=unresolved[:candidate_count]
+        for r in ordered:
+            key=matched.get(r['id'])
+            if key:
+                assigned.append({'record':r,'ledger_key':key,'pnu':pnu,
+                                 'role':'MAIN','assurance':'EXACT_ID'
+                                 if r.get('join_status')=='EXACT_ID'
+                                 else 'ATTRIBUTE_CANDIDATE','title_count':len(title_keys)})
+            elif r in main_candidates:
+                assigned.append({'record':r,'ledger_key':None,'pnu':pnu,
+                                 'role':'PNU_GROUP','assurance':'MULTIPLE_TITLES',
+                                 'title_count':len(title_keys),
+                                 'ledger_candidates':sorted(available)})
+            else:
+                # Surplus polygons lacking an individual register match
+                # are not presumed separate registered buildings.
+                omitted.append({'record':r,'reason':'EXTRA_UNVERIFIED_FOOTPRINT',
+                                'pnu':pnu})
+    return assigned, omitted
+
+
 def attach_building_themes(data, snapshot):
     """Keep the legal register table and the GIS footprint drawing independent.
 
@@ -118,42 +245,34 @@ def attach_building_themes(data, snapshot):
                      if r.get('geometry_source') == 'LT_C_BLDGINFO']
     parcel_records = fact.get('parcel_register_records') or []
 
-    direct_by_key = defaultdict(list)
-    provisional_by_key = defaultdict(list)
-    for record in source_shapes:
-        key = record.get('register_row_key') or record.get('register_id')
-        if key not in registered:
-            continue
-        if record.get('join_status') == 'EXACT_ID':
-            direct_by_key[key].append(record)
-        elif record.get('join_status') == 'PARCEL_SPATIAL_REFERENCE':
-            provisional_by_key[key].append(record)
-    ambiguous = {key for key, records in direct_by_key.items() if len(records) != 1}
-    direct_keys = {key for key, records in direct_by_key.items() if len(records) == 1}
-    provisional_keys = {key for key, records in provisional_by_key.items()
-                        if len(records) == 1 and key not in direct_keys}
-    mapped_keys = direct_keys | provisional_keys
-
-    # The building-register row count is the table denominator. GIS outlines
-    # are map observations, not a count of legally extant buildings.
+    matches, omitted = _parcel_register_matches(source_shapes, registers, ledger_keys)
+    mapped_keys = {a['ledger_key'] for a in matches if a.get('ledger_key')}
+    role_totals = Counter(a['role'] for a in matches)
+    assurance_totals = Counter(a['assurance'] for a in matches)
     fact['counts']['ledger_survey_rows'] = n
     fact['counts']['ledger_survey_mapped'] = len(mapped_keys)
-    fact['counts']['source_gis_footprints_drawn'] = len(source_shapes)
-    fact['counts']['direct_geometry_titles'] = len(direct_keys)
-    fact['counts']['provisional_geometry_titles'] = len(provisional_keys)
-    fact['counts']['unlinked_gis_footprints_drawn'] = sum(
-        r.get('join_status') == 'UNMATCHED' for r in source_shapes)
-    fact['counts']['ambiguous_ledger_geometry_hidden'] = len(ambiguous)
+    fact['counts']['source_gis_footprints_drawn'] = len(matches)
+    fact['counts']['main_building_footprints'] = role_totals['MAIN']
+    fact['counts']['auxiliary_building_footprints'] = role_totals['AUXILIARY']
+    fact['counts']['multi_title_group_footprints'] = role_totals['PNU_GROUP']
+    fact['counts']['source_footprints_excluded_from_survey'] = len(omitted)
+    fact['counts']['direct_geometry_titles'] = len({
+        a['ledger_key'] for a in matches if a['assurance']=='EXACT_ID'})
+    fact['counts']['provisional_geometry_titles'] = len({
+        a['ledger_key'] for a in matches if a['assurance'] in ('PNU_GROUP','ATTRIBUTE_CANDIDATE')})
+    fact['counts']['unlinked_gis_footprints_drawn'] = role_totals['PNU_GROUP']
+    fact['counts']['ambiguous_ledger_geometry_hidden'] = 0
     fact['display_exclusion'] = {
-        'reason': 'CADASTRAL_PARCELS_ARE_NOT_BUILDING_FOOTPRINTS',
-        'source_shapes_hidden': 0,
-        'source_shapes_drawn': len(source_shapes),
-        'cadastral_parcels_excluded_from_building_theme': len(parcel_records),
-        'ambiguous_registers': len(ambiguous),
-        'historical_status': 'UNCONFIRMED',
-        'note': ('GIS건물통합정보 건물 외곽선은 출처 그대로 표시하되, 현재 건축물 '
-                 '존재·멸실 여부와 대장 일치 여부는 별도 확인 필요. '
-                 '연속지적 필지는 건축물 외곽선으로 대체하지 않음.'),
+        'reason':'REGISTER_PNU_SCOPE_AND_SURPLUS_VALIDATION',
+        'source_shapes_hidden':len(omitted),
+        'source_shapes_drawn':len(matches),
+        'cadastral_parcels_excluded_from_building_theme':len(parcel_records),
+        'historical_status':'UNCONFIRMED',
+        'excluded_reasons':dict(Counter(v['reason'] for v in omitted)),
+        'note':('GIS 건물 외곽선은 대장 관련 PNU 내에서만 현황도 후보로 사용. '
+                '대장 1건에 여러 외곽선이 있으면 대표와 부속으로 관리. '
+                '복수 대장은 개별 속성 일치 시 연결하고 그렇지 않으면 '
+                '필지 그룹 미확정으로 표시. 필지 경계 자체는 색칠하지 않음.'),
     }
 
     for item in data['items']:
@@ -190,47 +309,64 @@ def attach_building_themes(data, snapshot):
         features = []
         map_totals = Counter()
         join_totals = Counter()
-        for record in source_shapes:
-            key = record.get('register_row_key') or record.get('register_id')
-            joined = record.get('join_status')
-            if joined == 'EXACT_ID' and key in direct_keys:
-                row = registered[key]
-                value = row.get(field)
-                basis = row.get(field + '_basis') if field in ('coverage', 'far') else None
-                assurance = ('INTERNAL_CALC' if basis and basis != '건축HUB 원문'
-                             else 'DIRECT_LEDGER')
-                display_join = 'EXACT_ID'
-            elif joined == 'PARCEL_SPATIAL_REFERENCE' and key in provisional_keys:
-                row = registered[key]
-                value = row.get(field)
-                if value is None or value == '':
-                    value = (record.get('attributes') or {}).get(field, {}).get('value')
-                basis = row.get(field + '_basis') if field in ('coverage', 'far') else None
-                assurance = ('INTERNAL_CALC_PROVISIONAL'
-                             if basis and basis != '건축HUB 원문'
-                             else 'PROVISIONAL_PNU')
-                display_join = 'PARCEL_SPATIAL_REFERENCE'
+        for assoc in matches:
+            record=assoc['record']
+            key=assoc.get('ledger_key')
+            row=registered.get(key)
+            role=assoc['role']
+            assurance=assoc['assurance']
+            field_record=(record.get('attributes') or {}).get(field) or {}
+            gis_value=(field_record.get('value')
+                       if field_record.get('source') in ('GIS_BUILDING','GIS+BUILDING_REGISTER')
+                       else field_record.get('gis_value'))
+            if row:
+                # Registry is authoritative for the main structure. Auxiliary
+                # structures keep their own GIS values when explicitly supplied.
+                value=(gis_value if role=='AUXILIARY' and gis_value is not None
+                       else row.get(field))
+                if value is None:value=gis_value
+                basis=row.get(field+'_basis') if field in ('coverage','far') else None
+                attribute_assurance=('GIS_AUXILIARY_ATTRIBUTE'
+                                     if role=='AUXILIARY' and gis_value is not None
+                                     else 'INTERNAL_CALC_PROVISIONAL'
+                                     if basis and basis!='건축HUB 원문'
+                                     else 'REGISTER_PNU_GROUP')
             else:
-                field_record = (record.get('attributes') or {}).get(field) or {}
-                value = field_record.get('value') if (
-                    field_record.get('source') == 'GIS_BUILDING') else None
-                assurance = 'GIS_ATTRIBUTE' if value is not None else 'UNKNOWN'
-                display_join = 'GIS_ONLY'
-            label = _classify(item_id, value) if assurance != 'UNKNOWN' else UNKNOWN
+                # Multiple legal titles share the same PNU but the individual
+                # correspondence is not proven. Only source-specific GIS
+                # properties (or a unanimous register value) can be shown.
+                group_rows=[registered[k] for k in assoc.get('ledger_candidates',[])]
+                values={str(r.get(field)) for r in group_rows
+                        if r.get(field) is not None}
+                all_have_value=(bool(group_rows) and
+                                all(r.get(field) is not None for r in group_rows))
+                value=(gis_value if gis_value is not None else
+                       group_rows[0].get(field)
+                       if all_have_value and len(values)==1 else None)
+                attribute_assurance=('GIS_ATTRIBUTE' if gis_value is not None else
+                                     'GROUP_UNANIMOUS' if value is not None
+                                     else 'UNKNOWN')
+            display_join=('EXACT_ID' if assurance=='EXACT_ID' else
+                          'PARCEL_SPATIAL_REFERENCE' if key else
+                          'PNU_GROUP_REFERENCE')
+            label = _classify(item_id, value) if attribute_assurance != 'UNKNOWN' else UNKNOWN
             category = category_for(label)
             properties = {
                 'name': label, 'color': category['color'],
                 'class_code': category['class_code'],
                 'join_status': display_join,
-                'source_join_status': joined,
+                'source_join_status': record.get('join_status'),
                 'geometry_basis': 'BUILDING_FOOTPRINT',
+                'building_role': role,
+                'parcel_pnu': assoc['pnu'],
+                'title_count_on_parcel': assoc['title_count'],
                 'geometry_source': 'LT_C_BLDGINFO',
                 'quality_grade': record.get('quality_grade'),
-                'attribute_assurance': assurance,
-                'join_basis': record.get('match_basis'),
+                'attribute_assurance': attribute_assurance,
+                'join_basis': assurance,
                 'source': 'GIS_BUILDING',
                 'building_fact_id': record.get('id'),
-                'register_id': key if display_join != 'GIS_ONLY' else None,
+                'register_id': key,
             }
             features.append({'type': 'Feature', 'geometry': record['geometry'],
                              'properties': properties})
@@ -241,10 +377,10 @@ def attach_building_themes(data, snapshot):
             'kind': 'total', 'label': '합계', 'count': n,
             'pct': 100.0 if n else 0.0, 'join_status': 'BUILDING_REGISTER',
             'note': (f'건축물조서 {n}건 기준 · GIS건물통합정보 외곽선 '
-                     f'{len(features)}개 별도 표시(직접 {join_totals["EXACT_ID"]} · '
-                     f'PNU 잠정 {join_totals["PARCEL_SPATIAL_REFERENCE"]} · '
-                     f'GIS 단독 {join_totals["GIS_ONLY"]}) · '
-                     'GIS 도형 수는 실제 건축물 동수와 다를 수 있음'),
+                     f'{len(features)}개 표시(대표 {role_totals["MAIN"]} · '
+                     f'부속 {role_totals["AUXILIARY"]} · '
+                     f'복수대장 필지 미확정 {role_totals["PNU_GROUP"]}) · '
+                     '조서 건수와 건물 외곽선 수는 별도 단위'),
         }]
         for label in ordered:
             category = category_for(label)
@@ -259,24 +395,23 @@ def attach_building_themes(data, snapshot):
             })
 
         note = (
-            f'통계는 건축물조서 {n}건, 현황도는 GIS건물통합정보 건물외곽선 '
-            f'{len(features)}개를 별도 단위로 작성. 색상은 대장관리번호 직접일치, '
-            'PNU에 의한 잠정연계, GIS 원천속성 순으로 분류하며 '
-            '속성 미확보 건물은 회색으로 표시. PNU 지적 필지는 색칠하지 않음. '
-            'GIS 건물도형의 최신성·멸실 여부는 자동 확정하지 않으며 '
-            '대장 수치와 도형 수가 달라도 임의로 일치시키지 않음. '
-            '건폐율·용적률 내부산정은 법정 확정치와 구분.'
+            f'건축물조서 {n}건을 통계 기준으로 하고 관련 PNU의 GIS건물통합정보 '
+            f'{len(features)}개 외곽선을 표시. 대장 1건과 여러 외곽선은 최대 '
+            '건물도형을 주건축물, 나머지를 부속으로 관리. 복수대장 필지는 개별 '
+            '속성이 확인되는 경우 개별 연계, 그렇지 않으면 PNU 그룹 참고로 표시. '
+            f'대장 관련 PNU 미확인 및 부속으로 판단할 수 없는 초과 도형 '
+            f'{len(omitted)}개는 현황도에서 제외. 지적 필지는 건물처럼 색칠하지 않음. '
+            '도형 부재와 GIS 조회 실패는 구분하고, 건폐율·용적률 내부산정은 '
+            '법정 확정치와 구분.'
         )
-        if ambiguous:
-            note += f' 동일관리번호 중복 GIS 후보 {len(ambiguous)}개 관리번호는 직접연계로 인정하지 않음.'
         if n > len(mapped_keys):
             note += f' 대장 {n-len(mapped_keys)}건은 GIS 외곽선과 직접·잠정 연계 미확인.'
         if fact['geometry_status'] != 'COMPLETE':
             note += ' GIS 자료는 부분·보조 수신일 수 있어 전체 외곽선 확보를 보장하지 않음.'
 
         gis_complete = fact['source_info'].get('LT_C_BLDGINFO', {}).get('status') == 'COMPLETE'
-        full_match = bool(features) and gis_complete and len(features) == n and (
-            join_totals['EXACT_ID'] == len(features))
+        full_match = bool(features) and gis_complete and not omitted and (
+            role_totals['PNU_GROUP']==0)
         geometry_status = 'COMPLETE' if full_match else (
             'PARTIAL' if features else 'UNAVAILABLE')
         sources = ('국토교통부 건축HUB 대장 통계 · '
@@ -312,11 +447,13 @@ def attach_building_themes(data, snapshot):
                 cadastral_parcels_excluded_from_theme=len(parcel_records),
                 displayed_registered_features=len(mapped_keys),
                 displayed_gis_footprints=len(features),
-                hidden_unmatched_source_footprints=0,
-                ambiguous_registered_geometries=len(ambiguous),
-                verified_ledger_joins=join_totals['EXACT_ID'],
+                hidden_unmatched_source_footprints=len(omitted),
+                ambiguous_registered_geometries=role_totals['PNU_GROUP'],
+                verified_ledger_joins=assurance_totals['EXACT_ID'],
                 provisional_spatial_joins=join_totals['PARCEL_SPATIAL_REFERENCE'],
-                gis_only_footprints=join_totals['GIS_ONLY'],
+                gis_only_footprints=0,
+                auxiliary_footprints=role_totals['AUXILIARY'],
+                omitted_unverified_footprints=len(omitted),
                 footprint_status=fact['geometry_status'],
                 mapped_groups=[{**categories[label], 'count': map_totals[label]}
                                for label in categories if map_totals[label]],
