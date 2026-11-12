@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-from shapely.geometry import box, mapping
+from shapely.geometry import box, mapping, shape
 from shapely.ops import transform
 from pyproj import Transformer
 
@@ -77,6 +77,27 @@ class ElevationSurveyTest(unittest.TestCase):
         self.assertAlmostEqual(sum(x['area_m2'] for x in i['legend']),1600,places=2)
         self.assertEqual(i['statistics']['values'],terrain['elevation'])
         self.assertTrue(i['provider_verified'])
+    def test_large_site_polygonized_into_class_vectors(self):
+        # 8,000+ source grid cells should still produce a useful A3/DXF map
+        # by dissolving adjacent cells with the same elevation class.
+        self.grid['values']=[[100.+r*.1+c*.1 for c in range(100)]
+                             for r in range(100)]
+        self.write_grid(self.grid['values'])
+        target_metric=box(X0+100,Y0+100,X0+900,Y0+900)
+        self.target=mapping(transform(TO_WGS,target_metric))
+        self.entry['coverage']=mapping(transform(TO_WGS,
+            box(X0,Y0,X0+1000,Y0+1000)))
+        r=self.analysis()
+        self.assertEqual(r['elevation_status'],'DATA')
+        self.assertTrue(r['elevation_map_complete'])
+        self.assertLess(len(r['elevation_features']),300)
+        self.assertGreater(len(r['elevation_features']),0)
+        self.assertAlmostEqual(sum(x['area_m2'] for x in r['elevation_groups']),
+                               640000.,places=2)
+        mapped=sum(transform(TO_METRE,shape(f['geometry'])).area
+                   for f in r['elevation_features'])
+        self.assertAlmostEqual(mapped,640000.,delta=0.1)
+
     def test_registered_geotiff_reads_site_window(self):
         try:
             import numpy as np
