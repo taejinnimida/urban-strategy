@@ -340,12 +340,12 @@ def dxf_bytes(item, snapshot, metadata):
                     attrs = {'color': 7, 'true_color': rgb}
                 doc.layers.new(layer_name, dxfattribs=attrs)
         if item.get('thematic_type') == 'building':
-            # Never export a cadastral parcel as a building footprint, even
-            # when an older cached report contains PNU substitute geometry.
+            # GIS건물통합정보 원천 외곽선은 관리번호 직접일치가 없어도
+            # GIS 단독·PNU 잠정연계를 구분하여 출력한다. 필지 대체도형은 금지.
             if any((feature.get('properties') or {}).get('geometry_basis') != 'BUILDING_FOOTPRINT'
-                   or (feature.get('properties') or {}).get('join_status') != 'EXACT_ID'
+                   or (feature.get('properties') or {}).get('geometry_source') != 'LT_C_BLDGINFO'
                    for feature in item.get('features') or []):
-                raise HTTPException(409, '건축물 현황도는 건물관리번호 직접연계 GIS 외곽선만 출력할 수 있습니다.')
+                raise HTTPException(409, '건축물 현황도는 GIS건물통합정보 건물 외곽선만 출력합니다. 필지 대체도형은 제외하세요.')
         sheet_theme = (snapshot.get('_cad_zone_background', {}).get('features') or item.get('features') or []) if item.get('thematic_type') == 'zoning' else (item.get('features') or [])
         for feature in sheet_theme:
             try:
