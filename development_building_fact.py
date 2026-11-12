@@ -403,7 +403,7 @@ def assemble_building_fact(data, snapshot):
         {'register_id': key, 'pnus': ', '.join(str(r.get('pnus') or '') for r in rows),
          'reason': ('필지 공간중첩으로 잠정 후보만 확인. 대장관리번호 직접 일치 아님'
                     if key in spatial_title_keys else
-                    '관련 PNU의 필지 도형으로 대장 속성 표시 가능. 개별 건물 외곽선과 직접연계는 미확정'
+                    '관련 PNU 지적 필지는 확인되나 GIS 건물외곽선과 직접연계 미확정. 지적 필지는 건축물 현황도에 색칠하지 않음'
                     if key in parcel_record_keys else
                     '관련 필지 대장은 확인되나 이 구역에 대응하는 도형의 관리번호 직접연계 없음')}
         for key, rows in sorted(by_title.items()) if key not in used_title_keys
@@ -468,6 +468,6 @@ def assemble_building_fact(data, snapshot):
             'provider_verified': status == 'COMPLETE',
             'counts': counts, 'field_assurance_counts': field_assurance_counts,
             'note': ('조회된 건축물대장 원문 속성은 우선 활용. GIS 속성과 충돌하면 대장값을 유지하고 차이를 별도 기록. '
-                     '대장 내용의 신뢰성과 지도 도형·대장 연결 신뢰도는 별개. 관련 PNU가 연속지적과 일치하면 필지단위 대장 현황도로 표시하되 건축물 외곽선으로 가장하지 않음. 보조 지적 및 도형 제공 PNU도 직접 건물관리번호 일치가 아님. '
+                     '대장 내용의 신뢰성과 GIS 건물도형의 연계 신뢰도는 별개. PNU 필지는 참고·검증정보로만 유지하며 건축물 현황도 및 CAD에는 표시하지 않음. GIS 원천 건물도형은 관리번호 직접일치·PNU 잠정연계·GIS 단독의 수준을 구분해 표시. '
                      '건폐율·용적률 플랫폼 내부산정·개략추정은 원문과 구별하고 법정 확정치로 사용하지 않음. '
                      '공간도형 수는 법정 건축물 동수와 일치한다고 단정하지 않음.')}
