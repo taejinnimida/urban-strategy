@@ -17,7 +17,7 @@
 button,input,select{font:inherit}.hidden{display:none!important}
 .app-shell{min-height:100vh;display:grid;grid-template-columns:252px 1fr}
 .sidebar{background:#182b3d;color:#fff;padding:28px 20px;display:flex;flex-direction:column;gap:30px;position:sticky;top:0;height:100vh}
-.brand{display:flex;gap:12px;align-items:center}.brand-mark{width:42px;height:42px;border:1px solid rgba(255,255,255,.35);display:grid;place-items:center;font-size:22px}.brand strong{display:block;font-size:17px}.brand span{display:block;color:#9db0bf;font-size:12px;margin-top:4px}
+.brand{display:flex;gap:12px;align-items:center}.brand-mark{width:42px;height:42px;border:1px solid rgba(255,255,255,.35);display:grid;place-items:center}.brand-mark .landscape-icon{width:25px;height:25px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.brand strong{display:block;font-size:17px}.brand span{display:block;color:#9db0bf;font-size:12px;margin-top:4px}
 .steps{display:flex;flex-direction:column;gap:8px}.step{border:0;background:transparent;color:#9db0bf;padding:11px 12px;display:flex;gap:11px;align-items:center;text-align:left;border-radius:9px;cursor:pointer}.step span{width:25px;height:25px;border:1px solid #617486;border-radius:50%;display:grid;place-items:center;font-size:12px}.step em{font-style:normal}.step.active{background:#243f55;color:#fff}.step.active span{background:#fff;color:#243f55;border-color:#fff}
 .sidebar-note{margin-top:auto;border-top:1px solid rgba(255,255,255,.15);padding-top:18px}.sidebar-note b{font-size:12px;letter-spacing:.08em}.sidebar-note p{font-size:12px;line-height:1.6;color:#9db0bf;margin:8px 0 0}
 .main{min-width:0}.topbar{padding:28px 34px 20px;display:flex;align-items:flex-end;justify-content:space-between}.eyebrow{margin:0 0 5px;color:var(--muted);font-size:12px;letter-spacing:.04em}.topbar h1{margin:0;font-size:28px}.status-group{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:7px}.status-dot{width:8px;height:8px;border-radius:50%;background:var(--ok)}
@@ -85,7 +85,7 @@ button,input,select{font:inherit}.hidden{display:none!important}
   <div class="app-shell">
     <aside class="sidebar">
       <div class="brand">
-        <div class="brand-mark">景</div>
+        <div class="brand-mark"><svg class="landscape-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="17.5" cy="6.5" r="2.2"></circle><path d="M3 18.5 8.4 11l3.3 4.1 2.1-2.6 7.2 6H3Z"></path><path d="M3 20.5h18"></path></svg></div>
         <div><strong>경관성 검토</strong><span>Landscape Review</span></div>
       </div>
       <nav class="steps" aria-label="작업 단계">
