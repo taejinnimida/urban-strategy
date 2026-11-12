@@ -217,7 +217,9 @@ def _elevation_groups(elevations, feature_cells, site_area_m2):
     # Aligned intervals; no arbitrary 5-bin percentiles or invented values.
     steps=(5,10,20,25,50,100,200,500,1000)
     interval=next((s for s in steps
-                   if math.floor(maximum/s)-math.floor(minimum/s)+1<=8),1000)
+                   if math.floor(maximum/s)-math.floor(minimum/s)+1<=8),None)
+    if interval is None:
+        interval=10**math.ceil(math.log10(max(1,(maximum-minimum)/7)))
     low=math.floor(minimum/interval)*interval
     categories={}
     palette=('#2764a5','#438ec2','#68b5b4','#91bf86',
@@ -344,7 +346,8 @@ def dem(geometry,area):
             'source':entry['provider'],'source_url':entry['source_url'],'as_of':entry['as_of'],
             'resolution_m':dx,'elevation':stats(elevations),'slope':stats(slopes),
             'elevation_groups':groups,'elevation_features':elevation_features,
-            'elevation_map_complete':map_complete,'elevation_coverage_pct':elevation_coverage,
+            'elevation_map_complete':map_complete,'dem_site_area_m2':metric.area,
+            'elevation_coverage_pct':elevation_coverage,
             'slope_coverage_pct':min(100.,100*slope_weight/metric.area),
             'profiles':profiles,'features':features,
             'map_truncated':len(elevations)>len(features),
@@ -601,8 +604,7 @@ def enrich(data,snapshot,area):
         mapped_complete=terrain.get('elevation_map_complete') is True
         features=terrain.get('elevation_features') or []
         total_area=sum(g['area_m2'] for g in groups)
-        site_area=transform(Transformer.from_crs(4326,5179,always_xy=True).transform,
-                            shape(snapshot['geometry'])).area
+        site_area=terrain.get('dem_site_area_m2') or 0.0
         rows=[{'kind':'category','label':g['name'],'area_m2':g['area_m2'],
                'pct':g['pct'],'count':g['count'],
                'note':f"표고 {g['min_m']:.2f}~{g['max_m']:.2f}m, DEM {terrain['resolution_m']:g}m"}
