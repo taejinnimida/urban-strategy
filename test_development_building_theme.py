@@ -50,7 +50,7 @@ class BuildingSurveyTest(unittest.TestCase):
             self.assertEqual(item['geometry_status'], 'COMPLETE')
         self.assertEqual(d['items'][0]['features'][0]['properties']['name'], '단독주택')
         self.assertEqual(d['building_fact']['counts']['unmatched_gis_hidden_from_survey'], 1)
-        self.assertEqual(d['items'][2]['features'], [])
+        self.assertEqual(d['items'][2]['features'][0]['properties']['name'], '3층')
 
     def test_gis_attributes_not_used_to_inflate_register_stats(self):
         d = data()
@@ -194,7 +194,7 @@ class BuildingSurveyTest(unittest.TestCase):
         self.assertEqual(d['building_fact']['counts']['spatial_register_candidates'], 1)
         self.assertEqual(d['building_fact']['display_exclusion']['provisional_footprints_excluded'], 1)
         self.assertEqual(d['items'][2]['features'], [])
-        self.assertEqual(d['building_fact']['display_exclusion']['cadastral_parcels_excluded_from_building_theme'], 1)
+        self.assertFalse(any(f['properties']['geometry_basis']=='CADASTRAL_PNU' for f in d['items'][2]['features']))
         self.assertEqual(d['items'][2]['survey_table']['rows'][0]['count'], 1)
 
     def test_reference_cadastre_may_support_labelled_provisional_candidate(self):
@@ -237,7 +237,7 @@ class BuildingSurveyTest(unittest.TestCase):
         self.assertEqual(d['building_fact']['counts']['unkeyed_register_rows'], 1)
         self.assertEqual(d['building_fact']['counts']['spatial_register_candidates'], 1)
         self.assertEqual(d['building_fact']['counts']['direct_register_matches'], 0)
-        self.assertEqual(d['items'][2]['features'][0]['properties']['name'], '3층')
+        self.assertEqual(d['items'][2]['features'], [])
 
     def test_pnu_register_parcel_theme_without_any_building_footprint(self):
         d = data()
@@ -252,7 +252,7 @@ class BuildingSurveyTest(unittest.TestCase):
             self.assertEqual(item['features'], [])
             self.assertEqual(item['survey_table']['rows'][0]['count'], 1)
             self.assertIn('건물외곽선만', item['survey_table']['rows'][0]['note'])
-        self.assertEqual(d['items'][2]['features'][0]['properties']['name'], '3층')
+        self.assertEqual(d['items'][2]['features'], [])
         self.assertEqual(d['statistics']['3-3']['footprint_count'], 0)
         self.assertEqual(d['statistics']['3-3']['pnu_register_parcel_features'], 1)
 
