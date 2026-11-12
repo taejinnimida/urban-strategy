@@ -205,7 +205,10 @@ def attach_building_themes(data, snapshot):
                 value = row.get(field)
                 if value is None or value == '':
                     value = (record.get('attributes') or {}).get(field, {}).get('value')
-                assurance = 'PROVISIONAL_PNU'
+                basis = row.get(field + '_basis') if field in ('coverage', 'far') else None
+                assurance = ('INTERNAL_CALC_PROVISIONAL'
+                             if basis and basis != '건축HUB 원문'
+                             else 'PROVISIONAL_PNU')
                 display_join = 'PARCEL_SPATIAL_REFERENCE'
             else:
                 field_record = (record.get('attributes') or {}).get(field) or {}
