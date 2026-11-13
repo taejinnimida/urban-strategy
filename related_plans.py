@@ -163,7 +163,7 @@ class PlanFields(Input):
             if code not in index or primary not in index:
                 raise ValueError("등록된 행정구역을 선택해주세요.")
             within = primary in ancestors(code)
-            cross_province = not index[primary]["parent"] and not index[code]["parent"]
+            cross_province = index[primary]["parent"] == "KR" and index[code]["parent"] == "KR"
             if not (within or cross_province):
                 raise ValueError("대상 범위는 선택한 지역 안 또는 동일 단계의 시·도에서 지정해주세요.")
         return list(dict.fromkeys(value))
