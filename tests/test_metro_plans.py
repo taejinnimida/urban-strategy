@@ -23,7 +23,7 @@ def test_capital_area_plan_is_one_record_across_three_provinces():
     plan_id = "capital-area-reorganization-2021-2040"
     for region in ("11", "28", "41", "11140", "41110"):
         assert plan_id in entries(client, region)
-    for region in ("26", "29", "42"):
+    for region in ("26", "29", "51"):
         assert plan_id not in entries(client, region)
     plan = entries(client, "KR")[plan_id]
     assert plan["coverage_regions"] == ["11", "28", "41"]
