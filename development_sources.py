@@ -676,10 +676,14 @@ def enrich(data,snapshot,area):
             'as_of':contour.get('as_of'),
             'features':contour.get('features') or [],
             'legend':classes,
+            'cad_exportable':verified and contour.get('legal_submission_ready') is False,
+            'grid_origin_epsg5179':contour.get('grid_origin_epsg5179'),
+            'grid_size_m':contour.get('grid_size_m'),
+            'source_type':'REGISTERED_CONTOUR_TIN_REFERENCE',
             'thematic_type':'slope_tin',
             'provider_verified':False,
             'cad_exportable':False,
-            'geometry_status':'PARTIAL' if not verified else 'REFERENCE',
+            'geometry_status':'PARTIAL' if not verified else 'COMPLETE',
             'survey_table':{'title':'[표 4-2 경사도현황(TIN 10m 참고분석)]',
                             'status':'REFERENCE' if verified else 'PARTIAL',
                             'rows':rows,'source':contour.get('source'),
@@ -703,10 +707,61 @@ def enrich(data,snapshot,area):
             'status':'자료 필요','detail':contour.get('detail','TIN 분석자료 미확보'),
             'source':contour.get('source') or '수치지형도 등고선',
         })
-    # 4-1 elevation is an independent, register-backed thematic survey.
+    # 4-1 and 4-2 share identical source contour TIN; DEM remains a fallback.
+    if contour.get('status') in ('DATA', 'PARTIAL') and contour.get('elevation'):
+        bands = contour
+        legend = bands.get('elevation_groups') or []
+        feats = bands.get('elevation_features') or []
+        is_complete = (bands.get('elevation_status') == 'DATA'
+                       and bands.get('elevation_map_complete') is True
+                       and bands.get('coverage_pct', 0) >= 99.999)
+        band_rows = [{'kind':'category', 'label':g['name'],
+                      'area_m2':g['area_m2'], 'pct':g['pct'], 'count':g['count'],
+                      'note':'수치지형도 SHP 등고선·표고점 TIN 면적분할'}
+                     for g in legend]
+        results['4-1'] = {
+            'status':'참고 분석자료',
+            'detail':('1:5,000 수치지형도 등고선·표고점 SHP 기반 TIN 표고구간 '
+                      '면적분석 · 법정 검토용 원본 검증 미완료'
+                      + f" · 유효표고면적 {bands.get('elevation_coverage_pct',0):.2f}%"),
+            'source':contour.get('source'),
+            'source_url':contour.get('source_url'),
+            'as_of':contour.get('as_of'),
+            'source_type':'REGISTERED_CONTOUR_TIN_REFERENCE',
+            'thematic_type':'elevation',
+            'features':feats, 'legend':legend,
+            'provider_verified':False,
+            'cad_exportable':is_complete,
+            'geometry_status':'COMPLETE' if is_complete else 'PARTIAL',
+            'legal_submission_ready':False,
+            'survey_table':{
+                'title':'[표 4-1 표고현황(TIN)]',
+                'status':'REFERENCE' if is_complete else 'PARTIAL',
+                'source':contour.get('source'),'as_of':contour.get('as_of'),
+                'rows':[{'kind':'total','label':'TIN 표고분석면적',
+                         'area_m2':round(bands.get('elevation_covered_area_m2',0),2),
+                         'pct':round(bands.get('elevation_coverage_pct',0),2),
+                         'count':sum(x.get('count',0) for x in legend),
+                         'note':'대상지 내 실제 삼각면 교차면적'}]+band_rows,
+                'notes':['표고 구간은 TIN 평면을 고도별 절단해 면적 산정',
+                         '평균·최저·최고 표고는 지형면 기준',
+                         '등고선 breakline 보전 및 원본 최신성 검증 필요']
+            },
+        }
+        statistics['4-1'] = {
+            'values':bands['elevation'], 'groups':legend,
+            'mapped_groups':legend,'mapped_area_m2':round(bands.get('elevation_covered_area_m2',0),2),
+            'overlap_area_m2':round(bands.get('elevation_covered_area_m2',0),2),
+            'site_area_m2':bands.get('elevation_site_area_m2'),
+            'coverage_pct':bands.get('elevation_coverage_pct'),
+            'map_complete':bands.get('elevation_map_complete'),
+            'method':bands.get('elevation_method'),
+            'legal_submission_ready':False
+        }
+    # 4-1 elevation is a DEM fallback when official contour analysis is unavailable.
     # Maps, legend and printed table must derive from the same DEM FACT.
     elevation=terrain.get('elevation')
-    if elevation:
+    if elevation and '4-1' not in (k for k in () ) and not (contour.get('status') in ('DATA','PARTIAL') and contour.get('elevation')):
         groups=terrain.get('elevation_groups') or []
         complete=terrain.get('elevation_status')=='DATA'
         mapped_complete=terrain.get('elevation_map_complete') is True
