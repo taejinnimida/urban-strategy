@@ -860,7 +860,7 @@ def register_sources(router,service,snapshots,lock,output,get_snapshot,fetch_lay
                 'tpgrphFrmCodeNm' not in (old.get('record') or {})
             )
             if old and old.get('status') in ('DATA','ATTRIBUTE_ONLY','MAP_ONLY') and not stale_characteristics:
-                return {k:v for k,v in old.items() if k not in ('_image','features','rows','profiles','grid_records')}
+                return {k:v for k,v in old.items() if k not in ('_image','features','elevation_features','rows','profiles','grid_records')}
             try:
                 if job.startswith('vector:'):
                     k=job.split(':',1)[1];f=s.get('_report_layers',{}).get(k)
@@ -905,7 +905,7 @@ def register_sources(router,service,snapshots,lock,output,get_snapshot,fetch_lay
                 result=source_failure(exc,stage)
             result['queried_at']=datetime.now(__import__('zoneinfo').ZoneInfo('Asia/Seoul')).isoformat(timespec='seconds')
             with lock:s.setdefault('_national_sources',{})[job]=result
-            return {k:v for k,v in result.items() if k not in ('_image','features','rows','profiles','grid_records')}
+            return {k:v for k,v in result.items() if k not in ('_image','features','elevation_features','rows','profiles','grid_records')}
         finally:gate.release()
     @router.get('/reports/{token}/landcover.png')
     def landcover_image(token:str):
