@@ -252,7 +252,7 @@ button,input,select{font:inherit}.hidden{display:none!important}
           <div class="rule-strip">
             <div class="rule-card"><b>거리권</b><span>대상지 내부는 제외합니다. 대상지 경계로부터 근경 0~250m · 중경 250~500m · 원경 500~1,000m로 구분합니다.</span></div>
             <div class="rule-card"><b>후보 대상</b><span>보행자전용도로, 공원·광장, 역별 최단거리 지하철 출입구, 광역·공항버스 정류장, 대학 정문, 문화유산, 전망대, 20m 이상 교차로.</span></div>
-            <div class="rule-card"><b>최종선정</b><span>지정 조망점 별도 포함. 보행공간·공공시설 유형별 우선순위로 거리권당 5개를 선정하고, 부족분만 폭 20m 이상 교차로의 검증된 교통량 순으로 보충합니다. 지도에서 클릭하여 선정·해제할 수 있습니다.</span></div>
+            <div class="rule-card"><b>최종선정</b><span>전체 5개를 기본 추천합니다. 지하철역·공원·광장 우선, 20m 이상 주요교차로는 보완 후보입니다. 교통량은 선택정보이며 사용자가 조망점을 교체할 수 있습니다. 경관계획상 지정 조망점은 별도 표시합니다.</span></div>
           </div>
           <div class="grid candidate-layout">
             <section class="card candidate-map-card">
@@ -267,9 +267,9 @@ button,input,select{font:inherit}.hidden{display:none!important}
             <section class="card candidate-panel">
               <div class="vp-list-head"><span>후보 및 선정상태</span><b id="candidateCount">0개</b></div>
               <div class="band-summary">
-                <div class="band-box"><span>근경</span><b id="nearSummary">0 / 5</b></div>
-                <div class="band-box"><span>중경</span><b id="midSummary">0 / 5</b></div>
-                <div class="band-box"><span>원경</span><b id="farSummary">0 / 5</b></div>
+                <div class="band-box"><span>근경</span><b id="nearSummary">0개</b></div>
+                <div class="band-box"><span>중경</span><b id="midSummary">0개</b></div>
+                <div class="band-box"><span>원경</span><b id="farSummary">0개</b></div>
               </div>
               <div class="candidate-filter" id="candidateFilter">
                 <button class="active" data-band="all">전체</button><button data-band="near">근경</button><button data-band="mid">중경</button><button data-band="far">원경</button>
@@ -902,7 +902,7 @@ document.getElementById('selectedBuildingHeight').addEventListener('input',e=>{
 // -----------------------------
 // Day 3: VIEWPOINT CANDIDATE ENGINE
 // -----------------------------
-const VIEW_RULES={nearMax:250,midMax:500,farMax:1000,targetPerBand:5};
+const VIEW_RULES={nearMax:250,midMax:500,farMax:1000,targetPerBand:5}; // five total; API field name retained
 const BAND_COLORS={near:'#ef4444',mid:'#f59e0b',far:'#2563eb'};
 const DESIGNATED_COLOR='#7c3aed';
 // Seoul official UPIS WMS shares the same server-side rendering policy as the main urban-info map.
@@ -1113,7 +1113,7 @@ function selection(rows){
   ['near','mid','far'].forEach(b=>{
     const ids=new Set(viewpointRanking?.bands?.[b]?.selected_ids||[]);
     out[b]=rows.filter(r=>r.band===b&&ids.has(r.id));
-    out.pending[b]=viewpointRanking?.bands?.[b]?.auto_shortfall??VIEW_RULES.targetPerBand;
+    out.pending[b]=viewpointRanking?.auto_shortfall??VIEW_RULES.targetPerBand;
   });
   return out;
 }
@@ -1150,7 +1150,7 @@ function renderCandidates(){
     m.bindTooltip(`${escapeHtml(r.name)}<br>${bandLabel(r.band)} · ${r.distance}m · ${r.lat.toFixed(6)}, ${r.lng.toFixed(6)}<br>${selected?'선정':'미선정'} · 클릭하여 전환`);
     m.on('click',()=>toggleCandidate(r.id));
   });
-  ['near','mid','far'].forEach((b,i)=>document.getElementById(['nearSummary','midSummary','farSummary'][i]).textContent=`${sel[b].length} / ${VIEW_RULES.targetPerBand}`);
+  ['near','mid','far'].forEach((b,i)=>document.getElementById(['nearSummary','midSummary','farSummary'][i]).textContent=`${sel[b].length}개`);
   document.getElementById('candidateCount').textContent=`${candidateItems.length}개`;
   const list=document.getElementById('candidateList'),ord={near:0,mid:1,far:2};
   const filtered=candidateItems.filter(r=>candidateBandFilter==='all'||r.band===candidateBandFilter).sort((a,b)=>ord[a.band]-ord[b.band]||Number(b.mandatory)-Number(a.mandatory)||a.distance-b.distance);
@@ -1168,8 +1168,8 @@ function renderCandidates(){
     const v=prompt('조망방향을 입력하세요.',r.direction||'');if(v===null)return;
     r.directionOverride=v.trim();if(r.directionOverride)r.direction=r.directionOverride;renderCandidates();
   });
-  const shortfall=['near','mid','far'].reduce((n,b)=>n+(viewpointRanking?.bands?.[b]?.auto_shortfall||0),0);
-  updateCandidateStatus(viewpointRanking?`유형별 우선순위 자동선정 · 부족 ${shortfall}개 · 클릭하여 선정/해제 · 교차로는 검증된 교통량만 적용`:'선정 엔진 연결 확인 필요');
+  const shortfall=viewpointRanking?.auto_shortfall??VIEW_RULES.targetPerBand;
+  updateCandidateStatus(viewpointRanking?`전국 공통 후보 중 5개 기본추천 · 부족 ${shortfall}개 · 클릭하여 선정/해제 · 교통량은 보조정보`:'선정 엔진 연결 확인 필요');
 }
 async function fetchCandidates(){
   if(!siteState.center){showToast('대상지를 먼저 지정하세요.');return;}
