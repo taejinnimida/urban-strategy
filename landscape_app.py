@@ -931,6 +931,10 @@ def _viewpoint_auto_eligible(row:dict):
     category=str(row.get("category") or "")
     if category not in VIEWPOINT_CATEGORY_PRIORITY:
         return False
+    # A station/college POI centroid is not a verified entrance/main gate.
+    # Preserve it for user review but never treat it as an automatic viewpoint.
+    if row.get("requiresVerification") is True:
+        return False
     if category=="intersection":
         width=_viewpoint_width(row)
         return width is not None and width>=20 and _viewpoint_traffic(row) is not None
