@@ -576,6 +576,7 @@ way(around:{r},{lat},{lng})["historic"];
 node(around:{r},{lat},{lng})["heritage"];
 way(around:{r},{lat},{lng})["heritage"];
 node(around:{r},{lat},{lng})["tourism"="viewpoint"];
+node(around:{r},{lat},{lng})["highway"="traffic_signals"];
 );
 out center;"""
 
