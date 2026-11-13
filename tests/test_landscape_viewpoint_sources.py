@@ -140,3 +140,34 @@ def test_road_source_missing_never_creates_fake_intersections(monkeypatch):
     result=roads.candidates_from_centerlines(37.5665,126.978,1000)
     assert result["status"]=="DATA_UNAVAILABLE"
     assert not result["candidates"]
+
+def test_vworld_key_missing_is_distinct_from_empty_places(monkeypatch):
+    monkeypatch.delenv("VWORLD_API_KEY",raising=False)
+    rows,state=app._vworld_poi_candidates(37.56,126.98,1100)
+    assert rows==[] and state["state"]=="NO_KEY"
+
+
+def test_vworld_provider_reports_rejected_domain_without_leaking_key(monkeypatch):
+    monkeypatch.setenv("VWORLD_API_KEY","secret-test-key")
+    monkeypatch.setattr(app,"_domain",lambda:"https://landscape.example")
+    class Rejected:
+        status_code=200
+        def raise_for_status(self):pass
+        def json(self):
+            return {"response":{"status":"ERROR","error":{"code":"INVALID_DOMAIN"}}}
+    monkeypatch.setattr(app.requests,"get",lambda *args,**kwargs:Rejected())
+    rows,state=app._vworld_poi_candidates(37.56,126.98,1100)
+    assert rows==[] and state["state"]=="FAILED"
+    assert "VWorld:ERROR/INVALID_DOMAIN" in state["error_types"]
+    assert "secret-test-key" not in str(state)
+
+
+def test_vworld_diagnostic_is_not_public_by_default(monkeypatch):
+    from fastapi import HTTPException
+    monkeypatch.delenv("LANDSCAPE_ADMIN_TOKEN",raising=False)
+    try:
+        app.vworld_check()
+    except HTTPException as exc:
+        assert exc.status_code==404
+    else:
+        assert False,"Diagnostic endpoint must be disabled without an admin token"
