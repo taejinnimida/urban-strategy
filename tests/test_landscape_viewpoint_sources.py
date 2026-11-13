@@ -99,3 +99,44 @@ def test_vworld_poi_request_has_server_origin(monkeypatch):
     assert not rows and state["state"]=="OK"
     assert len(seen)==7
     assert all(req["headers"]["Referer"]=="https://landscape.example/" for req in seen)
+
+def test_centerline_adapter_reuses_seoul_width_rules():
+    import landscape_roads as roads
+    assert roads._road_width_m({"ROAD_BT":"20"})==20
+    assert roads._road_width_m({"road_bt":"24.5m"})==24.5
+    assert roads._road_width_m({"ROAD_BT":""}) is None
+    assert roads._road_width_m({"ROAD_BT":"폭원 미확인"}) is None
+    assert roads._road_width_m({"ROAD_BT":"12"})==12
+
+
+def test_centerline_crossing_geometry_candidate_with_no_traffic(monkeypatch):
+    import landscape_roads as roads
+    from shapely.geometry import LineString
+    from pyproj import Transformer
+    x,y=Transformer.from_crs(4326,5179,always_xy=True).transform(126.978,37.5665)
+    sample=[
+        {"geometry":LineString([(x-80,y),(x+80,y)]),
+         "properties":{"RDS_MAN_NO":"A","ROAD_BT":25,"RN":"동서대로"}},
+        {"geometry":LineString([(x,y-80),(x,y+80)]),
+         "properties":{"RDS_MAN_NO":"B","ROAD_BT":22,"RN":"남북대로"}},
+        {"geometry":LineString([(x+100,y-80),(x+100,y+80)]),
+         "properties":{"RDS_MAN_NO":"C","ROAD_BT":12,"RN":"국지도로"}},
+    ]
+    monkeypatch.setattr(roads,"_source_shp",lambda:"/fake/TL_SPRD_MANAGE")
+    monkeypatch.setattr(roads,"_road_shape_records",lambda *args: sample)
+    result=roads.candidates_from_centerlines(37.5665,126.978,1000)
+    assert result["status"]=="OK"
+    assert len(result["candidates"])==1
+    candidate=result["candidates"][0]
+    assert candidate["roadWidthM"]==22
+    assert candidate["trafficVolume"] is None
+    assert candidate["junctionVerified"] is False
+    assert candidate["source"]=="TL_SPRD_MANAGE ROAD_BT"
+
+
+def test_road_source_missing_never_creates_fake_intersections(monkeypatch):
+    import landscape_roads as roads
+    monkeypatch.setattr(roads,"_source_shp",lambda:None)
+    result=roads.candidates_from_centerlines(37.5665,126.978,1000)
+    assert result["status"]=="DATA_UNAVAILABLE"
+    assert not result["candidates"]
