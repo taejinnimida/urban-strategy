@@ -88,9 +88,12 @@ def _points_for_line(line, z, study, result):
         result.append((coords[-1][0], coords[-1][1], z))
 
 
-def _vertices(entry, root, site):
+def _vertices(entry, root, site, supplied_features=None, supplied_crs=None):
     from development_sources import official_features
-    source_features, source_crs = official_features(entry, root)
+    if supplied_features is None:
+        source_features, source_crs = official_features(entry, root)
+    else:
+        source_features, source_crs = supplied_features, supplied_crs
     if not source_crs:
         raise ValueError("Contour SHP requires source CRS (PRJ or manifest crs)")
     t = Transformer.from_crs(source_crs, "EPSG:5179", always_xy=True)
@@ -164,9 +167,22 @@ def analyze(geometry):
     """
     from development_sources import manifest_entry
     entry, root = manifest_entry("contours")
+    live = None
     if not entry:
-        return {"status": "MISSING_SOURCE", "source": None,
-                "detail": "수치지형도 등고선 SHP 원본 미등록 · 법정 평균경사도 참고 분석 불가"}
+        # An externally verifiable official WFS is the preferred no-storage
+        # alternative. It must deliver observed contour and spot heights.
+        from development_terrain_wfs import collect
+        live = collect(geometry)
+        if live.get('status') != 'DATA':
+            return {'status':live.get('status','MISSING_SOURCE'),
+                    'source':None,'source_mode':'LIVE_WFS',
+                    'detail':live.get('detail','공식 지형 원도형 호출 불가')}
+        entry = {
+            'provider': live['source'],
+            'source_url': live['source_url'],
+            'as_of': live['as_of'],
+            'coverage': geometry,
+        }
     target = shape(geometry)
     if target.is_empty or not target.is_valid or target.area <= 0:
         raise ValueError("Invalid analysis boundary")
@@ -177,7 +193,10 @@ def analyze(geometry):
     project = Transformer.from_crs("EPSG:4326", "EPSG:5179", always_xy=True)
     inverse = Transformer.from_crs("EPSG:5179", "EPSG:4326", always_xy=True)
     site = transform(project.transform, target)
-    points, source_count, height_field = _vertices(entry, root, site)
+    points, source_count, height_field = _vertices(
+        entry, root, site,
+        supplied_features=live['features'] if live is not None else None,
+        supplied_crs=live['source_crs'] if live is not None else None)
     triangulated = triangulate(MultiPoint(list(points)))
     triangles, slopes = [], []
     for triangle in triangulated:
@@ -275,6 +294,9 @@ def analyze(geometry):
                   "원본 최신성은 전문가 검증 전, 산지전용허가 적합판정 아님.",
         "source": entry["provider"], "source_url": entry["source_url"],
         "as_of": entry["as_of"], "height_field": height_field,
+        "source_mode": "LIVE_WFS" if live is not None else "REGISTERED_OFFICIAL_SHP",
+        "contour_wfs_count": live.get('contour_count') if live is not None else None,
+        "spot_wfs_count": live.get('spot_count') if live is not None else None,
         "grid_size_m": GRID_M, "grid_origin_epsg5179": [west, north],
         "grid_cell_policy": "FULL_10M_GRID_CLIPPED_ONLY_FOR_SITE_AREA",
         "crs": "EPSG:5179", "contour_features_used": source_count,
