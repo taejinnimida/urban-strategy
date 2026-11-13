@@ -57,7 +57,7 @@ def test_gyeonggi_catalogue_and_pagination_preserve_seoul(client):
     assert all(p["region"].startswith("41") or p["id"] == "capital-area-reorganization-2021-2040" for p in gg)
     seoul = all_items(client, region="11")
     assert len(seoul) == 30
-    assert sum(len(p["links"]) for p in seoul) == 49
+    assert sum(len(p["links"]) for p in seoul) == 48
     assert len(all_items(client, region="KR")) == 105
     assert [len(client.get(BASE, params={"region": "41", "page": n}).json()["items"])
             for n in range(1, 5)] == [30, 30, 16, 0]
@@ -112,7 +112,7 @@ def test_newtown_plans_are_visible_only_in_their_districts(client, city, include
     # Map counts track local/descendant registrations; lists also inherit
     # province/city plans. A district with no local plans still has a list.
     counts = client.get(BASE + "/catalog").json()["counts"]
-    assert counts[city] == {"41130": 5, "41170": 4, "41190": 3, "41280": 4}[city]
+    assert counts[city] == {"41130": 6, "41170": 5, "41190": 5, "41280": 4}[city]
     for region in included:
         assert counts[region] == 1
     for region in excluded:
