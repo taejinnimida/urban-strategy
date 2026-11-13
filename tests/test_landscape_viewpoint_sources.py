@@ -76,7 +76,7 @@ def test_empty_success_is_distinct_from_provider_failure(monkeypatch):
 
 
 def test_vworld_poi_request_has_server_origin(monkeypatch):
-    app._domain.__globals__["os"].environ["VWORLD_API_KEY"]="test-only-key"
+    monkeypatch.setenv("VWORLD_API_KEY","test-only-key")
     monkeypatch.setattr(app, "_domain", lambda: "https://landscape.example")
     seen=[]
     class FakeResponse:
@@ -86,10 +86,7 @@ def test_vworld_poi_request_has_server_origin(monkeypatch):
         seen.append(kwargs)
         return FakeResponse()
     monkeypatch.setattr(app.requests, "get", fake_get)
-    try:
-        rows,state=app._vworld_poi_candidates(37.56,126.98,1150)
-        assert not rows and state["state"]=="OK"
-        assert len(seen)==7
-        assert all(req["headers"]["Referer"]=="https://landscape.example/" for req in seen)
-    finally:
-        app._domain.__globals__["os"].environ.pop("VWORLD_API_KEY",None)
+    rows,state=app._vworld_poi_candidates(37.56,126.98,1150)
+    assert not rows and state["state"]=="OK"
+    assert len(seen)==7
+    assert all(req["headers"]["Referer"]=="https://landscape.example/" for req in seen)
