@@ -897,6 +897,67 @@ def viewpoint_candidates(
     raise HTTPException(502,detail={"message":"OSM 및 VWorld 후보자료 서비스 모두 조회되지 않았습니다.",
                                     "sources":sources})
 
+@lru_cache(maxsize=4)
+def _vworld_probe(_time_bucket:int):
+    """Small, rate-limited server-side check. Do not return credentials or request URLs."""
+    key=(os.getenv("VWORLD_API_KEY") or os.getenv("VWORLD_CLIENT_KEY") or "").strip()
+    origin=_domain().rstrip("/")
+    result={
+        "status":"UNCHECKED","domain":origin,
+        "server_key_configured":bool((os.getenv("VWORLD_API_KEY") or "").strip()),
+        "client_key_configured":bool((os.getenv("VWORLD_CLIENT_KEY") or "").strip()),
+        "server_key_source":("VWORLD_API_KEY" if (os.getenv("VWORLD_API_KEY") or "").strip()
+                             else "VWORLD_CLIENT_KEY" if key else "MISSING"),
+        "search":{"status":"NOT_CHECKED"},
+        "map_tiles":{"status":"NOT_CHECKED"}
+    }
+    if not key:
+        result["status"]="KEY_MISSING"
+        return result
+    headers={"Referer":origin+"/","User-Agent":"urban-landscape-review/diagnostic"}
+    try:
+        r=requests.get("https://api.vworld.kr/req/search",params={
+            "key":key,"domain":origin,"service":"search","request":"search","version":"2.0",
+            "format":"json","type":"PLACE","query":"공원","crs":"EPSG:4326",
+            "bbox":"126.97,37.56,127.01,37.58","size":"1","page":"1",
+        },headers=headers,timeout=(3,7))
+        try:
+            payload=r.json()
+            rsp=payload.get("response") or {}
+            response_status=str(rsp.get("status") or "UNKNOWN")
+            error_code=str((rsp.get("error") or {}).get("code") or "")[:64]
+        except (ValueError,AttributeError,TypeError):
+            response_status="INVALID_RESPONSE"
+            error_code=""
+        result["search"]={"status":"OK" if r.ok and response_status in ("OK","NOT_FOUND") else "ERROR",
+                          "http_status":r.status_code,"vworld_status":response_status,
+                          "error_code":error_code}
+    except requests.exceptions.RequestException as exc:
+        result["search"]={"status":"ERROR","kind":type(exc).__name__}
+    try:
+        # Known Seoul tile (z=12 / x=3492 / y=1586). Only validates map API
+        # authentication and PNG output, not the user's specific site.
+        tile=requests.get(
+            f"https://api.vworld.kr/req/wmts/1.0.0/{key}/Base/12/1586/3492.png",
+            headers=headers,timeout=(3,7))
+        ok=tile.ok and tile.content.startswith(bytes((0x89,0x50,0x4e,0x47)))
+        result["map_tiles"]={"status":"OK" if ok else "ERROR",
+                             "http_status":tile.status_code,
+                             "valid_image":ok}
+    except requests.exceptions.RequestException as exc:
+        result["map_tiles"]={"status":"ERROR","kind":type(exc).__name__}
+    ok_search=result["search"]["status"]=="OK"
+    ok_tiles=result["map_tiles"]["status"]=="OK"
+    result["status"]="OK" if ok_search and ok_tiles else "PARTIAL" if ok_search or ok_tiles else "ERROR"
+    return result
+
+
+@app.get("/api/integrations/vworld-check")
+def vworld_check():
+    # The 5-minute bucket avoids exposing an unrestricted VWorld probe.
+    return _vworld_probe(int(time()//300))
+
+
 @app.get("/api/integrations/status")
 def integration_status():
     return {
