@@ -1,0 +1,646 @@
+{
+  "schema_version": 2,
+  "checked_at": "2026-11-13",
+  "coverage": "국가 공통 건축자산 진흥 기본계획·산업집적활성화 기본계획·관광개발기본계획 및 서울·경기·충북·충남·대전·세종의 건축자산 시행계획·권역관광개발계획. 국가 기본계획은 KR 단일 ID로 등록하여 모든 지역에서 공통 상속조회. 시도 시행계획은 별도 ID.",
+  "plans": [
+    {
+      "id": "national-architecture-assets-1-2016",
+      "region": "KR",
+      "category": "architecture",
+      "plan_type": "basic",
+      "title": "제1차 건축자산 진흥 기본계획(2016~2020)",
+      "target_year": 2020,
+      "status": "historical",
+      "milestone_date": "2015-12",
+      "milestone_label": "계획 수립 월",
+      "scope_label": "전국",
+      "coverage_regions": [],
+      "tags": [
+        "건축자산",
+        "한옥",
+        "우수건축자산",
+        "국가기본계획"
+      ],
+      "note": "「한옥 등 건축자산의 진흥에 관한 법률」 제4조 국가 5년 기본계획. 이후 제2차 계획 수립으로 이전 계획이 됨.",
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "제1차 계획 원문 첨부 · 국가건축정책위원회",
+          "url": "https://pcap.go.kr/board/B0023.cs?act=read&bwrId=1484",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        },
+        {
+          "label": "제1차 법정계획 자료실 · AURUM",
+          "url": "https://www.aurum.re.kr/Legal/LegalSub.aspx?pcode=C01",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "national-architecture-assets-2-2021",
+      "region": "KR",
+      "category": "architecture",
+      "plan_type": "basic",
+      "title": "제2차 건축자산 진흥 기본계획(2021~2025)",
+      "target_year": 2025,
+      "status": "historical",
+      "milestone_date": "2020-12",
+      "milestone_label": "국토교통부 계획 발행 월",
+      "scope_label": "전국",
+      "coverage_regions": [],
+      "tags": [
+        "건축자산",
+        "한옥",
+        "우수건축자산",
+        "국가기본계획"
+      ],
+      "note": "국토교통부 공고 계획서에 따라 2021~2025년 적용한 이전 국가 계획. 제3차 계획 확정 여부와 구분.",
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "제2차 계획서 PDF 첨부 · 국가건축정책위원회",
+          "url": "https://pcap.go.kr/board/B0023.cs?act=read&bwrId=1625",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "national-architecture-assets-3-2026-draft",
+      "region": "KR",
+      "category": "architecture",
+      "plan_type": "basic",
+      "title": "제3차 건축자산 진흥 기본계획(2026~2030)(안)",
+      "target_year": 2030,
+      "status": "hearing",
+      "milestone_date": "2026-09-01",
+      "milestone_label": "공청회 개최 사실 보도(공청회 일자와 구분)",
+      "scope_label": "전국",
+      "coverage_regions": [],
+      "tags": [
+        "건축자산",
+        "한옥",
+        "국가기본계획",
+        "제3차"
+      ],
+      "note": "건축공간연구원의 제3차 계획 공청회 공개 사실 확인. 최종 법정 고시·원문은 확인하지 못해 공청회 단계로 보존.",
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "제3차 기본계획 공청회 안내 · 건축공간연구원",
+          "url": "https://www.auri.re.kr/board.es?act=view&bid=0001&list_no=7439&mid=a10401010000",
+          "kind": "hearing",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "national-industrial-concentration-2019",
+      "region": "KR",
+      "category": "industry",
+      "plan_type": "basic",
+      "title": "산업집적활성화 기본계획(2019년 변경 고시본)",
+      "target_year": null,
+      "status": "amended",
+      "milestone_date": "2019-12-31",
+      "milestone_label": "산업통상자원부 고시 제2019-220호(2020-01-06 시행)",
+      "scope_label": "전국",
+      "coverage_regions": [],
+      "tags": [
+        "산업집적",
+        "산업단지",
+        "국가산단",
+        "산업입지",
+        "공장",
+        "산업정책"
+      ],
+      "note": "「산업집적활성화 및 공장설립에 관한 법률」 제3조의 국가 5년 단위 기본계획. 국가법령정보센터에서 확인한 2019년 변경고시본을 등록하며 2026년 최신 후속 계획 수립 여부는 미확인. 산업단지 관리기본계획 및 공업지역기본계획과 별도.",
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "산업집적활성화 기본계획 고시 원문 · 국가법령정보센터",
+          "url": "https://www.law.go.kr/LSW/admRulLsInfoP.do?admRulSeq=2100000185251",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "national-tourism-development-4-2022",
+      "region": "KR",
+      "category": "tourism",
+      "plan_type": "basic",
+      "title": "제4차 관광개발기본계획(2022~2031)",
+      "target_year": 2031,
+      "status": "approved",
+      "milestone_date": "2021-12-30",
+      "milestone_label": "문화체육관광부 기본계획 확정 발표",
+      "scope_label": "전국",
+      "coverage_regions": [],
+      "tags": [
+        "관광",
+        "관광자원",
+        "관광개발",
+        "국가기본계획"
+      ],
+      "note": "「관광진흥법」 제49조의 전국 관광개발기본계획. 시도 권역별 관광개발계획과 구분하여 전국에서 조회하도록 함.",
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "제4차 관광개발기본계획 원문 첨부 · 문화체육관광부",
+          "url": "https://www.mcst.go.kr/site/s_policy/dept/deptView.jsp?pSeq=1585",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "seoul-architecture-assets-1-2019",
+      "region": "11",
+      "category": "architecture",
+      "plan_type": "sector",
+      "title": "제1차 서울특별시 건축자산 진흥 시행계획(2018~2022)",
+      "target_year": 2022,
+      "status": "historical",
+      "milestone_date": "2019",
+      "milestone_label": "서울특별시 시행계획 발행연도",
+      "scope_label": "서울특별시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "건축자산",
+        "진흥시행계획",
+        "한옥"
+      ],
+      "note": "서울특별시가 2019년 발행한 한옥 등 건축자산 진흥 시행계획. 2025년 12월 기준 후속 제2차 계획 수립 사실은 확인되지 않았으므로 이 계획을 최신 법정 계획으로 단정하지 않는다.",
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "서울특별시 건축자산 진흥 시행계획 본보고서 · 서울도시건축센터",
+          "url": "https://sca.seoul.go.kr/front/reference/spcBooks/view.do?board_sn=292",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-architecture-assets-2-2023",
+      "region": "41",
+      "category": "architecture",
+      "plan_type": "sector",
+      "title": "제2차 경기도 건축자산 진흥 시행계획(2023~2027)",
+      "target_year": 2027,
+      "status": "approved",
+      "milestone_date": "2023-07-26",
+      "milestone_label": "경기도 수립 발표일(고시일 아님)",
+      "scope_label": "경기도 전역",
+      "coverage_regions": [],
+      "tags": [
+        "건축자산",
+        "진흥시행계획",
+        "한옥"
+      ],
+      "note": "「한옥 등 건축자산의 진흥에 관한 법률」 제5조의 경기도 시행계획. 31개 시군 전역에 적용되는 광역 계획.",
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "경기도 건축자산 진흥 시행계획 원문 · 경기건축포털",
+          "url": "https://ggarchimap.gg.go.kr/architecture-startplan/",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "chungbuk-architecture-assets-1-2020",
+      "region": "43",
+      "category": "architecture",
+      "plan_type": "sector",
+      "title": "제1차 충청북도 건축자산 진흥 시행계획(2019~2023)",
+      "target_year": 2023,
+      "status": "historical",
+      "milestone_date": "2020",
+      "milestone_label": "건축공간연구원 조사상 수립연도",
+      "scope_label": "충청북도 전역",
+      "coverage_regions": [],
+      "tags": [
+        "건축자산",
+        "진흥시행계획",
+        "한옥"
+      ],
+      "note": "건축공간연구원 지자체 수립현황의 2020년 수립, 2019~2023 계획기간 정보에 근거. 최종 고시·원문 별도 확인 필요. 후속 제2차 시행계획은 수립 중이라는 2025년 조사결과와 구분.",
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "지자체 건축자산 진흥 시행계획 수립 현황 · 건축공간연구원",
+          "url": "https://www.auri.re.kr/publication/view.es?mid=a10313000000&publication_id=1826&publication_type=brief",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "chungnam-architecture-assets-1-2019",
+      "region": "44",
+      "category": "architecture",
+      "plan_type": "sector",
+      "title": "제1차 충청남도 건축자산 진흥 시행계획(2019~2023)",
+      "target_year": 2023,
+      "status": "historical",
+      "milestone_date": "2019",
+      "milestone_label": "충청남도 수립연도",
+      "scope_label": "충청남도 전역",
+      "coverage_regions": [],
+      "tags": [
+        "건축자산",
+        "진흥시행계획",
+        "한옥"
+      ],
+      "note": "제1차 충남 시행계획(2019~2023) 수립 이력을 충남연구원 제2차 계획 수립 연구에서 확인. 과거 계획으로 보존.",
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "제1차 시행계획 및 제2차 수립 근거 · 충남연구원",
+          "url": "https://www.cni.re.kr/main/contents/report/view.do?docId=1024PP0005&no=32&page=16&projectType=15",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "daejeon-architecture-assets-1-2019",
+      "region": "30",
+      "category": "architecture",
+      "plan_type": "sector",
+      "title": "제1차 대전광역시 건축자산 진흥 시행계획",
+      "target_year": null,
+      "status": "historical",
+      "milestone_date": "2019",
+      "milestone_label": "건축공간연구원 수립현황",
+      "scope_label": "대전광역시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "건축자산",
+        "진흥시행계획",
+        "한옥"
+      ],
+      "note": "건축공간연구원 연구자료에서 2019년 대전 시행계획 수립 사실 확인. 정확한 목표연도와 고시일은 별도 검증 필요.",
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "대전 시행계획 수립현황 수록 · 국회도서관",
+          "url": "https://dl.nanet.go.kr/detail/MONO12025000019262",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "sejong-architecture-assets-2-2024",
+      "region": "36",
+      "category": "architecture",
+      "plan_type": "sector",
+      "title": "제2차 세종특별자치시 건축자산 진흥 시행계획(2024~2028)",
+      "target_year": 2028,
+      "status": "approved",
+      "milestone_date": "2024-12-17",
+      "milestone_label": "국가기록원 간행물 발간등록 접수일(수립고시일 아님)",
+      "scope_label": "세종특별자치시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "건축자산",
+        "진흥시행계획",
+        "한옥"
+      ],
+      "note": "세종시가 발간한 제2차 건축자산 진흥 시행계획. 국가기록원 발간등록번호 58-5690446-100001-13이며 등록 접수일과 법정 확정일 구분.",
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "제2차 세종시 시행계획 간행물정보 · 국가기록원",
+          "url": "https://www.archives.go.kr/next/newmanager/publishmentSubscriptionDetail.do?prt_seq=177592",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "chungbuk-architecture-assets-2-draft",
+      "region": "43",
+      "category": "architecture",
+      "plan_type": "sector",
+      "title": "제2차 충청북도 건축자산 진흥 시행계획(수립 확인 필요)",
+      "target_year": null,
+      "status": "unknown",
+      "milestone_date": "2025-12",
+      "milestone_label": "건축공간연구원 수립현황 조사 기준월",
+      "scope_label": "충청북도 전역",
+      "coverage_regions": [],
+      "tags": [
+        "건축자산",
+        "진흥시행계획",
+        "후속계획"
+      ],
+      "note": "2025년 12월 기준 건축공간연구원 조사에서 제2차 계획 수립 중으로 표기. 2026년 최종 수립·공고 여부 미확인으로 상태 미확인 유지. 제1차 계획과 구분.",
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "건축자산 시행계획 전국 수립현황 · 건축공간연구원",
+          "url": "https://www.auri.re.kr/publication/view.es?mid=a10313000000&publication_id=1826&publication_type=brief",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "chungnam-architecture-assets-2-draft",
+      "region": "44",
+      "category": "architecture",
+      "plan_type": "sector",
+      "title": "제2차 충청남도 건축자산 진흥 시행계획(2024~2028)(안)",
+      "target_year": 2028,
+      "status": "unknown",
+      "milestone_date": "2026-08-31",
+      "milestone_label": "수립연구 과업 종료일(고시일 아님)",
+      "scope_label": "충청남도 전역",
+      "coverage_regions": [],
+      "tags": [
+        "건축자산",
+        "진흥시행계획",
+        "후속계획"
+      ],
+      "note": "2024~2028 기간을 목표로 충남연구원이 2024~2026 연구 시행. 2026년 11월 19일 심포지엄 예정이나 최종 승인 고시 원문 미확인. 확정계획 아님.",
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "제2차 충남 시행계획 수립 연구 · 충남연구원",
+          "url": "https://www.cni.re.kr/main/contents/report/view.do?docId=1024PP0005&no=32&page=16&projectType=15",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        },
+        {
+          "label": "제2차 계획 관련 2026년 정책 심포지엄 예고 · 건축공간연구원",
+          "url": "https://www.auri.re.kr/board.es?act=view&bid=0001&list_no=7658&mid=a10401010000",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "tourism-development-7-seoul",
+      "region": "11",
+      "category": "tourism",
+      "plan_type": "sector",
+      "title": "제7차 서울권 관광개발계획",
+      "target_year": 2026,
+      "status": "approved",
+      "milestone_date": "",
+      "milestone_label": "법정계획 자료 공개(고시일 별도 확인)",
+      "scope_label": "서울권",
+      "coverage_regions": [],
+      "tags": [
+        "관광개발계획",
+        "관광자원",
+        "권역별관광개발계획"
+      ],
+      "note": "건축도시정책정보센터(AURUM)의 제7차 권역별 관광개발계획 원문 자료에 근거. 원문에 표기된 적용기간 2019~2026년을 등록했다. 구체적인 확정·고시 날짜는 확인하지 못했다.",
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "제7차 권역별 관광개발계획 원문 PDF 목록 · AURUM",
+          "url": "https://www.aurum.re.kr/Legal/LegalSub.aspx?pcode=G02",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "tourism-development-7-gyeonggi",
+      "region": "41",
+      "category": "tourism",
+      "plan_type": "sector",
+      "title": "제7차 경기권 관광개발계획",
+      "target_year": 2026,
+      "status": "approved",
+      "milestone_date": "",
+      "milestone_label": "법정계획 자료 공개(고시일 별도 확인)",
+      "scope_label": "경기권",
+      "coverage_regions": [],
+      "tags": [
+        "관광개발계획",
+        "관광자원",
+        "권역별관광개발계획"
+      ],
+      "note": "건축도시정책정보센터(AURUM)의 제7차 권역별 관광개발계획 원문 자료에 근거. 원문에 표기된 적용기간 2021~2026년을 등록했다. 구체적인 확정·고시 날짜는 확인하지 못했다.",
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "제7차 권역별 관광개발계획 원문 PDF 목록 · AURUM",
+          "url": "https://www.aurum.re.kr/Legal/LegalSub.aspx?pcode=G02",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "tourism-development-7-chungbuk",
+      "region": "43",
+      "category": "tourism",
+      "plan_type": "sector",
+      "title": "제7차 충북권 관광개발계획",
+      "target_year": 2026,
+      "status": "approved",
+      "milestone_date": "",
+      "milestone_label": "법정계획 자료 공개(고시일 별도 확인)",
+      "scope_label": "충북권",
+      "coverage_regions": [],
+      "tags": [
+        "관광개발계획",
+        "관광자원",
+        "권역별관광개발계획"
+      ],
+      "note": "건축도시정책정보센터(AURUM)의 제7차 권역별 관광개발계획 원문 자료에 근거. 원문에 표기된 적용기간 2019~2026년을 등록했다. 구체적인 확정·고시 날짜는 확인하지 못했다.",
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "제7차 권역별 관광개발계획 원문 PDF 목록 · AURUM",
+          "url": "https://www.aurum.re.kr/Legal/LegalSub.aspx?pcode=G02",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        },
+        {
+          "label": "제7차 충북권 관광개발계획 공식 게시 · 충북도청",
+          "url": "https://www.chungbuk.go.kr/www/selectBbsNttList.do?bbsNo=393&key=2506&searchCtgry=%EA%B6%8C%EC%97%AD%EB%B3%84+%EA%B4%80%EA%B4%91%EA%B0%9C%EB%B0%9C%EA%B3%84%ED%9A%8D",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "tourism-development-7-chungnam",
+      "region": "44",
+      "category": "tourism",
+      "plan_type": "sector",
+      "title": "제7차 충남권 관광개발계획",
+      "target_year": 2026,
+      "status": "approved",
+      "milestone_date": "",
+      "milestone_label": "법정계획 자료 공개(고시일 별도 확인)",
+      "scope_label": "충남권",
+      "coverage_regions": [],
+      "tags": [
+        "관광개발계획",
+        "관광자원",
+        "권역별관광개발계획"
+      ],
+      "note": "건축도시정책정보센터(AURUM)의 제7차 권역별 관광개발계획 원문 자료에 근거. 원문에 표기된 적용기간 2021~2026년을 등록했다. 구체적인 확정·고시 날짜는 확인하지 못했다.",
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "제7차 권역별 관광개발계획 원문 PDF 목록 · AURUM",
+          "url": "https://www.aurum.re.kr/Legal/LegalSub.aspx?pcode=G02",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "tourism-development-7-daejeon",
+      "region": "30",
+      "category": "tourism",
+      "plan_type": "sector",
+      "title": "제7차 대전권 관광개발계획",
+      "target_year": 2022,
+      "status": "approved",
+      "milestone_date": "",
+      "milestone_label": "법정계획 자료 공개(고시일 별도 확인)",
+      "scope_label": "대전권",
+      "coverage_regions": [],
+      "tags": [
+        "관광개발계획",
+        "관광자원",
+        "권역별관광개발계획"
+      ],
+      "note": "건축도시정책정보센터(AURUM)의 제7차 권역별 관광개발계획 원문 자료에 근거. 원문에 표기된 적용기간 2019~2022년을 등록했다. 구체적인 확정·고시 날짜는 확인하지 못했다.",
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "제7차 권역별 관광개발계획 원문 PDF 목록 · AURUM",
+          "url": "https://www.aurum.re.kr/Legal/LegalSub.aspx?pcode=G02",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "tourism-development-7-sejong",
+      "region": "36",
+      "category": "tourism",
+      "plan_type": "sector",
+      "title": "제7차 세종권 관광개발계획",
+      "target_year": 2026,
+      "status": "approved",
+      "milestone_date": "",
+      "milestone_label": "법정계획 자료 공개(고시일 별도 확인)",
+      "scope_label": "세종권",
+      "coverage_regions": [],
+      "tags": [
+        "관광개발계획",
+        "관광자원",
+        "권역별관광개발계획"
+      ],
+      "note": "건축도시정책정보센터(AURUM)의 제7차 권역별 관광개발계획 원문 자료에 근거. 원문에 표기된 적용기간 2019~2026년을 등록했다. 구체적인 확정·고시 날짜는 확인하지 못했다.",
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "제7차 권역별 관광개발계획 원문 PDF 목록 · AURUM",
+          "url": "https://www.aurum.re.kr/Legal/LegalSub.aspx?pcode=G02",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    }
+  ]
+}
