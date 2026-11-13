@@ -6,7 +6,7 @@ import requests
 import shapefile
 import ezdxf
 from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, Response
 from pydantic import BaseModel
 from shapely.geometry import shape, Point, mapping, Polygon, MultiPolygon
 from shapely.ops import unary_union, transform
@@ -95,7 +95,8 @@ class ViewpointRankReq(BaseModel):
 
 def _landscape_review_html():
     html=(BASE/"landscape-review"/"index.html").read_text(encoding="utf-8")
-    browser_key=(os.getenv("VWORLD_CLIENT_KEY") or os.getenv("VWORLD_API_KEY") or "").strip()
+    # Never expose the server-only VWORLD_API_KEY in HTML or WebGL script URLs.
+    browser_key=(os.getenv("VWORLD_CLIENT_KEY") or "").strip()
     return html.replace("__VWORLD_CLIENT_KEY__",browser_key)
 
 @app.get("/",response_class=HTMLResponse)
@@ -563,8 +564,6 @@ node(around:{r},{lat},{lng})["place"="square"];
 way(around:{r},{lat},{lng})["place"="square"];
 node(around:{r},{lat},{lng})["railway"="subway_entrance"];
 node(around:{r},{lat},{lng})["railway"="station"]["station"="subway"];
-node(around:{r},{lat},{lng})["highway"="bus_stop"];
-node(around:{r},{lat},{lng})["public_transport"="platform"]["bus"="yes"];
 node(around:{r},{lat},{lng})["amenity"="university"];
 way(around:{r},{lat},{lng})["amenity"="university"];
 node(around:{r},{lat},{lng})["entrance"="main"];
@@ -576,6 +575,56 @@ way(around:{r},{lat},{lng})["heritage"];
 node(around:{r},{lat},{lng})["tourism"="viewpoint"];
 );
 out center;"""
+
+# Restricted VWorld WMTS adapter. The server key stays on the server;
+# only these fixed basemap layers and valid XYZ tiles can be requested.
+@app.get("/api/viewpoint/basemap/{layer}/{z}/{x}/{y}")
+def viewpoint_basemap(layer:str,z:int,x:int,y:int):
+    if layer not in ("Satellite","Base","Hybrid") or not (6<=z<=19) or not (0<=x<2**z and 0<=y<2**z):
+        raise HTTPException(400,"지원하지 않는 지도 타일입니다.")
+    key=(os.getenv("VWORLD_API_KEY") or "").strip()
+    if not key:
+        raise HTTPException(503,"배경지도 인증이 설정되지 않았습니다.")
+    extension="jpeg" if layer=="Satellite" else "png"
+    url=f"https://api.vworld.kr/req/wmts/1.0.0/{key}/{layer}/{z}/{y}/{x}.{extension}"
+    try:
+        r=requests.get(url,timeout=(3,8),headers={"Referer":_domain(),"User-Agent":"urban-landscape-review/1.2"})
+        r.raise_for_status()
+        if layer=="Satellite":
+            valid=r.content.startswith(b"\\xff\\xd8\\xff")
+        else:
+            valid=r.content.startswith(b"\\x89PNG")
+        if not valid:
+            raise ValueError("invalid tile")
+        return Response(content=r.content,media_type="image/jpeg" if layer=="Satellite" else "image/png",
+                        headers={"Cache-Control":"public, max-age=300","X-Content-Type-Options":"nosniff"})
+    except (requests.exceptions.RequestException,ValueError):
+        raise HTTPException(502,"VWorld 배경지도 조회 실패: 인증 도메인 또는 원격 서비스 확인 필요")
+
+# An official viewpoint is never synthesized from a place-name geocode.
+# Only a curated, verified coordinate file may be returned as authoritative.
+@app.get("/api/viewpoint/official")
+def viewpoint_official():
+    path=BASE/"landscape-review"/"official_viewpoints.geojson"
+    if not path.is_file():
+        return {"status":"DATA_UNAVAILABLE","features":[],"message":"공식 경관계획 조망점 좌표 DB 미구축"}
+    try:
+        data=json.loads(path.read_text(encoding="utf-8"))
+        if data.get("type")!="FeatureCollection" or not isinstance(data.get("features"),list):
+            raise ValueError("invalid official GeoJSON")
+        verified=[]
+        for feature in data["features"]:
+            geom=feature.get("geometry") or {}
+            coords=geom.get("coordinates") or []
+            props=feature.get("properties") or {}
+            if geom.get("type")!="Point" or len(coords)<2 or props.get("verified") is not True:
+                continue
+            lon,lat=float(coords[0]),float(coords[1])
+            if math.isfinite(lon) and math.isfinite(lat) and 124<=lon<=132 and 33<=lat<=39:
+                verified.append(feature)
+        return {"status":"OK","features":verified,"source":"verified official viewpoint database"}
+    except (ValueError,TypeError,KeyError,OSError):
+        return {"status":"DATA_UNAVAILABLE","features":[],"message":"공식 좌표 DB 검증 실패"}
 
 @app.get("/api/viewpoint/candidates")
 def viewpoint_candidates(
@@ -603,7 +652,7 @@ def viewpoint_candidates(
             response=requests.post(
                 url,
                 data={"data":query},
-                timeout=(3,13),
+                timeout=(3,8),
                 headers={"User-Agent":"urban-landscape-review/1.1 (viewpoint candidate lookup)",
                          "Accept":"application/json"}
             )
