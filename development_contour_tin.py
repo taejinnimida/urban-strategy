@@ -20,7 +20,8 @@ MAX_CELLS = 25000
 MAX_OUTPUT_FEATURES = 5000
 HEIGHT_FIELDS = (
     "elev", "elevation", "height", "contour", "altitude", "z",
-    "elev_m", "alt", "level", "hgt", "등고값", "등고선표고", "표고", "고도",
+    "elev_m", "alt", "level", "hgt", "cont", "z_value", "zvalue",
+    "등고값", "등고선표고", "표고", "고도",
 )
 CLASSES = [
     (0, 5, "5° 미만", "#3579bc"),
