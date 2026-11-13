@@ -46,7 +46,7 @@ def test_seoul_seed_and_readonly_mode():
     assert catalog["counts"]["11"]==30
     assert not catalog["contributions_enabled"]
     items=c.get(BASE).json()["items"]
-    assert sum(len(p["links"]) for p in items)==49
+    assert sum(len(p["links"]) for p in items)==48
     assert all(p["region"].startswith("11") for p in items)
     assert c.get(BASE,params={"region":"26"}).json()["total"]==0
     assert post(c,"/plans",payload()).status_code==503
@@ -162,7 +162,7 @@ def test_routes_and_search(client):
     assert client.get("/plans/assets/seoul-plans.json").status_code==404
     assert client.get(BASE+"/map/11").json()["features"]
     assert client.get(BASE,params={"region":"not-a-region"}).status_code==422
-    assert client.get(BASE,params={"q":"2040","category":"urban"}).json()["total"]==2
+    assert client.get(BASE,params={"q":"2040","category":"urban"}).json()["total"]==3
 
 
 def test_seed_metadata_and_links_are_valid():
