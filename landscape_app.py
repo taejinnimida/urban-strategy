@@ -28,7 +28,7 @@ def _cleanup():
             SNAPSHOTS.pop(k,None)
 
 def _vworld_key():
-    key=(os.getenv("VWORLD_API_KEY") or "").strip()
+    key=(os.getenv("VWORLD_API_KEY") or os.getenv("VWORLD_CLIENT_KEY") or "").strip()
     if not key:
         raise HTTPException(503,"VWorld API 키(VWORLD_API_KEY)가 설정되지 않았습니다.")
     return key
@@ -585,7 +585,7 @@ out center;"""
 def viewpoint_basemap(layer:str,z:int,x:int,y:int):
     if layer not in ("Satellite","Base","Hybrid") or not (6<=z<=19) or not (0<=x<2**z and 0<=y<2**z):
         raise HTTPException(400,"지원하지 않는 지도 타일입니다.")
-    key=(os.getenv("VWORLD_API_KEY") or "").strip()
+    key=(os.getenv("VWORLD_API_KEY") or os.getenv("VWORLD_CLIENT_KEY") or "").strip()
     if not key:
         raise HTTPException(503,"배경지도 인증이 설정되지 않았습니다.")
     extension="jpeg" if layer=="Satellite" else "png"
@@ -768,7 +768,7 @@ def _overpass_candidates(lat:float,lng:float,radius:int):
 def _vworld_poi_candidates(lat:float,lng:float,radius:int):
     # VWorld public place search provides additional nationwide candidates;
     # unlike OSM, it does not depend on the same external Overpass instances.
-    key=(os.getenv("VWORLD_API_KEY") or "").strip()
+    key=(os.getenv("VWORLD_API_KEY") or os.getenv("VWORLD_CLIENT_KEY") or "").strip()
     if not key:
         return [],{"name":"VWorld POI","state":"NO_KEY"}
     radius=max(100,min(int(radius),2000))
