@@ -1,0 +1,413 @@
+{
+  "schema_version": 2,
+  "checked_at": "2026-11-13",
+  "coverage": "전국 확장용 수도권 공통계획 및 서울·경기 누락 계획 보강 11건. 기존 서울 24건·경기 70건은 변경하지 않음. 공식 공고·고시·자료원 링크를 우선하고 최종 확정 미검증은 상태 미확인 처리.",
+  "plans": [
+    {
+      "id": "capital-area-reorganization-2021-2040",
+      "region": "11",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "제4차 수도권정비계획(2021~2040)",
+      "target_year": 2040,
+      "status": "approved",
+      "milestone_date": "2024-08-28",
+      "milestone_label": "국토교통부 계획 원문 게시일(확정일 아님)",
+      "scope_label": "서울특별시·인천광역시·경기도",
+      "coverage_regions": [
+        "11",
+        "28",
+        "41"
+      ],
+      "tags": [
+        "수도권정비계획",
+        "수도권정비계획법",
+        "수도권",
+        "광역계획"
+      ],
+      "note": "국토교통부의 동일한 계획 1건을 서울·인천·경기에서 공동 조회합니다. 계획기간은 2021~2040년입니다. 자료실 등록일을 계획 확정·고시일로 해석하지 않습니다. 개별 대상지의 권역 판정이나 법적 적합성 판정은 별도입니다.",
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "최종 계획서 첨부 · 국토교통부",
+          "url": "https://www.molit.go.kr/USR/policyData/m_34681/dtl.jsp?id=4787",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        },
+        {
+          "label": "법정계획 소개 · 건축도시정책정보센터",
+          "url": "https://www.aurum.re.kr/Legal/LegalSub.aspx?pcode=B06",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "seoul-renewal-shingil-2026-315",
+      "region": "11560",
+      "category": "renewal",
+      "plan_type": "area",
+      "title": "신길재정비촉진지구 재정비촉진계획(신길5·10구역 변경)",
+      "target_year": null,
+      "status": "amended",
+      "milestone_date": "2026-06-04",
+      "milestone_label": "서울특별시 고시 제2026-315호",
+      "scope_label": "영등포구 신길재정비촉진지구 신길5·10구역",
+      "coverage_regions": [],
+      "tags": [
+        "재정비촉진",
+        "뉴타운",
+        "신길",
+        "촉진계획"
+      ],
+      "note": "해당 2026년 변경고시를 등록합니다. 지구 전체의 모든 변경이력을 최신 단일 도면으로 보증하지 않으며, 촉진구역별 결정 내용과 도면은 원문 확인이 필요합니다.",
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "결정(변경) 및 지형도면 고시 · 서울도시공간포털",
+          "url": "https://urban.seoul.go.kr/view/html/PMNU4030100001?noticeCode=11000NTC202606010001",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "seoul-renewal-imun-hwigyeong-2026-101",
+      "region": "11230",
+      "category": "renewal",
+      "plan_type": "area",
+      "title": "이문·휘경재정비촉진지구 재정비촉진계획(이문4구역 변경)",
+      "target_year": null,
+      "status": "amended",
+      "milestone_date": "2026-02-26",
+      "milestone_label": "서울특별시 고시 제2026-101호",
+      "scope_label": "동대문구 이문·휘경재정비촉진지구 이문4구역",
+      "coverage_regions": [],
+      "tags": [
+        "재정비촉진",
+        "뉴타운",
+        "이문",
+        "휘경",
+        "촉진계획"
+      ],
+      "note": "이문4구역의 경미한 변경고시입니다. 이문·휘경지구 전체 최신 통합도서를 의미하지 않습니다.",
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "재정비촉진계획 변경 및 지형도면 고시 · 서울도시공간포털",
+          "url": "https://urban.seoul.go.kr/view/html/PMNU4030100001?noticeCode=11230NTC202603060004",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "seoul-renewal-seun-2026-581",
+      "region": "11140",
+      "category": "renewal",
+      "plan_type": "area",
+      "title": "세운재정비촉진지구 6-4-22·23구역 재정비촉진계획(변경)",
+      "target_year": null,
+      "status": "amended",
+      "milestone_date": "2026-10-15",
+      "milestone_label": "서울특별시 고시 제2026-581호(서울시보 제4186호)",
+      "scope_label": "중구 세운재정비촉진지구 6-4-22·23구역",
+      "coverage_regions": [],
+      "tags": [
+        "재정비촉진",
+        "세운",
+        "녹지생태도심",
+        "촉진계획"
+      ],
+      "note": "서울시보 제4186호의 개별 변경고시를 수록한 것입니다. 세운재정비촉진지구 전체 최신 통합계획으로 혼동하지 않습니다.",
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2026-581호 고시 수록 · 서울시보 제4186호",
+          "url": "https://event.seoul.go.kr/seoulsibo/detailview.do?cn_seq=Mjc1MzA%3D",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "seoul-regeneration-seoul-station-2026-564",
+      "region": "11140",
+      "category": "regeneration",
+      "plan_type": "area",
+      "title": "서울역 일대 도시재생활성화계획(변경)",
+      "target_year": null,
+      "status": "amended",
+      "milestone_date": "2026-10-15",
+      "milestone_label": "서울특별시 고시 제2026-564호(서울시보 제4186호)",
+      "scope_label": "서울역 일대 도시재생활성화지역(회현·중림동 등)",
+      "coverage_regions": [],
+      "tags": [
+        "도시재생활성화계획",
+        "서울역",
+        "회현",
+        "뉴빌리지"
+      ],
+      "note": "2026년 10월 서울시보에 수록된 변경 고시입니다. 구체적인 활성화지역 경계는 고시 첨부 도서로 확인해야 하며 중구 지역 선택을 대표 위치로 연결합니다.",
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2026-564호 고시 수록 · 서울시보 제4186호",
+          "url": "https://event.seoul.go.kr/seoulsibo/detailview.do?cn_seq=Mjc1MzA%3D",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "seoul-regeneration-namsan-2026",
+      "region": "11",
+      "category": "regeneration",
+      "plan_type": "area",
+      "title": "남산 일대 도시재생활성화계획(수립안)",
+      "target_year": null,
+      "status": "unknown",
+      "milestone_date": "2026-05-20",
+      "milestone_label": "서울시 도시계획위원회 원안가결(최종 고시 미확인)",
+      "scope_label": "중구·용산구 남산 일대",
+      "coverage_regions": [
+        "11140",
+        "11170"
+      ],
+      "tags": [
+        "남산",
+        "도시재생활성화계획",
+        "회현",
+        "명동",
+        "필동",
+        "이태원"
+      ],
+      "note": "2026-04-03 주민공청회 이후 2026-05-20 서울시 도시계획위원회 원안가결 사실까지 확인되었습니다. 최종 결정·고시문은 이번 확인 자료로 검증하지 못했으므로 수립완료로 표시하지 않습니다.",
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2026-03 주민공청회 공고 · 서울시",
+          "url": "https://www.seoul.go.kr/news/news_notice.do?nttNo=453844",
+          "kind": "hearing",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        },
+        {
+          "label": "도시계획위원회 원안가결 발표 · 서울시",
+          "url": "https://www.seoul.go.kr/news/news_report.do?bbsNo=158&nttNo=458375",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-industry-41170-2030",
+      "region": "41170",
+      "category": "urban",
+      "plan_type": "sector",
+      "title": "2030년 안양시 공업지역기본계획",
+      "target_year": 2030,
+      "status": "approved",
+      "milestone_date": "2026-01-28",
+      "milestone_label": "안양시 계획 수립 공식 발표일",
+      "scope_label": "안양시 일반·준공업지역(평촌스마트스퀘어 등 산업단지 제외)",
+      "coverage_regions": [],
+      "tags": [
+        "공업지역",
+        "산업",
+        "박달동",
+        "호계",
+        "관양"
+      ],
+      "note": "2026년 1월 안양시가 수립을 발표한 법정 공업지역기본계획입니다. 대상 범위 및 개별 구역 포함 여부는 시청 원문 계획서에서 확인합니다. 공식 보도일을 고시일로 간주하지 않습니다.",
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2030년 안양시 공업지역기본계획 자료 · 안양시청",
+          "url": "https://www.anyang.go.kr/main/contents.do?key=5370",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        },
+        {
+          "label": "공업지역기본계획 수립 발표 · 안양시",
+          "url": "https://m.anyang.go.kr/mayor/selectPressRelease.do?bbsNo=1687&integrDeptCode=&key=4113&nttNo=431094&pageIndex=26&searchCnd=all&searchCtgry=&searchKrwd=&searchNttType=visn",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-industry-41190-2033",
+      "region": "41190",
+      "category": "urban",
+      "plan_type": "sector",
+      "title": "부천 공업지역 기본계획(2033)",
+      "target_year": 2033,
+      "status": "approved",
+      "milestone_date": "2026-05-18",
+      "milestone_label": "부천시 수립 공고 게시일",
+      "scope_label": "부천시 공업지역 계획 대상지(산업단지 등 제외)",
+      "coverage_regions": [],
+      "tags": [
+        "공업지역",
+        "산업",
+        "부천",
+        "관리·활성화"
+      ],
+      "note": "부천시 공식 사전정보공표의 수립 공고와 보고서 공개에 근거합니다. 기준연도 2023년, 목표연도 2033년이며 공고문에 기재된 공업지역 3.54㎢는 산업단지 등을 제외한 계획 대상의 설명입니다.",
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "수립 공고·보고서 첨부 · 부천시청",
+          "url": "https://www.bucheon.go.kr/site/program/board/basicboard/view?boardtypeid=26716&encid=82NZ8G6Pagnv5MYhsDD%2B3A%3D%3D&menuid=148004003004&pagesize=10",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-regeneration-suwon-yeonghwa-2026",
+      "region": "41110",
+      "category": "regeneration",
+      "plan_type": "area",
+      "title": "영화동(영화혁신) 도시재생활성화계획(수립안)",
+      "target_year": null,
+      "status": "hearing",
+      "milestone_date": "2026-08-07",
+      "milestone_label": "수원시 주민공청회 개최",
+      "scope_label": "수원시 장안구 영화동 도시재생활성화지역",
+      "coverage_regions": [],
+      "tags": [
+        "영화동",
+        "도시재생활성화계획",
+        "혁신지구",
+        "공청회"
+      ],
+      "note": "2036 수원시 도시재생전략계획과 함께 공청회를 진행한 별도 활성화계획 수립안입니다. 시의회 의견청취 등 후속 절차와 최종 고시 완료 여부는 별도 확인이 필요합니다.",
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "공청회 개최 알림 · 수원시청",
+          "url": "https://www.suwon.go.kr/web/board/BD_board.view.do?bbsCd=1042&delDesc=&pageType=&q_ctgCd=&q_currPage=2&q_rowPerPage=10&q_searchKey=&q_searchKeyType=TITLE___1002&q_searchVal=&q_sortName=&q_sortOrder=&seq=20260727201126716&showSummaryYn=N",
+          "kind": "hearing",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        },
+        {
+          "label": "수립안 의견청취 의안 · 수원시의회",
+          "url": "https://council.suwon.go.kr/minutes/billview.do?uid=4257&uid=675",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-regeneration-seongnam-taepyeong-2-4",
+      "region": "41130",
+      "category": "regeneration",
+      "plan_type": "area",
+      "title": "성남시 태평2·4동 도시재생활성화계획(변경이력)",
+      "target_year": null,
+      "status": "amended",
+      "milestone_date": "2021-01-11",
+      "milestone_label": "성남시 도시재생지원센터 3차 변경 고시 이력",
+      "scope_label": "성남시 수정구 태평2·4동 일원",
+      "coverage_regions": [],
+      "tags": [
+        "태평2동",
+        "태평4동",
+        "도시재생활성화계획",
+        "원도심"
+      ],
+      "note": "성남시 도시재생지원센터가 기재한 2021-01-11 3차 변경고시 이력을 기준으로 등록합니다. 이후 변경·폐지 여부는 현재 자료만으로 확정하지 못하므로 최신 유효 도서 확인이 필요합니다.",
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "사업 추진경과·변경고시 이력 · 성남시 도시재생지원센터",
+          "url": "https://www.seongnam.go.kr/snursc/contents/content.php?cIdx=38",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-regeneration-bucheon-strategy-2023",
+      "region": "41190",
+      "category": "regeneration",
+      "plan_type": "basic",
+      "title": "부천시 도시재생전략계획 변경안(2023년 의회 의견청취)",
+      "target_year": null,
+      "status": "unknown",
+      "milestone_date": "2023-09-14",
+      "milestone_label": "시의회 찬성의견(최종 변경 고시 미확인)",
+      "scope_label": "부천시 도시재생전략계획 대상지역",
+      "coverage_regions": [],
+      "tags": [
+        "도시재생전략계획",
+        "부천",
+        "활성화지역",
+        "심곡3동"
+      ],
+      "note": "2016년 최초 수립, 2019년 변경 이후 2023년 변경안에 대한 부천시의회 의견청취 자료입니다. 변경안에 대한 의회 의견은 확정 고시와 다르므로 2023년 변경계획의 최종 수립 상태는 미확인으로 표시합니다.",
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "변경안 시의회 의견청취 및 처리결과 · 부천시의회",
+          "url": "https://council.bucheon.go.kr/assembly/bill/bill.do?code=&committeeCode=&committeeType=&councilId=BUCHEON&endDay=&flag=&key=92b008b853ea3743039974a9da1dcb22f779b990ccf929a249c09ce37099db3a8711bb0eb61b89cd&keyword=&memberCode=&pageNum=62&proposer=&proposerType=&reform=view&result=&sTh=&session=&startDay=&subject=",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    }
+  ]
+}
