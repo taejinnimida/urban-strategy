@@ -53,17 +53,17 @@ def test_all_31_municipalities_have_published_basic_plan_and_official_sources():
 
 def test_gyeonggi_catalogue_and_pagination_preserve_seoul(client):
     gg = all_items(client, region="41")
-    assert len(gg) == 70
-    assert all(p["region"].startswith("41") for p in gg)
+    assert len(gg) == 76
+    assert all(p["region"].startswith("41") or p["id"] == "capital-area-reorganization-2021-2040" for p in gg)
     seoul = all_items(client, region="11")
-    assert len(seoul) == 24
-    assert sum(len(p["links"]) for p in seoul) == 40
-    assert len(all_items(client, region="KR")) == 94
+    assert len(seoul) == 30
+    assert sum(len(p["links"]) for p in seoul) == 49
+    assert len(all_items(client, region="KR")) == 105
     assert [len(client.get(BASE, params={"region": "41", "page": n}).json()["items"])
-            for n in range(1, 5)] == [30, 30, 10, 0]
+            for n in range(1, 5)] == [30, 30, 16, 0]
     catalog = client.get(BASE + "/catalog").json()
-    assert catalog["counts"]["41"] == 70
-    assert catalog["counts"]["KR"] == 94
+    assert catalog["counts"]["41"] == 76
+    assert catalog["counts"]["KR"] == 105
     assert client.get(BASE + "/map/41").json()["features"]
     assert client.get("/plans/assets/gyeonggi-plans.json").status_code == 404
 
@@ -72,11 +72,11 @@ def test_city_and_district_inherit_province_without_sibling_plans(client):
     def ids(region):
         return {p["id"] for p in all_items(client, region=region)}
     expected = {p["id"] for p in rp.seed_plans() if p["region"] in {"41", "41110"}}
-    assert len(expected) == 12
-    assert ids("41110") == ids("41111") == ids("41113") == expected
+    assert len(expected) == 14
+    assert ids("41110") == ids("41111") == ids("41113") == expected | {"capital-area-reorganization-2021-2040"}
     assert "gyeonggi-urban-41130-2035" not in ids("41110")
     assert "gyeonggi-urban-41110-2040" not in ids("41830")
-    assert {p["region"] for p in all_items(client, region="41830")} == {"41", "41830"}
+    assert {p["region"] for p in all_items(client, region="41830")} == {"11", "41", "41830"}
 
 
 def test_plan_status_search_and_posted_dates_are_not_approval_dates(client):
@@ -125,7 +125,7 @@ def test_sector_search_preserves_plan_kind_stage_and_missing_dates(client):
         found = all_items(client, region="41", category=category)
         assert found and all(p["category"] == category for p in found)
     industrial = all_items(client, region="41", category="urban", plan_type="sector", q="공업지역")
-    assert {p["id"] for p in industrial} == {"gyeonggi-industry-41110-2030", "gyeonggi-industry-41270-2030"}
+    assert {p["id"] for p in industrial} == {"gyeonggi-industry-41110-2030", "gyeonggi-industry-41270-2030", "gyeonggi-industry-41170-2030", "gyeonggi-industry-41190-2033"}
     regeneration = {p["id"]: p for p in all_items(client, region="41110", category="regeneration")}
     assert regeneration["gyeonggi-regeneration-41110-published"]["target_year"] is None
     assert regeneration["gyeonggi-regeneration-41110-published"]["status"] == "unknown"
