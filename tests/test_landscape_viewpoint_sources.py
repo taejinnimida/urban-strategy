@@ -3,22 +3,28 @@ from pathlib import Path
 import landscape_app as app
 
 
-def test_priority_and_unverified_intersection_are_not_invented():
+def test_five_total_with_balanced_ranges_and_optional_traffic():
     rows=[
-        {"id":"p1","category":"park","band":"near","distance":90},
+        {"id":"sub1","category":"subway","band":"near","distance":100},
+        {"id":"sub2","category":"subway","band":"near","distance":140},
+        {"id":"p1","category":"park","band":"mid","distance":120},
+        {"id":"sq1","category":"square","band":"far","distance":800},
         {"id":"i1","category":"intersection","band":"near","distance":10,
          "requiresVerification":True,"roadWidthM":None,"trafficVolume":None},
         {"id":"i2","category":"intersection","band":"near","distance":200,
-         "roadWidthM":24,"trafficVolume":53000},
-        {"id":"i3","category":"intersection","band":"near","distance":140,
+         "roadWidthM":24,"trafficVolume":None},
+        {"id":"i3","category":"intersection","band":"mid","distance":140,
          "roadWidthM":22,"trafficVolume":62000},
     ]
-    result=app.viewpoint_rank(app.ViewpointRankReq(candidates=rows,target_per_band=3))
-    assert result["bands"]["near"]["selected_ids"]==["p1","i3","i2"]
+    result=app.viewpoint_rank(app.ViewpointRankReq(candidates=rows,target_per_band=5))
+    assert result["policy"]=="national_practical_five"
+    assert result["baseline_ids"]==["sub1","p1","sq1","sub2","i3"]
+    assert len(result["baseline_ids"])==5
     assert "i1" not in result["selected_ids"]
+    assert app._viewpoint_auto_eligible(next(r for r in rows if r["id"]=="i2"))
 
 
-def test_user_click_override_may_exceed_baseline_but_never_removes_mandatory():
+def test_manual_override_retains_official_and_does_not_backfill():
     rows=[
         {"id":"p1","category":"park","band":"mid","distance":90,"userExcluded":True},
         {"id":"p2","category":"square","band":"mid","distance":100},
@@ -28,8 +34,9 @@ def test_user_click_override_may_exceed_baseline_but_never_removes_mandatory():
          "mandatory":True,"userExcluded":True},
     ]
     result=app.viewpoint_rank(app.ViewpointRankReq(candidates=rows,target_per_band=1))
-    ids=set(result["bands"]["mid"]["selected_ids"])
-    assert ids=={"extra","official"}
+    assert set(result["selected_ids"])=={"extra","official"}
+    assert result["baseline_ids"]==["p1"]
+    assert result["designated_ids"]==["official"]
 
 
 def test_vworld_poi_results_survive_overpass_outage(monkeypatch):
@@ -56,10 +63,12 @@ def test_seoul_zoning_reuses_official_source_and_map_frontend():
     assert "loadCandidateZoning();" in text
 
 
-def test_no_road_volume_is_promoted_to_measured_traffic():
+def test_width_verified_intersection_needs_no_traffic():
     row={"id":"i1","category":"intersection","roadWidthM":21,"trafficVolume":None}
-    assert not app._viewpoint_auto_eligible(row)
-    assert not app._viewpoint_auto_eligible({**row,"trafficVolume":3000,"roadWidthM":None})
+    assert app._viewpoint_auto_eligible(row)
+    assert not app._viewpoint_auto_eligible({**row,"roadWidthM":None})
+    assert not app._viewpoint_auto_eligible({**row,"roadWidthM":19})
+    assert not app._viewpoint_auto_eligible({**row,"requiresVerification":True})
     assert app._viewpoint_auto_eligible({**row,"trafficVolume":3000})
 
 
