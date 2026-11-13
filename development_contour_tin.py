@@ -192,6 +192,10 @@ def analyze(geometry):
         slopes.append(slope)
     if not triangles or len(triangles) > MAX_TRIANGLES:
         raise ValueError("No usable TIN triangles or TIN too large")
+    # One source TIN powers both 4-1 elevation and 4-2 slope.
+    # This is a survey reference, not a statutory permit determination.
+    from development_terrain_bands import elevation_bands
+    bands = elevation_bands(triangles, points, site, inverse.transform)
     tree = STRtree(triangles)
     west, south, east, north = site.bounds
     cols = math.ceil((east-west)/GRID_M)
@@ -207,7 +211,9 @@ def analyze(geometry):
         for col in range(cols):
             x0 = west+col*GRID_M
             x1 = min(east, x0+GRID_M)
-            cell = box(x0, y0, x1, y1).intersection(site)
+            # Full 10m square is preserved; only analysis area is site-clipped.
+            full_grid = box(x0, y1-GRID_M, x0+GRID_M, y1)
+            cell = full_grid.intersection(site)
             if cell.is_empty or cell.area <= 1e-8:
                 continue
             pieces, piece_slopes = [], []
@@ -234,7 +240,9 @@ def analyze(geometry):
             if cell_slope >= 25:
                 steep_area += area
             records.append({"col": col, "row": row, "mean_slope_deg": cell_slope,
-                            "area_m2": area, "grid_coverage_pct": min(100, 100*area/cell.area),
+                            "area_m2": area, "grid_area_m2": full_grid.area,
+                            "site_intersection_area_m2": cell.area,
+                            "grid_coverage_pct": min(100, 100*area/cell.area),
                             "class_index": index, "geometry": mapping(transform(inverse.transform, valid_geom))})
     coverage_pct = min(100, 100*covered/site.area) if site.area > 0 else 0
     if not records:
@@ -269,6 +277,7 @@ def analyze(geometry):
         "source": entry["provider"], "source_url": entry["source_url"],
         "as_of": entry["as_of"], "height_field": height_field,
         "grid_size_m": GRID_M, "grid_origin_epsg5179": [west, north],
+        "grid_cell_policy": "FULL_10M_GRID_CLIPPED_ONLY_FOR_SITE_AREA",
         "crs": "EPSG:5179", "contour_features_used": source_count,
         "tin_method": "UNCONSTRAINED_DELAUNAY_CONTOUR_VERTICES",
         "tin_triangles": len(triangles), "tin_vertices": len(points),
@@ -279,6 +288,7 @@ def analyze(geometry):
         "steep_25deg_pct_of_site": 100*steep_area/site.area,
         "legend": legend, "features": features, "map_complete": mapped,
         "grid_records": [{k:v for k,v in item.items() if k!="geometry"} for item in records],
+        **bands,
         "legal_submission_ready": False,
         "legal_review_note": "제출용 평균경사도조사서는 자격자 작성 및 "
                              "수치지형도·TIN 조건·격자 면적 검증 별도 필요",
