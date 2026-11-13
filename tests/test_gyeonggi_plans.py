@@ -53,14 +53,14 @@ def test_all_31_municipalities_have_published_basic_plan_and_official_sources():
 
 def test_gyeonggi_catalogue_and_pagination_preserve_seoul(client):
     gg = all_items(client, region="41")
-    assert len(gg) == 86
+    assert len(gg) == 87
     assert all(p["region"].startswith("41") or p["region"] == "KR" or p["id"] in {"capital-area-reorganization-2021-2040", "metropolitan-capital-2020", "metropolitan-capital-2040-hearing"} for p in gg)
     seoul = all_items(client, region="11")
-    assert len(seoul) == 40
-    assert sum(len(p["links"]) for p in seoul) == 63
+    assert len(seoul) == 41
+    assert sum(len(p["links"]) for p in seoul) == 64
     assert len(all_items(client, region="KR")) == 238
     assert [len(client.get(BASE, params={"region": "41", "page": n}).json()["items"])
-            for n in range(1, 5)] == [30, 30, 26, 0]
+            for n in range(1, 5)] == [30, 30, 27, 0]
     catalog = client.get(BASE + "/catalog").json()
     assert catalog["counts"]["41"] == 80
     assert catalog["counts"]["KR"] == 238

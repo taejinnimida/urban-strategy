@@ -46,10 +46,10 @@ def test_seoul_seed_and_readonly_mode():
     assert catalog["counts"]["11"]==34
     assert not catalog["contributions_enabled"]
     items=c.get(BASE).json()["items"]+c.get(BASE,params={"page":2}).json()["items"]
-    assert len(items)==40
-    assert sum(len(p["links"]) for p in items)==63
+    assert len(items)==41
+    assert sum(len(p["links"]) for p in items)==64
     assert all(p["region"].startswith("11") or p["region"]=="KR" for p in items)
-    assert c.get(BASE,params={"region":"26"}).json()["total"]==6
+    assert c.get(BASE,params={"region":"26"}).json()["total"]==7
     assert post(c,"/plans",payload()).status_code==503
 
 

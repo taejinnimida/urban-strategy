@@ -28,7 +28,7 @@ def test_catalogue_and_assets_are_mounted_on_deployed_app(client):
     assert result.status_code == 200
     next_page = client.get("/api/related-plans", params={"region": "11", "page": 2})
     assert next_page.status_code == 200
-    assert sum(len(p["links"]) for p in result.json()["items"] + next_page.json()["items"]) == 63
+    assert sum(len(p["links"]) for p in result.json()["items"] + next_page.json()["items"]) == 64
 
 
 def test_selection_page_serves_plan_entry(client):
