@@ -29,7 +29,7 @@ def _road_width_m(properties):
         if isinstance(value,(int,float)):
             width=float(value)
         else:
-            matched=re.search(r"\\d+(?:\\.\\d+)?",str(value).replace(",",""))
+            matched=re.search(r"\d+(?:\.\d+)?",str(value).replace(",",""))
             if not matched:continue
             width=float(matched.group(0))
         if math.isfinite(width) and 1<=width<=100:
