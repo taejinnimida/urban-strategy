@@ -979,7 +979,7 @@ function devRenderSourceDetails(data){
   if(!/^(?:2-[1-6]|3-[1-7]|4-[12])$/.test(item.id)){surveyTable.style.display='none';return;}
   surveyTable.style.display='block';
   const title=document.createElement('div');
-  title.textContent=t?.title||('표 '+item.id+(item.id.startsWith('3-')?' 건축물현황':' 토지현황'));
+  title.textContent=t?.title||('표 '+item.id+' '+({'4-1':'표고현황','4-2':'경사도현황'}[item.id]||(item.id.startsWith('3-')?'건축물현황':'토지현황')));
   title.style.cssText='font-size:13px;font-weight:700;color:#243e7a;margin:0 0 6px';
   surveyTable.append(title);
   if(!t?.rows?.length){
