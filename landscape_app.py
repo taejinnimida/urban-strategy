@@ -591,9 +591,9 @@ def viewpoint_basemap(layer:str,z:int,x:int,y:int):
         r=requests.get(url,timeout=(3,8),headers={"Referer":_domain(),"User-Agent":"urban-landscape-review/1.2"})
         r.raise_for_status()
         if layer=="Satellite":
-            valid=r.content.startswith(b"\\xff\\xd8\\xff")
+            valid=r.content.startswith(bytes((0xff,0xd8,0xff)))
         else:
-            valid=r.content.startswith(b"\\x89PNG")
+            valid=r.content.startswith(bytes((0x89,0x50,0x4e,0x47)))
         if not valid:
             raise ValueError("invalid tile")
         return Response(content=r.content,media_type="image/jpeg" if layer=="Satellite" else "image/png",
