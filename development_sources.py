@@ -761,7 +761,7 @@ def enrich(data,snapshot,area):
     # 4-1 elevation is a DEM fallback when official contour analysis is unavailable.
     # Maps, legend and printed table must derive from the same DEM FACT.
     elevation=terrain.get('elevation')
-    if elevation and '4-1' not in (k for k in () ) and not (contour.get('status') in ('DATA','PARTIAL') and contour.get('elevation')):
+    if elevation and not (contour.get('status') in ('DATA','PARTIAL') and contour.get('elevation')):
         groups=terrain.get('elevation_groups') or []
         complete=terrain.get('elevation_status')=='DATA'
         mapped_complete=terrain.get('elevation_map_complete') is True
