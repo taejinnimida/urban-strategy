@@ -286,11 +286,11 @@ button,input,select{font:inherit}.hidden{display:none!important}
                 <button class="btn ghost small" id="officialVpAdd" type="button">좌표 추가</button>
               </div>
               <div class="upload-inline">
-                <input id="trafficFileName" value="주요교차로 교통량 CSV/GeoJSON (선택)" readonly />
+                <input id="trafficFileName" value="주요교차로 폭원·위치 CSV/GeoJSON (선택)" readonly />
                 <button class="btn ghost" id="trafficFileUpload" type="button">교통량 불러오기</button>
                 <input id="trafficFile" type="file" accept=".csv,.json,.geojson,text/csv,application/json" hidden />
               </div>
-              <p class="helper">필수 열: id, name, lat, lng, roadWidthM, trafficVolume. 교차로 위치·폭원·차량교통량이 확인된 자료만 사용합니다. 교통량의 조사연도·단위는 원본에서 확인하세요.</p>
+              <p class="helper">필수 열: lat, lng, roadWidthM (20m 이상). 교통량 trafficVolume은 선택값입니다. 공식 도로 데이터의 계획폭원과 실제 개설폭원은 구분하여 확인하세요.</p>
               <div class="adapter-grid">
                 <div class="adapter-item"><b>유형별 우선순위</b><span>보행자전용도로 → 공원·광장 → 지하철 → 주요 버스 → 대학 → 문화유산 → 전망대 순. 동순위는 대상지와 가까운 순.</span></div>
                 <div class="adapter-item"><b>20m 이상 교차로</b><span>교차로 위치·도로폭원·차량교통량 원자료가 확인된 후보만 보충 선정합니다.</span></div>
@@ -1158,7 +1158,7 @@ function renderCandidates(){
     const selected=ids.has(r.id),state=r.mandatory?'의무 포함':selected?'선정':'미선정';
     const traffic=r.category==='intersection'&&(Number.isFinite(Number(r.roadWidthM))&&r.roadWidthM!==null&&Number.isFinite(Number(r.trafficVolume))&&r.trafficVolume!==null)
       ?` · 폭 ${r.roadWidthM}m · 교통량 ${Number(r.trafficVolume).toLocaleString()}`
-      :r.category==='intersection'?' · 폭원/교통량 미확인':'';
+      :r.category==='intersection'?' · 폭원/교통량 확인 필요':'';
     return `<div class="candidate-row ${selected?'selected':'rejected'}" data-id="${escapeHtml(r.id)}"><div class="top"><div><b>${escapeHtml(r.name)}</b><em>${bandLabel(r.band)} · ${r.distance}m · ${r.direction}측${traffic} · ${r.lat.toFixed(6)}, ${r.lng.toFixed(6)}</em></div><span class="state-badge ${selected?'ready':''}">${state}</span></div><div style="margin-top:6px;display:flex;gap:5px;flex-wrap:wrap"><span class="type-badge">${escapeHtml(categoryLabels[r.category]||r.category)}</span><span class="type-badge">${escapeHtml(r.verification||'')}</span></div><div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap"><button class="btn ghost small" data-action="toggle" data-id="${escapeHtml(r.id)}" ${r.mandatory?'disabled':''}>${selected?'선정 해제':'선정 추가'}</button><button class="btn ghost small" data-action="direction" data-id="${escapeHtml(r.id)}">조망방향 수정</button></div></div>`;
   }).join(''):'<div class="candidate-note">표시할 후보가 없습니다.</div>';
   list.querySelectorAll('.candidate-row').forEach(x=>x.addEventListener('click',ev=>{if(ev.target.closest('button'))return;toggleCandidate(x.dataset.id);}));
@@ -1242,8 +1242,8 @@ function normalizeTrafficIntersections(data){
     const coordinates=item.geometry?.type==='Point'?item.geometry.coordinates:null;
     const lat=Number(p.lat??p.latitude??coordinates?.[1]),lng=Number(p.lng??p.lon??p.longitude??coordinates?.[0]);
     const roadWidthM=Number(p.roadWidthM??p.road_width_m),trafficVolume=Number(p.trafficVolume??p.traffic_volume);
-    if(!isFiniteCoord(lat,lng)||!Number.isFinite(roadWidthM)||roadWidthM<20||!Number.isFinite(trafficVolume)||trafficVolume<0)return null;
-    return {id:'traffic-'+String(p.id||i),lat,lng,name:String(p.name||'주요교차로'),category:'intersection',roadWidthM,trafficVolume,source:'사용자 제공 교통량 원자료',verification:'교통량·폭원 원자료 입력 · 원본 검증 필요'};
+    if(!isFiniteCoord(lat,lng)||!Number.isFinite(roadWidthM)||roadWidthM<20)return null;
+    return {id:'traffic-'+String(p.id||i),lat,lng,name:String(p.name||'주요교차로'),category:'intersection',roadWidthM,trafficVolume:Number.isFinite(trafficVolume)&&trafficVolume>=0?trafficVolume:null,source:'사용자 제공 교차로 원자료',verification:'폭원·교차로 위치 확인 필요 · 교통량은 선택자료'};
   }).filter(Boolean);
 }
 const trafficFile=document.getElementById('trafficFile');
@@ -1255,7 +1255,7 @@ trafficFile.onchange=async()=>{
     trafficIntersectionItems=normalizeTrafficIntersections(data);
     document.getElementById('trafficFileName').value=file.name+' · 적격 교차로 '+trafficIntersectionItems.length+'개';
     refreshCandidateRows();await rankViewpointCandidates();renderCandidates();
-    showToast('교통량 확인 교차로 '+trafficIntersectionItems.length+'개 반영');
+    showToast('폭원 확인 교차로 '+trafficIntersectionItems.length+'개 반영');
   }catch(e){console.error(e);showToast('교통량 파일 형식 또는 좌표를 확인하세요.');}
 };
 document.getElementById('officialVpAdd').onclick=async()=>{
