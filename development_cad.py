@@ -39,8 +39,18 @@ NOTICE = ('기초조사 참고 도면. 원자료 최신성·수록범위·법정
 def _exportable(item, snapshot):
     if item['id'] == '1-1':
         return True
-    if item['id'] == '4-1':
-        return (item.get('thematic_type') == 'elevation' and
+    if item['id'] in ('4-1', '4-2'):
+        expected = 'elevation' if item['id'] == '4-1' else 'slope_tin'
+        # Registered contour analyses may be exported as clearly labelled
+        # preliminary CAD, without promoting them to legal permit status.
+        return (item.get('thematic_type') == expected and
+                item.get('cad_exportable') is True and
+                item.get('geometry_status') == 'COMPLETE' and
+                bool(item.get('features')) and
+                item.get('source_type') == 'REGISTERED_CONTOUR_TIN_REFERENCE'
+                and item.get('legal_submission_ready') is False) or (
+                item['id'] == '4-1' and
+                item.get('thematic_type') == 'elevation' and
                 item.get('provider_verified') is True and
                 item.get('geometry_status') == 'COMPLETE' and
                 bool(item.get('features')))
@@ -316,11 +326,12 @@ def dxf_bytes(item, snapshot, metadata):
         except (ValueError, TypeError):
             counts['labels_omitted'] += 1
     # Land and zoning themes use the identical source category colors in SVG and DXF.
-    if item.get('thematic_type') in ('ownership', 'jimok', 'land_numeric', 'land_shape', 'landcover', 'zoning', 'planning', 'ecobank', 'building', 'elevation'):
-        allowed_theme = (item['id'] in ('2-1', '2-2', '2-3', '2-4', '2-5', '2-6', '5-2', '5-3', '5-4', '5-5', '5-6', '5-7', '5-8', '4-3', '4-1', *BUILDING_IDS)
+    if item.get('thematic_type') in ('ownership', 'jimok', 'land_numeric', 'land_shape', 'landcover', 'zoning', 'planning', 'ecobank', 'building', 'elevation', 'slope_tin'):
+        allowed_theme = (item['id'] in ('2-1', '2-2', '2-3', '2-4', '2-5', '2-6', '5-2', '5-3', '5-4', '5-5', '5-6', '5-7', '5-8', '4-3', '4-1', '4-2', *BUILDING_IDS)
                          and (item.get('provider_verified') is True
                               or (item.get('thematic_type') == 'planning' and item.get('verified_feature_sources') is True)
-                              or (item['id'] in BUILDING_IDS and _exportable(item, snapshot))))
+                              or (item['id'] in BUILDING_IDS and _exportable(item, snapshot))
+                               or (item['id'] in ('4-1','4-2') and _exportable(item, snapshot))))
         if not allowed_theme:
             raise HTTPException(409, 'CAD 출력 가능한 주제도 공간도형을 확보하지 못했습니다.')
         if len(item.get('features') or []) > MAX_FEATURES:
@@ -400,6 +411,35 @@ def dxf_bytes(item, snapshot, metadata):
                     counts['thematic_features'] += 1
             except (KeyError, TypeError, ValueError, AttributeError):
                 raise HTTPException(422, '토지 주제도 해치 생성 오류') from None
+        # Exact 10m x 10m uncut source grid in projected metre coordinates.
+        # Boundary cells keep the original square outline; HATCH is site-clipped.
+        if item['id'] == '4-2':
+            grid_origin = item.get('grid_origin_epsg5179')
+            grid_size = item.get('grid_size_m')
+            if not (isinstance(grid_origin, (list, tuple)) and len(grid_origin) == 2
+                    and float(grid_size or 0) == 10.0):
+                raise HTTPException(422, '경사분석 10m 격자 기준점 미확보')
+            if 'SLOPE_GRID_10M' not in doc.layers:
+                doc.layers.new('SLOPE_GRID_10M', dxfattribs={'color': 8, 'lineweight': 9})
+            seen_cells = set()
+            for feature in sheet_theme:
+                props = feature.get('properties') or {}
+                row, col = props.get('grid_row'), props.get('grid_col')
+                if not (isinstance(row,int) and isinstance(col,int)):
+                    raise HTTPException(422, '경사격자 번호 누락')
+                if (row,col) in seen_cells:
+                    raise HTTPException(422, '중복된 경사격자')
+                seen_cells.add((row,col))
+                x0 = float(grid_origin[0])+10.0*col
+                y1 = float(grid_origin[1])-10.0*row
+                model.add_lwpolyline([(x0,y1),(x0+10,y1),
+                                      (x0+10,y1-10),(x0,y1-10)], close=True,
+                                     dxfattribs={'layer':'SLOPE_GRID_10M'})
+                counts['polylines'] += 1
+            metadata['slope_grid_size_m'] = 10.0
+            metadata['slope_grid_count'] = len(seen_cells)
+            metadata['slope_grid_policy'] = 'FULL_10M_GRID_SITE_CLIPPED_HATCH'
+            metadata['terrain_legal_submission_ready'] = False
         # Put filled HATCH entities below the pre-existing cadastral and site
         # outlines in CAD redraw order (without duplicating source boundaries).
         draw_order = sorted(list(model), key=lambda e: 0 if e.dxftype() == 'HATCH' else 1)
@@ -436,9 +476,10 @@ def dxf_bytes(item, snapshot, metadata):
         except (ValueError, KeyError, TypeError):
             raise HTTPException(422, '검토항목 공간자료의 CAD 변환에 실패했습니다.') from None
     if (item['id'] == '1-1' or
-            (item['id'] in ('2-1','2-2','2-3','2-4','2-5','2-6','5-2','5-3','5-4','5-5','5-6','5-7','5-8','4-3','4-1',*BUILDING_IDS)
+            (item['id'] in ('2-1','2-2','2-3','2-4','2-5','2-6','5-2','5-3','5-4','5-5','5-6','5-7','5-8','4-3','4-1','4-2',*BUILDING_IDS)
              and (item.get('provider_verified') is True
-                  or (item['id'] in BUILDING_IDS and _exportable(item, snapshot))))):
+                  or (item['id'] in BUILDING_IDS and _exportable(item, snapshot))
+                   or (item['id'] in ('4-1','4-2') and _exportable(item, snapshot))))):
         from development_survey_sheet import make_sheet, dxf_paper_sheet
         dxf_paper_sheet(doc, make_sheet(item, snapshot))
         metadata['print_layout'] = 'SURVEY_A3'
