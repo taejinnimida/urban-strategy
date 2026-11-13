@@ -1193,7 +1193,7 @@ async function fetchCandidates(){
     candidateLookupRows=[...normalizeOsm(data.elements),...(Array.isArray(data.candidates)?data.candidates:[])];
     refreshCandidateRows();await rankViewpointCandidates();renderCandidates();
     const states=(data.sources||[]).map(x=>x.name+' '+x.state).join(' / ');
-    updateCandidateStatus('공간 후보 '+candidateItems.length+'개 · '+states+(data.partial?' · 일부 원천 미연결':'')+' · 지정 조망점은 공식 좌표 DB 확보분만');
+    updateCandidateStatus((data.empty?'조회 성공, 원천 후보 0개 · ':'공간 후보 '+candidateItems.length+'개 · ')+states+(data.partial?' · 일부 원천 미연결':'')+' · 지정 조망점은 공식 좌표 DB 확보분만');
     showToast('공간 후보 '+candidateItems.length+'개 조회'+(data.partial?' (일부 원천만)':''));
   }catch(e){
     console.error('viewpoint candidate lookup',e);
