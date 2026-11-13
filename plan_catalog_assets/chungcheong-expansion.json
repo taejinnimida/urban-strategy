@@ -1,0 +1,652 @@
+{
+  "schema_version": 2,
+  "checked_at": "2026-11-13",
+  "coverage": "충남 제4차 도 종합계획 및 공식자료 확인 13개 시군 기본계획 공개본, 청양 2040 군기본계획·공업지역기본계획 수립 중, 대전 2040 도시기본계획·2030 공업지역기본계획, 세종 2040 도시기본계획. 충남 서천 도시·군기본계획 공개본은 확인하지 못했고 청양 최종 승인도 미확인. 충청권의 완전한 계획 전수 아님.",
+  "plans": [
+    {
+      "id": "chungnam-comprehensive-2021-2040",
+      "region": "44",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "제4차 충청남도 종합계획(2021~2040)",
+      "target_year": 2040,
+      "status": "approved",
+      "milestone_date": "2021-03-30",
+      "milestone_label": "충청남도 종합계획 확정 공고 발표",
+      "scope_label": "충청남도 전역",
+      "note": "2021년 3월 국토교통부 승인 및 공고 사실이 충남도의회 공식 자료에서 확인됨. 발표일과 고시일은 다를 수 있으므로 2021-03-30은 발표일로 표시.",
+      "tags": [
+        "도종합계획",
+        "제4차 충남종합계획"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "국토기본법상 도 종합계획 원문·이전 계획 아카이브 · AURUM",
+          "url": "https://www.aurum.re.kr/Legal/LegalSub.aspx?pcode=A05",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        },
+        {
+          "label": "충청남도 종합계획 승인·공고 이력 · 충남도의회",
+          "url": "https://council.chungnam.go.kr/kr/bbs/download.do?bbs_id=buReport&uid=2F9833DB8157AA5B085C9626A5AD15A8",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "chungnam-basic-44130-2035",
+      "region": "44130",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2035년 천안 도시기본계획",
+      "target_year": 2035,
+      "status": "approved",
+      "milestone_date": "2022-02-03",
+      "milestone_label": "국토교통부 토지이음 기본계획 공개본 등록일(승인일 아님)",
+      "scope_label": "충청남도 천안시 전역",
+      "note": "토지이음에 지자체 제공 계획자료가 등록된 사실을 근거로 보존한다. 게시일은 고시일·승인일이 아니며 후속 변경·수립현황의 전수 검증은 별도다. ",
+      "tags": [
+        "천안",
+        "도시기본계획",
+        "2035"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2035 천안 도시기본계획 공개본 PDF · 국토교통부 토지이음",
+          "url": "https://www.eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=210",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "chungnam-basic-44150-2040",
+      "region": "44150",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 공주 도시기본계획",
+      "target_year": 2040,
+      "status": "approved",
+      "milestone_date": "2024-06-25",
+      "milestone_label": "국토교통부 토지이음 기본계획 공개본 등록일(승인일 아님)",
+      "scope_label": "충청남도 공주시 전역",
+      "note": "토지이음에 지자체 제공 계획자료가 등록된 사실을 근거로 보존한다. 게시일은 고시일·승인일이 아니며 후속 변경·수립현황의 전수 검증은 별도다. ",
+      "tags": [
+        "공주",
+        "도시기본계획",
+        "2040"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2040 공주 도시기본계획 공개본 PDF · 국토교통부 토지이음",
+          "url": "https://www.eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=295",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "chungnam-basic-44180-2035",
+      "region": "44180",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2035년 보령 도시기본계획(변경)",
+      "target_year": 2035,
+      "status": "amended",
+      "milestone_date": "2026-10-27",
+      "milestone_label": "국토교통부 토지이음 기본계획 공개본 등록일(승인일 아님)",
+      "scope_label": "충청남도 보령시 전역",
+      "note": "토지이음에 지자체 제공 계획자료가 등록된 사실을 근거로 보존한다. 게시일은 고시일·승인일이 아니며 후속 변경·수립현황의 전수 검증은 별도다. 2026년 보령 변경 공개본으로 표시.",
+      "tags": [
+        "보령",
+        "도시기본계획",
+        "2035"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2035 보령 도시기본계획 공개본 PDF · 국토교통부 토지이음",
+          "url": "https://www.eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=332",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "chungnam-basic-44200-2040",
+      "region": "44200",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 아산 도시기본계획",
+      "target_year": 2040,
+      "status": "approved",
+      "milestone_date": "2024-04-23",
+      "milestone_label": "국토교통부 토지이음 기본계획 공개본 등록일(승인일 아님)",
+      "scope_label": "충청남도 아산시 전역",
+      "note": "토지이음에 지자체 제공 계획자료가 등록된 사실을 근거로 보존한다. 게시일은 고시일·승인일이 아니며 후속 변경·수립현황의 전수 검증은 별도다. ",
+      "tags": [
+        "아산",
+        "도시기본계획",
+        "2040"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2040 아산 도시기본계획 공개본 PDF · 국토교통부 토지이음",
+          "url": "https://www.eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=280",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "chungnam-basic-44210-2030",
+      "region": "44210",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2030년 서산 도시기본계획",
+      "target_year": 2030,
+      "status": "approved",
+      "milestone_date": "2021-01-06",
+      "milestone_label": "국토교통부 토지이음 기본계획 공개본 등록일(승인일 아님)",
+      "scope_label": "충청남도 서산시 전역",
+      "note": "토지이음에 지자체 제공 계획자료가 등록된 사실을 근거로 보존한다. 게시일은 고시일·승인일이 아니며 후속 변경·수립현황의 전수 검증은 별도다. ",
+      "tags": [
+        "서산",
+        "도시기본계획",
+        "2030"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2030 서산 도시기본계획 공개본 PDF · 국토교통부 토지이음",
+          "url": "https://www.eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=152",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "chungnam-basic-44230-2035",
+      "region": "44230",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2035년 논산 도시기본계획",
+      "target_year": 2035,
+      "status": "approved",
+      "milestone_date": "2022-02-03",
+      "milestone_label": "국토교통부 토지이음 기본계획 공개본 등록일(승인일 아님)",
+      "scope_label": "충청남도 논산시 전역",
+      "note": "토지이음에 지자체 제공 계획자료가 등록된 사실을 근거로 보존한다. 게시일은 고시일·승인일이 아니며 후속 변경·수립현황의 전수 검증은 별도다. ",
+      "tags": [
+        "논산",
+        "도시기본계획",
+        "2035"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2035 논산 도시기본계획 공개본 PDF · 국토교통부 토지이음",
+          "url": "https://www.eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=208",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "chungnam-basic-44250-2035",
+      "region": "44250",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2035년 계룡 도시기본계획",
+      "target_year": 2035,
+      "status": "approved",
+      "milestone_date": "2023-03-08",
+      "milestone_label": "국토교통부 토지이음 기본계획 공개본 등록일(승인일 아님)",
+      "scope_label": "충청남도 계룡시 전역",
+      "note": "토지이음에 지자체 제공 계획자료가 등록된 사실을 근거로 보존한다. 게시일은 고시일·승인일이 아니며 후속 변경·수립현황의 전수 검증은 별도다. ",
+      "tags": [
+        "계룡",
+        "도시기본계획",
+        "2035"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2035 계룡 도시기본계획 공개본 PDF · 국토교통부 토지이음",
+          "url": "https://www.eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=236",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "chungnam-basic-44270-2035",
+      "region": "44270",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2035년 당진 도시기본계획",
+      "target_year": 2035,
+      "status": "approved",
+      "milestone_date": "2023-03-16",
+      "milestone_label": "국토교통부 토지이음 기본계획 공개본 등록일(승인일 아님)",
+      "scope_label": "충청남도 당진시 전역",
+      "note": "토지이음에 지자체 제공 계획자료가 등록된 사실을 근거로 보존한다. 게시일은 고시일·승인일이 아니며 후속 변경·수립현황의 전수 검증은 별도다. ",
+      "tags": [
+        "당진",
+        "도시기본계획",
+        "2035"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2035 당진 도시기본계획 공개본 PDF · 국토교통부 토지이음",
+          "url": "https://www.eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=239",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "chungnam-basic-44710-2040",
+      "region": "44710",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 금산 군기본계획",
+      "target_year": 2040,
+      "status": "approved",
+      "milestone_date": "2023-03-22",
+      "milestone_label": "국토교통부 토지이음 기본계획 공개본 등록일(승인일 아님)",
+      "scope_label": "충청남도 금산군 전역",
+      "note": "토지이음에 지자체 제공 계획자료가 등록된 사실을 근거로 보존한다. 게시일은 고시일·승인일이 아니며 후속 변경·수립현황의 전수 검증은 별도다. ",
+      "tags": [
+        "금산",
+        "군기본계획",
+        "2040"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2040 금산 군기본계획 공개본 PDF · 국토교통부 토지이음",
+          "url": "https://www.eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=248",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "chungnam-basic-44760-2040",
+      "region": "44760",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 부여 군기본계획",
+      "target_year": 2040,
+      "status": "approved",
+      "milestone_date": "2026-03-23",
+      "milestone_label": "국토교통부 토지이음 기본계획 공개본 등록일(승인일 아님)",
+      "scope_label": "충청남도 부여군 전역",
+      "note": "토지이음에 지자체 제공 계획자료가 등록된 사실을 근거로 보존한다. 게시일은 고시일·승인일이 아니며 후속 변경·수립현황의 전수 검증은 별도다. ",
+      "tags": [
+        "부여",
+        "군기본계획",
+        "2040"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2040 부여 군기본계획 공개본 PDF · 국토교통부 토지이음",
+          "url": "https://www.eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=318",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "chungnam-basic-44800-2040",
+      "region": "44800",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 홍성 군기본계획",
+      "target_year": 2040,
+      "status": "approved",
+      "milestone_date": "2026-03-23",
+      "milestone_label": "국토교통부 토지이음 기본계획 공개본 등록일(승인일 아님)",
+      "scope_label": "충청남도 홍성군 전역",
+      "note": "토지이음에 지자체 제공 계획자료가 등록된 사실을 근거로 보존한다. 게시일은 고시일·승인일이 아니며 후속 변경·수립현황의 전수 검증은 별도다. ",
+      "tags": [
+        "홍성",
+        "군기본계획",
+        "2040"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2040 홍성 군기본계획 공개본 PDF · 국토교통부 토지이음",
+          "url": "https://www.eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=319",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "chungnam-basic-44810-2040",
+      "region": "44810",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 예산 군기본계획",
+      "target_year": 2040,
+      "status": "approved",
+      "milestone_date": "2026-03-23",
+      "milestone_label": "국토교통부 토지이음 기본계획 공개본 등록일(승인일 아님)",
+      "scope_label": "충청남도 예산군 전역",
+      "note": "토지이음에 지자체 제공 계획자료가 등록된 사실을 근거로 보존한다. 게시일은 고시일·승인일이 아니며 후속 변경·수립현황의 전수 검증은 별도다. ",
+      "tags": [
+        "예산",
+        "군기본계획",
+        "2040"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2040 예산 군기본계획 공개본 PDF · 국토교통부 토지이음",
+          "url": "https://www.eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=320",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "chungnam-basic-44825-2035",
+      "region": "44825",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2035년 태안 군기본계획",
+      "target_year": 2035,
+      "status": "approved",
+      "milestone_date": "2021-01-25",
+      "milestone_label": "국토교통부 토지이음 기본계획 공개본 등록일(승인일 아님)",
+      "scope_label": "충청남도 태안군 전역",
+      "note": "토지이음에 지자체 제공 계획자료가 등록된 사실을 근거로 보존한다. 게시일은 고시일·승인일이 아니며 후속 변경·수립현황의 전수 검증은 별도다. ",
+      "tags": [
+        "태안",
+        "군기본계획",
+        "2035"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2035 태안 군기본계획 공개본 PDF · 국토교통부 토지이음",
+          "url": "https://www.eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=197",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "chungnam-cheongyang-basic-2040-drafting",
+      "region": "44790",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040 청양 군기본계획(수립 중)",
+      "target_year": 2040,
+      "status": "drafting",
+      "milestone_date": "2024-01-05",
+      "milestone_label": "청양군 2040 군기본계획 주민계획단 모집 공고",
+      "scope_label": "충청남도 청양군 전역",
+      "note": "2024년 주민계획단 모집과 2026년 용역 계약 공개를 확인. 2040 청양 군기본계획의 최종 승인 원문은 미확인하여 수립 중으로 기록.",
+      "tags": [
+        "군기본계획",
+        "청양",
+        "수립용역"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2040 청양 군기본계획 주민계획단 모집 변경공고 · 청양군청",
+          "url": "https://eminwon.cheongyang.go.kr/emwp/gov/mogaha/ntis/web/ofr/action/OfrAction.do?Key=B_Subject&context=NTIS&method=selectOfrNotAncmt&methodnm=selectOfrNotAncmtRegst&not_ancmt_mgt_no=30247",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        },
+        {
+          "label": "군기본계획·공업지역기본계획 수립용역 계약 · 청양군 계약정보시스템",
+          "url": "https://contract.cheongyang.go.kr/prog/ctrt11/contract/sub04_02/2/202500212642/view.do?pageIndex=18",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "chungnam-cheongyang-industrial-drafting",
+      "region": "44790",
+      "category": "urban",
+      "plan_type": "sector",
+      "title": "청양군 공업지역기본계획(수립용역)",
+      "target_year": null,
+      "status": "drafting",
+      "milestone_date": "2026-02-09",
+      "milestone_label": "수립용역 2차분 선금 지급일(완료일 아님)",
+      "scope_label": "청양군 공업지역(법정 계획 대상 미확인)",
+      "note": "청양군 계약정보 공개시스템의 동일한 수립용역 명칭으로 확인됨. 법정계획 대상 공업지역 경계·목표연도·최종 고시 여부는 확인되지 않음.",
+      "tags": [
+        "청양",
+        "공업지역기본계획",
+        "수립용역"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "군기본계획 및 공업지역기본계획 수립용역(2차분) 계약 · 청양군",
+          "url": "https://contract.cheongyang.go.kr/prog/ctrt11/contract/sub04_02/2/202500212642/view.do?pageIndex=18",
+          "kind": "tender",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "daejeon-urban-basic-2040",
+      "region": "30",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 대전 도시기본계획",
+      "target_year": 2040,
+      "status": "approved",
+      "milestone_date": "2024-12",
+      "milestone_label": "대전광역시 공고 제2024-2763호 확정 공고(월 기준)",
+      "scope_label": "대전광역시 전역",
+      "note": "대전시 공식 홈페이지가 2040 도시기본계획 및 공고 제2024-2763호의 확정·요약자료를 제공한다. 게시일 2025-01-06과 법정 공고 날짜는 구분한다.",
+      "tags": [
+        "도시기본계획",
+        "2040 대전"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2040 대전 도시기본계획 공식 소개·계획서 다운로드 · 대전시",
+          "url": "https://www.daejeon.go.kr/urb/ContentsHtmlView.do?menuSeq=1117",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        },
+        {
+          "label": "2040 도시기본계획 요약보고서 및 공고번호 · 대전시",
+          "url": "https://www.daejeon.go.kr/urb/UrbNormalboardView.do?boardId=normal_0020&ntatcSeq=1472655940",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "daejeon-industrial-basic-2030",
+      "region": "30",
+      "category": "urban",
+      "plan_type": "sector",
+      "title": "2030년 대전 공업지역기본계획",
+      "target_year": 2030,
+      "status": "approved",
+      "milestone_date": "2025-01-24",
+      "milestone_label": "대전광역시 공식 보고서 등록일(고시일 아님)",
+      "scope_label": "대전광역시 산업단지·연구개발특구 제외 공업지역 약 3.44㎢",
+      "note": "2024-12-13 도시계획위원회 조건부 수용 및 2025-01-24 공식 보고서 공개 확인. 대전시 공업지역 기본계획 수립현황 자료에 따른 등록이며 법정 수립고시의 정확한 일자는 추가 확인 대상.",
+      "tags": [
+        "공업지역기본계획",
+        "산업단지 제외",
+        "연구개발특구 제외"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2030년 대전공업지역기본계획 공식 보고서 PDF · 대전시",
+          "url": "https://daejeon.go.kr/urb/UrbNormalboardView.do?ntatcSeq=1473516833",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        },
+        {
+          "label": "2024년 도시계획위원회 조건부수용 결과 · 대전시",
+          "url": "https://www.daejeon.go.kr/urb/UrbCityPlanDlbrMtrRsltView.do?menuSeq=1112&ntatcSeq=1471921934",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "sejong-urban-basic-2040",
+      "region": "36",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 세종 도시기본계획",
+      "target_year": 2040,
+      "status": "approved",
+      "milestone_date": "2026-03-23",
+      "milestone_label": "국토교통부 토지이음 기본계획 공개본 등록일",
+      "scope_label": "세종특별자치시 전역",
+      "note": "세종특별자치시가 제공한 2040년 기본계획 PDF가 2026-03-23 토지이음에 공개됨. 2023년 의회 의견청취 이후 확정 여부는 최신 승인·공고 원문과 별도 대조 필요.",
+      "tags": [
+        "2040 세종",
+        "도시기본계획"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2040년 세종 도시기본계획 원문 PDF · 국토교통부 토지이음",
+          "url": "https://www.eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=317",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        },
+        {
+          "label": "2040 세종 도시기본계획 수립안 시의회 의견청취 이력 · 세종시의회",
+          "url": "https://council.sejong.go.kr/mnu/act/billView.do?billSn=10943&pageNo=134",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    }
+  ]
+}
