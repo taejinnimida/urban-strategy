@@ -635,7 +635,22 @@ def enrich(data,snapshot,area):
                 'provider_verified':False,
             }
     terrain=facts.get('dem',{})
-    for item,key in [('4-1','elevation'),('4-2','slope'),('4-8','profiles')]:
+    # DEM and the Seoul 20m raster are NOT admissible 4-1 elevation inputs.
+    # The raster remains available for other legacy reference items only.
+    results['4-1']={
+        'status':'자료 필요',
+        'detail':'1:5,000 수치지형도 등고선·표고점 SHP 미등록 또는 TIN 분석 미완료 · 20m DEM/격자 대체분석 사용 안 함',
+        'source':'국토지리정보원 수치지형도 등고선·표고점',
+        'source_url':OFFICIAL_LINKS['4-1'],
+        'thematic_type':'elevation',
+        'features':[],
+        'legend':[],
+        'provider_verified':False,
+        'cad_exportable':False,
+        'geometry_status':'MISSING',
+        'legal_submission_ready':False
+    }
+    for item,key in [('4-2','slope'),('4-8','profiles')]:
         got=terrain.get(key)
         results[item]={'status':'참고 분석자료' if got else '자료 필요',
                        'detail':terrain.get('detail','공식 DEM 자료 미조회'),
@@ -707,7 +722,8 @@ def enrich(data,snapshot,area):
             'status':'자료 필요','detail':contour.get('detail','TIN 분석자료 미확보'),
             'source':contour.get('source') or '수치지형도 등고선',
         })
-    # 4-1 and 4-2 share identical source contour TIN; DEM remains a fallback.
+    # 4-1 is strictly sourced from contour/spot-height SHP -> TIN.
+    # No DEM (including the Seoul 20m reference grid) fallback is permitted.
     if contour.get('status') in ('DATA', 'PARTIAL') and contour.get('elevation'):
         bands = contour
         legend = bands.get('elevation_groups') or []
@@ -759,58 +775,12 @@ def enrich(data,snapshot,area):
             'method':bands.get('elevation_method'),
             'legal_submission_ready':False
         }
-    # 4-1 elevation is a DEM fallback when official contour analysis is unavailable.
-    # Maps, legend and printed table must derive from the same DEM FACT.
-    elevation=terrain.get('elevation')
-    if elevation and not (contour.get('status') in ('DATA','PARTIAL') and contour.get('elevation')):
-        groups=terrain.get('elevation_groups') or []
-        complete=terrain.get('elevation_status')=='DATA'
-        mapped_complete=terrain.get('elevation_map_complete') is True
-        features=terrain.get('elevation_features') or []
-        total_area=sum(g['area_m2'] for g in groups)
-        site_area=terrain.get('dem_site_area_m2') or 0.0
-        rows=[{'kind':'category','label':g['name'],'area_m2':g['area_m2'],
-               'pct':g['pct'],'count':g['count'],
-               'note':f"표고 {g['min_m']:.2f}~{g['max_m']:.2f}m, DEM {terrain['resolution_m']:g}m"}
-              for g in groups]
-        is_reference=terrain.get('source_type')=='PLATFORM_DERIVED_REFERENCE'
-        results['4-1'].update({
-            'status':('참고 분석자료' if is_reference else
-                      '공간자료 확보' if complete and mapped_complete else '일부 확보'),
-            'features':features,
-            'legend':groups,
-            'thematic_type':'elevation',
-            'provider_verified':complete and mapped_complete and not is_reference,
-            'cad_exportable':complete and mapped_complete and not is_reference,
-            'source_type':terrain.get('source_type') or 'REGISTERED_OFFICIAL_DEM',
-            'legal_submission_ready':False,
-            'geometry_status':'COMPLETE' if complete and mapped_complete else 'PARTIAL',
-            'detail':(terrain['detail']+
-                      f" · 표고 유효면적 {terrain.get('elevation_coverage_pct',0):.2f}%"
-                      f" · 원본 표고 범위 {elevation['min']:.2f}~{elevation['max']:.2f}m"
-                      f" · 면적가중 평균 {elevation['mean']:.2f}m"
-                      + (' · 지도 도형 상한에 따른 일부 미표시' if not mapped_complete else '')),
-            'survey_table':{'title':'[표 4-1 표고현황]'
-                            + (' · 20m 지형참조' if is_reference else ''),
-                            'status':'REFERENCE' if is_reference else 'COMPLETE' if complete else 'PARTIAL',
-                            'rows':[{'kind':'total','label':'유효 표고 합계',
-                                     'area_m2':round(total_area,2),
-                                     'pct':round(100*total_area/site_area,2) if site_area else None,
-                                     'count':sum(g['count'] for g in groups),
-                                     'note':'DEM 유효격자와 대상지의 실제 중첩면적 기준'}]+rows,
-                            'source':terrain['source'],'as_of':terrain.get('as_of'),
-                            'notes':['표·지도·범례는 동일 지형 FACT에서 생성',
-                                     ('서울 20m 플랫폼 산출 참조자료 · 법정 제출용 아님'
-                                      if is_reference else '공식 DEM 수록률 별도 확인')]},
-        })
-        statistics['4-1'].update({
-            'groups':groups,'mapped_groups':groups,'mapped_area_m2':round(total_area,2),
-            'overlap_area_m2':round(total_area,2),'site_area_m2':site_area,
-            'map_complete':mapped_complete,'missing_elevation_cells':terrain.get('missing_elevation_cells'),
-            'note':('서울 20m 산출 참조격자 · 법정 제출용 아님'
-                    if is_reference else
-                    '원본 표고 최저·최고 및 면적가중 평균. 동일 DEM FACT 사용'),
-        })
+    elif contour:
+        # Missing/partial source must remain visible, not silently replaced by 20m cells.
+        results['4-1']['detail']=contour.get('detail') or results['4-1']['detail']
+        results['4-1']['source']=contour.get('source') or results['4-1']['source']
+        results['4-1']['source_url']=contour.get('source_url') or results['4-1']['source_url']
+        results['4-1']['error_code']=contour.get('error_code')
     e=facts.get('ecvam',{})
     if e.get('status')=='MAP_ONLY' and results.get('4-4',{}).get('status') not in ('공식 파일자료 확보','일부 확보'):results['4-4']={'status':'도면 확보','detail':e['detail'],'source':e['source'],'map_available':True}
     elif e.get('status')=='ERROR' and results.get('4-4',{}).get('status') not in ('공식 파일자료 확보','일부 확보'):results['4-4']={'status':'미확보','detail':e.get('detail','공식 WMS 연결 실패')+' · 등급별 면적은 원도형 별도 필요','source':'국토환경성평가지도'}
@@ -843,7 +813,7 @@ def register_sources(router,service,snapshots,lock,output,get_snapshot,fetch_lay
     def jobs(token:str):
         s=fixed(token)
         if '_report' not in s:raise HTTPException(409,'조서 조회를 먼저 실행하세요.')
-        return {'jobs':[{'id':'vector:'+k,'label':v} for k,v in {**{'LT_C_BLDGINFO':'GIS건물통합정보'},**{f'LT_C_UQ11{i}':'용도지역' for i in range(1,5)},**{f'LT_C_UPISUQ15{i}':'도시계획시설' for i in range(1,10)},**EXTRA_LAYERS}.items()]+[{'id':'ned:'+p,'label':'필지 토지이용계획 '+p} for p in s['_report']['land']]+[{'id':'characteristics:'+p,'label':'토지특성 '+p} for p in s['_report']['land']]+[{'id':'file:'+k,'label':v} for k,v in FILE_ITEMS.items() if k!='4-3']+[{'id':'landcover_wms','label':'2025년 세분류 토지피복 WMS 지도'},{'id':'landcover_wfs','label':'세분류 토지피복 원도형 WFS 제공 여부 확인'},{'id':'ecobank','label':'생태·자연도 WFS 원도형'},{'id':'weather','label':'기상청 관측 일자료'},{'id':'dem','label':'표고·경사·단면'},{'id':'contour_tin','label':'수치지형도 등고선 TIN·10m 경사도'},{'id':'ecvam','label':'국토환경성평가 WMS'}]}
+        return {'jobs':[{'id':'vector:'+k,'label':v} for k,v in {**{'LT_C_BLDGINFO':'GIS건물통합정보'},**{f'LT_C_UQ11{i}':'용도지역' for i in range(1,5)},**{f'LT_C_UPISUQ15{i}':'도시계획시설' for i in range(1,10)},**EXTRA_LAYERS}.items()]+[{'id':'ned:'+p,'label':'필지 토지이용계획 '+p} for p in s['_report']['land']]+[{'id':'characteristics:'+p,'label':'토지특성 '+p} for p in s['_report']['land']]+[{'id':'file:'+k,'label':v} for k,v in FILE_ITEMS.items() if k!='4-3']+[{'id':'landcover_wms','label':'2025년 세분류 토지피복 WMS 지도'},{'id':'landcover_wfs','label':'세분류 토지피복 원도형 WFS 제공 여부 확인'},{'id':'ecobank','label':'생태·자연도 WFS 원도형'},{'id':'weather','label':'기상청 관측 일자료'},{'id':'dem','label':'DEM 경사·단면 참고(4-1 표고분석 미사용)'},{'id':'contour_tin','label':'수치지형도 등고선 TIN·10m 경사도'},{'id':'ecvam','label':'국토환경성평가 WMS'}]}
     @router.post('/reports/{token}/source-jobs/{job}')
     def collect(token:str,job:str):
         s=fixed(token);allowed={v['id'] for v in jobs(token)['jobs']}
