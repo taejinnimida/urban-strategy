@@ -976,7 +976,7 @@ function devRenderSourceDetails(data){
  function renderSurveyTable(item){
   surveyTable.replaceChildren();
   const t=item.survey_table;
-  if(!/^(?:2-[1-6]|3-[1-7])$/.test(item.id)){surveyTable.style.display='none';return;}
+  if(!/^(?:2-[1-6]|3-[1-7]|4-[12])$/.test(item.id)){surveyTable.style.display='none';return;}
   surveyTable.style.display='block';
   const title=document.createElement('div');
   title.textContent=t?.title||('표 '+item.id+(item.id.startsWith('3-')?' 건축물현황':' 토지현황'));
@@ -1029,12 +1029,12 @@ function devRenderSourceDetails(data){
   if(!cadReady&&!cadAutoAttempted&&item.id==='1-1'){
    cadAutoAttempted=true;prepareCadBackground().catch(()=>{});
   }
-  const available=item.id==='1-1'||(item.thematic_type==='building'&&item.cad_exportable===true)||(item.id==='2-6' ? item.thematic_type==='landcover'&&item.provider_verified===true : ((item.provider_verified===true||item.verified_feature_sources===true)&&!!item.features?.length&&['공간자료 확보','일부 확보'].includes(item.status))||(['공식 파일자료 확보','일부 확보'].includes(item.status)&&!!item.features?.length&&item.source!=='VWorld'&&item.thematic_type!=='ecobank'));
+  const available=item.id==='1-1'||(['4-1','4-2'].includes(item.id)&&item.cad_exportable===true)||(item.thematic_type==='building'&&item.cad_exportable===true)||(item.id==='2-6' ? item.thematic_type==='landcover'&&item.provider_verified===true : ((item.provider_verified===true||item.verified_feature_sources===true)&&!!item.features?.length&&['공간자료 확보','일부 확보'].includes(item.status))||(['공식 파일자료 확보','일부 확보'].includes(item.status)&&!!item.features?.length&&item.source!=='VWorld'&&item.thematic_type!=='ecobank'));
   const usable=available;
   cadSingle.dataset.available=usable?'yes':'';
   cadSingle.disabled=!usable;cadSingle.title=usable?'확보된 공간도형 기준 CAD 출력':'검증된 공간도형이 없는 항목은 CAD 출력 불가';
   if(!cadPreparing)cadStatus.textContent=usable?(cadReady?'표준 도면 배경자료 준비 완료':'표준 도면 배경자료 준비 필요 · 준비 버튼을 누르거나 자동 조회를 확인하세요'):'이 항목은 CAD 도형 미확보 · 일괄 ZIP 목록에 미확보로 기록';
-  if(available&&cadReady&&['1-1','2-1','2-2','2-3','2-4','2-5','2-6','5-2','5-3','5-4','5-5','5-6','5-7','5-8','4-3','4-1','3-1','3-2','3-3','3-4','3-5','3-6','3-7'].includes(item.id)){
+  if(available&&cadReady&&['1-1','2-1','2-2','2-3','2-4','2-5','2-6','5-2','5-3','5-4','5-5','5-6','5-7','5-8','4-3','4-1','4-2','3-1','3-2','3-3','3-4','3-5','3-6','3-7'].includes(item.id)){
    const selected=item.id;
    sheetPreview.onload=()=>{
     if(select.value!==selected)return;
