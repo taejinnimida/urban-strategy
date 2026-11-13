@@ -1214,8 +1214,24 @@ async function fetchCandidates(){
   }catch(e){
     console.error('viewpoint candidate lookup',e);
     sourceError=e.name==='AbortError'?'조회 시간초과':e.message;
+    // The nationwide SHP-backed index must still work when BOTH POI providers fail.
+    let roadFallbackStatus='전국 도로 인덱스 확인 필요';
+    try{
+      const [lat,lng]=siteState.center;
+      const roadParams=new URLSearchParams({lat:String(lat),lng:String(lng),radius:'1150'});
+      const roads=await fetch('/api/viewpoint/road-intersections?'+roadParams,{cache:'no-store'});
+      if(roads.ok){
+        const payload=await roads.json();
+        const points=Array.isArray(payload.candidates)?payload.candidates:[];
+        candidateLookupRows=[
+          ...candidateLookupRows.filter(r=>r.source!=='MOLIT_ROAD_CURRENT_20250625'),
+          ...points
+        ];
+        roadFallbackStatus=payload.status==='OK'?'전국 도로 교차후보 '+points.length+'개':'전국 도로 '+(payload.status||'미확보');
+      }
+    }catch(_){roadFallbackStatus='전국 도로 조회도 실패';}
     refreshCandidateRows();await rankViewpointCandidates();renderCandidates();
-    updateCandidateStatus('외부 공간정보 조회 실패 · '+sourceError+' · 공식·기존 후보 유지');
+    updateCandidateStatus('POI 조회 실패 · '+sourceError+' · '+roadFallbackStatus+' · 기존 후보 유지');
     showToast('외부 공간정보 조회 실패 · 기존 후보 유지');
   }finally{clearTimeout(timeout);button.disabled=false;button.textContent=old;}
 }
