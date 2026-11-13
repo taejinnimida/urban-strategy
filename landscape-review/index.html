@@ -1158,7 +1158,7 @@ function renderCandidates(){
     const selected=ids.has(r.id),state=r.mandatory?'의무 포함':selected?'선정':'미선정';
     const traffic=r.category==='intersection'&&(Number.isFinite(Number(r.roadWidthM))&&r.roadWidthM!==null&&Number.isFinite(Number(r.trafficVolume))&&r.trafficVolume!==null)
       ?` · 폭 ${r.roadWidthM}m · 교통량 ${Number(r.trafficVolume).toLocaleString()}`
-      :r.category==='intersection'?' · 폭원/교통량 확인 필요':'';
+      :r.category==='intersection'?(Number.isFinite(Number(r.roadWidthM))&&r.roadWidthM!==null?' · 폭 '+r.roadWidthM+'m · 교통량 미확보':' · 폭원 미확보'):'';
     return `<div class="candidate-row ${selected?'selected':'rejected'}" data-id="${escapeHtml(r.id)}"><div class="top"><div><b>${escapeHtml(r.name)}</b><em>${bandLabel(r.band)} · ${r.distance}m · ${r.direction}측${traffic} · ${r.lat.toFixed(6)}, ${r.lng.toFixed(6)}</em></div><span class="state-badge ${selected?'ready':''}">${state}</span></div><div style="margin-top:6px;display:flex;gap:5px;flex-wrap:wrap"><span class="type-badge">${escapeHtml(categoryLabels[r.category]||r.category)}</span><span class="type-badge">${escapeHtml(r.verification||'')}</span></div><div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap"><button class="btn ghost small" data-action="toggle" data-id="${escapeHtml(r.id)}" ${r.mandatory?'disabled':''}>${selected?'선정 해제':'선정 추가'}</button><button class="btn ghost small" data-action="direction" data-id="${escapeHtml(r.id)}">조망방향 수정</button></div></div>`;
   }).join(''):'<div class="candidate-note">표시할 후보가 없습니다.</div>';
   list.querySelectorAll('.candidate-row').forEach(x=>x.addEventListener('click',ev=>{if(ev.target.closest('button'))return;toggleCandidate(x.dataset.id);}));
@@ -1190,10 +1190,26 @@ async function fetchCandidates(){
     }
     const data=await res.json();
     if(data.status!=='OK'||!Array.isArray(data.elements))throw new Error('후보 응답 형식 오류');
-    candidateLookupRows=[...normalizeOsm(data.elements),...(Array.isArray(data.candidates)?data.candidates:[])];
+    // Nationwide road-junction source is independent of OSM / VWorld POI.
+    // Failure never erases previously retrieved candidate points.
+    let roadsStatus='전국 도로 인덱스 미확인';
+    let roadItems=[];
+    try{
+      const roadRes=await fetch('/api/viewpoint/road-intersections?'+params,{cache:'no-store',signal:controller.signal});
+      if(roadRes.ok){
+        const roadData=await roadRes.json();
+        roadItems=Array.isArray(roadData.candidates)?roadData.candidates:[];
+        roadsStatus=roadData.status==='OK'?'도로 교차점 '+roadItems.length+'개':
+          roadData.status==='EMPTY'?'주변 도로정보 0건':
+          '도로자료 '+(roadData.status||'미확보');
+      }else{
+        roadsStatus='도로 조회 HTTP '+roadRes.status;
+      }
+    }catch(e){roadsStatus='도로 조회 불가';}
+    candidateLookupRows=[...normalizeOsm(data.elements),...(Array.isArray(data.candidates)?data.candidates:[]),...roadItems];
     refreshCandidateRows();await rankViewpointCandidates();renderCandidates();
     const states=(data.sources||[]).map(x=>x.name+' '+x.state).join(' / ');
-    updateCandidateStatus((data.empty?'조회 성공, 원천 후보 0개 · ':'공간 후보 '+candidateItems.length+'개 · ')+states+(data.partial?' · 일부 원천 미연결':'')+' · 지정 조망점은 공식 좌표 DB 확보분만');
+    updateCandidateStatus((data.empty?'조회 성공, 원천 후보 0개 · ':'공간 후보 '+candidateItems.length+'개 · ')+states+' · '+roadsStatus+(data.partial?' · 일부 원천 미연결':'')+' · 지정 조망점은 공식 좌표 DB 확보분만');
     showToast('공간 후보 '+candidateItems.length+'개 조회'+(data.partial?' (일부 원천만)':''));
   }catch(e){
     console.error('viewpoint candidate lookup',e);
