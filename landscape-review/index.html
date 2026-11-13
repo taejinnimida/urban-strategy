@@ -1217,7 +1217,7 @@ async function fetchCandidates(){
   initCandidateMap();
   const button=document.getElementById('fetchCandidates'),old=button.textContent;
   button.disabled=true;button.textContent='조회 중…';updateCandidateStatus('공식 조망점 및 공간 후보자료 조회 중');
-  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),36000);
+  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),15000);
   let sourceError='';
   try{
     await loadOfficialViewpoints();
@@ -1237,12 +1237,17 @@ async function fetchCandidates(){
       updateCandidateStatus('서버 후보조회 실패 · 최초 구현의 브라우저 직접조회 재시도');
       data=await browserOverpassFallback(lat,lng,1150);
     }
-    // Nationwide road-junction source is independent of OSM / VWorld POI.
-    // Failure never erases previously retrieved candidate points.
-    let roadsStatus='전국 도로 인덱스 미확인';
+    // Show known POI candidates IMMEDIATELY; road enrichment is optional.
+    // A missing SHP, slow road geometry search or timeout cannot hide the POIs.
+    candidateLookupRows=[...normalizeOsm(data.elements),...(Array.isArray(data.candidates)?data.candidates:[])];
+    refreshCandidateRows();await rankViewpointCandidates();renderCandidates();
+    updateCandidateStatus('공간 후보 '+candidateItems.length+'개 표시 · 주요교차로 보완조회 중');
+    const roadController=new AbortController();
+    const roadTimeout=setTimeout(()=>roadController.abort(),7000);
+    let roadsStatus='전국 도로 원자료 미확보';
     let roadItems=[];
     try{
-      const roadRes=await fetch('/api/viewpoint/road-intersections?'+params,{cache:'no-store',signal:controller.signal});
+      const roadRes=await fetch('/api/viewpoint/road-intersections?'+params,{cache:'no-store',signal:roadController.signal});
       if(roadRes.ok){
         const roadData=await roadRes.json();
         roadItems=Array.isArray(roadData.candidates)?roadData.candidates:[];
@@ -1253,7 +1258,8 @@ async function fetchCandidates(){
         roadsStatus='도로 조회 HTTP '+roadRes.status;
       }
     }catch(e){roadsStatus='도로 조회 불가';}
-    candidateLookupRows=[...normalizeOsm(data.elements),...(Array.isArray(data.candidates)?data.candidates:[]),...roadItems];
+    finally{clearTimeout(roadTimeout);}
+    candidateLookupRows=[...candidateLookupRows,...roadItems];
     refreshCandidateRows();await rankViewpointCandidates();renderCandidates();
     const states=(data.sources||[]).map(x=>x.name+' '+x.state).join(' / ');
     updateCandidateStatus((data.empty?'조회 성공, 원천 후보 0개 · ':'공간 후보 '+candidateItems.length+'개 · ')+states+' · '+roadsStatus+(data.partial?' · 일부 원천 미연결':'')+' · 지정 조망점은 공식 좌표 DB 확보분만');
