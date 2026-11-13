@@ -847,20 +847,15 @@ def viewpoint_road_intersections(
     lng:float=Query(...,ge=124,le=132),
     radius:int=Query(1150,ge=100,le=2000),
 ):
-    # Independent nationwide offline index; no Seoul-specific service dependency.
-    # The source SHP is intentionally NOT bundled into the GitHub repository.
-    from landscape_roads import candidates_from_index
-    index_file=(os.getenv("LANDSCAPE_ROADS_INDEX") or "").strip()
-    if not index_file:
-        return {"status":"DATA_UNAVAILABLE","candidates":[],
-                "source":"MOLIT_ROAD_CURRENT_20250625",
-                "detail":"도로 현황 SHP 인덱스가 아직 등록되지 않았습니다."}
+    # Independent copy of the existing Seoul TL_SPRD_MANAGE/ROAD_BT FACT loader.
+    # Data coverage depends on the verified SHP bundle mounted for this service.
+    from landscape_roads import candidates_from_centerlines
     try:
-        return candidates_from_index(index_file,lat,lng,radius)
-    except (OSError,ValueError,sqlite3.DatabaseError) as exc:
+        return candidates_from_centerlines(lat,lng,radius)
+    except (OSError,ValueError) as exc:
         return {"status":"DATA_UNAVAILABLE","candidates":[],
-                "source":"MOLIT_ROAD_CURRENT_20250625",
-                "detail":"도로 인덱스 조회 실패 · 파일 및 스키마 확인 필요"}
+                "source":"TL_SPRD_MANAGE ROAD_BT",
+                "detail":"도로중심선·폭원 원자료 조회 실패 · 서버 자료구성 확인 필요"}
 
 
 @app.get("/api/viewpoint/candidates")
