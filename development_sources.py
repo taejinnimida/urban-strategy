@@ -682,7 +682,6 @@ def enrich(data,snapshot,area):
             'source_type':'REGISTERED_CONTOUR_TIN_REFERENCE',
             'thematic_type':'slope_tin',
             'provider_verified':False,
-            'cad_exportable':False,
             'geometry_status':'PARTIAL' if not verified else 'COMPLETE',
             'survey_table':{'title':'[표 4-2 경사도현황(TIN 10m 참고분석)]',
                             'status':'REFERENCE' if verified else 'PARTIAL',
