@@ -1224,7 +1224,7 @@ async function fetchCandidates(){
         const payload=await roads.json();
         const points=Array.isArray(payload.candidates)?payload.candidates:[];
         candidateLookupRows=[
-          ...candidateLookupRows.filter(r=>r.source!=='MOLIT_ROAD_CURRENT_20250625'),
+          ...candidateLookupRows.filter(r=>r.source!=='TL_SPRD_MANAGE ROAD_BT'),
           ...points
         ];
         roadFallbackStatus=payload.status==='OK'?'전국 도로 교차후보 '+points.length+'개':'전국 도로 '+(payload.status||'미확보');
