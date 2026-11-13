@@ -639,7 +639,7 @@ def enrich(data,snapshot,area):
     # The raster remains available for other legacy reference items only.
     results['4-1']={
         'status':'자료 필요',
-        'detail':'1:5,000 수치지형도 등고선·표고점 SHP 미등록 또는 TIN 분석 미완료 · 20m DEM/격자 대체분석 사용 안 함',
+        'detail':'1:5,000 수치지형도 등고선·표고점 SHP 기반 TIN 분석자료 미확보',
         'source':'국토지리정보원 수치지형도 등고선·표고점',
         'source_url':OFFICIAL_LINKS['4-1'],
         'thematic_type':'elevation',
