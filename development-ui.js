@@ -1072,10 +1072,10 @@ function devRenderSourceDetails(data){
   const drawableFeatures=(item.features||[]).filter(f=>item.thematic_type!=='building'||
    (f.properties?.geometry_basis==='BUILDING_FOOTPRINT'&&f.properties?.geometry_source==='LT_C_BLDGINFO'));
   if(drawableFeatures.length)L.geoJSON(drawableFeatures,{
-   style:f=>({color:['ownership','jimok','land_numeric','land_shape','landcover','ecobank','building'].includes(item.thematic_type)?'#526174':'#126d88',
-    weight:['ownership','jimok','land_numeric','land_shape','landcover','ecobank','building'].includes(item.thematic_type)?0.8:1.5,
-    fillColor:['ownership','jimok','land_numeric','land_shape','landcover','ecobank','building'].includes(item.thematic_type)?(f.properties?.color||'#cccccc'):'#126d88',
-    fillOpacity:['ownership','jimok','land_numeric','land_shape','landcover','ecobank','building'].includes(item.thematic_type)?0.68:0.2}),
+   style:f=>({color:['ownership','jimok','land_numeric','land_shape','landcover','ecobank','building','elevation','slope_tin'].includes(item.thematic_type)?'#526174':'#126d88',
+    weight:['ownership','jimok','land_numeric','land_shape','landcover','ecobank','building','elevation','slope_tin'].includes(item.thematic_type)?0.8:1.5,
+    fillColor:['ownership','jimok','land_numeric','land_shape','landcover','ecobank','building','elevation','slope_tin'].includes(item.thematic_type)?(f.properties?.color||'#cccccc'):'#126d88',
+    fillOpacity:['ownership','jimok','land_numeric','land_shape','landcover','ecobank','building','elevation','slope_tin'].includes(item.thematic_type)?0.68:0.2}),
    onEachFeature:(f,l)=>{
     const label=document.createElement('span');label.textContent=f.properties?.name||'원자료';l.bindTooltip(label);
     if(item.thematic_type==='building'){
@@ -1088,7 +1088,11 @@ function devRenderSourceDetails(data){
   if(Array.isArray(item.legend))for(const entry of item.legend){
    const row=document.createElement('span');row.style.cssText='display:inline-flex;align-items:center;gap:5px';
    const chip=document.createElement('span');chip.style.cssText='display:inline-block;width:14px;height:14px;border:1px solid #64748b;background-color:'+entry.color;
-   const title=document.createElement('span');title.textContent=item.thematic_type==='building'?entry.name+' ('+entry.count+'개 GIS 건물외곽선)':entry.name+' ('+entry.count+'필지 · '+entry.area_m2.toLocaleString()+'㎡)';
+   const title=document.createElement('span');title.textContent=item.thematic_type==='building'
+      ?entry.name+' ('+entry.count+'개 GIS 건물외곽선)'
+      :['elevation','slope_tin'].includes(item.thematic_type)
+        ?entry.name+' ('+entry.area_m2.toLocaleString()+'㎡)'
+        :entry.name+' ('+entry.count+'필지 · '+entry.area_m2.toLocaleString()+'㎡)';
    row.append(chip,title);legendbox.append(row);
   }
   if(item.id==='2-6'&&item.landcover_wms&&!item.features?.length){
