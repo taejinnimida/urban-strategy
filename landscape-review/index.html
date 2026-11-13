@@ -295,7 +295,7 @@ button,input,select{font:inherit}.hidden{display:none!important}
                 <div class="adapter-item"><b>유형별 우선순위</b><span>보행자전용도로 → 공원·광장 → 지하철 → 주요 버스 → 대학 → 문화유산 → 전망대 순. 동순위는 대상지와 가까운 순.</span></div>
                 <div class="adapter-item"><b>20m 이상 교차로</b><span>교차로 위치·도로폭원·차량교통량 원자료가 확인된 후보만 보충 선정합니다.</span></div>
                 <div class="adapter-item"><b>경관계획 조망점</b><span>공식 좌표 DB를 자동조회합니다. DB가 확보되지 않은 지역은 미확보로 표시하며 사용자 업로드는 선택적 보완입니다.</span></div>
-                <div class="adapter-item"><b>개발용 후보 API</b><span>현재 기능검증은 OSM 공개 API를 사용하며 최종 성과품 근거로 사용하지 않습니다.</span></div>
+                <div class="adapter-item"><b>개발용 후보 API</b><span>OSM·VWorld 장소검색을 병렬 조회합니다. POI 대표좌표와 실제 조망위치는 별도 확인이 필요합니다.</span></div>
               </div>
               <div class="candidate-note">선정 로직: 유형별 우선순위로 거리권당 최대 5개를 자동선정하고 부족분만 교통량 검증 교차로로 채웁니다. 선택한 점은 진하게, 미선정 점은 50% 투명하게 표시하며 지도 또는 목록을 클릭해 수정할 수 있습니다. 의무 조망점은 별도 포함합니다.</div>
             </section>
@@ -905,12 +905,8 @@ document.getElementById('selectedBuildingHeight').addEventListener('input',e=>{
 const VIEW_RULES={nearMax:250,midMax:500,farMax:1000,targetPerBand:5};
 const BAND_COLORS={near:'#ef4444',mid:'#f59e0b',far:'#2563eb'};
 const DESIGNATED_COLOR='#7c3aed';
-const ZONING_LAYERS=[
-  ['LT_C_UQ111','도시지역','#eabf43'],
-  ['LT_C_UQ112','관리지역','#d4ae73'],
-  ['LT_C_UQ113','농림지역','#9dc66a'],
-  ['LT_C_UQ114','자연환경보전지역','#5da884']
-];
+// Seoul official UPIS WMS shares the same server-side rendering policy as the main urban-info map.
+// Other provinces must not be mislabeled as having this Seoul-only zoning layer.
 let candidateMap=null,candidateSiteLayers=[],candidateRangeLayers=[],candidateLayers=null,candidateZoningLayer=null,candidateItems=[],officialViewpoints=[],candidateBandFilter='all';
 let candidateBaseLayers=null,viewpointRanking=null,trafficIntersectionItems=[],candidateLookupRows=[];
 const categoryLabels={designated:'경관계획 조망점',pedestrian:'보행자전용도로',subway:'지하철 출입구',bus:'광역·공항버스 정류장',university:'대학 정문',heritage:'문화유산',intersection:'20m 이상 주요교차로',park:'공원',square:'광장',viewpoint:'전망대'};
@@ -934,7 +930,7 @@ function initCandidateMap(){
   aerial.addTo(candidateMap);
   candidateZoningLayer=L.layerGroup().addTo(candidateMap);
   candidateLayers=L.layerGroup().addTo(candidateMap);
-  L.control.layers(candidateBaseLayers,{'용도지역 (자료 확인 필요)':candidateZoningLayer},{collapsed:false}).addTo(candidateMap);
+  L.control.layers(candidateBaseLayers,{'용도지역 (서울시 공식도면)':candidateZoningLayer},{collapsed:false}).addTo(candidateMap);
   L.control.scale({imperial:false}).addTo(candidateMap);
   syncCandidateSite();
 }
@@ -982,29 +978,22 @@ function drawCandidateRanges(){
     }catch(_){}
   }
 }
-async function loadCandidateZoning(){
-  if(!candidateZoningLayer)return;
+function loadCandidateZoning(){
+  if(!candidateZoningLayer||!candidateMap)return;
   candidateZoningLayer.clearLayers();
-  const base=siteBoundaryFeature();
-  if(!base)return;
-  if(!vworldReady()){updateCandidateStatus('VWorld 키 미연결 · 용도지역 미표시');return;}
-  let queryGeometry=base.geometry;
-  try{queryGeometry=turf.buffer(base,1.05,{units:'kilometers'}).geometry;}catch(_){}
-  const results=await Promise.allSettled(ZONING_LAYERS.map(([id])=>vworldRequest(queryGeometry,id,1,1000)));
-  results.forEach((result,i)=>{
-    if(result.status!=='fulfilled')return;
-    const [id,label,color]=ZONING_LAYERS[i];
-    const fs=result.value?.response?.result?.featureCollection?.features||[];
-    if(!Array.isArray(fs)||!fs.length)return;
-    L.geoJSON({type:'FeatureCollection',features:fs},{
-      style:{color,weight:1.2,fillColor:color,fillOpacity:.22},
-      onEachFeature:(feature,layer)=>{
-        const p=feature.properties||{};
-        const name=p.uname||p.UNAME||p.dgm_nm||p.DGM_NM||label;
-        layer.bindTooltip(String(name));
-      }
-    }).addTo(candidateZoningLayer);
+  const pos=siteState.center;
+  if(!pos)return;
+  const inSeoul=pos[0]>=37.2&&pos[0]<=37.85&&pos[1]>=126.5&&pos[1]<=127.4;
+  if(!inSeoul){
+    // Seoul UPIS only. Never paint its legend on a Gyeonggi site.
+    return;
+  }
+  const official=L.tileLayer('/api/viewpoint/seoul-zoning/{z}/{x}/{y}.svg',{
+    tileSize:512,zoomOffset:-1,maxZoom:19,minZoom:7,maxNativeZoom:19,
+    opacity:.8,attribution:'서울특별시 도시계획정보 (공식 WMS)'
   });
+  official.addTo(candidateZoningLayer);
+  official.on('tileerror',()=>{updateCandidateStatus('서울시 용도지역 도면 일시 조회 실패 · 서울 GeoServer 연결 확인 필요');});
 }
 function syncCandidateSite(){
   if(!candidateMap) return;
@@ -1019,11 +1008,11 @@ function syncCandidateSite(){
         const ol=L.geoJSON(outer);if(ol.getBounds().isValid())candidateMap.fitBounds(ol.getBounds(),{padding:[35,35],maxZoom:16});
       }else if(layer.getBounds().isValid())candidateMap.fitBounds(layer.getBounds(),{padding:[45,45],maxZoom:16});
     }catch(_){if(layer.getBounds().isValid())candidateMap.fitBounds(layer.getBounds(),{padding:[45,45],maxZoom:16});}
-    loadCandidateZoning();
   }else if(siteState.center){
     const icon=L.divIcon({className:'',html:'<div class="vp-site-icon"></div>',iconSize:[18,18],iconAnchor:[9,9]});
     candidateSiteLayers.push(L.marker(siteState.center,{icon}).addTo(candidateMap).bindTooltip('대상지 중심'));candidateMap.setView(siteState.center,14);
   }
+  loadCandidateZoning();
   updateCandidateStatus();
 }
 function updateCandidateStatus(extra=''){
@@ -1192,10 +1181,11 @@ async function fetchCandidates(){
     }
     const data=await res.json();
     if(data.status!=='OK'||!Array.isArray(data.elements))throw new Error('후보 응답 형식 오류');
-    candidateLookupRows=normalizeOsm(data.elements);
+    candidateLookupRows=[...normalizeOsm(data.elements),...(Array.isArray(data.candidates)?data.candidates:[])];
     refreshCandidateRows();await rankViewpointCandidates();renderCandidates();
-    updateCandidateStatus('공간 후보 조회 완료 · '+candidateItems.length+'개 · 공식 조망점은 DB 확보 범위에서만 반영');
-    showToast('후보 조회 완료 · '+candidateItems.length+'개');
+    const states=(data.sources||[]).map(x=>x.name+' '+x.state).join(' / ');
+    updateCandidateStatus('공간 후보 '+candidateItems.length+'개 · '+states+(data.partial?' · 일부 원천 미연결':'')+' · 지정 조망점은 공식 좌표 DB 확보분만');
+    showToast('공간 후보 '+candidateItems.length+'개 조회'+(data.partial?' (일부 원천만)':''));
   }catch(e){
     console.error('viewpoint candidate lookup',e);
     sourceError=e.name==='AbortError'?'조회 시간초과':e.message;
