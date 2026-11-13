@@ -1047,6 +1047,7 @@ function bandLabel(b){return b==='near'?'근경':b==='mid'?'중경':b==='far'?'�
 function direction(lat,lng){if(!siteState.center)return'-';const[a,b]=siteState.center,r=Math.PI/180,y=Math.sin((lng-b)*r)*Math.cos(lat*r),x=Math.cos(a*r)*Math.sin(lat*r)-Math.sin(a*r)*Math.cos(lat*r)*Math.cos((lng-b)*r),deg=(Math.atan2(y,x)*180/Math.PI+360)%360,dirs=['북','북동','동','남동','남','남서','서','북서'];return dirs[Math.round(deg/45)%8];}
 function elLL(el){return Number.isFinite(el.lat)&&Number.isFinite(el.lon)?[el.lat,el.lon]:el.center&&Number.isFinite(el.center.lat)&&Number.isFinite(el.center.lon)?[el.center.lat,el.center.lon]:null;}
 function osmCat(t){
+  if(t.highway==='traffic_signals')return 'intersection';
   if(t.highway==='pedestrian')return 'pedestrian';
   if(t.leisure==='park')return 'park';
   if(t.place==='square')return 'square';
@@ -1091,7 +1092,13 @@ function normalizeOsm(els){
   valid.forEach(e=>{
     const t=e.tags||{},cat=osmCat(t),ll=elLL(e);
     if(!cat||cat==='subway')return;
-    out.push({id:'osm-'+e.type+'-'+e.id+'-'+cat,lat:ll[0],lng:ll[1],category:cat,name:t.name||t['name:ko']||categoryLabels[cat],source:'OSM 개발용',verification:cat==='pedestrian'?'도로 대표점 · 조망 가능 위치 확인 필요':cat==='park'||cat==='square'?'시설 대표점 · 출입부 확인 필요':'공식자료 확인 필요'});
+    out.push({id:'osm-'+e.type+'-'+e.id+'-'+cat,lat:ll[0],lng:ll[1],category:cat,
+      name:t.name||t['name:ko']||(cat==='intersection'?'신호교차로 검토후보':categoryLabels[cat]),
+      source:'OSM 개발용',
+      ...(cat==='intersection'?{requiresVerification:true,roadWidthM:null,trafficVolume:null}:{}),
+      verification:cat==='intersection'?'신호교차로 위치 후보 · 20m 폭원과 실측 교통량 미확인 · 자동선정 제외'
+        :cat==='pedestrian'?'도로 대표점 · 조망 가능 위치 확인 필요'
+        :cat==='park'||cat==='square'?'시설 대표점 · 출입부 확인 필요':'공식자료 확인 필요'});
   });
   // Stop route types cannot be verified from OSM stop tags alone.
   // Do not auto-select local/ordinary bus stops as express/airport buses.
@@ -1149,7 +1156,9 @@ function renderCandidates(){
   const filtered=candidateItems.filter(r=>candidateBandFilter==='all'||r.band===candidateBandFilter).sort((a,b)=>ord[a.band]-ord[b.band]||Number(b.mandatory)-Number(a.mandatory)||a.distance-b.distance);
   list.innerHTML=filtered.length?filtered.map(r=>{
     const selected=ids.has(r.id),state=r.mandatory?'의무 포함':selected?'선정':'미선정';
-    const traffic=r.category==='intersection'?` · 폭 ${r.roadWidthM}m · 교통량 ${Number(r.trafficVolume).toLocaleString()}`:'';
+    const traffic=r.category==='intersection'&&(Number.isFinite(Number(r.roadWidthM))&&r.roadWidthM!==null&&Number.isFinite(Number(r.trafficVolume))&&r.trafficVolume!==null)
+      ?` · 폭 ${r.roadWidthM}m · 교통량 ${Number(r.trafficVolume).toLocaleString()}`
+      :r.category==='intersection'?' · 폭원/교통량 미확인':'';
     return `<div class="candidate-row ${selected?'selected':'rejected'}" data-id="${escapeHtml(r.id)}"><div class="top"><div><b>${escapeHtml(r.name)}</b><em>${bandLabel(r.band)} · ${r.distance}m · ${r.direction}측${traffic} · ${r.lat.toFixed(6)}, ${r.lng.toFixed(6)}</em></div><span class="state-badge ${selected?'ready':''}">${state}</span></div><div style="margin-top:6px;display:flex;gap:5px;flex-wrap:wrap"><span class="type-badge">${escapeHtml(categoryLabels[r.category]||r.category)}</span><span class="type-badge">${escapeHtml(r.verification||'')}</span></div><div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap"><button class="btn ghost small" data-action="toggle" data-id="${escapeHtml(r.id)}" ${r.mandatory?'disabled':''}>${selected?'선정 해제':'선정 추가'}</button><button class="btn ghost small" data-action="direction" data-id="${escapeHtml(r.id)}">조망방향 수정</button></div></div>`;
   }).join(''):'<div class="candidate-note">표시할 후보가 없습니다.</div>';
   list.querySelectorAll('.candidate-row').forEach(x=>x.addEventListener('click',ev=>{if(ev.target.closest('button'))return;toggleCandidate(x.dataset.id);}));
