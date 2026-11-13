@@ -684,6 +684,7 @@ def enrich(data,snapshot,area):
             'provider_verified':False,
             'geometry_status':'PARTIAL' if not verified else 'COMPLETE',
             'survey_table':{'title':'[표 4-2 경사도현황(TIN 10m 참고분석)]',
+                            'count_header':'격자수(개)',
                             'status':'REFERENCE' if verified else 'PARTIAL',
                             'rows':rows,'source':contour.get('source'),
                             'as_of':contour.get('as_of'),
@@ -735,6 +736,7 @@ def enrich(data,snapshot,area):
             'legal_submission_ready':False,
             'survey_table':{
                 'title':'[표 4-1 표고현황(TIN)]',
+                'count_header':'분할면수(개)',
                 'status':'REFERENCE' if is_complete else 'PARTIAL',
                 'source':contour.get('source'),'as_of':contour.get('as_of'),
                 'rows':[{'kind':'total','label':'TIN 표고분석면적',
