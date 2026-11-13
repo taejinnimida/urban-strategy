@@ -1176,7 +1176,7 @@ async function fetchCandidates(){
   initCandidateMap();
   const button=document.getElementById('fetchCandidates'),old=button.textContent;
   button.disabled=true;button.textContent='조회 중…';updateCandidateStatus('공식 조망점 및 공간 후보자료 조회 중');
-  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),15000);
+  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),40000);
   let sourceError='';
   try{
     await loadOfficialViewpoints();
