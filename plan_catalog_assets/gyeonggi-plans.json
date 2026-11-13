@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
-  "checked_at": "2026-11-12",
-  "coverage": "경기도 광역계획 6건, 31개 시·군 기본계획 공개본 31건, 확인된 후속 수립이력 12건, 안산 공원녹지계획 1건. 공식 공개자료를 기준으로 하며 전체 분야와 모든 최신 변경분의 완비를 뜻하지 않음.",
+  "checked_at": "2026-11-13",
+  "coverage": "경기도 광역계획 6건, 31개 시·군 기본계획 공개본 31건, 후속 수립이력 12건, 분야별 계획 21건. 분야별 추가 자료는 2026-11-13 확인, 최초 50건은 각 항목의 2026-11-12 확인일을 유지. 전체 분야와 모든 최신 변경분의 완비를 뜻하지 않음.",
   "plans": [
     {
       "id": "gyeonggi-comprehensive-2040",
@@ -1687,6 +1687,796 @@
           "note": "",
           "verification": "source",
           "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-renewal-41110-2030",
+      "region": "41110",
+      "category": "renewal",
+      "plan_type": "basic",
+      "title": "2030 수원시 도시·주거환경정비기본계획(변경)",
+      "target_year": 2030,
+      "status": "amended",
+      "milestone_date": "2024-07-11",
+      "milestone_label": "변경 고시",
+      "note": "수원시 고시 제2024-321호 변경 고시를 연결합니다. 고시문 첨부자료이며, 통합 보고서 전체를 뜻하지 않습니다.",
+      "scope_label": "수원시 정비계획 대상지역",
+      "coverage_regions": [],
+      "tags": [
+        "재개발",
+        "재건축",
+        "주거생활권"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "변경 고시·고시문 · 수원시청",
+          "url": "https://www.suwon.go.kr/web/saeallOfr/BD_ofrView.do?notAncmtMgtNo=131989",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-renewal-41130-2030",
+      "region": "41130",
+      "category": "renewal",
+      "plan_type": "basic",
+      "title": "2030 성남시 도시·주거환경정비기본계획(원도심·변경)",
+      "target_year": 2030,
+      "status": "amended",
+      "milestone_date": "2026-01-06",
+      "milestone_label": "변경 내용 공식 보도",
+      "note": "수정·중원 원도심 관련 계획입니다. 2024년 변경과 이후 용적률 인센티브 개정에 관한 2026년 공식 보도를 함께 연결합니다. 표시 날짜는 보도일이며 최근 변경 고시일·통합 보고서 원문은 별도 확인이 필요합니다.",
+      "scope_label": "성남시 수정·중원구 원도심",
+      "coverage_regions": [
+        "41131",
+        "41133"
+      ],
+      "tags": [
+        "원도심",
+        "생활권계획",
+        "재개발",
+        "재건축"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "후속 변경 내용 안내 · 성남시 비전성남",
+          "url": "https://snvision.seongnam.go.kr/22181",
+          "kind": "reference",
+          "note": "변경 고시에 따라 확정된 개정 내용 안내. 계획서 원문이 아닙니다.",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        },
+        {
+          "label": "2024년 변경 수립·고시 안내 · 성남시",
+          "url": "https://snvision.seongnam.go.kr/19478",
+          "kind": "reference",
+          "note": "2024-08-19 변경 이력. 후속 개정은 첫 번째 링크와 함께 확인합니다.",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-renewal-41170-2030",
+      "region": "41170",
+      "category": "renewal",
+      "plan_type": "basic",
+      "title": "2030 안양 도시·주거환경정비기본계획(변경)",
+      "target_year": 2030,
+      "status": "amended",
+      "milestone_date": "2025-06-02",
+      "milestone_label": "변경 정정 고시",
+      "note": "2025-05-30 변경 보고서와 2025-06-02 정정 고시를 함께 연결합니다. 정정 고시의 인덕원중학교 주변 A블록 면적 정정을 보고서와 함께 확인합니다.",
+      "scope_label": "안양시 정비계획 대상지역",
+      "coverage_regions": [],
+      "tags": [
+        "재개발",
+        "재건축",
+        "정정고시"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "변경 보고서 · 안양시청",
+          "url": "https://anyang.go.kr/newtown/selectBbsNttView.do?bbsNo=389&integrDeptCode=&key=2556&nttNo=402927&pageIndex=1&searchCtgry=&searchKrwd=",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        },
+        {
+          "label": "변경 고시 · 안양시 제2025-106호",
+          "url": "https://www.anyang.go.kr/newtown/emwsWebView.do?key=2558&regiNo=25212&searchGosiSe=01%2C03%2C04",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        },
+        {
+          "label": "정정 고시 · 안양시 제2025-111호",
+          "url": "https://anyang.go.kr/main/emwsWebView.do?key=4101&pageIndex=1&pageUnit=900&regiNo=25243&searchCnd=all&searchGosiSe=01%2C03%2C04&searchKrwd=",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-renewal-41190-2030",
+      "region": "41190",
+      "category": "renewal",
+      "plan_type": "basic",
+      "title": "2030 부천시 도시·주거환경정비기본계획(변경)",
+      "target_year": 2030,
+      "status": "amended",
+      "milestone_date": "2024-09-02",
+      "milestone_label": "변경 고시",
+      "note": "2024년 9월 변경본 보고서와 고시·요약서를 연결합니다. 자료실 작성일 2025-07-02와 변경 고시일 2024-09-02는 서로 다릅니다.",
+      "scope_label": "부천시 기성시가지 정비계획 대상지역",
+      "coverage_regions": [],
+      "tags": [
+        "재개발",
+        "재건축",
+        "기성시가지"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2024년 9월 변경 보고서 · 부천시",
+          "url": "https://bucheon.go.kr/site/program/board/basicboard/view?boardid=1169754&boardtypeid=28572&menuid=173003003002&pagesize=10",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        },
+        {
+          "label": "변경 고시·요약서 · 부천시청",
+          "url": "https://www.bucheon.go.kr/site/program/board/basicboard/view?boardtypeid=26736&encid=hgTDv7QxWBmH+KHmmCj8Vg%3D%3D&menuid=148002001001&pagesize=10",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-renewal-41280-2035",
+      "region": "41280",
+      "category": "renewal",
+      "plan_type": "basic",
+      "title": "2035 고양시 도시·주거환경정비기본계획",
+      "target_year": 2035,
+      "status": "approved",
+      "milestone_date": "2026-05-29",
+      "milestone_label": "수립 고시",
+      "note": "고양시 공식 정비사업 안내 페이지의 수립 고시일과 2035 보고서 다운로드를 연결합니다. 시보 게시일 2026-05-28과 고시일을 구분합니다.",
+      "scope_label": "고양시 정비계획 대상지역",
+      "coverage_regions": [],
+      "tags": [
+        "재개발",
+        "재건축",
+        "주거환경"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "고시문·2035 보고서 · 고양시청",
+          "url": "https://www.goyang.go.kr/www/www03/www03_10/www03_10_19/www03_10_19_tab2.jsp",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        },
+        {
+          "label": "고시 제2026-150호 수록 · 고양시보",
+          "url": "https://www.goyang.go.kr/news/user/bbs/BD_selectBbs.do?q_bbsCode=1032&q_bbscttSn=20260528174824814&q_pClCode=",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-newtown-41130-2035",
+      "region": "41130",
+      "category": "renewal",
+      "plan_type": "area",
+      "title": "2035 성남시 노후계획도시정비기본계획(분당신도시·변경)",
+      "target_year": 2035,
+      "status": "amended",
+      "milestone_date": "2026-11-06",
+      "milestone_label": "경미한 변경 고시 등록",
+      "note": "분당신도시 관련 계획입니다. 2026년 11월 경미한 변경 고시를 확인했으며 첨부 고시문을 연결합니다. 구별 조회 범위는 분당구이고 실제 계획구역은 고시도서로 확인합니다. 통합 보고서 전체는 별도 확인이 필요합니다.",
+      "scope_label": "분당신도시(분당구 일부)",
+      "coverage_regions": [
+        "41135"
+      ],
+      "tags": [
+        "1기신도시",
+        "분당",
+        "노후계획도시",
+        "특별정비구역"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "경미한 변경 고시 · 성남시 제2026-273호",
+          "url": "https://www.seongnam.go.kr/pm010301/154916",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        },
+        {
+          "label": "당초 승인·고시 추진이력 · 성남시",
+          "url": "https://www.seongnam.go.kr/contents/down/mayor/pledge_plan_2025_2.pdf",
+          "kind": "reference",
+          "note": "공약 이행자료의 분당신도시 항목. 2025-05-27 승인, 2025-06-09 고시 이력이며 계획서 원문이 아닙니다.",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-newtown-41170-2035",
+      "region": "41170",
+      "category": "renewal",
+      "plan_type": "area",
+      "title": "2035년 안양 노후계획도시정비기본계획(평촌신도시)",
+      "target_year": 2035,
+      "status": "approved",
+      "milestone_date": "2025-04-08",
+      "milestone_label": "고시문·보고서 게시",
+      "note": "평촌신도시 고시문 및 기본계획도가 수정된 보고서 공개본입니다. 표시 날짜는 자료 게시일이며, 승인일로 사용하지 않습니다. 동안구 일부를 대상으로 하므로 실제 계획구역은 도서를 확인합니다.",
+      "scope_label": "평촌신도시(동안구 일부)",
+      "coverage_regions": [
+        "41173"
+      ],
+      "tags": [
+        "1기신도시",
+        "평촌",
+        "노후계획도시",
+        "특별정비구역"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "고시문·보고서 · 안양시청",
+          "url": "https://m.anyang.go.kr/newtown/selectBbsNttView.do?bbsNo=389&key=2556&nttNo=398999",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-newtown-41190-2035",
+      "region": "41190",
+      "category": "renewal",
+      "plan_type": "area",
+      "title": "2035 부천 노후계획도시정비기본계획(중동신도시)",
+      "target_year": 2035,
+      "status": "approved",
+      "milestone_date": "2024-12-31",
+      "milestone_label": "수립 고시 수록 시보 발행",
+      "note": "원미구 중·상동 일원 중동신도시 대상입니다. 2024년 12월 보고서와 고시 제2024-360호 수록 시보를 연결합니다. 시 전체에 일괄 적용하지 않습니다.",
+      "scope_label": "중동신도시(원미구 중·상동 일원)",
+      "coverage_regions": [
+        "41192"
+      ],
+      "tags": [
+        "1기신도시",
+        "중동",
+        "노후계획도시",
+        "특별정비구역"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "계획 보고서 · 부천시청",
+          "url": "https://www.bucheon.go.kr/site/program/board/basicboard/view?boardtypeid=28484&encid=NY3vj0MtVHDiIHs77Gp7og%3D%3D&menuid=148004002004&pagesize=10",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        },
+        {
+          "label": "고시 제2024-360호 수록 · 부천시보 제1862호",
+          "url": "https://www.bucheon.go.kr/site/program/board/basicboard/view?boardtypeid=26758&currentpage=8&encid=HvyDh0FOQZAOWGJ0lqy+kg%3D%3D&menuid=148002002007&pagesize=10",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        },
+        {
+          "label": "계획 범위·주요 내용 · 부천시",
+          "url": "https://www.bucheon.go.kr/site/homepage/menu/viewMenu?menuid=173002001003",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-newtown-41280-2035",
+      "region": "41280",
+      "category": "renewal",
+      "plan_type": "area",
+      "title": "2035 고양 노후계획도시정비기본계획(일산신도시)",
+      "target_year": 2035,
+      "status": "approved",
+      "milestone_date": "2025-06-05",
+      "milestone_label": "수립 고시",
+      "note": "일산신도시 대상이며 일산동·서구 조회에서 제공합니다. 공식 수립 고시 보도와 공개 보고서를 함께 연결합니다. 공개 첨부파일명에 남아 있는 ‘승인보고서(안) 최종’ 표기는 링크 설명에 보존합니다.",
+      "scope_label": "일산신도시(일산동구·일산서구 일부)",
+      "coverage_regions": [
+        "41285",
+        "41287"
+      ],
+      "tags": [
+        "1기신도시",
+        "일산",
+        "노후계획도시",
+        "특별정비구역"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "승인 보고서 공개본 · 고양시청",
+          "url": "https://www.goyang.go.kr/www/user/bbs/BD_selectBbs.do?q_bbsCode=1053&q_bbscttSn=20250605092051085&q_clCode=1&q_pClCode=",
+          "kind": "document",
+          "note": "첨부파일명은 ‘승인보고서(안) 최종’입니다. 수립 고시 사실은 별도 공식 보도로 확인했습니다.",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        },
+        {
+          "label": "수립 고시 안내 · 고양시",
+          "url": "https://www.goyang.go.kr/news/user/bbs/BD_selectBbs.do?q_bbsCode=1090&q_bbscttSn=20250606162247211&q_estnColumn1=All",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-newtown-41410-2035",
+      "region": "41410",
+      "category": "renewal",
+      "plan_type": "area",
+      "title": "2035년 군포 노후계획도시정비기본계획(산본신도시)",
+      "target_year": 2035,
+      "status": "approved",
+      "milestone_date": "2025-01-31",
+      "milestone_label": "수립 고시",
+      "note": "산본신도시 대상입니다. 군포시가 작성한 경기도 공식 보도로 승인·고시 이력을 확인했습니다. 계획서 원문은 아직 연결하지 않았으며, 세부 기준과 구역계는 고시도서의 추가 확인이 필요합니다.",
+      "scope_label": "산본신도시(군포시 일부)",
+      "coverage_regions": [],
+      "tags": [
+        "1기신도시",
+        "산본",
+        "노후계획도시",
+        "특별정비구역"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "수립 고시 안내 · 군포시 제공·경기도 게재",
+          "url": "https://gnews.gg.go.kr/briefing/brief_sigun_view.do?BS_CODE=S003&number=110531",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-landscape-41110-2030",
+      "region": "41110",
+      "category": "landscape",
+      "plan_type": "basic",
+      "title": "2030 수원시 경관계획",
+      "target_year": 2030,
+      "status": "approved",
+      "milestone_date": "",
+      "milestone_label": "",
+      "note": "수원시 공식 누리집의 계획 보고서 공개본입니다. 수립 공고일은 확인하지 못해 날짜를 비워 둡니다. 공개 URL의 업로드 경로를 수립일로 해석하지 않습니다.",
+      "scope_label": "수원시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "경관권역",
+        "중점경관관리구역",
+        "경관가이드라인"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "경관계획 보고서 PDF · 수원시청",
+          "url": "https://www.suwon.go.kr/webcontent/ckeditor/2022/5/23/16dda67f-4fea-4d44-9328-99f4ba598edb.pdf",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-landscape-41130-2030",
+      "region": "41130",
+      "category": "landscape",
+      "plan_type": "basic",
+      "title": "2030 성남시 경관계획",
+      "target_year": 2030,
+      "status": "approved",
+      "milestone_date": "2024-07-05",
+      "milestone_label": "수립 공고 안내 보도",
+      "note": "성남시 경관계획 보고서와 수립 공고 안내를 연결합니다. 표시 날짜는 공식 보도일이며 공고문 자체의 날짜와 구분합니다.",
+      "scope_label": "성남시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "경관관리",
+        "경관지구",
+        "중점경관관리구역"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "경관계획 보고서 PDF · 성남시청",
+          "url": "https://www.seongnam.go.kr/contents/down/design/10846_1.pdf",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        },
+        {
+          "label": "수립 공고 안내 · 성남시 비전성남",
+          "url": "https://snvision.seongnam.go.kr/19285",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-landscape-41610-2030",
+      "region": "41610",
+      "category": "landscape",
+      "plan_type": "basic",
+      "title": "2030 광주시 경관계획",
+      "target_year": 2030,
+      "status": "approved",
+      "milestone_date": "",
+      "milestone_label": "",
+      "note": "경기도 광주시의 2030 경관계획입니다. 기준연도는 2024년이며 공식 페이지에 2030 보고서 다운로드가 제공됩니다. 수립 공고일은 미확인이며 페이지 최종 수정일을 승인일로 사용하지 않습니다.",
+      "scope_label": "경기도 광주시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "경기도광주",
+        "경관권역",
+        "경관축",
+        "경관거점"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2030 경관계획·보고서 · 광주시청",
+          "url": "https://www.gjcity.go.kr/depart/contents.do?mId=1105020100",
+          "kind": "document",
+          "note": "같은 페이지의 2020·2025 이전 계획과 구분하여 2030 경관기본계획을 선택합니다.",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-parks-41460-2035",
+      "region": "41460",
+      "category": "parks",
+      "plan_type": "basic",
+      "title": "2035년 용인시 공원녹지기본계획",
+      "target_year": 2035,
+      "status": "approved",
+      "milestone_date": "2022",
+      "milestone_label": "당초계획 수립연도",
+      "note": "2022년 수립된 당초 계획 공개본입니다. 2025년 시의회 자료에서 재정비안 의견청취와 승인 요청 진행을 확인했으나 후속 재정비 승인 고시는 확인하지 못했습니다. 공개 보고서를 후속 재정비 확정본으로 간주하지 않습니다.",
+      "scope_label": "용인시 공원·녹지 계획 대상지역",
+      "coverage_regions": [],
+      "tags": [
+        "공원녹지",
+        "공원서비스",
+        "녹지체계",
+        "재정비"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "장별 계획 보고서 · 용인시청",
+          "url": "https://www.yongin.go.kr/home/www/www12/www12_09/www12_09_01.jsp",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        },
+        {
+          "label": "재정비안 의견청취 · 용인시의회",
+          "url": "https://council.yongin.go.kr/viewer/minutes.do?uid=8336",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        },
+        {
+          "label": "재정비 승인 요청 진행상황 · 용인시의회",
+          "url": "https://council.yongin.go.kr/viewer/minutes.do?uid=8670",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-parks-41480-2040",
+      "region": "41480",
+      "category": "parks",
+      "plan_type": "basic",
+      "title": "2040 파주시 공원녹지기본계획",
+      "target_year": 2040,
+      "status": "hearing",
+      "milestone_date": "2026-01-08",
+      "milestone_label": "전략환경영향평가 항목 공개",
+      "note": "2025년 공청회 공고와 2026년 전략환경영향평가 항목 공개자료를 연결합니다. 승인·수립 완료 고시는 확인하지 못해 검토 절차 이력으로 표시합니다.",
+      "scope_label": "파주시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "공원녹지",
+        "공청회",
+        "전략환경영향평가"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "공청회 개최 공고 · 파주시청",
+          "url": "https://www.paju.go.kr/user/board/BD_board.view.do?bbsCd=1022&q_ctgCd=4063&seq=20250907133651834",
+          "kind": "hearing",
+          "note": "2025-09-05 공고, 게시일 2025-09-07.",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        },
+        {
+          "label": "전략환경영향평가 항목 공개 · 파주시",
+          "url": "https://agri.paju.go.kr/user/board/BD_board.view.do?bbsCd=1022&q_ctgCd=4063&seq=20260108154748876",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-regeneration-41110-published",
+      "region": "41110",
+      "category": "regeneration",
+      "plan_type": "basic",
+      "title": "수원시 도시재생전략계획(변경 공개본)",
+      "target_year": null,
+      "status": "unknown",
+      "milestone_date": "",
+      "milestone_label": "",
+      "note": "공식 도시재생 안내 페이지에서 ‘수원 도시재생전략계획 변경’ PDF를 선택합니다. 목표연도·변경 확정일은 별도로 확인하지 못해 비워 둡니다. 2036 후속 계획안과 구분하여 등록합니다. 보고서 공개 사실만으로 확정 여부를 단정하지 않아 수립상태를 미확인으로 표시합니다.",
+      "scope_label": "수원시 도시재생 전략계획 대상지역",
+      "coverage_regions": [],
+      "tags": [
+        "도시재생",
+        "전략계획",
+        "공개본"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "도시재생전략계획·변경본 · 수원시청",
+          "url": "https://www.suwon.go.kr/sw-www/deptHome/dep_city/city01/city01_10/city01_10_01.jsp",
+          "kind": "document",
+          "note": "도시재생전략계획 변경 PDF를 선택합니다. 같은 페이지의 개별 도시재생활성화계획과 구분합니다.",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-regeneration-41110-2036",
+      "region": "41110",
+      "category": "regeneration",
+      "plan_type": "basic",
+      "title": "2036 수원시 도시재생전략계획",
+      "target_year": 2036,
+      "status": "hearing",
+      "milestone_date": "2026-08-07",
+      "milestone_label": "주민공청회 개최",
+      "note": "2036 도시재생전략계획(안)의 주민공청회 개최 이력입니다. 영화동 도시재생활성화계획과 함께 공청회를 열었지만 별개 계획입니다. 후속 승인·고시는 확인하지 못했습니다.",
+      "scope_label": "수원시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "도시재생",
+        "전략계획",
+        "활성화지역",
+        "공청회"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "주민공청회 안내 · 수원시청",
+          "url": "https://www.suwon.go.kr/web/board/BD_board.view.do?bbsCd=1042&delDesc=&pageType=&q_ctgCd=&q_currPage=2&q_rowPerPage=10&q_searchKey=&q_searchKeyType=TITLE___1002&q_searchVal=&q_sortName=&q_sortOrder=&seq=20260727201126716&showSummaryYn=N",
+          "kind": "hearing",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        },
+        {
+          "label": "공청회 개최 결과·계획안 설명 · 수원시",
+          "url": "https://www.suwon.go.kr/web/board/BD_board.view.do?bbsCd=1043&seq=20260810093936288",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-regeneration-41170-2032",
+      "region": "41170",
+      "category": "regeneration",
+      "plan_type": "basic",
+      "title": "2032 안양시 도시재생전략계획(재정비)",
+      "target_year": 2032,
+      "status": "amended",
+      "milestone_date": "2024-01-10",
+      "milestone_label": "재정비 확정 공고",
+      "note": "공고문에 목표연도 2032년과 재정비 확정 사실이 명시되어 있습니다. 관계도서는 시청·도시재생지원센터 비치로 안내되며 온라인 보고서 전체는 확인하지 못했습니다. 고시공고 목록의 번호와 첨부 공고문 표기 차이는 원문 확인이 필요합니다.",
+      "scope_label": "안양시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "도시재생",
+        "전략계획",
+        "재정비",
+        "활성화지역"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "재정비 공고·첨부 공고문 · 안양시청",
+          "url": "https://www.anyang.go.kr/main/emwsWebView.do?key=4101&pageIndex=3921&pageUnit=4480&regiNo=16354&searchCnd=all&searchGosiSe=01%2C03%2C04&searchKrwd=",
+          "kind": "notice",
+          "note": "목록은 제2024-63호, 검색된 첨부 공고문은 제2024-65호로 표기되어 고시번호를 임의 통일하지 않습니다.",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-industry-41110-2030",
+      "region": "41110",
+      "category": "urban",
+      "plan_type": "sector",
+      "title": "2030년 수원시 공업지역기본계획",
+      "target_year": 2030,
+      "status": "approved",
+      "milestone_date": "2024-02-02",
+      "milestone_label": "수립 공고",
+      "note": "수원시 공고 제2024-388호와 장별 보고서 공개본입니다. 공업지역 대상의 부문 계획이며 시 전체 도시기본계획과 구분합니다. 개별 구역의 적용 여부는 보고서 도면으로 확인합니다.",
+      "scope_label": "수원시 공업지역 계획 대상지",
+      "coverage_regions": [],
+      "tags": [
+        "공업지역",
+        "산업기능",
+        "관리·활성화"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "공고·장별 계획 보고서 · 수원시청",
+          "url": "https://www.suwon.go.kr/web/board/BD_board.view.do?bbsCd=1164&q_currPage=1&q_rowPerPage=10&q_searchKeyType=TITLE___1002&seq=20240202135320359&showSummaryYn=N",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        },
+        {
+          "label": "수립 공고 · 수원시 제2024-388호",
+          "url": "https://www.suwon.go.kr/web/saeallOfr/BD_ofrView.do?notAncmtMgtNo=127071&q_currPage=156&q_searchKey=SJ&q_searchVal=",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-industry-41270-2030",
+      "region": "41270",
+      "category": "urban",
+      "plan_type": "sector",
+      "title": "2030년 안산시 공업지역기본계획",
+      "target_year": 2030,
+      "status": "unknown",
+      "milestone_date": "",
+      "milestone_label": "",
+      "note": "안산시 공식 도시계획 자료실의 보고서 공개본입니다. 목록에서 해당 제목을 선택합니다. 수립 고시일은 미확인이며, 산업단지 전체에 적용하는 계획으로 해석하지 않습니다. 보고서 공개 사실만으로 확정 여부를 단정하지 않아 수립상태를 미확인으로 표시합니다.",
+      "scope_label": "안산시 산업단지를 제외한 공업지역 대상지",
+      "coverage_regions": [],
+      "tags": [
+        "공업지역",
+        "산업기능",
+        "관리·활성화"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-13",
+      "created_at": "2026-11-13T00:00:00+00:00",
+      "links": [
+        {
+          "label": "공업지역기본계획 보고서 게시 목록 · 안산시청",
+          "url": "https://ansan.go.kr/www/common/bbs/selectPageListBbs.do?bbs_code=WWW17",
+          "kind": "document",
+          "note": "목록에서 ‘2030년 안산시 공업지역기본계획 보고서’를 선택합니다.",
+          "verification": "source",
+          "checked_at": "2026-11-13"
+        },
+        {
+          "label": "계획 대상·수립 경위 · 안산시의회",
+          "url": "https://council-record.ansan.go.kr/minutes/svc/web/cms/mnts/SvcMntsViewer.php?schSn=5968",
+          "kind": "reference",
+          "note": "2025년 수립안 의견청취 자료. 계획 대상 8개소에 대한 설명이며 수립 고시문은 아닙니다.",
+          "verification": "source",
+          "checked_at": "2026-11-13"
         }
       ]
     }

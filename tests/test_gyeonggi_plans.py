@@ -34,8 +34,8 @@ def client(request, tmp_path):
 def test_all_31_municipalities_have_published_basic_plan_and_official_sources():
     seeds = rp.seed_plans()
     gg = [p for p in seeds if p["id"].startswith("gyeonggi-")]
-    assert len(gg) == 50
-    assert sum(len(p["links"]) for p in gg) == 62
+    assert len(gg) == 70
+    assert sum(len(p["links"]) for p in gg) == 98
     municipalities = {code for code, r in rp.region_index().items() if r["parent"] == "41"}
     published = [p for p in gg if p["category"] == "urban" and p["plan_type"] == "basic"
                  and p["status"] in {"approved", "amended"} and p["region"] != "41"]
@@ -44,7 +44,7 @@ def test_all_31_municipalities_have_published_basic_plan_and_official_sources():
     assert len({p["id"] for p in seeds}) == len(seeds)
     assert len({(p["region"], p["category"], rp.search_key(p["title"])) for p in seeds}) == len(seeds)
     for p in gg:
-        assert p["links"] and p["checked_at"] == "2026-11-12"
+        assert p["links"] and p["checked_at"] in {"2026-11-12", "2026-11-13"}
         assert p["created_at"].startswith(p["checked_at"])
         assert len({rp.canonical_url(l["url"]) for l in p["links"]}) == len(p["links"])
         for link in p["links"]:
@@ -53,16 +53,17 @@ def test_all_31_municipalities_have_published_basic_plan_and_official_sources():
 
 def test_gyeonggi_catalogue_and_pagination_preserve_seoul(client):
     gg = all_items(client, region="41")
-    assert len(gg) == 50
+    assert len(gg) == 70
     assert all(p["region"].startswith("41") for p in gg)
     seoul = all_items(client, region="11")
     assert len(seoul) == 24
     assert sum(len(p["links"]) for p in seoul) == 40
-    assert len(all_items(client, region="KR")) == 74
-    assert client.get(BASE, params={"region": "41", "page": 3}).json()["items"] == []
+    assert len(all_items(client, region="KR")) == 94
+    assert [len(client.get(BASE, params={"region": "41", "page": n}).json()["items"])
+            for n in range(1, 5)] == [30, 30, 10, 0]
     catalog = client.get(BASE + "/catalog").json()
-    assert catalog["counts"]["41"] == 50
-    assert catalog["counts"]["KR"] == 74
+    assert catalog["counts"]["41"] == 70
+    assert catalog["counts"]["KR"] == 94
     assert client.get(BASE + "/map/41").json()["features"]
     assert client.get("/plans/assets/gyeonggi-plans.json").status_code == 404
 
@@ -71,7 +72,7 @@ def test_city_and_district_inherit_province_without_sibling_plans(client):
     def ids(region):
         return {p["id"] for p in all_items(client, region=region)}
     expected = {p["id"] for p in rp.seed_plans() if p["region"] in {"41", "41110"}}
-    assert len(expected) == 7
+    assert len(expected) == 12
     assert ids("41110") == ids("41111") == ids("41113") == expected
     assert "gyeonggi-urban-41130-2035" not in ids("41110")
     assert "gyeonggi-urban-41110-2040" not in ids("41830")
@@ -79,7 +80,7 @@ def test_city_and_district_inherit_province_without_sibling_plans(client):
 
 
 def test_plan_status_search_and_posted_dates_are_not_approval_dates(client):
-    goyang = {p["target_year"]: p for p in all_items(client, region="41280", q="고양")}
+    goyang = {p["target_year"]: p for p in all_items(client, region="41280", category="urban", q="고양")}
     assert goyang[2035]["status"] == "approved"
     assert goyang[2040]["status"] == "drafting"
     assert goyang[2035]["milestone_label"] == "토지이음 자료 게시"
@@ -91,6 +92,49 @@ def test_plan_status_search_and_posted_dates_are_not_approval_dates(client):
     assert all(p["region"] != "29" for p in all_items(client, region="41610", q="광주"))
     gwangju = next(p for p in rp.seed_plans() if p["id"] == "gyeonggi-urban-41610-2040")
     assert gwangju["links"][0]["url"].startswith("https://www.gjcity.go.kr/")
+
+
+@pytest.mark.parametrize("city,included,excluded", [
+    ("41130", ["41135"], ["41131", "41133"]),
+    ("41170", ["41173"], ["41171"]),
+    ("41190", ["41192"], ["41194", "41196"]),
+    ("41280", ["41285", "41287"], ["41281"]),
+])
+def test_newtown_plans_are_visible_only_in_their_districts(client, city, included, excluded):
+    ident = f"gyeonggi-newtown-{city}-2035"
+    for region in ["41", city, *included]:
+        found = {p["id"] for p in all_items(client, region=region, category="renewal", q="신도시")}
+        assert ident in found
+    for region in excluded:
+        found = {p["id"] for p in all_items(client, region=region)}
+        assert ident not in found
+        assert "gyeonggi-comprehensive-2040" in found
+    # Map counts track local/descendant registrations; lists also inherit
+    # province/city plans. A district with no local plans still has a list.
+    counts = client.get(BASE + "/catalog").json()["counts"]
+    assert counts[city] == {"41130": 5, "41170": 4, "41190": 3, "41280": 4}[city]
+    for region in included:
+        assert counts[region] == 1
+    for region in excluded:
+        assert counts[region] == (1 if city == "41130" else 0)
+        assert len(all_items(client, region=region)) >= 6
+
+
+def test_sector_search_preserves_plan_kind_stage_and_missing_dates(client):
+    for category in rp.CATEGORIES:
+        found = all_items(client, region="41", category=category)
+        assert found and all(p["category"] == category for p in found)
+    industrial = all_items(client, region="41", category="urban", plan_type="sector", q="공업지역")
+    assert {p["id"] for p in industrial} == {"gyeonggi-industry-41110-2030", "gyeonggi-industry-41270-2030"}
+    regeneration = {p["id"]: p for p in all_items(client, region="41110", category="regeneration")}
+    assert regeneration["gyeonggi-regeneration-41110-published"]["target_year"] is None
+    assert regeneration["gyeonggi-regeneration-41110-published"]["status"] == "unknown"
+    assert regeneration["gyeonggi-regeneration-41110-2036"]["status"] == "hearing"
+    assert regeneration["gyeonggi-regeneration-41110-2036"]["milestone_date"] == "2026-08-07"
+    gwangju = all_items(client, region="41610", category="landscape", q="광주시")
+    assert len(gwangju) == 1 and gwangju[0]["region"] == "41610"
+    assert gwangju[0]["milestone_date"] == ""
+    assert all(l["kind"] == "reference" for l in all_items(client, region="41410", q="산본신도시")[0]["links"])
 
 
 def test_expansion_preserves_community_duplicate_and_moderation(tmp_path, monkeypatch):
