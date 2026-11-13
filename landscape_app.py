@@ -776,13 +776,14 @@ def _vworld_poi_candidates(lat:float,lng:float,radius:int):
     dlat=radius/110540
     dlon=radius/(111320*max(0.2,math.cos(math.radians(lat))))
     bbox=f"{lng-dlon:.6f},{lat-dlat:.6f},{lng+dlon:.6f},{lat+dlat:.6f}"
-    # A POI for a university or subway station is NOT its verified main gate
-    # or entrance. These remain review-only unless verified separately.
+    # A subway station representative point is a practical preliminary viewpoint.
+    # Its precise entrance/visibility is checked during the 3D review.
+    # University and pedestrian-road representative points remain review-only.
     keywords=(
         ("공원","park",False),("광장","square",False),
         ("전망대","viewpoint",False),("문화유산","heritage",False),
         ("보행자전용도로","pedestrian",True),
-        ("지하철역","subway",True),("대학교","university",True),
+        ("지하철역","subway",False),("대학교","university",True),
     )
     def query_one(entry):
         keyword,category,unverified=entry
@@ -818,7 +819,7 @@ def _vworld_poi_candidates(lat:float,lng:float,radius:int):
                         "lat":y,"lng":x,"name":title,
                         "category":category,"source":"VWorld 장소검색",
                         "verification":("시설 대표좌표 · 출입구/정문이 아닌 검토후보" if unverified
-                                        else "POI 대표좌표 · 정확한 조망위치 현장확인 필요"),
+                                        else "POI 대표좌표 · 정확한 조망위치 및 시야는 시뮬레이션에서 확인"),
                         "requiresVerification":unverified
                     })
                 except (TypeError,ValueError,AttributeError):
