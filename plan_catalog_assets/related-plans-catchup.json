@@ -1,0 +1,591 @@
+{
+  "schema_version": 2,
+  "checked_at": "2026-11-14",
+  "coverage": "대전·아산·세종의 누락 법정계획 공식 공고·계획보고서 증분 보강. 시도 법정 기본계획과 시군 산업단지·도시개발구역 개별계획 구분; 2026 수립안과 2022 변경고시 별도 관리.",
+  "plans": [
+    {
+      "id": "nation-carbon-neutral-first-2023-2042",
+      "region": "KR",
+      "category": "environment",
+      "plan_type": "basic",
+      "title": "제1차 국가 탄소중립·녹색성장 기본계획(2023~2042)",
+      "target_year": 2042,
+      "status": "approved",
+      "milestone_date": "2023-04-12",
+      "milestone_label": "탄소중립녹색성장위원회 국가 기본계획 게시일",
+      "note": "「기후위기 대응을 위한 탄소중립·녹색성장 기본법」 제10조에 따른 국가 기본계획. 4월 12일은 위원회 요약계획 자료 게시일이며 법정 의결일로 동일시하지 않는다.",
+      "scope_label": "전국",
+      "coverage_regions": [],
+      "tags": [
+        "탄소중립",
+        "녹색성장",
+        "기후"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "정부 국가 기본계획 요약본·계획 체계",
+          "url": "https://www.2050cnc.go.kr/base/board/read?boardManagementNo=60&boardNo=2344&menuLevel=2&menuNo=96",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "daejeon-parks-2030-amended-2026",
+      "region": "30",
+      "category": "parks",
+      "plan_type": "basic",
+      "title": "2030 대전 공원녹지기본계획 재정비",
+      "target_year": 2030,
+      "status": "approved",
+      "milestone_date": "2026-02-19",
+      "milestone_label": "대전광역시 공고 제2026-336호",
+      "note": "「도시공원 및 녹지 등에 관한 법률」에 따른 공원녹지기본계획 재정비 수립 공고. 도서 시청·자치구 비치, 온라인 도서 전체 여부는 미확인.",
+      "scope_label": "대전광역시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "공원녹지",
+        "재정비"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2026-336호 수립 공고",
+          "url": "https://www.daejeon.go.kr/drh/drhGosiView.do?conifmenddt=2026-12-31&conifmstdt=2026-01-01&gosigbn=A&menuSeq=1908&pageIndex=1&sno=54410&title=",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        },
+        {
+          "label": "2025-10 도시계획위원회 수립안 심의",
+          "url": "https://www.daejeon.go.kr/urb/UrbCityPlanDlbrMtrRsltView.do?menuSeq=1112&ntatcSeq=1500275458",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "daejeon-renewal-2030-2022-amended",
+      "region": "30",
+      "category": "renewal",
+      "plan_type": "basic",
+      "title": "2030 대전광역시 도시·주거환경정비기본계획(2022 변경 고시본)",
+      "target_year": 2030,
+      "status": "amended",
+      "milestone_date": "2022-03-08",
+      "milestone_label": "대전광역시 고시 제2022-42호",
+      "note": "2020 최초 수립, 2022 경미한 변경 고시. 2026 변경안이 별도로 공람되었으므로 2022 고시본을 2026 확정본으로 오인하지 않는다.",
+      "scope_label": "대전광역시 정비기본계획 대상지역",
+      "coverage_regions": [],
+      "tags": [
+        "도정법",
+        "정비기본계획",
+        "주거생활권"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2022 변경 고시 및 정비예정구역별 계획",
+          "url": "https://www.daejeon.go.kr/drh/drhGosiView.do?conifmenddt=2022-12-31&conifmstdt=2022-01-01&gosigbn=N&menuSeq=1907&pageIndex=1&sno=37895&title=",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        },
+        {
+          "label": "2023 운영·관리지침 오기정정 자료",
+          "url": "https://www.daejeon.go.kr/urb/UrbNormalboardView.do?boardId=normal_0024&gubun=&menuSeq=&ntatcSeq=1441640527",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "daejeon-renewal-2030-2026-draft",
+      "region": "30",
+      "category": "renewal",
+      "plan_type": "basic",
+      "title": "2030 대전광역시 도시·주거환경정비기본계획(2026 변경안)",
+      "target_year": 2030,
+      "status": "hearing",
+      "milestone_date": "2026-02-20",
+      "milestone_label": "대전광역시 공고 제2026-343호 주민공람",
+      "note": "2026-02-20~03-21 주민공람 단계 확인. 최종 결정고시를 확인하지 못해 이전 2022 변경 확정본과 구별한다.",
+      "scope_label": "대전광역시 정비기본계획 대상지역",
+      "coverage_regions": [],
+      "tags": [
+        "도정법",
+        "변경안",
+        "공람"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2026 변경안 주민공람 공고",
+          "url": "https://www.daejeon.go.kr/drh/drhGosiView.do?conifmenddt=2026-12-31&conifmstdt=2026-01-01&gosigbn=A&menuSeq=1908&pageIndex=1&sno=54419&title=",
+          "kind": "hearing",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        },
+        {
+          "label": "2026 변경안 시청 설명",
+          "url": "https://www.daejeon.go.kr/drh/board/boardNormalView.do?boardId=normal_0189&menuSeq=6825&ntatcSeq=1507370792&pageIndex=5",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "daejeon-regeneration-strategy-2035-2025-amended",
+      "region": "30",
+      "category": "regeneration",
+      "plan_type": "basic",
+      "title": "2035 대전 도시재생전략계획(2025 경미한 변경)",
+      "target_year": 2035,
+      "status": "amended",
+      "milestone_date": "2025-11-21",
+      "milestone_label": "대전광역시 공고 제2025-9419호",
+      "note": "2035 전략계획 2025-06 중구 대흥동 변경 및 2025-11 대덕구 대화동 경미한 변경 이력. 개별 도시재생활성화계획과 별개.",
+      "scope_label": "대전광역시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "도시재생",
+        "전략계획",
+        "대화동"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2025-11 확정 변경 공고",
+          "url": "https://www.daejeon.go.kr/drh/drhGosiView.do?conifmenddt=2025-12-31&conifmstdt=2025-01-01&gosigbn=A&menuSeq=1908&pageIndex=1&sno=53393&title=",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        },
+        {
+          "label": "2025-06 변경 공고",
+          "url": "https://www.daejeon.go.kr/drh/drhGosiView.do?conifmenddt=2025-12-31&conifmstdt=2025-01-01&gosigbn=A&menuSeq=1908&pageIndex=1&sno=51712&title=",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "daejeon-architecture-basic-third-2025-2029",
+      "region": "30",
+      "category": "architecture",
+      "plan_type": "basic",
+      "title": "제3차 대전광역시 건축기본계획(2025~2029)",
+      "target_year": 2029,
+      "status": "approved",
+      "milestone_date": "2025-08-01",
+      "milestone_label": "대전광역시 공고 제2025-1517호",
+      "note": "「건축기본법」 제12조에 따른 광역지자체 건축기본계획. 건축자산 진흥 시행계획과 다름. 2026-09-18 시청 원문 PDF 공개.",
+      "scope_label": "대전광역시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "건축정책",
+        "건축기본법"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "제3차 건축기본계획 수립 공고",
+          "url": "https://www.daejeon.go.kr/drh/drhGosiView.do?conifmenddt=2025-12-31&conifmstdt=2025-01-01&gosigbn=A&menuSeq=1908&pageIndex=1&sno=52004&title=",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        },
+        {
+          "label": "제3차 건축기본계획 계획서 PDF",
+          "url": "https://www.daejeon.go.kr/urb/UrbNormalboardView.do?boardId=normal_0033&gubun=&menuSeq=1246&ntatcSeq=1522855693&pageIndex=1",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "asan-regeneration-strategy-2035-2026",
+      "region": "44200",
+      "category": "regeneration",
+      "plan_type": "basic",
+      "title": "2035 아산시 도시재생전략계획",
+      "target_year": 2035,
+      "status": "approved",
+      "milestone_date": "2026-04-02",
+      "milestone_label": "아산시 도시재생전략계획 재수립 공고·자료 게시일",
+      "note": "아산시가 도시재생특별법 제17조 등에 따라 2035 계획 재수립 내용을 공고하고 계획서 PDF를 공개. 게시일을 법정 승인일로 해석하지 않는다.",
+      "scope_label": "아산시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "도시재생",
+        "도시재생전략계획"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2035 전략계획 재수립 공고·PDF",
+          "url": "https://www.asan.go.kr/main/cms/?m_mode=view&no=59&pds_no=2026040209312593753&tb_nm=administrator_info",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "asan-regeneration-strategy-2025-2021-change",
+      "region": "44200",
+      "category": "regeneration",
+      "plan_type": "basic",
+      "title": "2025 아산시 도시재생전략계획(2021 변경 이력)",
+      "target_year": 2025,
+      "status": "historical",
+      "milestone_date": "2021-02-19",
+      "milestone_label": "아산시 공고 제2021-520호",
+      "note": "2035 계획 이전에 적용되던 2025 목표연도 계획 변경본. 2035 아산시 도시재생전략계획 공개에 따라 과거 계획 이력으로 보존.",
+      "scope_label": "아산시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "도시재생",
+        "기존계획"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2021 전략계획 변경 공고 및 장별 PDF",
+          "url": "https://www.asan.go.kr/main/cms/?m_mode=view&no=59&pds_no=2021112614040371166&tb_nm=administrator_info",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "asan-growth-management-2026-amend",
+      "region": "44200",
+      "category": "urban",
+      "plan_type": "area",
+      "title": "아산시 성장관리계획(2026 변경)",
+      "target_year": null,
+      "status": "amended",
+      "milestone_date": "2026-05-06",
+      "milestone_label": "아산시 고시 제2026-134호",
+      "note": "아산시청이 성장관리계획 시행지침·총괄도·지형도면고시도·보고서를 공개. 국토계획법상 성장관리계획이며 지구단위계획과 별도. 계획구역 내 개별 필지 적용 여부는 고시도면 확인 필요.",
+      "scope_label": "아산시 성장관리계획구역(전체 시역과 구별)",
+      "coverage_regions": [],
+      "tags": [
+        "성장관리계획",
+        "성장관리지역"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "성장관리계획 시행지침·총괄도·지형도면 고시도",
+          "url": "https://www.asan.go.kr/main/cms/?m_mode=view&no=59&pds_no=2026050609205951617&tb_nm=administrator_info",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        },
+        {
+          "label": "시 고시 제2026-134호 목록",
+          "url": "https://www.asan.go.kr/main/cms/?PageNo=31&m_mode=list&no=257",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "asan-carbon-neutral-first-2025-2034",
+      "region": "44200",
+      "category": "environment",
+      "plan_type": "basic",
+      "title": "아산시 제1차 탄소중립·녹색성장 기본계획(2025~2034)",
+      "target_year": 2034,
+      "status": "approved",
+      "milestone_date": "2025-05-01",
+      "milestone_label": "아산시 공식 기본계획 공개일",
+      "note": "탄소중립기본법 제12조 및 시행령 제7조에 따라 시가 수립·게시한 계획. 도종합계획 또는 도시기본계획과는 별도의 기후법정계획.",
+      "scope_label": "아산시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "탄소중립",
+        "환경계획",
+        "녹색성장"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "제1차 탄소중립·녹색성장 기본계획 PDF",
+          "url": "https://www.asan.go.kr/main/cms/?m_mode=view&no=59&pds_no=2025050113091551976&tb_nm=administrator_info",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "asan-industrial-area-basic-2030",
+      "region": "44200",
+      "category": "urban",
+      "plan_type": "sector",
+      "title": "2030 아산 공업지역기본계획",
+      "target_year": 2030,
+      "status": "approved",
+      "milestone_date": "2025-04-07",
+      "milestone_label": "아산시 기본계획 수립·계획서 공개일",
+      "note": "「도시 공업지역의 관리 및 활성화에 관한 특별법」 제6조에 따른 아산시 2030 공업지역기본계획. 개별 대상지 편입은 원문 도면 확인 필요.",
+      "scope_label": "아산시 공업지역 기본계획 대상지역(산업단지 등 별도 적용)",
+      "coverage_regions": [],
+      "tags": [
+        "공업지역기본계획",
+        "산업"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2030 아산 공업지역기본계획 보고서",
+          "url": "https://www.asan.go.kr/main/cms/?m_mode=view&no=59&pds_no=2025040708490164349&tb_nm=administrator_info",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "asan-tangjeong-techno-industrial-park-management-2026",
+      "region": "44200",
+      "category": "industry",
+      "plan_type": "area",
+      "title": "아산 탕정테크노 일반산업단지 관리기본계획(2026 변경)",
+      "target_year": null,
+      "status": "amended",
+      "milestone_date": "2026-06-25",
+      "milestone_label": "충청남도 고시 제2026-272호",
+      "note": "「산업집적활성화 및 공장설립에 관한 법률」 제33조에 따른 개별 산업단지 관리기본계획. 산업집적활성화 '국가' 기본계획 및 아산 공업지역기본계획과 구분.",
+      "scope_label": "아산 탕정테크노 일반산업단지",
+      "coverage_regions": [],
+      "tags": [
+        "산업단지관리기본계획",
+        "산업집적법"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "일반산업단지 관리기본계획 변경 승인 고시문",
+          "url": "https://www.asan.go.kr/main/cms/?m_mode=view&no=59&pds_no=2026062512022708055&tb_nm=administrator_info",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "asan-renewal-basic-2020-2018-change",
+      "region": "44200",
+      "category": "renewal",
+      "plan_type": "basic",
+      "title": "2020 아산시 도시·주거환경정비기본계획(2018 변경보고서)",
+      "target_year": 2020,
+      "status": "unknown",
+      "milestone_date": "2018-01-30",
+      "milestone_label": "아산시 계획보고서 게시일(현재 유효성 미확인)",
+      "note": "아산시가 2020 목표 정비기본계획 변경보고서를 2018년에 공개. 최신 법정 변경고시가 확인되지 않아 미확인 상태로 기록하고 2020 목표연도만으로 실효·폐지를 단정하지 않음.",
+      "scope_label": "아산시 정비기본계획 대상지역",
+      "coverage_regions": [],
+      "tags": [
+        "도시주거환경정비",
+        "정비기본계획"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2020 정비기본계획 변경보고서 PDF",
+          "url": "https://www.asan.go.kr/main/cms/?m_mode=view&no=59&pds_no=2018013013085606550&tb_nm=administrator_info",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "asan-onyang-center-renewal-promotion-2018",
+      "region": "44200",
+      "category": "renewal",
+      "plan_type": "area",
+      "title": "온양중심상권 재정비촉진계획(2018 변경고시)",
+      "target_year": null,
+      "status": "amended",
+      "milestone_date": "2018-05-30",
+      "milestone_label": "충청남도 고시 제2018-160호",
+      "note": "아산시가 2018년 변경승인서와 충남 고시를 공개. 이후 변경 여부 확인 전에는 2018 자료를 최신 촉진계획으로 간주하지 않음.",
+      "scope_label": "아산 온양중심상권 재정비촉진지구",
+      "coverage_regions": [],
+      "tags": [
+        "재정비촉진",
+        "온양",
+        "뉴타운"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "온양중심상권 재정비촉진계획 변경승인서",
+          "url": "https://www.asan.go.kr/main/cms/?m_mode=view&no=59&pds_no=2018092811471545966&tb_nm=administrator_info",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "asan-punggi-station-urban-development-2026",
+      "region": "44200",
+      "category": "urban",
+      "plan_type": "area",
+      "title": "아산 풍기역지구 도시개발사업 개발계획(2026 3차 변경)",
+      "target_year": null,
+      "status": "amended",
+      "milestone_date": "2026-07-10",
+      "milestone_label": "충청남도 고시 제2026-296호",
+      "note": "개발계획 3차·실시계획 2차 변경인가 및 지형도면 고시. 시청 게시일 2026-07-13과 고시일 2026-07-10은 구별.",
+      "scope_label": "아산 풍기역지구 도시개발사업구역",
+      "coverage_regions": [],
+      "tags": [
+        "도시개발",
+        "개발계획",
+        "풍기역"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "풍기역지구 개발계획 변경 고시·지구단위계획 시행지침",
+          "url": "https://www.asan.go.kr/main/cms/?m_mode=view&no=59&pds_no=2026071310510789994&tb_nm=administrator_info",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "asan-central-city-urban-development-2026",
+      "region": "44200",
+      "category": "urban",
+      "plan_type": "area",
+      "title": "아산 신도시센트럴시티 도시개발사업 개발계획(2026 3차 변경)",
+      "target_year": null,
+      "status": "amended",
+      "milestone_date": "2026-06-10",
+      "milestone_label": "충청남도 고시 제2026-252호",
+      "note": "2026-06-10 고시 제2026-252호에 따른 구역지정(2차)·개발계획(3차)·실시계획(2차) 변경. 시청 첨부 게시일은 2026-10-14, 고시일과 분리.",
+      "scope_label": "아산시 탕정면 동산리 신도시센트럴시티 도시개발구역",
+      "coverage_regions": [],
+      "tags": [
+        "도시개발",
+        "개발계획",
+        "탕정"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "도시개발계획 변경고시·도시관리계획 조서·지단시행지침",
+          "url": "https://www.asan.go.kr/main/cms/?m_mode=view&no=59&pds_no=2026101415350937132&tb_nm=administrator_info",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "sejong-landscape-2030-2020-hearing",
+      "region": "36",
+      "category": "landscape",
+      "plan_type": "basic",
+      "title": "2030 세종특별자치시 경관계획(2020 의견청취안)",
+      "target_year": 2030,
+      "status": "unknown",
+      "milestone_date": "2020-06-23",
+      "milestone_label": "세종시의회 경관계획안 의견청취 원안가결",
+      "note": "2020년 시의회 의견청취 사실만 확인. 시청의 법정 최종 수립고시·보고서 원문을 확인하지 못해 '수립완료'로 표시하지 않음.",
+      "scope_label": "세종특별자치시 행정구역 전역",
+      "coverage_regions": [],
+      "tags": [
+        "경관계획",
+        "시의회",
+        "장기계획"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "경관계획안 의견청취 의안 제2350호",
+          "url": "https://council.sejong.go.kr/mnu/act/billView.do?billSn=3554&pageNo=263",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    }
+  ]
+}
