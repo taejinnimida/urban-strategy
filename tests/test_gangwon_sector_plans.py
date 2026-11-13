@@ -32,7 +32,7 @@ def test_sector_lists_preserve_province_and_city_boundaries(tmp_path):
         c=TestClient(create_app(Store(db_path=path,database_url="")))
         assert c.get(BASE+"/catalog").json()["total"]==202
         province=query(c,"51")
-        assert len(province)==52
+        assert len(province)==53
         assert "gangwon-sector-wonju-renewal-2030" in province
         assert "gangwon-sector-chuncheon-regen-strategy-2026" in province
         wonju=query(c,"51130")
