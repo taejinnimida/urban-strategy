@@ -28,9 +28,9 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 ASSETS = Path(__file__).with_name("plan_catalog_assets")
-SEED_FILES = ("seoul-plans.json", "gyeonggi-plans.json", "metro-plans-additions.json", "chungbuk-plans.json")
-CATEGORIES = {"urban":"도시계획", "architecture":"건축", "landscape":"경관", "parks":"공원·녹지", "renewal":"정비", "transport":"교통", "regeneration":"재생", "other":"기타"}
-PLAN_TYPES = {"unspecified":"미분류", "basic":"기본·종합계획", "sector":"부문별계획", "living":"생활권계획", "area":"도심·중심지 특화계획", "policy":"정책·사업구상"}
+SEED_FILES = ("seoul-plans.json", "gyeonggi-plans.json", "metro-plans-additions.json", "chungbuk-plans.json", "heritage-metropolitan-plans.json")
+CATEGORIES = {"urban":"도시계획", "architecture":"건축", "landscape":"경관", "parks":"공원·녹지", "renewal":"정비", "transport":"교통", "regeneration":"재생", "heritage":"역사·문화유산", "other":"기타"}
+PLAN_TYPES = {"unspecified":"미분류", "metropolitan":"광역도시계획", "basic":"기본·종합계획", "sector":"부문별계획", "living":"생활권계획", "area":"도심·중심지 특화계획", "policy":"정책·사업구상"}
 STATUSES = {"unknown":"상태 미확인", "tender":"발주 확인", "drafting":"수립 중", "hearing":"공람·공청회", "approved":"수립완료", "amended":"변경완료", "announced":"계획·정책 발표", "historical":"이전 계획"}
 KINDS = {"document":"계획서 원문", "notice":"고시·공고", "tender":"발주공고", "hearing":"공람·공청회", "reference":"관련자료"}
 METADATA_COLUMNS = {"plan_type":"TEXT NOT NULL DEFAULT 'unspecified'", "scope_label":"TEXT NOT NULL DEFAULT ''", "coverage_regions":"TEXT NOT NULL DEFAULT '[]'", "tags":"TEXT NOT NULL DEFAULT '[]'"}
@@ -134,8 +134,8 @@ class LinkInput(Input):
 
 class PlanFields(Input):
     region: str = Field(max_length=5)
-    category: Literal["urban","architecture","landscape","parks","renewal","transport","regeneration","other"]
-    plan_type: Literal["unspecified","basic","sector","living","area","policy"] = "unspecified"
+    category: Literal["urban","architecture","landscape","parks","renewal","transport","regeneration","heritage","other"]
+    plan_type: Literal["unspecified","metropolitan","basic","sector","living","area","policy"] = "unspecified"
     scope_label: str = Field(default="",max_length=120)
     coverage_regions: list[str] = Field(default_factory=list,max_length=60)
     tags: list[str] = Field(default_factory=list,max_length=20)

@@ -43,12 +43,13 @@ def test_seoul_seed_and_readonly_mode():
     c=TestClient(create_app(Store(db_path="",database_url="")))
     catalog=c.get(BASE+"/catalog").json()
     assert catalog["total"]==len(seed_plans())
-    assert catalog["counts"]["11"]==30
+    assert catalog["counts"]["11"]==32
     assert not catalog["contributions_enabled"]
-    items=c.get(BASE).json()["items"]
-    assert sum(len(p["links"]) for p in items)==48
-    assert all(p["region"].startswith("11") for p in items)
-    assert c.get(BASE,params={"region":"26"}).json()["total"]==0
+    items=c.get(BASE).json()["items"]+c.get(BASE,params={"page":2}).json()["items"]
+    assert len(items)==33
+    assert sum(len(p["links"]) for p in items)==53
+    assert all(p["region"].startswith("11") or p["region"]=="KR" for p in items)
+    assert c.get(BASE,params={"region":"26"}).json()["total"]==1
     assert post(c,"/plans",payload()).status_code==503
 
 
@@ -162,7 +163,7 @@ def test_routes_and_search(client):
     assert client.get("/plans/assets/seoul-plans.json").status_code==404
     assert client.get(BASE+"/map/11").json()["features"]
     assert client.get(BASE,params={"region":"not-a-region"}).status_code==422
-    assert client.get(BASE,params={"q":"2040","category":"urban"}).json()["total"]==3
+    assert client.get(BASE,params={"q":"2040","category":"urban"}).json()["total"]==4
 
 
 def test_seed_metadata_and_links_are_valid():
@@ -180,7 +181,7 @@ def test_shared_area_is_shown_in_both_districts_but_not_siblings(client):
     assert ids("11680")==set()
     catalog=client.get(BASE+"/catalog").json()
     assert catalog["counts"]["KR"]==len(seed_plans())
-    assert catalog["counts"]["11"]==30
+    assert catalog["counts"]["11"]==32
     assert catalog["counts"]["11320"]==catalog["counts"]["11350"]==2
 
 
@@ -210,7 +211,7 @@ def test_scope_and_tags_roundtrip_and_edit(client):
     assert plan(c2,ident)["tags"]==["용산 정원"]
 
 
-@pytest.mark.parametrize("extra",[{"coverage_regions":["99999"]},{"coverage_regions":["26"]},{"tags":["x"*41]},{"tags":[""]},{"plan_type":"invented"}])
+@pytest.mark.parametrize("extra",[{"coverage_regions":["99999"]},{"coverage_regions":["43110"]},{"tags":["x"*41]},{"tags":[""]},{"plan_type":"invented"}])
 def test_invalid_scope_metadata_rejected(client,extra):
     assert post(client,"/plans",payload(region="11",**extra)).status_code==422
 

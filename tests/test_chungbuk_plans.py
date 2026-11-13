@@ -42,7 +42,7 @@ def test_province_and_city_query_do_not_include_sibling_city_plans(tmp_path):
         db = str(tmp_path / "chungbuk.sqlite3") if writable else ""
         client = TestClient(create_app(Store(db_path=db, database_url="")))
         entire = items(client, "43")
-        assert len(entire) == 26
+        assert len(entire) == 28
         ids = {p["id"] for p in entire}
         assert "chungbuk-basic-43110-2040" in ids
         assert "chungbuk-basic-43770-2030" in ids
@@ -54,7 +54,7 @@ def test_province_and_city_query_do_not_include_sibling_city_plans(tmp_path):
         assert "chungbuk-basic-43770-2030" not in cheongju
         assert "chungbuk-comprehensive-2021-2040" in cheongju & eumseong
         assert {x["id"] for x in items(client, "KR")} >= ids
-        assert client.get(API + "/catalog").json()["total"] == 131
+        assert client.get(API + "/catalog").json()["total"] == 137
 
 
 def test_followup_drafts_not_mislabelled_as_approved():

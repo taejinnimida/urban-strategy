@@ -53,17 +53,17 @@ def test_all_31_municipalities_have_published_basic_plan_and_official_sources():
 
 def test_gyeonggi_catalogue_and_pagination_preserve_seoul(client):
     gg = all_items(client, region="41")
-    assert len(gg) == 76
-    assert all(p["region"].startswith("41") or p["id"] == "capital-area-reorganization-2021-2040" for p in gg)
+    assert len(gg) == 79
+    assert all(p["region"].startswith("41") or p["id"] in {"capital-area-reorganization-2021-2040", "metropolitan-capital-2020", "metropolitan-capital-2040-hearing", "heritage-historic-zones-master-2022-2026"} for p in gg)
     seoul = all_items(client, region="11")
-    assert len(seoul) == 30
-    assert sum(len(p["links"]) for p in seoul) == 48
-    assert len(all_items(client, region="KR")) == 131
+    assert len(seoul) == 33
+    assert sum(len(p["links"]) for p in seoul) == 53
+    assert len(all_items(client, region="KR")) == 137
     assert [len(client.get(BASE, params={"region": "41", "page": n}).json()["items"])
-            for n in range(1, 5)] == [30, 30, 16, 0]
+            for n in range(1, 5)] == [30, 30, 19, 0]
     catalog = client.get(BASE + "/catalog").json()
-    assert catalog["counts"]["41"] == 76
-    assert catalog["counts"]["KR"] == 131
+    assert catalog["counts"]["41"] == 78
+    assert catalog["counts"]["KR"] == 137
     assert client.get(BASE + "/map/41").json()["features"]
     assert client.get("/plans/assets/gyeonggi-plans.json").status_code == 404
 
@@ -73,10 +73,10 @@ def test_city_and_district_inherit_province_without_sibling_plans(client):
         return {p["id"] for p in all_items(client, region=region)}
     expected = {p["id"] for p in rp.seed_plans() if p["region"] in {"41", "41110"}}
     assert len(expected) == 13
-    assert ids("41110") == ids("41111") == ids("41113") == expected | {"capital-area-reorganization-2021-2040"}
+    assert ids("41110") == ids("41111") == ids("41113") == expected | {"capital-area-reorganization-2021-2040", "metropolitan-capital-2020", "metropolitan-capital-2040-hearing", "heritage-historic-zones-master-2022-2026"}
     assert "gyeonggi-urban-41130-2035" not in ids("41110")
     assert "gyeonggi-urban-41110-2040" not in ids("41830")
-    assert {p["region"] for p in all_items(client, region="41830")} == {"11", "41", "41830"}
+    assert {p["region"] for p in all_items(client, region="41830")} == {"11", "41", "41830", "KR"}
 
 
 def test_plan_status_search_and_posted_dates_are_not_approval_dates(client):
