@@ -791,7 +791,7 @@ def _vworld_poi_candidates(lat:float,lng:float,radius:int):
                 "key":key,"domain":_domain(),"service":"search","request":"search","version":"2.0",
                 "format":"json","type":"PLACE","query":keyword,"crs":"EPSG:4326",
                 "bbox":bbox,"size":"100","page":"1",
-            },timeout=(3,8),headers={"User-Agent":"urban-landscape-review/1.3"})
+            },timeout=(3,8),headers={"Referer":_domain().rstrip("/")+"/","User-Agent":"urban-landscape-review/1.3"})
             res.raise_for_status()
             payload=res.json()
             rsp=payload.get("response") or {}
@@ -866,6 +866,7 @@ def viewpoint_candidates(
             "candidates":candidates,
             "sources":sources,
             "partial":any(item["state"] not in ("OK",) for item in sources),
+            "empty":not bool(elements or candidates),
         }
         VIEWPOINT_CACHE[key]={"timestamp":now,"payload":payload}
         if len(VIEWPOINT_CACHE)>100:
