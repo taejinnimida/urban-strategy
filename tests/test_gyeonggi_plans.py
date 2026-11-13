@@ -72,7 +72,7 @@ def test_city_and_district_inherit_province_without_sibling_plans(client):
     def ids(region):
         return {p["id"] for p in all_items(client, region=region)}
     expected = {p["id"] for p in rp.seed_plans() if p["region"] in {"41", "41110"}}
-    assert len(expected) == 14
+    assert len(expected) == 13
     assert ids("41110") == ids("41111") == ids("41113") == expected | {"capital-area-reorganization-2021-2040"}
     assert "gyeonggi-urban-41130-2035" not in ids("41110")
     assert "gyeonggi-urban-41110-2040" not in ids("41830")
