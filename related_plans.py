@@ -28,7 +28,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 ASSETS = Path(__file__).with_name("plan_catalog_assets")
-SEED_FILES = ("seoul-plans.json", "gyeonggi-plans.json")
+SEED_FILES = ("seoul-plans.json", "gyeonggi-plans.json", "metro-plans-additions.json")
 CATEGORIES = {"urban":"도시계획", "architecture":"건축", "landscape":"경관", "parks":"공원·녹지", "renewal":"정비", "transport":"교통", "regeneration":"재생", "other":"기타"}
 PLAN_TYPES = {"unspecified":"미분류", "basic":"기본·종합계획", "sector":"부문별계획", "living":"생활권계획", "area":"도심·중심지 특화계획", "policy":"정책·사업구상"}
 STATUSES = {"unknown":"상태 미확인", "tender":"발주 확인", "drafting":"수립 중", "hearing":"공람·공청회", "approved":"수립완료", "amended":"변경완료", "announced":"계획·정책 발표", "historical":"이전 계획"}
@@ -158,9 +158,14 @@ class PlanFields(Input):
     @classmethod
     def coverage_valid(cls,value,info):
         index=region_index()
+        primary = info.data.get("region")
         for code in value:
-            if code not in index or info.data.get("region") not in ancestors(code):
-                raise ValueError("대상 범위는 선택한 등록 지역 안에서 지정해주세요.")
+            if code not in index or primary not in index:
+                raise ValueError("등록된 행정구역을 선택해주세요.")
+            within = primary in ancestors(code)
+            cross_province = not index[primary]["parent"] and not index[code]["parent"]
+            if not (within or cross_province):
+                raise ValueError("대상 범위는 선택한 지역 안 또는 동일 단계의 시·도에서 지정해주세요.")
         return list(dict.fromkeys(value))
 
     @field_validator("tags")
