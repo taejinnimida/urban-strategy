@@ -61,3 +61,35 @@ def test_no_road_volume_is_promoted_to_measured_traffic():
     assert not app._viewpoint_auto_eligible(row)
     assert not app._viewpoint_auto_eligible({**row,"trafficVolume":3000,"roadWidthM":None})
     assert app._viewpoint_auto_eligible({**row,"trafficVolume":3000})
+
+
+def test_empty_success_is_distinct_from_provider_failure(monkeypatch):
+    app.VIEWPOINT_CACHE.clear()
+    monkeypatch.setattr(app, "_overpass_candidates",
+        lambda *args: ([], {"name": "OSM Overpass", "state": "OK"}))
+    monkeypatch.setattr(app, "_vworld_poi_candidates",
+        lambda *args: ([], {"name": "VWorld POI", "state": "OK"}))
+    result=app.viewpoint_candidates(lat=37.56,lng=126.98,radius=1150)
+    assert result["status"]=="OK"
+    assert result["empty"] is True
+    assert result["candidates"]==[] and result["elements"]==[]
+
+
+def test_vworld_poi_request_has_server_origin(monkeypatch):
+    app._domain.__globals__["os"].environ["VWORLD_API_KEY"]="test-only-key"
+    monkeypatch.setattr(app, "_domain", lambda: "https://landscape.example")
+    seen=[]
+    class FakeResponse:
+        def raise_for_status(self): pass
+        def json(self): return {"response":{"status":"NOT_FOUND"}}
+    def fake_get(url, **kwargs):
+        seen.append(kwargs)
+        return FakeResponse()
+    monkeypatch.setattr(app.requests, "get", fake_get)
+    try:
+        rows,state=app._vworld_poi_candidates(37.56,126.98,1150)
+        assert not rows and state["state"]=="OK"
+        assert len(seen)==7
+        assert all(req["headers"]["Referer"]=="https://landscape.example/" for req in seen)
+    finally:
+        app._domain.__globals__["os"].environ.pop("VWORLD_API_KEY",None)
