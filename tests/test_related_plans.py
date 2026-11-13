@@ -43,13 +43,13 @@ def test_seoul_seed_and_readonly_mode():
     c=TestClient(create_app(Store(db_path="",database_url="")))
     catalog=c.get(BASE+"/catalog").json()
     assert catalog["total"]==len(seed_plans())
-    assert catalog["counts"]["11"]==32
+    assert catalog["counts"]["11"]==34
     assert not catalog["contributions_enabled"]
     items=c.get(BASE).json()["items"]+c.get(BASE,params={"page":2}).json()["items"]
-    assert len(items)==33
-    assert sum(len(p["links"]) for p in items)==53
+    assert len(items)==40
+    assert sum(len(p["links"]) for p in items)==63
     assert all(p["region"].startswith("11") or p["region"]=="KR" for p in items)
-    assert c.get(BASE,params={"region":"26"}).json()["total"]==1
+    assert c.get(BASE,params={"region":"26"}).json()["total"]==6
     assert post(c,"/plans",payload()).status_code==503
 
 
@@ -181,7 +181,7 @@ def test_shared_area_is_shown_in_both_districts_but_not_siblings(client):
     assert ids("11680")==set()
     catalog=client.get(BASE+"/catalog").json()
     assert catalog["counts"]["KR"]==len(seed_plans())
-    assert catalog["counts"]["11"]==32
+    assert catalog["counts"]["11"]==34
     assert catalog["counts"]["11320"]==catalog["counts"]["11350"]==2
 
 
