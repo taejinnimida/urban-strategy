@@ -1,7 +1,7 @@
 from pathlib import Path
 from uuid import uuid4
 from time import time
-import math, os, re, io, json, zipfile, tempfile, base64, html, threading
+import math, os, re, io, json, zipfile, tempfile, base64, html, threading, sqlite3
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
@@ -839,6 +839,28 @@ def _vworld_poi_candidates(lat:float,lng:float,radius:int):
     success=sum(int(ok) for _,ok in outputs)
     state="OK" if success==len(keywords) else "PARTIAL" if success else "FAILED"
     return combined,{"name":"VWorld POI","state":state,"queries_ok":success,"queries_total":len(keywords)}
+
+
+@app.get("/api/viewpoint/road-intersections")
+def viewpoint_road_intersections(
+    lat:float=Query(...,ge=33,le=39),
+    lng:float=Query(...,ge=124,le=132),
+    radius:int=Query(1150,ge=100,le=2000),
+):
+    # Independent nationwide offline index; no Seoul-specific service dependency.
+    # The source SHP is intentionally NOT bundled into the GitHub repository.
+    from landscape_roads import candidates_from_index
+    index_file=(os.getenv("LANDSCAPE_ROADS_INDEX") or "").strip()
+    if not index_file:
+        return {"status":"DATA_UNAVAILABLE","candidates":[],
+                "source":"MOLIT_ROAD_CURRENT_20250625",
+                "detail":"도로 현황 SHP 인덱스가 아직 등록되지 않았습니다."}
+    try:
+        return candidates_from_index(index_file,lat,lng,radius)
+    except (OSError,ValueError,sqlite3.DatabaseError) as exc:
+        return {"status":"DATA_UNAVAILABLE","candidates":[],
+                "source":"MOLIT_ROAD_CURRENT_20250625",
+                "detail":"도로 인덱스 조회 실패 · 파일 및 스키마 확인 필요"}
 
 
 @app.get("/api/viewpoint/candidates")
