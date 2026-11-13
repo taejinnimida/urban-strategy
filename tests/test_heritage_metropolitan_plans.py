@@ -56,7 +56,7 @@ def test_total_count_and_heritage_filter(tmp_path):
     for db in ("",str(tmp_path/"heritage.sqlite3")):
         c = TestClient(create_app(Store(db_path=db,database_url="")))
         cat = c.get(BASE+"/catalog").json()
-        assert cat["total"] == 182
+        assert cat["total"] == 202
         assert cat["categories"]["heritage"] == "역사·문화유산"
         assert cat["plan_types"]["metropolitan"] == "광역도시계획"
         assert "heritage-asan-eupnae-dongsanseong-2026" in ids(c,"44200","heritage")
