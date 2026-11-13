@@ -717,34 +717,43 @@ def enrich(data,snapshot,area):
                'pct':g['pct'],'count':g['count'],
                'note':f"표고 {g['min_m']:.2f}~{g['max_m']:.2f}m, DEM {terrain['resolution_m']:g}m"}
               for g in groups]
+        is_reference=terrain.get('source_type')=='PLATFORM_DERIVED_REFERENCE'
         results['4-1'].update({
-            'status':'공간자료 확보' if complete and mapped_complete else '일부 확보',
+            'status':('참고 분석자료' if is_reference else
+                      '공간자료 확보' if complete and mapped_complete else '일부 확보'),
             'features':features,
             'legend':groups,
             'thematic_type':'elevation',
-            'provider_verified':complete and mapped_complete,
-            'cad_exportable':complete and mapped_complete,
+            'provider_verified':complete and mapped_complete and not is_reference,
+            'cad_exportable':complete and mapped_complete and not is_reference,
+            'source_type':terrain.get('source_type') or 'REGISTERED_OFFICIAL_DEM',
+            'legal_submission_ready':False,
             'geometry_status':'COMPLETE' if complete and mapped_complete else 'PARTIAL',
             'detail':(terrain['detail']+
                       f" · 표고 유효면적 {terrain.get('elevation_coverage_pct',0):.2f}%"
                       f" · 원본 표고 범위 {elevation['min']:.2f}~{elevation['max']:.2f}m"
                       f" · 면적가중 평균 {elevation['mean']:.2f}m"
                       + (' · 지도 도형 상한에 따른 일부 미표시' if not mapped_complete else '')),
-            'survey_table':{'title':'[표 4-1 표고현황]','status':'COMPLETE' if complete else 'PARTIAL',
+            'survey_table':{'title':'[표 4-1 표고현황]'
+                            + (' · 20m 지형참조' if is_reference else ''),
+                            'status':'REFERENCE' if is_reference else 'COMPLETE' if complete else 'PARTIAL',
                             'rows':[{'kind':'total','label':'유효 표고 합계',
                                      'area_m2':round(total_area,2),
                                      'pct':round(100*total_area/site_area,2) if site_area else None,
                                      'count':sum(g['count'] for g in groups),
                                      'note':'DEM 유효격자와 대상지의 실제 중첩면적 기준'}]+rows,
                             'source':terrain['source'],'as_of':terrain.get('as_of'),
-                            'notes':['도면과 표는 동일 공식 DEM 분석 결과 사용',
-                                     '완전성은 DEM 유효격자 대상지 수록률에 따름']},
+                            'notes':['표·지도·범례는 동일 지형 FACT에서 생성',
+                                     ('서울 20m 플랫폼 산출 참조자료 · 법정 제출용 아님'
+                                      if is_reference else '공식 DEM 수록률 별도 확인')]},
         })
         statistics['4-1'].update({
             'groups':groups,'mapped_groups':groups,'mapped_area_m2':round(total_area,2),
             'overlap_area_m2':round(total_area,2),'site_area_m2':site_area,
             'map_complete':mapped_complete,'missing_elevation_cells':terrain.get('missing_elevation_cells'),
-            'note':'원본 표고 최저·최고 및 면적가중 평균. 표·지도·범례가 동일 DEM FACT 참조',
+            'note':('서울 20m 산출 참조격자 · 법정 제출용 아님'
+                    if is_reference else
+                    '원본 표고 최저·최고 및 면적가중 평균. 동일 DEM FACT 사용'),
         })
     e=facts.get('ecvam',{})
     if e.get('status')=='MAP_ONLY' and results.get('4-4',{}).get('status') not in ('공식 파일자료 확보','일부 확보'):results['4-4']={'status':'도면 확보','detail':e['detail'],'source':e['source'],'map_available':True}
@@ -821,7 +830,16 @@ def register_sources(router,service,snapshots,lock,output,get_snapshot,fetch_lay
                     if result.get('status') == 'MISSING_SOURCE':
                         result=official_vector('2-6',s['geometry'],area)
                 elif job.startswith('file:'):result=official_vector(job.split(':',1)[1],s['geometry'],area)
-                elif job=='dem':result=dem(s['geometry'],area)
+                elif job=='dem':
+                    result=dem(s['geometry'],area)
+                    # Existing Seoul terrain has real 20m elevations but is a
+                    # PLATFORM_DERIVED_REFERENCE, not an official DEM.
+                    # Use only when an official DEM is not registered/covered.
+                    if result.get('status') in ('MISSING_SOURCE','OUTSIDE_COVERAGE'):
+                        from development_seoul_elevation import seoul_elevation_reference
+                        reference=seoul_elevation_reference(s['geometry'])
+                        if reference.get('status')=='REFERENCE':
+                            result=reference
                 elif job=='contour_tin':
                     from development_contour_tin import analyze
                     result=analyze(s['geometry'])
