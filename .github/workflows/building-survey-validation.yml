@@ -37,6 +37,8 @@ jobs:
         run: python -m unittest -v test_development_building_theme
       - name: Official DEM elevation area, map and ledger-isolation tests
         run: python -m unittest -v test_development_elevation
+      - name: Seoul existing 20m elevation reference regressions
+        run: python -m unittest -v test_development_seoul_elevation
       - name: Contour TIN and 10m grid reference slope tests
         run: python -m unittest -v test_development_contour_tin
       - name: Install CAD test dependencies
