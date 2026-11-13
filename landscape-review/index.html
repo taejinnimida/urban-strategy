@@ -1175,22 +1175,42 @@ async function fetchCandidates(){
   initCandidateMap();
   const button=document.getElementById('fetchCandidates'),old=button.textContent;
   button.disabled=true;button.textContent='조회 중…';updateCandidateStatus('서버에서 후보자료 조회 중');
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),49000);
   try{
     const [lat,lng]=siteState.center;
     const params=new URLSearchParams({lat:String(lat),lng:String(lng),radius:'1150'});
-    const res=await fetch('/api/viewpoint/candidates?'+params,{cache:'no-store'});
-    if(!res.ok)throw new Error('HTTP '+res.status);
+    const res=await fetch('/api/viewpoint/candidates?'+params,{cache:'no-store',signal:controller.signal});
+    if(!res.ok){
+      let detail='';
+      try{
+        const error=await res.json();
+        const info=error?.detail;
+        detail=typeof info==='string'?info:(info?.message||'');
+        if(Array.isArray(info?.attempts)&&info.attempts.length)detail+=' ['+info.attempts.join(', ')+']';
+      }catch(_){}
+      throw new Error('HTTP '+res.status+(detail?' · '+detail:''));
+    }
     const data=await res.json();
-    if(data.status!=='OK')throw new Error('후보 응답 오류');
-    candidateLookupRows=normalizeOsm(data.elements||[]);
-    refreshCandidateRows();await rankViewpointCandidates();renderCandidates();
-    showToast('기준 충족 후보 '+candidateItems.length+'개를 수집했습니다.');
+    if(data.status!=='OK'||!Array.isArray(data.elements))throw new Error('후보 응답 형식 오류');
+    // Preserve existing manually selected points while refreshing source candidates.
+    candidateLookupRows=normalizeOsm(data.elements);
+    refreshCandidateRows();
+    await rankViewpointCandidates();renderCandidates();
+    const count=candidateItems.length;
+    const msg=data.stale?'외부 서버 장애 · 최근 캐시 자료 표시':data.cached?'캐시 조회 완료':'후보 조회 완료';
+    updateCandidateStatus(msg+' · '+count+'개'+(data.warning?' · '+data.warning:''));
+    showToast(msg+' · '+count+'개');
   }catch(e){
     console.error('viewpoint candidate lookup',e);
-    refreshCandidateRows();await rankViewpointCandidates();renderCandidates();
-    updateCandidateStatus('후보 조회 실패 · '+e.message);
-    showToast('후보 API 조회에 실패했습니다.');
-  }finally{button.disabled=false;button.textContent=old;}
+    // Keep last successful candidates, official viewpoints and traffic files.
+    // A transient upstream failure must not erase the user's work.
+    const detail=e.name==='AbortError'?'조회 시간초과 (49초)':e.message;
+    updateCandidateStatus('후보 자동조회 실패 · '+detail+' · 기존 후보 유지');
+    showToast('자동조회 실패 · 기존 후보는 유지됩니다.');
+  }finally{
+    clearTimeout(timeout);button.disabled=false;button.textContent=old;
+  }
 }
 function repPoint(f){if(f?.geometry?.type==='Point')return[f.geometry.coordinates[1],f.geometry.coordinates[0]];const c=[];(function walk(x){if(!Array.isArray(x))return;if(typeof x[0]==='number'&&typeof x[1]==='number')c.push(x);else x.forEach(walk);})(f?.geometry?.coordinates);if(!c.length)return null;return[c.reduce((a,b)=>a+b[1],0)/c.length,c.reduce((a,b)=>a+b[0],0)/c.length];}
 function parseOfficial(j){const fs=j.type==='FeatureCollection'?j.features:j.type==='Feature'?[j]:j.type==='Point'?[{type:'Feature',properties:{},geometry:j}]:[];return fs.map((f,i)=>{const ll=repPoint(f);if(!ll)return null;return{id:`designated-${i}-${ll[0]}-${ll[1]}`,lat:ll[0],lng:ll[1],category:'designated',name:f.properties?.name||f.properties?.title||`경관계획 조망점 ${i+1}`,source:f.properties?.source||'사용자 제공 공식 조망점 DB',mandatory:true,pedestrianVolume:null,verification:'경관계획상 지정'};}).filter(Boolean);}
