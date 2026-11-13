@@ -606,6 +606,115 @@ def viewpoint_basemap(layer:str,z:int,x:int,y:int):
 
 # An official viewpoint is never synthesized from a place-name geocode.
 # Only a curated, verified coordinate file may be returned as authoritative.
+
+# Seoul zoning overlay: same authoritative 서울시 GeoServer WMS layer
+# as the main urban-information map, not a guessed VWorld land-use code.
+_SEOUL_ZONING_LAYER="tile_map:upis_c_uq111"
+_SEOUL_ZONING_GATE=threading.BoundedSemaphore(3)
+
+@lru_cache(maxsize=1)
+def _seoul_zoning_style():
+    r=requests.get("https://map.seoul.go.kr/geoserver/wms",params={
+        "service":"WMS","request":"GetStyles","version":"1.1.1",
+        "layers":_SEOUL_ZONING_LAYER},timeout=(3,12))
+    r.raise_for_status()
+    root=ET.fromstring(r.content)
+    ns="{http://www.opengis.net/sld}"
+    if not root.findall(ns+"NamedLayer"):
+        raise ValueError("missing official Seoul map style")
+    # The main platform suppresses WMS text labels and separately places
+    # readable labels using WFS representative points.
+    for parent in root.iter():
+        for child in list(parent):
+            if child.tag==ns+"TextSymbolizer":
+                parent.remove(child)
+    return ET.tostring(root,encoding="unicode")
+
+@lru_cache(maxsize=180)
+def _seoul_zoning_tile(z:int,x:int,y:int,epoch:int):
+    n=2**z
+    west,east=x/n*360-180,(x+1)/n*360-180
+    north=math.degrees(math.atan(math.sinh(math.pi*(1-2*y/n))))
+    south=math.degrees(math.atan(math.sinh(math.pi*(1-2*(y+1)/n))))
+    # Guard against expensive requests outside Seoul. The Seoul overlay is
+    # intentionally not presented as nationwide zoning coverage.
+    if east<126.5 or west>127.4 or north<37.2 or south>37.85:
+        return None
+    half=20037508.342789244
+    bbox=[x/n*2*half-half,half-(y+1)/n*2*half,
+          (x+1)/n*2*half-half,half-y/n*2*half]
+    r=requests.post("https://map.seoul.go.kr/geoserver/wms",data={
+        "service":"WMS","request":"GetMap","version":"1.1.1",
+        "layers":_SEOUL_ZONING_LAYER,"styles":"","srs":"EPSG:3857",
+        "bbox":",".join(map(str,bbox)),"width":512,"height":512,
+        "format":"image/png","transparent":"true",
+        "sld_body":_seoul_zoning_style()},timeout=(4,18))
+    r.raise_for_status()
+    if not r.content.startswith(bytes((0x89,0x50,0x4e,0x47))):
+        raise ValueError("Seoul WMS returned non-image content")
+    labels=[]
+    if z>=14:
+        try:
+            rr=requests.get("https://map.seoul.go.kr/geoserver/wfs",params={
+                "service":"WFS","request":"GetFeature","version":"1.0.0",
+                "typeName":_SEOUL_ZONING_LAYER,"outputFormat":"application/json",
+                "srsName":"EPSG:4326",
+                "bbox":f"{west},{south},{east},{north},EPSG:4326",
+                "maxFeatures":450},timeout=(3,12))
+            rr.raise_for_status()
+            features=rr.json().get("features") or []
+            clip=box(west,south,east,north)
+            occupied=[]
+            for feature in features:
+                name=str((feature.get("properties") or {}).get("dgm_nm") or "").strip()
+                if not name or len(name)>80 or not feature.get("geometry"):continue
+                try:
+                    geom=shape(feature["geometry"])
+                    if not geom.is_valid:geom=geom.buffer(0)
+                    geom=geom.intersection(clip)
+                    if geom.is_empty:continue
+                    pt=geom.representative_point()
+                    px=((pt.x+180)/360*n-x)*512
+                    py=((1-math.asinh(math.tan(math.radians(pt.y)))/math.pi)/2*n-y)*512
+                    size=13
+                    width=sum(size if ord(c)>255 else size*.6 for c in name)
+                    if width>490:continue
+                    px=max(width/2+6,min(506-width/2,px))
+                    py=max(16,min(498,py))
+                    rect=(px-width/2-4,py-10,px+width/2+4,py+10)
+                    if any(rect[0]<v[2] and rect[2]>v[0] and rect[1]<v[3] and rect[3]>v[1] for v in occupied):continue
+                    occupied.append(rect)
+                    labels.append(f'<text x="{px:.1f}" y="{py:.1f}" font-size="13">{html.escape(name)}</text>')
+                except (TypeError,ValueError):
+                    continue
+        except (requests.exceptions.RequestException,ValueError,TypeError):
+            pass # The official colored zoning map still displays without labels.
+    png=base64.b64encode(r.content).decode("ascii")
+    svg=('<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">'
+        f'<image width="512" height="512" href="data:image/png;base64,{png}"/>'
+        '<g font-family="Malgun Gothic,Apple SD Gothic Neo,Noto Sans CJK KR,sans-serif" '
+        'text-anchor="middle" fill="#181818" stroke="white" stroke-width="2.5" '
+        'stroke-linejoin="round" paint-order="stroke fill">'+"".join(labels)+'</g></svg>')
+    return svg.encode("utf-8")
+
+@app.get("/api/viewpoint/seoul-zoning/{z}/{x}/{y}.svg")
+def viewpoint_seoul_zoning(z:int,x:int,y:int):
+    if not (0<=z<=18 and 0<=x<2**z and 0<=y<2**z):
+        raise HTTPException(400,"invalid Seoul map tile")
+    if not _SEOUL_ZONING_GATE.acquire(timeout=10):
+        raise HTTPException(503,"Seoul zoning tile busy")
+    try:
+        content=_seoul_zoning_tile(z,x,y,int(time()//3600))
+        if content is None:
+            return Response(content=b"",media_type="image/svg+xml")
+        return Response(content=content,media_type="image/svg+xml",
+                        headers={"Cache-Control":"public, max-age=1800",
+                                 "X-Content-Type-Options":"nosniff"})
+    except (requests.exceptions.RequestException,ValueError,ET.ParseError):
+        raise HTTPException(502,"Seoul official zoning WMS temporarily unavailable")
+    finally:
+        _SEOUL_ZONING_GATE.release()
+
 @app.get("/api/viewpoint/official")
 def viewpoint_official():
     path=BASE/"landscape-review"/"official_viewpoints.geojson"
