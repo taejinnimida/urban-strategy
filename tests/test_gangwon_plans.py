@@ -38,7 +38,7 @@ def test_area_lookup_inherits_gangwon_but_not_other_city(tmp_path):
     for writable in (False,True):
         path=str(tmp_path/"gangwon.sqlite3") if writable else ""
         client=TestClient(create_app(Store(db_path=path,database_url="")))
-        assert len(items(client,"51"))==52   # 46 local + 6 nationally shared
+        assert len(items(client,"51"))==53   # 46 local + 7 nationally shared
         assert client.get(API+"/catalog").json()["total"]==202
         wonju={p["id"] for p in items(client,"51130")}
         inje={p["id"] for p in items(client,"51810")}
