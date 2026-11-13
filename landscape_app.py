@@ -543,28 +543,39 @@ def _candidate_pedestrian_volume(row:dict):
         return None
 
 
+# Cache successful development-source responses per site. This reduces repeat
+# requests to public Overpass servers and lets the UI retain recent results.
+VIEWPOINT_CACHE={}
+VIEWPOINT_CACHE_TTL=60*60*6
+VIEWPOINT_STALE_TTL=60*60*48
+
 def _overpass_viewpoint_query(lat:float,lng:float,radius:int):
     r=max(100,min(int(radius),2000))
-    # Development fallback only. Road-width and traffic-volume evidence is NOT
-    # inferred from OSM tags; intersection candidates require verified inputs.
-    return f"""[out:json][timeout:20];
+    # Keep the query small: nwr on every feature type makes a city-centre
+    # request expensive and increases the risk of Overpass 429/504/timeouts.
+    # No OSM highway tag is treated as verified 20 m road width or traffic.
+    return f"""[out:json][timeout:12];
 (
 way(around:{r},{lat},{lng})["highway"="pedestrian"];
-nwr(around:{r},{lat},{lng})["leisure"="park"];
-nwr(around:{r},{lat},{lng})["place"="square"];
+node(around:{r},{lat},{lng})["leisure"="park"];
+way(around:{r},{lat},{lng})["leisure"="park"];
+node(around:{r},{lat},{lng})["place"="square"];
+way(around:{r},{lat},{lng})["place"="square"];
 node(around:{r},{lat},{lng})["railway"="subway_entrance"];
-nwr(around:{r},{lat},{lng})["railway"="station"]["station"="subway"];
-nwr(around:{r},{lat},{lng})["railway"="station"]["subway"="yes"];
+node(around:{r},{lat},{lng})["railway"="station"]["station"="subway"];
 node(around:{r},{lat},{lng})["highway"="bus_stop"];
 node(around:{r},{lat},{lng})["public_transport"="platform"]["bus"="yes"];
-nwr(around:{r},{lat},{lng})["amenity"="university"];
+node(around:{r},{lat},{lng})["amenity"="university"];
+way(around:{r},{lat},{lng})["amenity"="university"];
 node(around:{r},{lat},{lng})["entrance"="main"];
 node(around:{r},{lat},{lng})["barrier"="gate"];
-nwr(around:{r},{lat},{lng})["historic"];
-nwr(around:{r},{lat},{lng})["heritage"];
-nwr(around:{r},{lat},{lng})["tourism"="viewpoint"];
+node(around:{r},{lat},{lng})["historic"];
+way(around:{r},{lat},{lng})["historic"];
+node(around:{r},{lat},{lng})["heritage"];
+way(around:{r},{lat},{lng})["heritage"];
+node(around:{r},{lat},{lng})["tourism"="viewpoint"];
 );
-out center tags;"""
+out center;"""
 
 @app.get("/api/viewpoint/candidates")
 def viewpoint_candidates(
@@ -572,29 +583,61 @@ def viewpoint_candidates(
     lng:float=Query(...,ge=-180,le=180),
     radius:int=Query(1150,ge=100,le=2000)
 ):
+    # Quantize only for request caching; candidate distances are calculated
+    # against the actual site boundary on the client.
+    key=(round(lat,5),round(lng,5),radius)
+    cached=VIEWPOINT_CACHE.get(key)
+    now=time()
+    if cached and now-cached["timestamp"]<VIEWPOINT_CACHE_TTL:
+        return {"status":"OK","source":cached["source"],"elements":cached["elements"],"cached":True}
     query=_overpass_viewpoint_query(lat,lng,radius)
     endpoints=(
         "https://overpass-api.de/api/interpreter",
         "https://overpass.kumi.systems/api/interpreter",
+        "https://overpass.private.coffee/api/interpreter",
     )
     errors=[]
     for url in endpoints:
+        host=url.split("/")[2]
         try:
-            r=requests.post(
+            response=requests.post(
                 url,
                 data={"data":query},
-                timeout=(5,24),
-                headers={"User-Agent":"urban-landscape-review/1.0"}
+                timeout=(3,13),
+                headers={"User-Agent":"urban-landscape-review/1.1 (viewpoint candidate lookup)",
+                         "Accept":"application/json"}
             )
-            r.raise_for_status()
-            payload=r.json()
-            elements=payload.get("elements") or []
-            if not isinstance(elements,list):
-                raise ValueError("invalid elements")
-            return {"status":"OK","source":"OSM Overpass development fallback","elements":elements}
-        except Exception as exc:
-            errors.append(type(exc).__name__)
-    raise HTTPException(502,"조망점 후보 외부자료 조회 실패 · 잠시 후 다시 시도하거나 공식 데이터 어댑터 연결이 필요합니다.")
+            response.raise_for_status()
+            payload=response.json()
+            if not isinstance(payload,dict) or not isinstance(payload.get("elements"),list):
+                raise ValueError("invalid Overpass response")
+            if payload.get("remark") and not payload["elements"]:
+                raise ValueError("Overpass runtime error")
+            elements=payload["elements"]
+            source="OSM Overpass development fallback ("+host+")"
+            VIEWPOINT_CACHE[key]={"timestamp":now,"source":source,"elements":elements}
+            if len(VIEWPOINT_CACHE)>150:
+                for old in list(VIEWPOINT_CACHE)[:50]:
+                    VIEWPOINT_CACHE.pop(old,None)
+            return {"status":"OK","source":source,"elements":elements,"cached":False}
+        except requests.exceptions.Timeout:
+            errors.append(host+":timeout")
+        except requests.exceptions.HTTPError:
+            errors.append(host+":http-"+str(response.status_code))
+        except requests.exceptions.RequestException:
+            errors.append(host+":connection")
+        except (ValueError,TypeError):
+            errors.append(host+":invalid-response")
+    if cached and now-cached["timestamp"]<VIEWPOINT_STALE_TTL:
+        return {"status":"OK","source":cached["source"],"elements":cached["elements"],
+                "cached":True,"stale":True,"warning":"외부 공간정보 서버 장애로 최근 조회 결과를 표시합니다."}
+    # Distinguish upstream failure from a valid zero-candidate response.
+    # Expose only endpoint names and error categories, never API keys.
+    raise HTTPException(
+        status_code=502,
+        detail={"message":"외부 OSM 후보자료 서버 연결에 실패했습니다. 기존 수동 조망점과 교통량 파일은 계속 사용할 수 있습니다.",
+                "attempts":errors}
+    )
 
 @app.get("/api/integrations/status")
 def integration_status():
