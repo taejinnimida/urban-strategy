@@ -635,35 +635,31 @@ def enrich(data,snapshot,area):
                 'provider_verified':False,
             }
     terrain=facts.get('dem',{})
-    # DEM and the Seoul 20m raster are NOT admissible 4-1 elevation inputs.
-    # The raster remains available for other legacy reference items only.
-    results['4-1']={
-        'status':'자료 필요',
-        'detail':'1:5,000 수치지형도 등고선·표고점 SHP 기반 TIN 분석자료 미확보',
-        'source':'국토지리정보원 수치지형도 등고선·표고점',
-        'source_url':OFFICIAL_LINKS['4-1'],
-        'thematic_type':'elevation',
-        'features':[],
-        'legend':[],
-        'provider_verified':False,
-        'cad_exportable':False,
-        'geometry_status':'MISSING',
-        'legal_submission_ready':False
-    }
-    for item,key in [('4-2','slope'),('4-8','profiles')]:
-        got=terrain.get(key)
-        results[item]={'status':'참고 분석자료' if got else '자료 필요',
-                       'detail':terrain.get('detail','공식 DEM 자료 미조회'),
-                       'source':terrain.get('source') or '국토지리정보원 등 공공 DEM',
-                       'source_url':terrain.get('source_url') or OFFICIAL_LINKS[item]}
-        if got:
-            statistics[item]={'values':got,'resolution_m':terrain.get('resolution_m'),
-                              'elevation_coverage_pct':terrain.get('elevation_coverage_pct'),
-                              'slope_coverage_pct':terrain.get('slope_coverage_pct')}
-            if item!='4-1':
-                results[item]['features']=terrain.get('features',[])
-    # Prefer contour-derived TIN for 4-2; never label raster Horn slope
-    # as the statutory 10m/TIN method. Preserve incomplete/source diagnostics.
+    # 4-1 elevation and 4-2 mean slope must use the same contour/spot-height
+    # SHP-derived TIN. Never use the Seoul 20m raster or another DEM fallback.
+    # Legacy DEM references are retained only for 4-8 terrain profiles.
+    for item, label in (('4-1', '표고'), ('4-2', '평균경사도')):
+        results[item]={
+            'status':'자료 필요',
+            'detail':f'1:5,000 수치지형도 등고선·표고점 SHP 기반 {label} TIN 분석자료 미확보',
+            'source':'국토지리정보원 수치지형도 등고선·표고점',
+            'source_url':OFFICIAL_LINKS[item],
+            'thematic_type':'elevation' if item=='4-1' else 'slope_tin',
+            'features':[], 'legend':[], 'provider_verified':False,
+            'cad_exportable':False, 'geometry_status':'MISSING',
+            'legal_submission_ready':False
+        }
+    profiles=terrain.get('profiles')
+    results['4-8']={'status':'참고 분석자료' if profiles else '자료 필요',
+                    'detail':terrain.get('detail','공식 DEM 자료 미조회'),
+                    'source':terrain.get('source') or '국토지리정보원 등 공공 DEM',
+                    'source_url':terrain.get('source_url') or OFFICIAL_LINKS['4-8']}
+    if profiles:
+        statistics['4-8']={'values':profiles, 'resolution_m':terrain.get('resolution_m'),
+                           'elevation_coverage_pct':terrain.get('elevation_coverage_pct')}
+        results['4-8']['features']=terrain.get('features',[])
+    # 4-2 derives solely from the 10m contour TIN job, never from DEM/Horn
+    # raster slope; incomplete coverage remains a clearly marked diagnostic.
     contour=facts.get('contour_tin') or {}
     if contour.get('status') in ('DATA','PARTIAL') and contour.get('valid_grid_count'):
         verified=(contour.get('status')=='DATA' and
@@ -813,7 +809,7 @@ def register_sources(router,service,snapshots,lock,output,get_snapshot,fetch_lay
     def jobs(token:str):
         s=fixed(token)
         if '_report' not in s:raise HTTPException(409,'조서 조회를 먼저 실행하세요.')
-        return {'jobs':[{'id':'vector:'+k,'label':v} for k,v in {**{'LT_C_BLDGINFO':'GIS건물통합정보'},**{f'LT_C_UQ11{i}':'용도지역' for i in range(1,5)},**{f'LT_C_UPISUQ15{i}':'도시계획시설' for i in range(1,10)},**EXTRA_LAYERS}.items()]+[{'id':'ned:'+p,'label':'필지 토지이용계획 '+p} for p in s['_report']['land']]+[{'id':'characteristics:'+p,'label':'토지특성 '+p} for p in s['_report']['land']]+[{'id':'file:'+k,'label':v} for k,v in FILE_ITEMS.items() if k!='4-3']+[{'id':'landcover_wms','label':'2025년 세분류 토지피복 WMS 지도'},{'id':'landcover_wfs','label':'세분류 토지피복 원도형 WFS 제공 여부 확인'},{'id':'ecobank','label':'생태·자연도 WFS 원도형'},{'id':'weather','label':'기상청 관측 일자료'},{'id':'dem','label':'DEM 경사·단면 참고(4-1 표고분석 미사용)'},{'id':'contour_tin','label':'수치지형도 등고선 TIN·10m 경사도'},{'id':'ecvam','label':'국토환경성평가 WMS'}]}
+        return {'jobs':[{'id':'vector:'+k,'label':v} for k,v in {**{'LT_C_BLDGINFO':'GIS건물통합정보'},**{f'LT_C_UQ11{i}':'용도지역' for i in range(1,5)},**{f'LT_C_UPISUQ15{i}':'도시계획시설' for i in range(1,10)},**EXTRA_LAYERS}.items()]+[{'id':'ned:'+p,'label':'필지 토지이용계획 '+p} for p in s['_report']['land']]+[{'id':'characteristics:'+p,'label':'토지특성 '+p} for p in s['_report']['land']]+[{'id':'file:'+k,'label':v} for k,v in FILE_ITEMS.items() if k!='4-3']+[{'id':'landcover_wms','label':'2025년 세분류 토지피복 WMS 지도'},{'id':'landcover_wfs','label':'세분류 토지피복 원도형 WFS 제공 여부 확인'},{'id':'ecobank','label':'생태·자연도 WFS 원도형'},{'id':'weather','label':'기상청 관측 일자료'},{'id':'dem','label':'DEM 단면 참고(4-1·4-2 분석 미사용)'},{'id':'contour_tin','label':'수치지형도 등고선 TIN·10m 경사도'},{'id':'ecvam','label':'국토환경성평가 WMS'}]}
     @router.post('/reports/{token}/source-jobs/{job}')
     def collect(token:str,job:str):
         s=fixed(token);allowed={v['id'] for v in jobs(token)['jobs']}
