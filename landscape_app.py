@@ -1,14 +1,14 @@
 from pathlib import Path
 from uuid import uuid4
 from time import time
-import math, os, re, io, json, zipfile, tempfile, base64, html, threading, sqlite3
+import math, os, re, io, json, zipfile, tempfile, base64, html, threading, sqlite3, logging, hmac
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 import requests
 import shapefile
 import ezdxf
-from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form, Header
 from fastapi.responses import HTMLResponse, FileResponse, Response
 from pydantic import BaseModel
 from shapely.geometry import shape, Point, mapping, Polygon, MultiPolygon, box
@@ -101,6 +101,13 @@ def _landscape_review_html():
     # Never expose the server-only VWORLD_API_KEY in HTML or WebGL script URLs.
     browser_key=(os.getenv("VWORLD_CLIENT_KEY") or "").strip()
     return html.replace("__VWORLD_CLIENT_KEY__",browser_key)
+
+@app.get("/health")
+def landscape_health():
+    # Public health does not expose provider credentials or internal configuration.
+    return {"ok":True,"app":"urban-landscape-review",
+            "build":(os.getenv("RENDER_GIT_COMMIT") or "unknown")[:12]}
+
 
 @app.get("/",response_class=HTMLResponse)
 def home():
@@ -763,14 +770,16 @@ def _overpass_candidates(lat:float,lng:float,radius:int):
             attempts.append(host+":HTTP-"+str(response.status_code))
         except (requests.exceptions.RequestException,ValueError,TypeError):
             attempts.append(host+":unavailable")
+    logging.warning("landscape candidates: Overpass failed %s", "; ".join(attempts))
     return [],{"name":"OSM Overpass","state":"FAILED","detail":"; ".join(attempts)}
 
 
 def _vworld_poi_candidates(lat:float,lng:float,radius:int):
     # VWorld public place search provides additional nationwide candidates;
     # unlike OSM, it does not depend on the same external Overpass instances.
-    key=(os.getenv("VWORLD_API_KEY") or os.getenv("VWORLD_CLIENT_KEY") or "").strip()
+    key=(os.getenv("VWORLD_API_KEY") or "").strip()
     if not key:
+        logging.warning("landscape candidates: VWorld POI server key not configured")
         return [],{"name":"VWorld POI","state":"NO_KEY"}
     radius=max(100,min(int(radius),2000))
     dlat=radius/110540
@@ -796,13 +805,16 @@ def _vworld_poi_candidates(lat:float,lng:float,radius:int):
             res.raise_for_status()
             payload=res.json()
             rsp=payload.get("response") or {}
-            if rsp.get("status")=="NOT_FOUND":
-                return [],True
-            if rsp.get("status")!="OK":
-                return [],False
+            status=str(rsp.get("status") or "MISSING_STATUS")
+            if status=="NOT_FOUND":
+                return [],True,None
+            if status!="OK":
+                code=str((rsp.get("error") or {}).get("code") or "")
+                code=re.sub(r"[^A-Za-z0-9_-]","",code)[:50]
+                return [],False,"VWorld:"+status[:30]+("/"+code if code else "")
             items=(rsp.get("result") or {}).get("items") or []
             if isinstance(items,dict):items=items.get("item") or []
-            if not isinstance(items,list):return [],False
+            if not isinstance(items,list):return [],False,"INVALID_ITEMS"
             results=[]
             for item in items:
                 try:
@@ -824,21 +836,34 @@ def _vworld_poi_candidates(lat:float,lng:float,radius:int):
                     })
                 except (TypeError,ValueError,AttributeError):
                     continue
-            return results,True
-        except (requests.exceptions.RequestException,ValueError,TypeError):
-            return [],False
+            return results,True,None
+        except requests.exceptions.HTTPError as exc:
+            code=getattr(getattr(exc,"response",None),"status_code",0)
+            return [],False,"HTTP-"+str(code)
+        except requests.exceptions.Timeout:
+            return [],False,"TIMEOUT"
+        except requests.exceptions.RequestException as exc:
+            return [],False,type(exc).__name__
+        except (ValueError,TypeError,AttributeError):
+            return [],False,"INVALID_RESPONSE"
     with ThreadPoolExecutor(max_workers=4) as pool:
         outputs=list(pool.map(query_one,keywords))
     combined=[]
     seen=set()
-    for rows,ok in outputs:
+    for rows,ok,_reason in outputs:
         for row in rows:
             ident=(row["category"],round(row["lat"],5),round(row["lng"],5))
             if ident not in seen:
                 seen.add(ident);combined.append(row)
-    success=sum(int(ok) for _,ok in outputs)
+    success=sum(int(ok) for _,ok,_reason in outputs)
+    failures=list(dict.fromkeys(reason for _,ok,reason in outputs if not ok and reason))
     state="OK" if success==len(keywords) else "PARTIAL" if success else "FAILED"
-    return combined,{"name":"VWorld POI","state":state,"queries_ok":success,"queries_total":len(keywords)}
+    if failures:
+        logging.warning("landscape candidates: VWorld POI %s %d/%d errors=%s",
+                        state,success,len(keywords),",".join(failures))
+    return combined,{"name":"VWorld POI","state":state,
+                     "queries_ok":success,"queries_total":len(keywords),
+                     "error_types":failures[:5]}
 
 
 @app.get("/api/viewpoint/road-intersections")
@@ -894,13 +919,15 @@ def viewpoint_candidates(
         return {**cached["payload"],"cached":True,"stale":True,
                 "warning":"공간정보 서비스 장애로 직전 조회자료를 표시합니다.",
                 "sources":sources}
+    logging.error("landscape candidates: all providers failed: %s",
+                  [(x["name"],x["state"],x.get("detail") or x.get("error_types")) for x in sources])
     raise HTTPException(502,detail={"message":"OSM 및 VWorld 후보자료 서비스 모두 조회되지 않았습니다.",
                                     "sources":sources})
 
 @lru_cache(maxsize=4)
 def _vworld_probe(_time_bucket:int):
     """Small, rate-limited server-side check. Do not return credentials or request URLs."""
-    key=(os.getenv("VWORLD_API_KEY") or os.getenv("VWORLD_CLIENT_KEY") or "").strip()
+    key=(os.getenv("VWORLD_API_KEY") or "").strip()
     origin=_domain().rstrip("/")
     result={
         "status":"UNCHECKED","domain":origin,
@@ -953,8 +980,13 @@ def _vworld_probe(_time_bucket:int):
 
 
 @app.get("/api/integrations/vworld-check")
-def vworld_check():
-    # The 5-minute bucket avoids exposing an unrestricted VWorld probe.
+def vworld_check(x_admin_token:str|None=Header(default=None,alias="X-Admin-Token")):
+    # Diagnostics include configuration metadata: never make them public.
+    admin_token=(os.getenv("LANDSCAPE_ADMIN_TOKEN") or "").strip()
+    if not admin_token:
+        raise HTTPException(404,"Not found")
+    if not x_admin_token or not hmac.compare_digest(x_admin_token,admin_token):
+        raise HTTPException(403,"Forbidden")
     return _vworld_probe(int(time()//300))
 
 
