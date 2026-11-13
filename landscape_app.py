@@ -1,14 +1,17 @@
 from pathlib import Path
 from uuid import uuid4
 from time import time
-import math, os, re, io, json, zipfile, tempfile
+import math, os, re, io, json, zipfile, tempfile, base64, html, threading
+import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
 import requests
 import shapefile
 import ezdxf
 from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, FileResponse, Response
 from pydantic import BaseModel
-from shapely.geometry import shape, Point, mapping, Polygon, MultiPolygon
+from shapely.geometry import shape, Point, mapping, Polygon, MultiPolygon, box
 from shapely.ops import unary_union, transform
 from pyproj import Geod, Transformer, CRS
 
@@ -626,67 +629,144 @@ def viewpoint_official():
     except (ValueError,TypeError,KeyError,OSError):
         return {"status":"DATA_UNAVAILABLE","features":[],"message":"공식 좌표 DB 검증 실패"}
 
+
+def _overpass_candidates(lat:float,lng:float,radius:int):
+    query=_overpass_viewpoint_query(lat,lng,radius)
+    attempts=[]
+    for endpoint in ("https://overpass-api.de/api/interpreter",
+                     "https://overpass.kumi.systems/api/interpreter",
+                     "https://overpass.private.coffee/api/interpreter"):
+        host=endpoint.split("/")[2]
+        try:
+            response=requests.post(endpoint,data={"data":query},
+                timeout=(2,6),headers={"User-Agent":"urban-landscape-review/1.3","Accept":"application/json"})
+            response.raise_for_status()
+            payload=response.json()
+            if not isinstance(payload,dict) or not isinstance(payload.get("elements"),list):
+                raise ValueError("invalid Overpass payload")
+            if payload.get("remark") and not payload["elements"]:
+                raise ValueError("Overpass query rejected")
+            return payload["elements"],{"name":"OSM Overpass","state":"OK","host":host}
+        except requests.exceptions.Timeout:
+            attempts.append(host+":timeout")
+        except requests.exceptions.HTTPError:
+            attempts.append(host+":HTTP-"+str(response.status_code))
+        except (requests.exceptions.RequestException,ValueError,TypeError):
+            attempts.append(host+":unavailable")
+    return [],{"name":"OSM Overpass","state":"FAILED","detail":"; ".join(attempts)}
+
+
+def _vworld_poi_candidates(lat:float,lng:float,radius:int):
+    # VWorld public place search provides additional nationwide candidates;
+    # unlike OSM, it does not depend on the same external Overpass instances.
+    key=(os.getenv("VWORLD_API_KEY") or "").strip()
+    if not key:
+        return [],{"name":"VWorld POI","state":"NO_KEY"}
+    radius=max(100,min(int(radius),2000))
+    dlat=radius/110540
+    dlon=radius/(111320*max(0.2,math.cos(math.radians(lat))))
+    bbox=f"{lng-dlon:.6f},{lat-dlat:.6f},{lng+dlon:.6f},{lat+dlat:.6f}"
+    # A POI for a university or subway station is NOT its verified main gate
+    # or entrance. These remain review-only unless verified separately.
+    keywords=(
+        ("공원","park",False),("광장","square",False),
+        ("전망대","viewpoint",False),("문화유산","heritage",False),
+        ("보행자전용도로","pedestrian",True),
+        ("지하철역","subway",True),("대학교","university",True),
+    )
+    def query_one(entry):
+        keyword,category,unverified=entry
+        try:
+            res=requests.get("https://api.vworld.kr/req/search",params={
+                "key":key,"domain":_domain(),"service":"search","request":"search","version":"2.0",
+                "format":"json","type":"PLACE","query":keyword,"crs":"EPSG:4326",
+                "bbox":bbox,"size":"100","page":"1",
+            },timeout=(3,8),headers={"User-Agent":"urban-landscape-review/1.3"})
+            res.raise_for_status()
+            payload=res.json()
+            rsp=payload.get("response") or {}
+            if rsp.get("status")=="NOT_FOUND":
+                return [],True
+            if rsp.get("status")!="OK":
+                return [],False
+            items=(rsp.get("result") or {}).get("items") or []
+            if isinstance(items,dict):items=items.get("item") or []
+            if not isinstance(items,list):return [],False
+            results=[]
+            for item in items:
+                try:
+                    pt=item.get("point") or {}
+                    x=float(pt.get("x"));y=float(pt.get("y"))
+                    if not(124<=x<=132 and 33<=y<=39):continue
+                    dy=(y-lat)*110540
+                    dx=(x-lng)*111320*math.cos(math.radians(lat))
+                    if math.hypot(dx,dy)>radius+40:continue
+                    title=str(item.get("title") or keyword).strip()
+                    if not title:continue
+                    results.append({
+                        "id":"vworld-poi-"+category+"-"+str(item.get("id") or f"{x:.6f}-{y:.6f}"),
+                        "lat":y,"lng":x,"name":title,
+                        "category":category,"source":"VWorld 장소검색",
+                        "verification":("시설 대표좌표 · 출입구/정문이 아닌 검토후보" if unverified
+                                        else "POI 대표좌표 · 정확한 조망위치 현장확인 필요"),
+                        "requiresVerification":unverified
+                    })
+                except (TypeError,ValueError,AttributeError):
+                    continue
+            return results,True
+        except (requests.exceptions.RequestException,ValueError,TypeError):
+            return [],False
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        outputs=list(pool.map(query_one,keywords))
+    combined=[]
+    seen=set()
+    for rows,ok in outputs:
+        for row in rows:
+            ident=(row["category"],round(row["lat"],5),round(row["lng"],5))
+            if ident not in seen:
+                seen.add(ident);combined.append(row)
+    success=sum(int(ok) for _,ok in outputs)
+    state="OK" if success==len(keywords) else "PARTIAL" if success else "FAILED"
+    return combined,{"name":"VWorld POI","state":state,"queries_ok":success,"queries_total":len(keywords)}
+
+
 @app.get("/api/viewpoint/candidates")
 def viewpoint_candidates(
     lat:float=Query(...,ge=-90,le=90),
     lng:float=Query(...,ge=-180,le=180),
     radius:int=Query(1150,ge=100,le=2000)
 ):
-    # Quantize only for request caching; candidate distances are calculated
-    # against the actual site boundary on the client.
     key=(round(lat,5),round(lng,5),radius)
     cached=VIEWPOINT_CACHE.get(key)
     now=time()
     if cached and now-cached["timestamp"]<VIEWPOINT_CACHE_TTL:
-        return {"status":"OK","source":cached["source"],"elements":cached["elements"],"cached":True}
-    query=_overpass_viewpoint_query(lat,lng,radius)
-    endpoints=(
-        "https://overpass-api.de/api/interpreter",
-        "https://overpass.kumi.systems/api/interpreter",
-        "https://overpass.private.coffee/api/interpreter",
-    )
-    errors=[]
-    for url in endpoints:
-        host=url.split("/")[2]
-        try:
-            response=requests.post(
-                url,
-                data={"data":query},
-                timeout=(3,8),
-                headers={"User-Agent":"urban-landscape-review/1.1 (viewpoint candidate lookup)",
-                         "Accept":"application/json"}
-            )
-            response.raise_for_status()
-            payload=response.json()
-            if not isinstance(payload,dict) or not isinstance(payload.get("elements"),list):
-                raise ValueError("invalid Overpass response")
-            if payload.get("remark") and not payload["elements"]:
-                raise ValueError("Overpass runtime error")
-            elements=payload["elements"]
-            source="OSM Overpass development fallback ("+host+")"
-            VIEWPOINT_CACHE[key]={"timestamp":now,"source":source,"elements":elements}
-            if len(VIEWPOINT_CACHE)>150:
-                for old in list(VIEWPOINT_CACHE)[:50]:
-                    VIEWPOINT_CACHE.pop(old,None)
-            return {"status":"OK","source":source,"elements":elements,"cached":False}
-        except requests.exceptions.Timeout:
-            errors.append(host+":timeout")
-        except requests.exceptions.HTTPError:
-            errors.append(host+":http-"+str(response.status_code))
-        except requests.exceptions.RequestException:
-            errors.append(host+":connection")
-        except (ValueError,TypeError):
-            errors.append(host+":invalid-response")
+        return {**cached["payload"],"cached":True}
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        osm=pool.submit(_overpass_candidates,lat,lng,radius)
+        poi=pool.submit(_vworld_poi_candidates,lat,lng,radius)
+        elements,osm_state=osm.result()
+        candidates,poi_state=poi.result()
+    sources=[osm_state,poi_state]
+    success=any(item["state"] in ("OK","PARTIAL") for item in sources)
+    if success:
+        payload={
+            "status":"OK",
+            "source":"OSM + VWorld POI (development candidates)",
+            "elements":elements,
+            "candidates":candidates,
+            "sources":sources,
+            "partial":any(item["state"] not in ("OK",) for item in sources),
+        }
+        VIEWPOINT_CACHE[key]={"timestamp":now,"payload":payload}
+        if len(VIEWPOINT_CACHE)>100:
+            for old in list(VIEWPOINT_CACHE)[:30]:VIEWPOINT_CACHE.pop(old,None)
+        return {**payload,"cached":False}
     if cached and now-cached["timestamp"]<VIEWPOINT_STALE_TTL:
-        return {"status":"OK","source":cached["source"],"elements":cached["elements"],
-                "cached":True,"stale":True,"warning":"외부 공간정보 서버 장애로 최근 조회 결과를 표시합니다."}
-    # Distinguish upstream failure from a valid zero-candidate response.
-    # Expose only endpoint names and error categories, never API keys.
-    raise HTTPException(
-        status_code=502,
-        detail={"message":"외부 OSM 후보자료 서버 연결에 실패했습니다. 기존 수동 조망점과 교통량 파일은 계속 사용할 수 있습니다.",
-                "attempts":errors}
-    )
+        return {**cached["payload"],"cached":True,"stale":True,
+                "warning":"공간정보 서비스 장애로 직전 조회자료를 표시합니다.",
+                "sources":sources}
+    raise HTTPException(502,detail={"message":"OSM 및 VWorld 후보자료 서비스 모두 조회되지 않았습니다.",
+                                    "sources":sources})
 
 @app.get("/api/integrations/status")
 def integration_status():
