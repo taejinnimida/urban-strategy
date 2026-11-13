@@ -94,7 +94,7 @@ class SnapshotReq(BaseModel):
 class ViewpointRankReq(BaseModel):
     candidates:list[dict]
     target_per_band:int=5
-    policy:str="top5_plus_designated"
+    policy:str="national_practical_five"
 
 def _landscape_review_html():
     html=(BASE/"landscape-review"/"index.html").read_text(encoding="utf-8")
@@ -901,16 +901,11 @@ def integration_status():
 
 # Nationwide priority rules: first public pedestrian places, then only
 # verified >=20 m intersections with measured traffic volumes.
+# Practical nationwide viewpoint selection: 5 proposals TOTAL, not 5 per band.
+# Officially designated viewpoints remain separately included when verified.
 VIEWPOINT_CATEGORY_PRIORITY={
-    "pedestrian":0,
-    "park":1,
-    "square":1,
-    "subway":2,
-    "bus":3,
-    "university":4,
-    "heritage":5,
-    "viewpoint":6,
-    "intersection":7,
+    "subway":0,"park":1,"square":1,"pedestrian":2,
+    "viewpoint":3,"bus":4,"university":5,"heritage":6,"intersection":7,
 }
 
 def _viewpoint_traffic(row:dict):
@@ -925,7 +920,7 @@ def _viewpoint_width(row:dict):
     raw=row.get("roadWidthM",row.get("road_width_m"))
     try:
         value=float(raw)
-        return value if math.isfinite(value) else None
+        return value if math.isfinite(value) and value>=0 else None
     except (TypeError,ValueError):
         return None
 
@@ -933,13 +928,12 @@ def _viewpoint_auto_eligible(row:dict):
     category=str(row.get("category") or "")
     if category not in VIEWPOINT_CATEGORY_PRIORITY:
         return False
-    # A station/college POI centroid is not a verified entrance/main gate.
-    # Preserve it for user review but never treat it as an automatic viewpoint.
-    if row.get("requiresVerification") is True:
+    if bool(row.get("requiresVerification")):
         return False
     if category=="intersection":
         width=_viewpoint_width(row)
-        return width is not None and width>=20 and _viewpoint_traffic(row) is not None
+        # Traffic is OPTIONAL. Unknown traffic is not a zero traffic count.
+        return width is not None and width>=20
     return True
 
 def _viewpoint_sort_key(row:dict):
@@ -947,71 +941,78 @@ def _viewpoint_sort_key(row:dict):
     priority=VIEWPOINT_CATEGORY_PRIORITY.get(category,99)
     try:
         distance=float(row.get("distance"))
-        if not math.isfinite(distance):distance=1e18
+        if not math.isfinite(distance): distance=1e18
     except (TypeError,ValueError):
         distance=1e18
     if category=="intersection":
-        # Traffic is used ONLY for the intersection fallback; no composite score.
-        return (priority,-_viewpoint_traffic(row),distance,str(row.get("id") or ""))
-    return (priority,distance,str(row.get("id") or ""))
+        # Measured traffic may break ties among intersections; never fabricate it.
+        traffic=_viewpoint_traffic(row)
+        return (priority,traffic is None,-traffic if traffic is not None else 0,distance,str(row.get("id") or ""))
+    return (priority,False,0,distance,str(row.get("id") or ""))
 
 @app.post("/api/viewpoint/rank")
 def viewpoint_rank(data:ViewpointRankReq):
     target=max(1,min(int(data.target_per_band or 5),20))
-    result={"policy":"priority_then_verified_traffic","target_per_band":target,"bands":{},"selected_ids":[],"designated_ids":[]}
-    selected_all=[]
-    designated_all=[]
-    for band in ("near","mid","far"):
-        rows=[dict(r) for r in data.candidates if str(r.get("band") or "")==band and r.get("id")]
-        designated=[r for r in rows if bool(r.get("mandatory")) or str(r.get("category") or "")=="designated"]
-        regular=[r for r in rows if r not in designated]
-        eligible=sorted((r for r in regular if _viewpoint_auto_eligible(r)),key=_viewpoint_sort_key)
-        baseline=eligible[:target]
-        baseline_ids={str(r["id"]) for r in baseline}
-        # Manual correction does not trigger automatic backfilling:
-        # click a selected point -> exclude; click a dim point -> add.
-        selected=[r for r in baseline if not bool(r.get("userExcluded"))]
-        selected_ids={str(r["id"]) for r in selected}
-        for r in regular:
-            rid=str(r["id"])
-            if bool(r.get("userSelected")) and not bool(r.get("userExcluded")) and rid not in selected_ids:
-                selected.append(r)
-                selected_ids.add(rid)
-        for r in designated:
-            rid=str(r["id"])
-            if rid not in selected_ids:
-                selected.append(r)
-                selected_ids.add(rid)
-        band_ids=[str(r["id"]) for r in selected]
-        band_designated=[str(r["id"]) for r in designated]
-        selected_all.extend(band_ids)
-        designated_all.extend(band_designated)
-        intersection_eligible=[r for r in eligible if r.get("category")=="intersection"]
+    bands=("near","mid","far")
+    rows=[dict(r) for r in data.candidates if r.get("id") and str(r.get("band") or "") in bands]
+    designated=[r for r in rows if bool(r.get("mandatory")) or r.get("category")=="designated"]
+    regular=[r for r in rows if r not in designated]
+    eligible=sorted((r for r in regular if _viewpoint_auto_eligible(r)),key=_viewpoint_sort_key)
+    baseline=[]
+    # One representative from each available range first, then fill to 5 by type priority.
+    for band in bands:
+        first=next((r for r in eligible if r["band"]==band and r not in baseline),None)
+        if first is not None and len(baseline)<target:
+            baseline.append(first)
+    for r in eligible:
+        if len(baseline)>=target:break
+        if r not in baseline:baseline.append(r)
+    # Excluding a viewpoint does not silently backfill with another candidate.
+    selected=[r for r in baseline if not bool(r.get("userExcluded"))]
+    selected_ids={str(r["id"]) for r in selected}
+    for r in regular:
+        rid=str(r["id"])
+        if r.get("userSelected") and not r.get("userExcluded") and rid not in selected_ids:
+            selected.append(r);selected_ids.add(rid)
+    for r in designated:
+        rid=str(r["id"])
+        if rid not in selected_ids:
+            selected.append(r);selected_ids.add(rid)
+    result={
+        "policy":"national_practical_five",
+        "target_total":target,"target_per_band":None,
+        "baseline_ids":[str(r["id"]) for r in baseline],
+        "selected_ids":[str(r["id"]) for r in selected],
+        "designated_ids":[str(r["id"]) for r in designated],
+        "auto_selection_complete":len(baseline)>=target,
+        "auto_shortfall":max(0,target-len(baseline)),
+        "bands":{}
+    }
+    for band in bands:
+        candidates=[r for r in rows if r["band"]==band]
+        chosen=[r for r in selected if r["band"]==band]
+        automatic=[r for r in baseline if r["band"]==band]
         result["bands"][band]={
-            "candidate_count":len(rows),
-            "priority_candidate_count":len(eligible)-len(intersection_eligible),
-            "traffic_intersection_count":len(intersection_eligible),
-            "auto_selected_count":len(baseline),
-            "auto_shortfall":max(0,target-len(baseline)),
-            "manual_added_count":len([r for r in selected if r not in baseline and r not in designated]),
-            "manual_excluded_count":len([r for r in baseline if bool(r.get("userExcluded"))]),
-            "designated_count":len(designated),
-            "selected_ids":band_ids,
-            "baseline_ids":[str(r["id"]) for r in baseline],
-            "designated_ids":band_designated,
+            "candidate_count":len(candidates),
+            "priority_candidate_count":sum(r.get("category")!="intersection" for r in eligible if r["band"]==band),
+            "traffic_intersection_count":sum(r.get("category")=="intersection" and _viewpoint_traffic(r) is not None for r in eligible if r["band"]==band),
+            "auto_selected_count":len(automatic),
+            "auto_shortfall":0,
+            "manual_added_count":len([r for r in chosen if r not in automatic and r not in designated]),
+            "manual_excluded_count":len([r for r in automatic if r.get("userExcluded")]),
+            "designated_count":len([r for r in designated if r["band"]==band]),
+            "selected_ids":[str(r["id"]) for r in chosen],
+            "baseline_ids":[str(r["id"]) for r in automatic],
+            "designated_ids":[str(r["id"]) for r in designated if r["band"]==band],
             "ranked":[{
-                "id":str(r["id"]),
-                "category":r.get("category"),
+                "id":str(r["id"]),"category":r.get("category"),
                 "priority":VIEWPOINT_CATEGORY_PRIORITY.get(str(r.get("category") or "")),
                 "distance":r.get("distance"),
                 "traffic_volume":_viewpoint_traffic(r) if r.get("category")=="intersection" else None,
-                "road_width_m":_viewpoint_width(r) if r.get("category")=="intersection" else None,
-            } for r in eligible],
-            "auto_selection_complete":len(baseline)>=target
+                "road_width_m":_viewpoint_width(r) if r.get("category")=="intersection" else None
+            } for r in eligible if r["band"]==band],
+            "auto_selection_complete":True
         }
-    result["selected_ids"]=list(dict.fromkeys(selected_all))
-    result["designated_ids"]=list(dict.fromkeys(designated_all))
-    result["auto_selection_complete"]=all(result["bands"][b]["auto_selection_complete"] for b in ("near","mid","far"))
     return result
 
 @app.post("/api/snapshots")
