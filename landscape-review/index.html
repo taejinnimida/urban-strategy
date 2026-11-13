@@ -257,7 +257,7 @@ button,input,select{font:inherit}.hidden{display:none!important}
           <div class="grid candidate-layout">
             <section class="card candidate-map-card">
               <div class="map-toolbar candidate-toolbar">
-                <div><span>조망점 후보 지도</span><small>현재 개발용 공간후보 조회 · 최종 보고서는 공식 데이터로 교체</small></div>
+                <div><span>조망점 후보 지도</span><small>항공사진 우선 · 공식 지정 조망점 자동조회 · 공간 후보 일부 개발용</small></div>
                 <div class="toolbar-actions"><button class="btn secondary small" id="fetchCandidates">후보 조회</button><button class="btn ghost small" id="clearCandidates">후보 지우기</button></div>
               </div>
               <div id="candidateMap" class="candidate-map"></div>
@@ -274,9 +274,9 @@ button,input,select{font:inherit}.hidden{display:none!important}
               <div class="candidate-filter" id="candidateFilter">
                 <button class="active" data-band="all">전체</button><button data-band="near">근경</button><button data-band="mid">중경</button><button data-band="far">원경</button>
               </div>
-              <div class="candidate-list" id="candidateList"><div class="candidate-note">아직 후보를 조회하지 않았습니다. 경관계획상 지정 조망점은 아래 GeoJSON으로 추가하면 의무후보로 처리됩니다.</div></div>
+              <div class="candidate-list" id="candidateList"><div class="candidate-note">아직 후보를 조회하지 않았습니다. 공식 지정 조망점은 자동 조회하며, 확보되지 않은 자료만 선택적으로 보완할 수 있습니다.</div></div>
               <div class="upload-inline">
-                <input id="officialVpFileName" value="경관계획 조망점 GeoJSON (선택)" readonly />
+                <input id="officialVpFileName" value="공식 조망점 DB 자동조회 · 보완자료 선택" readonly />
                 <button class="btn ghost" id="officialVpUpload">불러오기</button><input id="officialVpFile" type="file" accept=".json,.geojson,application/geo+json,application/json" hidden />
               </div>
               <div class="designated-coord-row">
@@ -294,7 +294,7 @@ button,input,select{font:inherit}.hidden{display:none!important}
               <div class="adapter-grid">
                 <div class="adapter-item"><b>유형별 우선순위</b><span>보행자전용도로 → 공원·광장 → 지하철 → 주요 버스 → 대학 → 문화유산 → 전망대 순. 동순위는 대상지와 가까운 순.</span></div>
                 <div class="adapter-item"><b>20m 이상 교차로</b><span>교차로 위치·도로폭원·차량교통량 원자료가 확인된 후보만 보충 선정합니다.</span></div>
-                <div class="adapter-item"><b>경관계획 조망점</b><span>공식 DB 구축 전에는 업로드한 지정 조망점을 의무후보로 처리합니다.</span></div>
+                <div class="adapter-item"><b>경관계획 조망점</b><span>공식 좌표 DB를 자동조회합니다. DB가 확보되지 않은 지역은 미확보로 표시하며 사용자 업로드는 선택적 보완입니다.</span></div>
                 <div class="adapter-item"><b>개발용 후보 API</b><span>현재 기능검증은 OSM 공개 API를 사용하며 최종 성과품 근거로 사용하지 않습니다.</span></div>
               </div>
               <div class="candidate-note">선정 로직: 유형별 우선순위로 거리권당 최대 5개를 자동선정하고 부족분만 교통량 검증 교차로로 채웁니다. 선택한 점은 진하게, 미선정 점은 50% 투명하게 표시하며 지도 또는 목록을 클릭해 수정할 수 있습니다. 의무 조망점은 별도 포함합니다.</div>
@@ -379,6 +379,7 @@ function go(step){
   if(step===1 && siteMap) setTimeout(()=>siteMap.invalidateSize(),80);
   if(step===3){
     initCandidateMap();
+    loadOfficialViewpoints();
     setTimeout(()=>{ if(candidateMap){candidateMap.invalidateSize();syncCandidateSite();} },100);
   }
   if(step===4){
@@ -915,23 +916,25 @@ let candidateBaseLayers=null,viewpointRanking=null,trafficIntersectionItems=[],c
 const categoryLabels={designated:'경관계획 조망점',pedestrian:'보행자전용도로',subway:'지하철 출입구',bus:'광역·공항버스 정류장',university:'대학 정문',heritage:'문화유산',intersection:'20m 이상 주요교차로',park:'공원',square:'광장',viewpoint:'전망대'};
 
 function initCandidateMap(){
-  if(candidateMap||typeof L==='undefined') return;
+  if(candidateMap||typeof L==='undefined')return;
   candidateMap=L.map('candidateMap',{zoomControl:true,preferCanvas:true}).setView(siteState.center||SEOUL_CENTER,14);
   const osm=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'});
-  candidateBaseLayers={'일반지도':osm};
-  let defaultBase=osm;
-  if(vworldReady()){
-    const aerial=L.tileLayer('https://api.vworld.kr/req/wmts/1.0.0/'+encodeURIComponent(VWORLD_CLIENT_KEY)+'/Satellite/{z}/{y}/{x}.jpeg',{maxZoom:19,attribution:'VWorld',crossOrigin:true});
-    let aerialLoaded=false,aerialErrors=0;
-    aerial.on('tileload',()=>{aerialLoaded=true;});
-    aerial.on('tileerror',()=>{aerialErrors++;if(aerialErrors>=4&&!aerialLoaded){if(candidateMap.hasLayer(aerial)){candidateMap.removeLayer(aerial);osm.addTo(candidateMap);}updateCandidateStatus('VWorld 항공사진 인증/도메인 확인 필요 · 일반지도로 전환');}});
-    candidateBaseLayers={'항공사진':aerial,'일반지도':osm};
-    defaultBase=aerial;
-  }
-  defaultBase.addTo(candidateMap);
+  const aerial=L.tileLayer('/api/viewpoint/basemap/Satellite/{z}/{x}/{y}',{maxZoom:19,attribution:'VWorld'});
+  const vbase=L.tileLayer('/api/viewpoint/basemap/Base/{z}/{x}/{y}',{maxZoom:19,attribution:'VWorld'});
+  candidateBaseLayers={'항공사진 (VWorld)':aerial,'일반지도 (VWorld)':vbase,'OSM 대체지도':osm};
+  let errors=0,loaded=false;
+  aerial.on('tileload',()=>{loaded=true;errors=0;});
+  aerial.on('tileerror',()=>{
+    errors++;
+    if(errors>=4&&!loaded&&candidateMap.hasLayer(aerial)){
+      candidateMap.removeLayer(aerial);osm.addTo(candidateMap);
+      updateCandidateStatus('VWorld 항공사진 불러오기 실패 · OSM 대체지도 표시 (지도 인증·도메인 확인 필요)');
+    }
+  });
+  aerial.addTo(candidateMap);
   candidateZoningLayer=L.layerGroup().addTo(candidateMap);
   candidateLayers=L.layerGroup().addTo(candidateMap);
-  L.control.layers(candidateBaseLayers,{'용도지역':candidateZoningLayer},{collapsed:false}).addTo(candidateMap);
+  L.control.layers(candidateBaseLayers,{'용도지역 (자료 확인 필요)':candidateZoningLayer},{collapsed:false}).addTo(candidateMap);
   L.control.scale({imperial:false}).addTo(candidateMap);
   syncCandidateSite();
 }
@@ -1174,46 +1177,52 @@ async function fetchCandidates(){
   if(!siteState.center){showToast('대상지를 먼저 지정하세요.');return;}
   initCandidateMap();
   const button=document.getElementById('fetchCandidates'),old=button.textContent;
-  button.disabled=true;button.textContent='조회 중…';updateCandidateStatus('서버에서 후보자료 조회 중');
-  const controller=new AbortController();
-  const timeout=setTimeout(()=>controller.abort(),49000);
+  button.disabled=true;button.textContent='조회 중…';updateCandidateStatus('공식 조망점 및 공간 후보자료 조회 중');
+  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),36000);
+  let sourceError='';
   try{
+    await loadOfficialViewpoints();
     const [lat,lng]=siteState.center;
     const params=new URLSearchParams({lat:String(lat),lng:String(lng),radius:'1150'});
     const res=await fetch('/api/viewpoint/candidates?'+params,{cache:'no-store',signal:controller.signal});
     if(!res.ok){
       let detail='';
-      try{
-        const error=await res.json();
-        const info=error?.detail;
-        detail=typeof info==='string'?info:(info?.message||'');
-        if(Array.isArray(info?.attempts)&&info.attempts.length)detail+=' ['+info.attempts.join(', ')+']';
-      }catch(_){}
+      try{const err=await res.json();const d=err.detail;detail=typeof d==='string'?d:d?.message||'';}catch(_){}
       throw new Error('HTTP '+res.status+(detail?' · '+detail:''));
     }
     const data=await res.json();
     if(data.status!=='OK'||!Array.isArray(data.elements))throw new Error('후보 응답 형식 오류');
-    // Preserve existing manually selected points while refreshing source candidates.
     candidateLookupRows=normalizeOsm(data.elements);
-    refreshCandidateRows();
-    await rankViewpointCandidates();renderCandidates();
-    const count=candidateItems.length;
-    const msg=data.stale?'외부 서버 장애 · 최근 캐시 자료 표시':data.cached?'캐시 조회 완료':'후보 조회 완료';
-    updateCandidateStatus(msg+' · '+count+'개'+(data.warning?' · '+data.warning:''));
-    showToast(msg+' · '+count+'개');
+    refreshCandidateRows();await rankViewpointCandidates();renderCandidates();
+    updateCandidateStatus('공간 후보 조회 완료 · '+candidateItems.length+'개 · 공식 조망점은 DB 확보 범위에서만 반영');
+    showToast('후보 조회 완료 · '+candidateItems.length+'개');
   }catch(e){
     console.error('viewpoint candidate lookup',e);
-    // Keep last successful candidates, official viewpoints and traffic files.
-    // A transient upstream failure must not erase the user's work.
-    const detail=e.name==='AbortError'?'조회 시간초과 (49초)':e.message;
-    updateCandidateStatus('후보 자동조회 실패 · '+detail+' · 기존 후보 유지');
-    showToast('자동조회 실패 · 기존 후보는 유지됩니다.');
-  }finally{
-    clearTimeout(timeout);button.disabled=false;button.textContent=old;
-  }
+    sourceError=e.name==='AbortError'?'조회 시간초과':e.message;
+    refreshCandidateRows();await rankViewpointCandidates();renderCandidates();
+    updateCandidateStatus('외부 공간정보 조회 실패 · '+sourceError+' · 공식·기존 후보 유지');
+    showToast('외부 공간정보 조회 실패 · 기존 후보 유지');
+  }finally{clearTimeout(timeout);button.disabled=false;button.textContent=old;}
 }
 function repPoint(f){if(f?.geometry?.type==='Point')return[f.geometry.coordinates[1],f.geometry.coordinates[0]];const c=[];(function walk(x){if(!Array.isArray(x))return;if(typeof x[0]==='number'&&typeof x[1]==='number')c.push(x);else x.forEach(walk);})(f?.geometry?.coordinates);if(!c.length)return null;return[c.reduce((a,b)=>a+b[1],0)/c.length,c.reduce((a,b)=>a+b[0],0)/c.length];}
 function parseOfficial(j){const fs=j.type==='FeatureCollection'?j.features:j.type==='Feature'?[j]:j.type==='Point'?[{type:'Feature',properties:{},geometry:j}]:[];return fs.map((f,i)=>{const ll=repPoint(f);if(!ll)return null;return{id:`designated-${i}-${ll[0]}-${ll[1]}`,lat:ll[0],lng:ll[1],category:'designated',name:f.properties?.name||f.properties?.title||`경관계획 조망점 ${i+1}`,source:f.properties?.source||'사용자 제공 공식 조망점 DB',mandatory:true,pedestrianVolume:null,verification:'경관계획상 지정'};}).filter(Boolean);}
+async function loadOfficialViewpoints(){
+  try{
+    const res=await fetch('/api/viewpoint/official',{cache:'no-store'});
+    if(!res.ok)throw new Error('공식 조망점 API HTTP '+res.status);
+    const data=await res.json();
+    if(data.status!=='OK'){
+      const el=document.getElementById('officialVpFileName');
+      if(el)el.value='공식 조망점 DB 미확보 · 보완자료 선택 입력';
+      return;
+    }
+    const auto=parseOfficial({type:'FeatureCollection',features:data.features||[]});
+    const manuallyAdded=officialViewpoints.filter(r=>r.source==='사용자 입력');
+    officialViewpoints=[...auto,...manuallyAdded];
+    refreshCandidateRows();await rankViewpointCandidates();renderCandidates();
+    document.getElementById('officialVpFileName').value='공식 지정 조망점 자동조회 '+auto.length+'개';
+  }catch(e){console.warn('official viewpoints unavailable',e);}
+}
 document.getElementById('fetchCandidates').onclick=fetchCandidates;
 document.getElementById('clearCandidates').onclick=async()=>{candidateLookupRows=[];trafficIntersectionItems=[];refreshCandidateRows();await rankViewpointCandidates();renderCandidates();};
 document.querySelectorAll('#candidateFilter button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#candidateFilter button').forEach(x=>x.classList.remove('active'));b.classList.add('active');candidateBandFilter=b.dataset.band;renderCandidates();});
