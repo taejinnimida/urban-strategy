@@ -28,6 +28,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 ASSETS = Path(__file__).with_name("plan_catalog_assets")
+SEED_FILES = ("seoul-plans.json", "gyeonggi-plans.json")
 CATEGORIES = {"urban":"도시계획", "architecture":"건축", "landscape":"경관", "parks":"공원·녹지", "renewal":"정비", "transport":"교통", "regeneration":"재생", "other":"기타"}
 PLAN_TYPES = {"unspecified":"미분류", "basic":"기본·종합계획", "sector":"부문별계획", "living":"생활권계획", "area":"도심·중심지 특화계획", "policy":"정책·사업구상"}
 STATUSES = {"unknown":"상태 미확인", "tender":"발주 확인", "drafting":"수립 중", "hearing":"공람·공청회", "approved":"수립완료", "amended":"변경완료", "announced":"계획·정책 발표", "historical":"이전 계획"}
@@ -285,6 +286,10 @@ class Store:
         keys = ("id","region","category","title","title_key","target_year","status","milestone_date","milestone_label","note","verification","checked_at","created_at","updated_at",*METADATA_COLUMNS)
         p = stored_fields({**p,"title_key":search_key(p["title"])})
         self.sql(c,f"INSERT INTO rp_plans ({','.join(keys)}) VALUES ({','.join('?' for _ in keys)})"+(" ON CONFLICT DO NOTHING" if seed else ""),tuple(p.get(k) for k in keys))
+        if seed and not self.sql(c,"SELECT id FROM rp_plans WHERE id=?",(p["id"],)).fetchone():
+            # A community entry may already own the same region/category/title.
+            # Preserve it; links cannot reference the seed ID that was skipped.
+            return
         for link in p["links"]:
             self.insert_link(c,p["id"],link,seed=seed)
 
@@ -326,7 +331,9 @@ class Store:
 
 
 def seed_plans():
-    result = json.loads((ASSETS/"seoul-plans.json").read_text(encoding="utf-8"))["plans"]
+    result = []
+    for filename in SEED_FILES:
+        result.extend(json.loads((ASSETS/filename).read_text(encoding="utf-8"))["plans"])
     for p in result:
         p.update(version=1,hidden=0)
         for key,value in {"plan_type":"unspecified","scope_label":"","coverage_regions":[],"tags":[]}.items():

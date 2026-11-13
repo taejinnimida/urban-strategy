@@ -1,0 +1,1694 @@
+{
+  "schema_version": 2,
+  "checked_at": "2026-11-12",
+  "coverage": "경기도 광역계획 6건, 31개 시·군 기본계획 공개본 31건, 확인된 후속 수립이력 12건, 안산 공원녹지계획 1건. 공식 공개자료를 기준으로 하며 전체 분야와 모든 최신 변경분의 완비를 뜻하지 않음.",
+  "plans": [
+    {
+      "id": "gyeonggi-comprehensive-2040",
+      "region": "41",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "경기도 종합계획(2021~2040)",
+      "target_year": 2040,
+      "status": "approved",
+      "milestone_date": "2025-06-19",
+      "milestone_label": "공고",
+      "note": "계획기간은 2021~2040년이며, 공고일과 구분합니다.",
+      "scope_label": "경기도 전역",
+      "coverage_regions": [],
+      "tags": [
+        "도종합계획",
+        "광역계획",
+        "지역발전",
+        "공간구조"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "최종보고서·요약보고서 · 경기도청",
+          "url": "https://www.gg.go.kr/contents/contents.do?ciIdx=828&menuId=2003",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        },
+        {
+          "label": "승인 후 공고 · 경기도 제2025-1331호",
+          "url": "https://web1.gg.go.kr/bbs/boardView.do?bIdx=177557822&bcIdx=602&bsIdx=469&menuId=1547&page=1",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-architecture-3",
+      "region": "41",
+      "category": "architecture",
+      "plan_type": "basic",
+      "title": "제3차 경기도 광역건축기본계획",
+      "target_year": 2027,
+      "status": "approved",
+      "milestone_date": "2023-11-27",
+      "milestone_label": "고시",
+      "note": "계획기간 2023~2027년. 건축정책과 건축·도시공간의 공공성에 관한 광역계획입니다.",
+      "scope_label": "경기도 전역",
+      "coverage_regions": [],
+      "tags": [
+        "건축정책",
+        "공공건축",
+        "건축문화"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "계획 소개·보고서 · 경기건축포털",
+          "url": "https://ggarchimap.gg.go.kr/architecture-wideplan/",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        },
+        {
+          "label": "고시 · 경기도 제2023-323호",
+          "url": "https://www.gg.go.kr/bbs/boardView.do?bIdx=98794958&bcIdx=602&bsIdx=469&menuId=1547&page=1",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-landscape-3",
+      "region": "41",
+      "category": "landscape",
+      "plan_type": "basic",
+      "title": "제3차 경기도 경관계획(2026~2030)",
+      "target_year": 2030,
+      "status": "approved",
+      "milestone_date": "2026-04-30",
+      "milestone_label": "수립 공고",
+      "note": "경관권역·경관축·경관거점과 세부 관리범위는 보고서의 도면 및 지침에서 확인합니다.",
+      "scope_label": "경기도 전역",
+      "coverage_regions": [],
+      "tags": [
+        "광역경관",
+        "경관관리",
+        "경관지침"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "계획 보고서 · 경기도 도정자료실",
+          "url": "https://www.gg.go.kr/bbs/boardView.do?bIdx=236196779&bcIdx=532&bsIdx=545&menuId=1783",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        },
+        {
+          "label": "수립 공고 · 경기도 제2026-1042호",
+          "url": "https://www.gg.go.kr/bbs/boardView.do?bIdx=236196765&bcIdx=602&bsIdx=469&menuId=1547&page=1",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-rail-2",
+      "region": "41",
+      "category": "transport",
+      "plan_type": "sector",
+      "title": "제2차 경기도 도시철도망 구축계획(2026~2035)",
+      "target_year": 2035,
+      "status": "approved",
+      "milestone_date": "2025-12-12",
+      "milestone_label": "승인·고시 발표",
+      "note": "도시철도망 계획입니다. 개별 노선의 착공·개통 확정을 의미하지 않습니다.",
+      "scope_label": "경기도 전역",
+      "coverage_regions": [],
+      "tags": [
+        "도시철도",
+        "철도망",
+        "광역교통"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "공개 보고서 · 경기도 철도자료실",
+          "url": "https://www.gg.go.kr/bbs/boardView.do?bIdx=214237326&bsIdx=564&menuId=1927",
+          "kind": "document",
+          "note": "자료실 게시물 제목에는 (안)이 남아 있습니다. 최종 승인·고시 사실은 아래 공식 브리핑에서 별도 확인합니다.",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        },
+        {
+          "label": "정부 승인·고시 공식 브리핑",
+          "url": "https://gnews.gg.go.kr/news/movie_view.do?b_code=&c_code=C117&lastidx=10&number=202512120856048508C117&s_code=C500&type_m=sub",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-housing-2030",
+      "region": "41",
+      "category": "urban",
+      "plan_type": "sector",
+      "title": "2030 경기도 주거종합계획",
+      "target_year": 2030,
+      "status": "approved",
+      "milestone_date": "2018",
+      "milestone_label": "당초 계획 수립연도",
+      "note": "공식 자료실에서 당초 계획과 재검토 자료를 함께 제공합니다. 재검토 확정일은 미확인입니다.",
+      "scope_label": "경기도 전역",
+      "coverage_regions": [],
+      "tags": [
+        "주거정책",
+        "주거복지",
+        "주택공급"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "당초 계획·재검토 자료 · 경기도청",
+          "url": "https://www.gg.go.kr/contents/contents.do?ciIdx=764&menuId=2112",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        },
+        {
+          "label": "재검토 용역 착수 안내",
+          "url": "https://gnews.gg.go.kr/briefing/brief_gongbo_view.do?BS_CODE=s017&number=62303&subject_Code=BO01",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-carbon-2033",
+      "region": "41",
+      "category": "other",
+      "plan_type": "sector",
+      "title": "제1차 경기도 탄소중립·녹색성장 기본계획(2024~2033)",
+      "target_year": 2033,
+      "status": "approved",
+      "milestone_date": "2026-03-10",
+      "milestone_label": "공식자료 게시",
+      "note": "계획기간 2024~2033년. 표시된 날짜는 보고서 게시일이며 계획 수립일과 다릅니다.",
+      "scope_label": "경기도 전역",
+      "coverage_regions": [],
+      "tags": [
+        "환경",
+        "탄소중립",
+        "기후",
+        "녹색성장"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "기본계획 보고서 · 경기도청",
+          "url": "https://www.gg.go.kr/bbs/boardView.do?bIdx=226142875&bcIdx=&bsIdx=870&menuId=266098&page=1",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        },
+        {
+          "label": "계획 소개·보고서 · 경기기후플랫폼",
+          "url": "https://climate.gg.go.kr/ips/carbon/plan",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41110-2040",
+      "region": "41110",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 수원 도시기본계획",
+      "target_year": 2040,
+      "status": "approved",
+      "milestone_date": "2026-03-23",
+      "milestone_label": "토지이음 자료 게시",
+      "note": "지자체 공고자료를 제공하는 공식 공개본입니다. 표시된 날짜는 자료 게시일이며 승인·수립일이 아닙니다.",
+      "scope_label": "경기도 수원시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "도시기본계획",
+        "생활권",
+        "공간구조"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "계획 보고서 · 수원시청",
+          "url": "https://www.suwon.go.kr/web/board/BD_board.view.do?bbsCd=1164&seq=20250422154259993",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        },
+        {
+          "label": "계획서 공개본 · 국토교통부 토지이음",
+          "url": "https://eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=321&subType=C",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41130-2035",
+      "region": "41130",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2035년 성남 도시기본계획",
+      "target_year": 2035,
+      "status": "approved",
+      "milestone_date": "2021-01-06",
+      "milestone_label": "토지이음 자료 게시",
+      "note": "지자체 공고자료를 제공하는 공식 공개본입니다. 표시된 날짜는 자료 게시일이며 승인·수립일이 아닙니다.",
+      "scope_label": "경기도 성남시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "도시기본계획",
+        "생활권",
+        "공간구조"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "계획서 공개본 · 국토교통부 토지이음",
+          "url": "https://eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=157&subType=C",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41150-2035",
+      "region": "41150",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2035년 의정부 도시기본계획(일부변경)",
+      "target_year": 2035,
+      "status": "amended",
+      "milestone_date": "2022-02-03",
+      "milestone_label": "토지이음 자료 게시",
+      "note": "토지이음 첨부파일의 일부변경 공개본입니다. 표시된 날짜는 자료 게시일입니다.",
+      "scope_label": "경기도 의정부시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "도시기본계획",
+        "생활권",
+        "공간구조"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "계획서 공개본 · 국토교통부 토지이음",
+          "url": "https://eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=206&subType=C",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41170-2040",
+      "region": "41170",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 안양 도시기본계획",
+      "target_year": 2040,
+      "status": "approved",
+      "milestone_date": "2023-10-11",
+      "milestone_label": "토지이음 자료 게시",
+      "note": "지자체 공고자료를 제공하는 공식 공개본입니다. 표시된 날짜는 자료 게시일이며 승인·수립일이 아닙니다.",
+      "scope_label": "경기도 안양시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "도시기본계획",
+        "생활권",
+        "공간구조"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "계획서 공개본 · 국토교통부 토지이음",
+          "url": "https://eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=253&subType=C",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41190-2040",
+      "region": "41190",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 부천 도시기본계획",
+      "target_year": 2040,
+      "status": "approved",
+      "milestone_date": "2025-04-14",
+      "milestone_label": "토지이음 자료 게시",
+      "note": "지자체 공고자료를 제공하는 공식 공개본입니다. 표시된 날짜는 자료 게시일이며 승인·수립일이 아닙니다.",
+      "scope_label": "경기도 부천시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "도시기본계획",
+        "생활권",
+        "공간구조"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "계획서 공개본 · 국토교통부 토지이음",
+          "url": "https://eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=309&subType=C",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41210-2030",
+      "region": "41210",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2030년 광명 도시기본계획",
+      "target_year": 2030,
+      "status": "approved",
+      "milestone_date": "2021-01-06",
+      "milestone_label": "토지이음 자료 게시",
+      "note": "지자체 공고자료를 제공하는 공식 공개본입니다. 표시된 날짜는 자료 게시일이며 승인·수립일이 아닙니다.",
+      "scope_label": "경기도 광명시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "도시기본계획",
+        "생활권",
+        "공간구조"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "계획서 공개본 · 국토교통부 토지이음",
+          "url": "https://eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=175&subType=C",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41220-2040",
+      "region": "41220",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 평택 도시기본계획",
+      "target_year": 2040,
+      "status": "approved",
+      "milestone_date": "2026-10-01",
+      "milestone_label": "토지이음 자료 게시",
+      "note": "지자체 공고자료를 제공하는 공식 공개본입니다. 표시된 날짜는 자료 게시일이며 승인·수립일이 아닙니다.",
+      "scope_label": "경기도 평택시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "도시기본계획",
+        "생활권",
+        "공간구조"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "계획서 공개본 · 국토교통부 토지이음",
+          "url": "https://eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=329&subType=C",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41250-2035",
+      "region": "41250",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2035년 동두천 도시기본계획",
+      "target_year": 2035,
+      "status": "approved",
+      "milestone_date": "2023-03-08",
+      "milestone_label": "토지이음 자료 게시",
+      "note": "지자체 공고자료를 제공하는 공식 공개본입니다. 표시된 날짜는 자료 게시일이며 승인·수립일이 아닙니다.",
+      "scope_label": "경기도 동두천시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "도시기본계획",
+        "생활권",
+        "공간구조"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "계획서 공개본 · 국토교통부 토지이음",
+          "url": "https://eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=234&subType=C",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41270-2040",
+      "region": "41270",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 안산 도시기본계획",
+      "target_year": 2040,
+      "status": "approved",
+      "milestone_date": "2024-11-07",
+      "milestone_label": "토지이음 자료 게시",
+      "note": "지자체 공고자료를 제공하는 공식 공개본입니다. 표시된 날짜는 자료 게시일이며 승인·수립일이 아닙니다.",
+      "scope_label": "경기도 안산시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "도시기본계획",
+        "생활권",
+        "공간구조"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "계획서 공개본 · 국토교통부 토지이음",
+          "url": "https://eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=302&subType=C",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41280-2035",
+      "region": "41280",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2035년 고양 도시기본계획",
+      "target_year": 2035,
+      "status": "approved",
+      "milestone_date": "2023-03-08",
+      "milestone_label": "토지이음 자료 게시",
+      "note": "지자체 공고자료를 제공하는 공식 공개본입니다. 표시된 날짜는 자료 게시일이며 승인·수립일이 아닙니다.",
+      "scope_label": "경기도 고양시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "도시기본계획",
+        "생활권",
+        "공간구조"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "계획서 공개본 · 국토교통부 토지이음",
+          "url": "https://eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=231&subType=C",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41290-2035",
+      "region": "41290",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2035년 과천 도시기본계획",
+      "target_year": 2035,
+      "status": "approved",
+      "milestone_date": "2024-04-23",
+      "milestone_label": "토지이음 자료 게시",
+      "note": "지자체 공고자료를 제공하는 공식 공개본입니다. 표시된 날짜는 자료 게시일이며 승인·수립일이 아닙니다.",
+      "scope_label": "경기도 과천시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "도시기본계획",
+        "생활권",
+        "공간구조"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "계획서 공개본 · 국토교통부 토지이음",
+          "url": "https://eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=284&subType=C",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41310-2035",
+      "region": "41310",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2035년 구리 도시기본계획",
+      "target_year": 2035,
+      "status": "approved",
+      "milestone_date": "2023-03-08",
+      "milestone_label": "토지이음 자료 게시",
+      "note": "지자체 공고자료를 제공하는 공식 공개본입니다. 표시된 날짜는 자료 게시일이며 승인·수립일이 아닙니다.",
+      "scope_label": "경기도 구리시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "도시기본계획",
+        "생활권",
+        "공간구조"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "계획서 공개본 · 국토교통부 토지이음",
+          "url": "https://eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=232&subType=C",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41360-2035",
+      "region": "41360",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2035년 남양주 도시기본계획",
+      "target_year": 2035,
+      "status": "approved",
+      "milestone_date": "2023-03-08",
+      "milestone_label": "토지이음 자료 게시",
+      "note": "지자체 공고자료를 제공하는 공식 공개본입니다. 표시된 날짜는 자료 게시일이며 승인·수립일이 아닙니다.",
+      "scope_label": "경기도 남양주시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "도시기본계획",
+        "생활권",
+        "공간구조"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "계획서 공개본 · 국토교통부 토지이음",
+          "url": "https://eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=233&subType=C",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41370-2035",
+      "region": "41370",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2035년 오산 도시기본계획",
+      "target_year": 2035,
+      "status": "approved",
+      "milestone_date": "2021-01-06",
+      "milestone_label": "토지이음 자료 게시",
+      "note": "지자체 공고자료를 제공하는 공식 공개본입니다. 표시된 날짜는 자료 게시일이며 승인·수립일이 아닙니다.",
+      "scope_label": "경기도 오산시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "도시기본계획",
+        "생활권",
+        "공간구조"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "계획서 공개본 · 국토교통부 토지이음",
+          "url": "https://eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=164&subType=C",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41390-2040",
+      "region": "41390",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 시흥 도시기본계획",
+      "target_year": 2040,
+      "status": "approved",
+      "milestone_date": "2024-04-23",
+      "milestone_label": "토지이음 자료 게시",
+      "note": "지자체 공고자료를 제공하는 공식 공개본입니다. 표시된 날짜는 자료 게시일이며 승인·수립일이 아닙니다.",
+      "scope_label": "경기도 시흥시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "도시기본계획",
+        "생활권",
+        "공간구조"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "계획서 공개본 · 국토교통부 토지이음",
+          "url": "https://eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=285&subType=C",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41410-2030",
+      "region": "41410",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2030년 군포 도시기본계획",
+      "target_year": 2030,
+      "status": "approved",
+      "milestone_date": "2022-09-26",
+      "milestone_label": "토지이음 자료 게시",
+      "note": "지자체 공고자료를 제공하는 공식 공개본입니다. 표시된 날짜는 자료 게시일이며 승인·수립일이 아닙니다.",
+      "scope_label": "경기도 군포시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "도시기본계획",
+        "생활권",
+        "공간구조"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "계획서 공개본 · 국토교통부 토지이음",
+          "url": "https://eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=222&subType=C",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41430-2035",
+      "region": "41430",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2035년 의왕 도시기본계획",
+      "target_year": 2035,
+      "status": "approved",
+      "milestone_date": "2022-02-03",
+      "milestone_label": "토지이음 자료 게시",
+      "note": "지자체 공고자료를 제공하는 공식 공개본입니다. 표시된 날짜는 자료 게시일이며 승인·수립일이 아닙니다.",
+      "scope_label": "경기도 의왕시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "도시기본계획",
+        "생활권",
+        "공간구조"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "계획서 공개본 · 국토교통부 토지이음",
+          "url": "https://eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=213&subType=C",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41450-2040",
+      "region": "41450",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 하남 도시기본계획",
+      "target_year": 2040,
+      "status": "approved",
+      "milestone_date": "2023-10-11",
+      "milestone_label": "토지이음 자료 게시",
+      "note": "지자체 공고자료를 제공하는 공식 공개본입니다. 표시된 날짜는 자료 게시일이며 승인·수립일이 아닙니다.",
+      "scope_label": "경기도 하남시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "도시기본계획",
+        "생활권",
+        "공간구조"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "계획서 공개본 · 국토교통부 토지이음",
+          "url": "https://eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=254&subType=C",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41460-2035",
+      "region": "41460",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2035년 용인 도시기본계획",
+      "target_year": 2035,
+      "status": "approved",
+      "milestone_date": "2021-01-06",
+      "milestone_label": "토지이음 자료 게시",
+      "note": "지자체 공고자료를 제공하는 공식 공개본입니다. 표시된 날짜는 자료 게시일이며 승인·수립일이 아닙니다.",
+      "scope_label": "경기도 용인시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "도시기본계획",
+        "생활권",
+        "공간구조"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "계획서 공개본 · 국토교통부 토지이음",
+          "url": "https://eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=165&subType=C",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41500-2030",
+      "region": "41500",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2030년 이천 도시기본계획",
+      "target_year": 2030,
+      "status": "approved",
+      "milestone_date": "2021-01-06",
+      "milestone_label": "토지이음 자료 게시",
+      "note": "지자체 공고자료를 제공하는 공식 공개본입니다. 표시된 날짜는 자료 게시일이며 승인·수립일이 아닙니다.",
+      "scope_label": "경기도 이천시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "도시기본계획",
+        "생활권",
+        "공간구조"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "계획서 공개본 · 국토교통부 토지이음",
+          "url": "https://eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=168&subType=C",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41550-2040",
+      "region": "41550",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 안성 도시기본계획",
+      "target_year": 2040,
+      "status": "approved",
+      "milestone_date": "2026-10-01",
+      "milestone_label": "토지이음 자료 게시",
+      "note": "지자체 공고자료를 제공하는 공식 공개본입니다. 표시된 날짜는 자료 게시일이며 승인·수립일이 아닙니다.",
+      "scope_label": "경기도 안성시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "도시기본계획",
+        "생활권",
+        "공간구조"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "계획서 공개본 · 국토교통부 토지이음",
+          "url": "https://eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=327&subType=C",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41570-2035",
+      "region": "41570",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2035년 김포 도시기본계획(일부변경)",
+      "target_year": 2035,
+      "status": "amended",
+      "milestone_date": "",
+      "milestone_label": "",
+      "note": "김포시 공식 페이지에서 당초 계획과 일부변경 자료를 함께 제공합니다. 변경 승인일은 미확인입니다.",
+      "scope_label": "경기도 김포시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "도시기본계획",
+        "생활권",
+        "공간구조"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "당초 계획·일부변경 도서 · 김포시청",
+          "url": "https://www.gimpo.go.kr/portal/sub.do?key=1536",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        },
+        {
+          "label": "계획서 공개본 · 국토교통부 토지이음",
+          "url": "https://eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=241&subType=C",
+          "kind": "document",
+          "note": "토지이음에 공개된 당초 계획입니다.",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41590-2040",
+      "region": "41590",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 화성 도시기본계획",
+      "target_year": 2040,
+      "status": "approved",
+      "milestone_date": "2026-10-01",
+      "milestone_label": "토지이음 자료 게시",
+      "note": "지자체 공고자료를 제공하는 공식 공개본입니다. 표시된 날짜는 자료 게시일이며 승인·수립일이 아닙니다.",
+      "scope_label": "경기도 화성시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "도시기본계획",
+        "생활권",
+        "공간구조"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "계획서 공개본 · 국토교통부 토지이음",
+          "url": "https://eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=326&subType=C",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41630-2035",
+      "region": "41630",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2035년 양주 도시기본계획",
+      "target_year": 2035,
+      "status": "approved",
+      "milestone_date": "2022-02-03",
+      "milestone_label": "토지이음 자료 게시",
+      "note": "지자체 공고자료를 제공하는 공식 공개본입니다. 표시된 날짜는 자료 게시일이며 승인·수립일이 아닙니다.",
+      "scope_label": "경기도 양주시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "도시기본계획",
+        "생활권",
+        "공간구조"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "계획서 공개본 · 국토교통부 토지이음",
+          "url": "https://eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=205&subType=C",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41650-2035",
+      "region": "41650",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2035년 포천 도시기본계획",
+      "target_year": 2035,
+      "status": "approved",
+      "milestone_date": "2023-03-08",
+      "milestone_label": "토지이음 자료 게시",
+      "note": "지자체 공고자료를 제공하는 공식 공개본입니다. 표시된 날짜는 자료 게시일이며 승인·수립일이 아닙니다.",
+      "scope_label": "경기도 포천시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "도시기본계획",
+        "생활권",
+        "공간구조"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "계획서 공개본 · 국토교통부 토지이음",
+          "url": "https://eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=235&subType=C",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41670-2035",
+      "region": "41670",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2035년 여주 도시기본계획",
+      "target_year": 2035,
+      "status": "approved",
+      "milestone_date": "2024-06-25",
+      "milestone_label": "토지이음 자료 게시",
+      "note": "지자체 공고자료를 제공하는 공식 공개본입니다. 표시된 날짜는 자료 게시일이며 승인·수립일이 아닙니다.",
+      "scope_label": "경기도 여주시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "도시기본계획",
+        "생활권",
+        "공간구조"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "계획서 공개본 · 국토교통부 토지이음",
+          "url": "https://eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=290&subType=C",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41800-2030",
+      "region": "41800",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2030년 연천 군기본계획",
+      "target_year": 2030,
+      "status": "approved",
+      "milestone_date": "2024-01-19",
+      "milestone_label": "토지이음 자료 게시",
+      "note": "지자체 공고자료를 제공하는 공식 공개본입니다. 표시된 날짜는 자료 게시일이며 승인·수립일이 아닙니다.",
+      "scope_label": "경기도 연천군 전역",
+      "coverage_regions": [],
+      "tags": [
+        "군기본계획",
+        "생활권",
+        "공간구조"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "계획서 공개본 · 국토교통부 토지이음",
+          "url": "https://eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=261&subType=C",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41820-2035",
+      "region": "41820",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2035년 가평 군기본계획",
+      "target_year": 2035,
+      "status": "approved",
+      "milestone_date": "2023-03-22",
+      "milestone_label": "토지이음 자료 게시",
+      "note": "지자체 공고자료를 제공하는 공식 공개본입니다. 표시된 날짜는 자료 게시일이며 승인·수립일이 아닙니다.",
+      "scope_label": "경기도 가평군 전역",
+      "coverage_regions": [],
+      "tags": [
+        "군기본계획",
+        "생활권",
+        "공간구조"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "계획서 공개본 · 국토교통부 토지이음",
+          "url": "https://eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=244&subType=C",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41830-2030",
+      "region": "41830",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2030년 양평 군기본계획",
+      "target_year": 2030,
+      "status": "approved",
+      "milestone_date": "2021-01-06",
+      "milestone_label": "토지이음 자료 게시",
+      "note": "지자체 공고자료를 제공하는 공식 공개본입니다. 표시된 날짜는 자료 게시일이며 승인·수립일이 아닙니다.",
+      "scope_label": "경기도 양평군 전역",
+      "coverage_regions": [],
+      "tags": [
+        "군기본계획",
+        "생활권",
+        "공간구조"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "군기본계획 보고서 · 양평군청",
+          "url": "https://www.yp21.go.kr/www/contents.do?key=1417",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        },
+        {
+          "label": "계획서 공개본 · 국토교통부 토지이음",
+          "url": "https://eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=162&subType=C",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41480-2040",
+      "region": "41480",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 파주 도시기본계획",
+      "target_year": 2040,
+      "status": "approved",
+      "milestone_date": "2026-06-05",
+      "milestone_label": "승인 열람 공고",
+      "note": "",
+      "scope_label": "경기도 파주시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "도시기본계획",
+        "생활권",
+        "공간구조"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "계획 보고서 · 경기도 전자책",
+          "url": "https://ebook.gg.go.kr/src/viewer/main.php?category=1&host=main&page=1&site=20260721_150715",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        },
+        {
+          "label": "승인 열람 공고 · 파주시청",
+          "url": "https://www.paju.go.kr/user/board/BD_board.view.do?bbsCd=1022&q_ctgCd=4063&seq=20260605173916353",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41610-2040",
+      "region": "41610",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 광주 도시기본계획",
+      "target_year": 2040,
+      "status": "approved",
+      "milestone_date": "2023-10-16",
+      "milestone_label": "승인 공고",
+      "note": "경기도 광주시 계획입니다. 게시일(2023-10-13)과 본문에 적힌 공고일(2023-10-16)을 구분합니다.",
+      "scope_label": "경기도 광주시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "도시기본계획",
+        "생활권",
+        "경기광주"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "승인 공고·본보고서 · 광주시청",
+          "url": "https://www.gjcity.go.kr/portal/bbs/view.do?bIdx=319006&mId=0301040000&ptIdx=29",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41130-2040",
+      "region": "41130",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 성남 도시기본계획",
+      "target_year": 2040,
+      "status": "tender",
+      "milestone_date": "2025-05-12",
+      "milestone_label": "용역 평가위원 모집 공고",
+      "note": "용역 절차 확인 자료입니다. 착수·승인 완료 여부는 이 공고만으로 확정하지 않습니다.",
+      "scope_label": "경기도 성남시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "수립 진행",
+        "도시기본계획"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "용역 평가위원 모집 공고",
+          "url": "https://eminwon.seongnam.go.kr/emwp/gov/mogaha/ntis/web/ofr/action/OfrAction.do?Key=B_Subject&cgg_code=&cha_dep_code_nm=&context=NTIS&countYn=Y&dept_nm=&epcCheck=Y&homepage_pbs_yn=Y&initValue=Y&jndinm=OfrNotAncmtEJB&list_gubun=&method=selectOfrNotAncmt&methodnm=selectOfrNotAncmtRegst&nodate_recent_mm=&not_ancmt_cn=&not_ancmt_mgt_no=136456&not_ancmt_se_code=01%2C02%2C03%2C04%2C05%2C06%2C07&not_ancmt_sj=&ofr_pageSize=10&pageIndex=&subCheck=Y&temp=&title=%EA%B3%A0%EC%8B%9C%EA%B3%B5%EA%B3%A0&yyyy=",
+          "kind": "tender",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41150-2040",
+      "region": "41150",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 의정부 도시기본계획",
+      "target_year": 2040,
+      "status": "drafting",
+      "milestone_date": "2026-01-12",
+      "milestone_label": "시민계획단 모집 안내",
+      "note": "계획 수립 초기 시민참여 절차를 확인한 자료입니다. 최종 승인자료는 미확인입니다.",
+      "scope_label": "경기도 의정부시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "수립 진행",
+        "도시기본계획"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "시민계획단 모집 안내",
+          "url": "https://www.ui4u.go.kr/portal/bbs/view.do?bIdx=345772&mId=0301020000&ptIdx=1709",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41210-2040",
+      "region": "41210",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 광명 도시기본계획",
+      "target_year": 2040,
+      "status": "drafting",
+      "milestone_date": "2025-01-22",
+      "milestone_label": "시민계획단 모집 공고 수록",
+      "note": "광명시 공고 제2025-226호 수록. 후속 의회 업무보고에서도 수립 중으로 확인되며 최종 승인자료는 미확인입니다.",
+      "scope_label": "경기도 광명시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "수립 진행",
+        "도시기본계획"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "시민계획단 모집 공고 수록",
+          "url": "https://www.gm.go.kr/pt/user/bbs/BD_selectBbs.do?q_bbsCode=2037&q_bbscttSn=20250122175856308",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        },
+        {
+          "label": "시의회 수립 추진현황 보고",
+          "url": "https://council.gm.go.kr/viewer/minutes.do?mem_sch=all&schwrd=&uid=40792",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41280-2040",
+      "region": "41280",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 고양 도시기본계획",
+      "target_year": 2040,
+      "status": "drafting",
+      "milestone_date": "2026-04-29",
+      "milestone_label": "수립 진행상황 보도자료",
+      "note": "본문은 관계기관 협의·심의를 거쳐 최종 승인받을 예정이라고 설명합니다. 보도 제목의 수립 표현을 승인 완료로 처리하지 않습니다.",
+      "scope_label": "경기도 고양시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "수립 진행",
+        "도시기본계획"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "수립 진행상황 보도자료",
+          "url": "https://www.goyang.go.kr/news/user/bbs/BD_selectBbs.do?q_bbsCode=1090&q_bbscttSn=20260430195530457&q_estnColumn1=Y",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41310-2040",
+      "region": "41310",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 구리 도시기본계획",
+      "target_year": 2040,
+      "status": "drafting",
+      "milestone_date": "2025-08-20",
+      "milestone_label": "시민계획단 모집 공고",
+      "note": "구리시 공고 제2025-1353호. 최종 승인자료는 미확인입니다.",
+      "scope_label": "경기도 구리시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "수립 진행",
+        "도시기본계획"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "시민계획단 모집 공고",
+          "url": "https://www.guri.go.kr/www/selectGosiNttView.do?gosiNttNo=45665&key=387&pageIndex=1&pageUnit=10&searchCnd=ALL&searchDeptNm=&searchGosiSe=01%2C04%2C06&searchKrwd=%EA%B3%84%ED%9A%8D%EB%8B%A8",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41360-2040",
+      "region": "41360",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 남양주 도시기본계획(생활권계획)",
+      "target_year": 2040,
+      "status": "drafting",
+      "milestone_date": "2026-09-21",
+      "milestone_label": "주민계획단 활동결과 발표",
+      "note": "도시기본계획과 생활권계획 수립을 위한 주민계획단 활동자료입니다. 최종 승인자료는 미확인입니다.",
+      "scope_label": "경기도 남양주시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "수립 진행",
+        "도시기본계획",
+        "생활권계획"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "주민계획단 활동결과 발표",
+          "url": "https://nyj.go.kr/www/selectBbsNttView.do?bbsNo=320&key=2498&nttNo=548810",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41460-2040",
+      "region": "41460",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 용인 도시기본계획",
+      "target_year": 2040,
+      "status": "hearing",
+      "milestone_date": "2025-04-04",
+      "milestone_label": "주민공청회 개최",
+      "note": "공청회 개최일과 보도자료 게시일(2025-04-08)을 구분합니다. 후속 의회 자료는 승인 절차 진행을 설명하며 최종 승인자료는 미확인입니다.",
+      "scope_label": "경기도 용인시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "수립 진행",
+        "도시기본계획"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "주민공청회 개최",
+          "url": "https://www.yongin.go.kr/user/bbs/BD_selectBbs.do?q_bbsCode=1020&q_bbscttSn=20250408093717416",
+          "kind": "hearing",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        },
+        {
+          "label": "승인 절차 관련 공식 답변 · 용인시의회",
+          "url": "https://council.yongin.go.kr/kr/bbs/download.do?bbs_id=citizen&uid=80D9877D19B0EAF5021D60CAA985CF36",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41500-2040",
+      "region": "41500",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 이천 도시기본계획",
+      "target_year": 2040,
+      "status": "drafting",
+      "milestone_date": "2026-07-22",
+      "milestone_label": "시의회 추진상황 보고",
+      "note": "도시기본계획 수립 및 시민계획단 운영 준비를 설명한 의회 회의록입니다. 최종 승인자료는 미확인입니다.",
+      "scope_label": "경기도 이천시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "수립 진행",
+        "도시기본계획"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "시의회 추진상황 보고",
+          "url": "https://council.icheon.go.kr/minutes/city/xcom/web/minutesViewer.php?agndNo=&id=3224&mode=spkr1&spkrCd=PV10020",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41630-2040",
+      "region": "41630",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 양주 도시기본계획",
+      "target_year": 2040,
+      "status": "drafting",
+      "milestone_date": "2026-09-07",
+      "milestone_label": "시의회 추진상황 보고",
+      "note": "계획안 작성과 후속 협의·공청회 등을 설명한 의회 회의록입니다. 승인 목표일을 승인 완료일로 등록하지 않습니다.",
+      "scope_label": "경기도 양주시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "수립 진행",
+        "도시기본계획"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "시의회 추진상황 보고",
+          "url": "https://yjccmss.yangju.go.kr/minutes/svc/web/cms/mnts/SvcMntsViewer.php?agndNo=&mode=spkr1&schSn=2302&spkrCd=MBR00049",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41650-2040",
+      "region": "41650",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 포천 도시기본계획",
+      "target_year": 2040,
+      "status": "tender",
+      "milestone_date": "2026-09-28",
+      "milestone_label": "용역 제안서 평가결과 공고",
+      "note": "도시기본계획 수립·성장관리계획 재정비 용역의 평가결과 공고입니다. 계약·착수·승인 완료 여부는 별도 확인이 필요합니다.",
+      "scope_label": "경기도 포천시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "수립 진행",
+        "도시기본계획"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "용역 제안서 평가결과 공고",
+          "url": "https://www.pocheon.go.kr/www/selectEminwonView.do?key=3712&notAncmtMgtNo=68186&notAncmtSeCode=01",
+          "kind": "tender",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41800-2040",
+      "region": "41800",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 연천 군기본계획",
+      "target_year": 2040,
+      "status": "drafting",
+      "milestone_date": "2026-02-23",
+      "milestone_label": "군민 설문조사 시작",
+      "note": "군기본계획 수립을 위한 설문조사 기간(2026-02-23~03-31)을 확인한 자료입니다. 최종 승인자료는 미확인입니다.",
+      "scope_label": "경기도 연천군 전역",
+      "coverage_regions": [],
+      "tags": [
+        "수립 진행",
+        "군기본계획"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "군민 설문조사 시작",
+          "url": "https://www.yeoncheon.go.kr/www/selectBbsNttView.do?bbsNo=8&key=3386&nttNo=103967",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-urban-41830-2040",
+      "region": "41830",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 양평 군기본계획",
+      "target_year": 2040,
+      "status": "drafting",
+      "milestone_date": "2026",
+      "milestone_label": "군 주요 추진계획 연도",
+      "note": "2026년 주요 추진계획에 수록된 2040 군기본계획 수립사업입니다. 향후 공청회·승인 일정은 예정이며 완료 이력이 아닙니다.",
+      "scope_label": "경기도 양평군 전역",
+      "coverage_regions": [],
+      "tags": [
+        "수립 진행",
+        "군기본계획"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "군 주요 추진계획 연도",
+          "url": "https://www.yp21.go.kr/site/gunsu/download/cts2539_file2026.pdf",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi-parks-41270-2040",
+      "region": "41270",
+      "category": "parks",
+      "plan_type": "basic",
+      "title": "2040년 안산 공원녹지기본계획",
+      "target_year": 2040,
+      "status": "approved",
+      "milestone_date": "2026-01-16",
+      "milestone_label": "승인 후 열람 공고",
+      "note": "공고문은 관계도서를 안산시 공원과에 비치한다고 안내합니다. 온라인 보고서 원문 링크는 미확보입니다.",
+      "scope_label": "경기도 안산시 전역",
+      "coverage_regions": [],
+      "tags": [
+        "공원",
+        "녹지",
+        "공원녹지기본계획"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-12",
+      "created_at": "2026-11-12T00:00:00+00:00",
+      "links": [
+        {
+          "label": "승인에 따른 열람 공고 · 안산시청",
+          "url": "https://www.ansan.go.kr/www/common/bbs/selectBbsDetail.do?bbs_code=WWW07&bbs_seq=1660711",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-12"
+        }
+      ]
+    }
+  ]
+}

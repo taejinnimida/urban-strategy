@@ -28,13 +28,22 @@ def post(c, path, data, admin=False):
 
 
 def plan(c, ident):
-    return next(p for p in c.get(BASE,params={"region":"KR"}).json()["items"] if p["id"]==ident)
+    page=1
+    while True:
+        result=c.get(BASE,params={"region":"KR","page":page}).json()
+        for p in result["items"]:
+            if p["id"]==ident:
+                return p
+        if page*result["page_size"]>=result["total"]:
+            raise LookupError(ident)
+        page+=1
 
 
 def test_seoul_seed_and_readonly_mode():
     c=TestClient(create_app(Store(db_path="",database_url="")))
     catalog=c.get(BASE+"/catalog").json()
-    assert catalog["total"]==24
+    assert catalog["total"]==len(seed_plans())
+    assert catalog["counts"]["11"]==24
     assert not catalog["contributions_enabled"]
     items=c.get(BASE).json()["items"]
     assert sum(len(p["links"]) for p in items)==40
@@ -58,8 +67,8 @@ def test_persists_across_clients_and_restart(client):
     p=plan(c2,ident)
     assert p["verification"]=="user" and p["checked_at"] is None
     assert p["target_year"]==2040 and p["milestone_date"]=="2026-02"
-    assert c2.get(BASE,params={"region":"41111"}).json()["total"]==1
-    assert c2.get(BASE,params={"region":"41130"}).json()["total"]==0
+    assert ident in {p["id"] for p in c2.get(BASE,params={"region":"41111"}).json()["items"]}
+    assert ident not in {p["id"] for p in c2.get(BASE,params={"region":"41130"}).json()["items"]}
     assert c2.get(BASE+f"/plans/{ident}/history").json()["items"][0]["action"]=="plan_added"
 
 
@@ -109,7 +118,7 @@ def test_moderation_version_reports_and_history(client):
     assert post(client,f"/admin/plans/{ident}",{**action,"version":2,"action":"resolve_report","report_id":report["id"]},admin=True).status_code==200
     assert client.get(BASE+"/admin",auth=("admin","test-password")).json()["reports"]==[]
     assert post(client,f"/admin/plans/{ident}",{**action,"version":3,"action":"hide"},admin=True).status_code==200
-    assert client.get(BASE,params={"region":"41110"}).json()["total"]==0
+    assert ident not in {p["id"] for p in client.get(BASE,params={"region":"41110"}).json()["items"]}
     assert client.get(BASE+f"/plans/{ident}/history").status_code==404
     assert post(client,f"/admin/plans/{ident}",{**action,"version":4,"action":"restore"},admin=True).status_code==200
     assert plan(client,ident)["version"]==5
@@ -170,7 +179,8 @@ def test_shared_area_is_shown_in_both_districts_but_not_siblings(client):
     assert ids("11320")==ids("11350")==ids("11")==expected
     assert ids("11680")==set()
     catalog=client.get(BASE+"/catalog").json()
-    assert catalog["counts"]["KR"]==catalog["counts"]["11"]==24
+    assert catalog["counts"]["KR"]==len(seed_plans())
+    assert catalog["counts"]["11"]==24
     assert catalog["counts"]["11320"]==catalog["counts"]["11350"]==2
 
 
@@ -227,4 +237,4 @@ def test_legacy_database_upgrade_preserves_data_and_is_concurrent(tmp_path):
         assert old["version"]==7 and old["note"]=="보존할 메모" and old["status"]=="drafting"
         assert old["coverage_regions"]==old["tags"]==[] and old["plan_type"]=="unspecified"
         assert next(p for p in output if p["id"]==seed["id"])["plan_type"]=="basic"
-    assert len(stores[0].all_plans())==25
+    assert len(stores[0].all_plans())==len(seed_plans())+1

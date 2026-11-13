@@ -3,6 +3,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import app as platform
+from related_plans import seed_plans
 
 
 @pytest.fixture
@@ -21,7 +22,8 @@ def test_catalogue_and_assets_are_mounted_on_deployed_app(client):
     assert client.get("/plans/assets/plans.css").status_code == 200
     catalog = client.get("/api/related-plans/catalog")
     assert catalog.status_code == 200
-    assert catalog.json()["total"] == 24
+    assert catalog.json()["total"] == len(seed_plans())
+    assert catalog.json()["counts"]["11"] == 24
     result = client.get("/api/related-plans", params={"region": "11"})
     assert result.status_code == 200
     assert sum(len(p["links"]) for p in result.json()["items"]) == 40
