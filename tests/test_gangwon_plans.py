@@ -39,7 +39,7 @@ def test_area_lookup_inherits_gangwon_but_not_other_city(tmp_path):
         path=str(tmp_path/"gangwon.sqlite3") if writable else ""
         client=TestClient(create_app(Store(db_path=path,database_url="")))
         assert len(items(client,"51"))==53   # 46 local + 7 nationally shared
-        assert client.get(API+"/catalog").json()["total"]==221
+        assert client.get(API+"/catalog").json()["total"]== 238
         wonju={p["id"] for p in items(client,"51130")}
         inje={p["id"] for p in items(client,"51810")}
         assert "gangwon-comprehensive-2021-2040" in wonju & inje
@@ -49,7 +49,7 @@ def test_area_lookup_inherits_gangwon_but_not_other_city(tmp_path):
         assert "gangwon-basic-51810-2040" not in wonju
         assert "national-industrial-concentration-2019" in wonju & inje
         assert "gangwon-basic-51810-2040" not in {p["id"] for p in items(client,"43")}
-        assert len(items(client,"KR"))==221
+        assert len(items(client,"KR"))== 238
 
 def test_plans_keep_pending_and_past_status_separate():
     plans={p["id"]:p for p in seed_plans()}

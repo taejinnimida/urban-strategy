@@ -79,3 +79,10 @@ GitHub 확장 브랜치 커밋과 운영 배포를 구분한다. Render의 연�
 - 신규 자료: `plan_catalog_assets/chungcheong-expansion.json`; 공식 출처·미확인 사항: `docs/chungcheong-expansion-sources.md`.
 - 충남 서천군 공개본 및 청양 최신 확정자료는 누락 가능성을 명시한다. 충북 1차 계획은 기존 데이터 유지.
 - 전국 관련계획 기능은 `urban-plans`에서만 작업하며 `urban-analysis` 및 `main`과 운영 서버 배포는 변경하지 않는다.
+
+
+## 2026-11-14 누락 계획 2차 보강
+
+- 대전·아산·세종 공식 고시·공람·시행계획 및 전국 국가 탄소중립계획 **17건**을 `plan_catalog_assets/related-plans-catchup.json`에 추가. 누적 **238개 계획**.
+- 환경·기후 카테고리를 신설하고, 국가계획은 `KR`, 개별 산업단지 관리기본계획과 도시개발계획은 해당 시 지역으로 등록했다.
+- 2026 공람안과 과거 고시문은 단계별로 구분한다. 분야별 미확인은 누락관리표로 별도 조사한다.

@@ -58,12 +58,12 @@ def test_gyeonggi_catalogue_and_pagination_preserve_seoul(client):
     seoul = all_items(client, region="11")
     assert len(seoul) == 40
     assert sum(len(p["links"]) for p in seoul) == 63
-    assert len(all_items(client, region="KR")) == 221
+    assert len(all_items(client, region="KR")) == 238
     assert [len(client.get(BASE, params={"region": "41", "page": n}).json()["items"])
             for n in range(1, 5)] == [30, 30, 26, 0]
     catalog = client.get(BASE + "/catalog").json()
     assert catalog["counts"]["41"] == 80
-    assert catalog["counts"]["KR"] == 221
+    assert catalog["counts"]["KR"] == 238
     assert client.get(BASE + "/map/41").json()["features"]
     assert client.get("/plans/assets/gyeonggi-plans.json").status_code == 404
 
