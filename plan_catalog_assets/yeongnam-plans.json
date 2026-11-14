@@ -1,0 +1,838 @@
+{
+  "schema_version": 2,
+  "checked_at": "2026-11-14",
+  "coverage": "2026-11-14 영남권 5개 시도(부산 대구 울산 경북 경남) 1차: 도시기본·도종합·광역도시계획, 경북·경남 시별 도시기본계획, 정비·노후계획도시·경관·관광·도시관리계획의 공식 원문·공람 자료. 미등록 시군 계획이 미수립을 뜻하지 않음.",
+  "plans": [
+    {
+      "id": "yeongnam-gyeongbuk-comprehensive-2021-2040",
+      "region": "47",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "경상북도 종합계획(2021~2040)",
+      "target_year": 2040,
+      "status": "approved",
+      "milestone_date": "2022-05-23",
+      "milestone_label": "경상북도 본보고서 게시일",
+      "scope_label": "경상북도 관할 22개 시·군(군위군 편입 이전 수립)",
+      "note": "국토기본법상 도 종합계획. 게시일을 최초 승인일로 오인하지 않음. 수립 당시 군위군은 경북이었지만 2023년 대구로 편입되었으므로 현 행정구역에 자동 적용한다는 뜻이 아님.",
+      "tags": [
+        "도종합계획",
+        "경상북도"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "경상북도 종합계획 4개 PDF · 경북도청",
+          "url": "https://www.gb.go.kr/Main/page.do?BD_CODE=bbs_gongji&B_LEVEL=0&B_NUM=194734801&B_STEP=194734800&Start=0&V_NUM=20676&bdName=&cmd=2&dept_code=&dept_name=&key=0&mnu_uid=6786&p1=0&p2=0&tbbscode1=bbs_gongji&word=",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "yeongnam-gyeongnam-comprehensive-fourth-2021-2040",
+      "region": "48",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "제4차 경상남도 종합계획(2021~2040)",
+      "target_year": 2040,
+      "status": "approved",
+      "milestone_date": "2021-08-13",
+      "milestone_label": "경상남도기록원 발간물 등록일",
+      "scope_label": "경상남도 18개 시·군",
+      "note": "도 기록원의 공식 발간물(등록번호 76-6480000-000313-01). 등록일과 법정 승인일을 구분.",
+      "tags": [
+        "도종합계획",
+        "경상남도"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "제4차 경상남도 종합계획 등록·원문 · 경상남도기록원",
+          "url": "https://archives.gyeongnam.go.kr/00090/00092/00095.web?amode=view&cpage=94&idx=19491",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "yeongnam-busan-urban-basic-2040",
+      "region": "26",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 부산 도시기본계획",
+      "target_year": 2040,
+      "status": "approved",
+      "milestone_date": "2023-03-22",
+      "milestone_label": "토지이음 도시기본계획 원문 게시일",
+      "scope_label": "부산광역시 전역",
+      "note": "토지이음에 지자체가 공개한 도시·군기본계획의 PDF 원문. 게시일은 승인·고시일이 아니며 이후 변경 여부는 추가 검증이 필요하다.",
+      "tags": [
+        "부산",
+        "도시기본계획"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2040 부산 도시기본계획 · 토지이음",
+          "url": "https://www.eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=245&subType=C",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        },
+        {
+          "label": "법정계획 원문 아카이브 · AURUM",
+          "url": "https://www.aurum.re.kr/Legal/LegalSub.aspx?pcode=B02",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "yeongnam-daegu-urban-basic-2040",
+      "region": "27",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 대구 도시기본계획",
+      "target_year": 2040,
+      "status": "approved",
+      "milestone_date": "2026-10-01",
+      "milestone_label": "토지이음 도시기본계획 공개본 게시일",
+      "scope_label": "대구광역시 전역(군위군 포함)",
+      "note": "토지이음에 지자체가 공개한 도시·군기본계획의 PDF 원문. 게시일은 승인·고시일이 아니며 이후 변경 여부는 추가 검증이 필요하다. 2025년 수립안 공개 이후 2026년 10월 공개본으로 등록. 최종 공고일은 별도 확인.",
+      "tags": [
+        "대구",
+        "도시기본계획"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2040 대구 도시기본계획 · 토지이음",
+          "url": "https://www.eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=330&subType=C",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "yeongnam-ulsan-urban-basic-2035",
+      "region": "31",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2035년 울산 도시기본계획",
+      "target_year": 2035,
+      "status": "approved",
+      "milestone_date": "2021-04-15",
+      "milestone_label": "울산광역시 확정·공고일",
+      "scope_label": "울산광역시 전역",
+      "note": "울산시 공식 도시기본계획 페이지에 확정 공고일 2021-04-15 명시. 2040년 후속 도시기본계획(안)과 구분하여 관리.",
+      "tags": [
+        "울산",
+        "도시기본계획"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2035 울산 도시기본계획·승인 경과 · 울산시청",
+          "url": "https://www.ulsan.go.kr/u/traffic/contents.ulsan?mId=001007003000000000",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "yeongnam-ulsan-urban-basic-2040-hearing",
+      "region": "31",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 울산 도시기본계획(2025 공청회안)",
+      "target_year": 2040,
+      "status": "hearing",
+      "milestone_date": "2025-12-19",
+      "milestone_label": "울산시 주민공청회 개최",
+      "scope_label": "울산광역시 전역",
+      "note": "2025-12-19 울산시 공청회 확인. 2026년 현재 후속 확정·고시 여부는 이번 조사에서 확인하지 못하여 승인계획으로 표시하지 않음.",
+      "tags": [
+        "울산",
+        "도시기본계획",
+        "수립안"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2040 울산 도시기본계획안 공청회 · 울산시청",
+          "url": "https://www.ulsan.go.kr/u/rep/bbs/view.do?bbsId=BBS_0000000000000027&dataId=177764&mId=001004003001000000",
+          "kind": "hearing",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "yeongnam-gumi-urban-basic-2040",
+      "region": "47190",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 구미 도시기본계획",
+      "target_year": 2040,
+      "status": "approved",
+      "milestone_date": "2024-06-25",
+      "milestone_label": "토지이음 계획자료 등록일",
+      "scope_label": "경상북도 구미시",
+      "note": "토지이음에 지자체가 공개한 도시·군기본계획의 PDF 원문. 게시일은 승인·고시일이 아니며 이후 변경 여부는 추가 검증이 필요하다.",
+      "tags": [
+        "경북",
+        "구미"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2040 구미 도시기본계획 PDF·ZIP · 토지이음",
+          "url": "https://www.eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=299&subType=C",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "yeongnam-yeongcheon-urban-basic-2040",
+      "region": "47230",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 영천 도시기본계획",
+      "target_year": 2040,
+      "status": "approved",
+      "milestone_date": "2026-10-01",
+      "milestone_label": "토지이음 계획자료 등록일",
+      "scope_label": "경상북도 영천시",
+      "note": "토지이음에 지자체가 공개한 도시·군기본계획의 PDF 원문. 게시일은 승인·고시일이 아니며 이후 변경 여부는 추가 검증이 필요하다.",
+      "tags": [
+        "경북",
+        "영천"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2040 영천 도시기본계획 · 토지이음",
+          "url": "https://www.eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=328&subType=C",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "yeongnam-sangju-urban-basic-2040",
+      "region": "47250",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 상주 도시기본계획",
+      "target_year": 2040,
+      "status": "approved",
+      "milestone_date": "2026-10-01",
+      "milestone_label": "토지이음 계획자료 등록일",
+      "scope_label": "경상북도 상주시",
+      "note": "토지이음에 지자체가 공개한 도시·군기본계획의 PDF 원문. 게시일은 승인·고시일이 아니며 이후 변경 여부는 추가 검증이 필요하다.",
+      "tags": [
+        "경북",
+        "상주"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2040 상주 도시기본계획 · 토지이음",
+          "url": "https://www.eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=331&subType=C",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "yeongnam-yeongju-urban-basic-2030",
+      "region": "47210",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2030년 영주 도시기본계획(공개본)",
+      "target_year": 2030,
+      "status": "approved",
+      "milestone_date": "2022-02-03",
+      "milestone_label": "토지이음 기본계획 목록 공개일",
+      "scope_label": "경상북도 영주시",
+      "note": "토지이음 공식 목록에서 2030 영주 기본계획 게시 사실 확인. 목록 링크는 개별 원문을 직접 연결하지 않으며 후속 승인·변경 여부 확인 필요.",
+      "tags": [
+        "경북",
+        "영주"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2030 영주 도시기본계획 공개 목록 · 토지이음",
+          "url": "https://www.eum.go.kr/web/in/pd/pdBoardList.jsp?listSize=10&pageNo=9&searchType=&searchWord=&subType=C",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "yeongnam-changwon-urban-basic-2040",
+      "region": "48120",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 창원 도시기본계획",
+      "target_year": 2040,
+      "status": "approved",
+      "milestone_date": "2023-10-11",
+      "milestone_label": "토지이음 계획자료 등록일",
+      "scope_label": "경상남도 창원시",
+      "note": "토지이음에 지자체가 공개한 도시·군기본계획의 PDF 원문. 게시일은 승인·고시일이 아니며 이후 변경 여부는 추가 검증이 필요하다.",
+      "tags": [
+        "경남",
+        "창원"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2040 창원 도시기본계획 PDF · 토지이음",
+          "url": "https://www.eum.go.kr/web/in/pd/pdBoardDet.jsp?bd_type=3&gbn=I&seq=255&subType=C",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "yeongnam-miryang-urban-basic-2040",
+      "region": "48270",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 밀양 도시기본계획",
+      "target_year": 2040,
+      "status": "approved",
+      "milestone_date": "",
+      "milestone_label": "AURUM 법정계획 공개본(승인·게시일 별도 확인)",
+      "scope_label": "경상남도 밀양시",
+      "note": "건축공간연구원 법정계획 아카이브에 해당 계획 PDF가 공개됨. 최신 승인·변경 고시일은 확인하지 못함.",
+      "tags": [
+        "경남",
+        "밀양"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2040 밀양 도시기본계획 원문 · AURUM",
+          "url": "https://www.aurum.re.kr/Legal/LegalSub.aspx?pcode=B02",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "yeongnam-yangsan-urban-basic-2040",
+      "region": "48330",
+      "category": "urban",
+      "plan_type": "basic",
+      "title": "2040년 양산 도시기본계획",
+      "target_year": 2040,
+      "status": "approved",
+      "milestone_date": "",
+      "milestone_label": "AURUM 법정계획 공개본(승인·게시일 별도 확인)",
+      "scope_label": "경상남도 양산시",
+      "note": "건축공간연구원 법정계획 아카이브에 해당 계획 PDF가 공개됨. 최신 승인·변경 고시일은 확인하지 못함.",
+      "tags": [
+        "경남",
+        "양산"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2040 양산 도시기본계획 원문 · AURUM",
+          "url": "https://www.aurum.re.kr/Legal/LegalSub.aspx?pcode=B02",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "yeongnam-busan-metropolitan-2020",
+      "region": "26",
+      "category": "urban",
+      "plan_type": "metropolitan",
+      "title": "2020년 부산권 광역도시계획(변경본)",
+      "target_year": 2020,
+      "status": "historical",
+      "milestone_date": "",
+      "milestone_label": "기존 광역도시계획 공식도서 공개(수립·변경일 별도 확인)",
+      "scope_label": "부산광역시·경남 김해시·양산시 광역계획권",
+      "note": "부산시 공식 자료상 계획권은 부산·김해·양산 3개 지역, 목표연도 2020. 광역계획권은 현 행정구역 전역에 대한 2026년 현행 적용을 자동 보증하지 않음.",
+      "tags": [
+        "광역도시계획",
+        "부산권"
+      ],
+      "coverage_regions": [
+        "26",
+        "48250",
+        "48330"
+      ],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "부산권 광역도시계획(변경) 공식 본문·범위 · 부산시청",
+          "url": "https://www.busan.go.kr/bhurbanplan",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "yeongnam-busan-renewal-basic-2030-2026",
+      "region": "26",
+      "category": "renewal",
+      "plan_type": "basic",
+      "title": "2030 부산광역시 도시·주거환경정비기본계획(2026 변경)",
+      "target_year": 2030,
+      "status": "amended",
+      "milestone_date": "2026-07-08",
+      "milestone_label": "부산광역시 고시 제2026-240호",
+      "scope_label": "부산광역시 정비기본계획 적용 대상지역",
+      "note": "2025-01-01 기존 고시 제2024-491호 계획의 2026년 부분변경. 개별 정비구역 지정고시와 별개의 기본계획.",
+      "tags": [
+        "도정법",
+        "재개발",
+        "재건축"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2030 정비기본계획 2026 변경 고시 · 부산시청",
+          "url": "https://www.busan.go.kr/nbgosi/view?curPage=79&gosiGbn=N&sno=78657",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        },
+        {
+          "label": "기본계획 원문 아카이브 · AURUM",
+          "url": "https://www.aurum.re.kr/Legal/LegalSub.aspx?pcode=B04",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "yeongnam-daegu-renewal-basic-2030-2026",
+      "region": "27",
+      "category": "renewal",
+      "plan_type": "basic",
+      "title": "2030 대구광역시 도시·주거환경정비기본계획(2026 변경수립)",
+      "target_year": 2030,
+      "status": "amended",
+      "milestone_date": "2026-04-30",
+      "milestone_label": "대구광역시 변경수립 고시문 게시",
+      "scope_label": "대구광역시 도시정비기본계획 대상지역",
+      "note": "2021년 최초 수립과 2026-04-30 변경수립을 구분. 시청 공식 자료실에 장별 계획도와 보고서 제공.",
+      "tags": [
+        "도정법",
+        "재개발",
+        "재건축"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2030 정비기본계획 2026 고시문·장별 보고서 · 대구시청",
+          "url": "https://www.daegu.go.kr/build/index.do?menu_id=00001812",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "yeongnam-busan-oldplanned-hwamyeong-geumgok-2035",
+      "region": "26",
+      "category": "renewal",
+      "plan_type": "basic",
+      "title": "2035 부산 노후계획도시정비기본계획(화명·금곡지구)",
+      "target_year": 2035,
+      "status": "approved",
+      "milestone_date": "2026-04-08",
+      "milestone_label": "부산광역시 고시 제2026-124호",
+      "scope_label": "부산광역시 화명·금곡지구",
+      "note": "「노후계획도시 정비 및 지원에 관한 특별법」에 따른 기본계획. 부산 전역에 정비특별법이 적용된다는 뜻이 아닌 지구별 법정계획.",
+      "tags": [
+        "노후계획도시",
+        "화명",
+        "금곡"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "화명·금곡 노후계획도시정비기본계획 고시 · 부산시보",
+          "url": "https://www.busan.go.kr/news/gosiboard/view?articlNo=2&curPage=134&dataNo=111447",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "yeongnam-busan-oldplanned-haeundae-2035",
+      "region": "26",
+      "category": "renewal",
+      "plan_type": "basic",
+      "title": "2035 부산 노후계획도시정비기본계획(해운대지구)",
+      "target_year": 2035,
+      "status": "approved",
+      "milestone_date": "2026-04-08",
+      "milestone_label": "부산광역시 고시 제2026-125호",
+      "scope_label": "부산광역시 해운대지구",
+      "note": "같은 날 고시된 화명·금곡지구 계획과 별개의 지구별 기본계획. 원문 고시 및 상세 대상지 확인 필요.",
+      "tags": [
+        "노후계획도시",
+        "해운대"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "해운대 노후계획도시정비기본계획 고시 · 부산시청",
+          "url": "https://www.busan.go.kr/nbgosi/view?curPage=112&gosiGbn=N&sno=77275",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "yeongnam-busan-oldplanned-dadae-2035-draft",
+      "region": "26",
+      "category": "renewal",
+      "plan_type": "basic",
+      "title": "2035 부산 노후계획도시정비기본계획(다대지구)(안)",
+      "target_year": 2035,
+      "status": "hearing",
+      "milestone_date": "2026-07-22",
+      "milestone_label": "부산광역시 공고 제2026-2260호 주민공람",
+      "scope_label": "부산광역시 사하구 다대지구",
+      "note": "2026-07-22 주민공람공고는 법정 최종 승인·고시가 아님. 해운대·화명·금곡 확정본과 구분.",
+      "tags": [
+        "노후계획도시",
+        "다대",
+        "수립안"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "다대지구 노후계획도시정비기본계획(안) 공람공고 · 부산시보",
+          "url": "https://www.busan.go.kr/news/gosiboard/view?articlNo=2&dataNo=112343",
+          "kind": "hearing",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "yeongnam-changwon-landscape-2040-2026-amended",
+      "region": "48120",
+      "category": "landscape",
+      "plan_type": "basic",
+      "title": "2040 창원시 경관계획(중점경관관리구역 2026 변경)",
+      "target_year": 2040,
+      "status": "amended",
+      "milestone_date": "2026-01-15",
+      "milestone_label": "창원시 고시 제2026-14호 지형도면 고시",
+      "scope_label": "창원시 경관계획 및 변경된 중점경관관리구역",
+      "note": "2040 창원 경관계획 자체의 최신 전체본 확정 여부를 뜻하지 않고, 중점경관관리구역의 변경 및 지형도면 고시 이력을 기록.",
+      "tags": [
+        "경관법",
+        "중점경관관리구역"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "2040 창원 경관계획 중점경관관리구역 변경고시·도면 · 토지이음",
+          "url": "https://www.eum.go.kr/web/gs/gv/gvGosiDet.jsp?seq=627632",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "yeongnam-busan-tourism-seven-2022-2026",
+      "region": "26",
+      "category": "tourism",
+      "plan_type": "sector",
+      "title": "제7차 부산권 관광개발계획(2022~2026)",
+      "target_year": 2026,
+      "status": "approved",
+      "milestone_date": "2022-05-09",
+      "milestone_label": "부산광역시 공고 제2022-1586호",
+      "scope_label": "부산광역시 전역",
+      "note": "「관광진흥법」 제49조·제51조에 따른 지역 권역관광개발계획. 계획서 본문은 국가관광자원개발통합정보시스템 자료와 연계.",
+      "tags": [
+        "관광개발계획",
+        "부산권"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "제7차 부산권 관광개발계획 공고 · 부산시청",
+          "url": "https://www.busan.go.kr/nbgosi/view?gosiGbn=A&sno=56718",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "yeongnam-ulsan-tourism-seven-2022-2026",
+      "region": "31",
+      "category": "tourism",
+      "plan_type": "sector",
+      "title": "제7차 울산권 관광개발계획(2022~2026)",
+      "target_year": 2026,
+      "status": "approved",
+      "milestone_date": "2022-01-18",
+      "milestone_label": "울산광역시 계획 확정 공고",
+      "scope_label": "울산광역시 전역",
+      "note": "2022-01-18 확정 공고 및 2022~2026 5개년 기간 확인.",
+      "tags": [
+        "관광개발계획",
+        "울산권"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "제7차 울산권 관광개발계획 확정 공고 · 울산시청",
+          "url": "https://www.ulsan.go.kr/u/rep/bbs/view.do?bbsId=BBS_0000000000000027&dataId=143210&mId=001004003001000000",
+          "kind": "notice",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "yeongnam-ulsan-tourism-eight-2027-2031-drafting",
+      "region": "31",
+      "category": "tourism",
+      "plan_type": "sector",
+      "title": "제8차 울산권 관광개발계획(2027~2031)(수립 중)",
+      "target_year": 2031,
+      "status": "drafting",
+      "milestone_date": "2026-01-28",
+      "milestone_label": "울산광역시 관광개발계획 수립반 실무회의",
+      "scope_label": "울산광역시 전역",
+      "note": "2025-12 용역 착수, 2026-01-28 실무회의 실시. 2027년 확정을 목표로 추진 중이며 법정 확정본으로 표시하지 않음.",
+      "tags": [
+        "관광개발계획",
+        "수립중"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "제8차 울산권 관광개발계획 수립 착수 · 울산시청",
+          "url": "https://www.ulsan.go.kr/u/rep/bbs/view.do?bbsId=BBS_0000000000000027&dataId=178593&mId=001004003001000000",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "yeongnam-gyeongbuk-tourism-seven-2022-2026",
+      "region": "47",
+      "category": "tourism",
+      "plan_type": "sector",
+      "title": "제7차 경북권 관광개발계획(2022~2026)",
+      "target_year": 2026,
+      "status": "approved",
+      "milestone_date": "2024-02-02",
+      "milestone_label": "경상북도 공식 보고서 게시일",
+      "scope_label": "경상북도 권역(군위군 편입 이전 계획권)",
+      "note": "경북도청 공식 자료실에 계획서 원문과 공고문 공개. 2024-02-02는 게시일로 법정 수립 공고일과 구분.",
+      "tags": [
+        "관광개발계획",
+        "경북권"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "제7차 경북권 관광개발계획 공고·요약·최종 PDF · 경북도청",
+          "url": "https://www.gb.go.kr/Main/open_contents/section/economy2020/page.do?BD_CODE=bbs_gongji&B_LEVEL=0&B_NUM=380434601&B_STEP=380434600&Start=0&V_NUM=12&bdName=&cmd=2&dept_code=&dept_name=&key=4&mnu_uid=7159&p1=0&p2=0&tbbscode1=bbs_gongji&word=%EA%B4%80%EA%B4%91%EA%B0%9C%EB%B0%9C",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "yeongnam-gyeongnam-tourism-seven-2022-2026",
+      "region": "48",
+      "category": "tourism",
+      "plan_type": "sector",
+      "title": "제7차 경남권 관광개발계획(2022~2026)",
+      "target_year": 2026,
+      "status": "approved",
+      "milestone_date": "2022",
+      "milestone_label": "경상남도 발행연도(정확한 공고일 별도 확인)",
+      "scope_label": "경상남도 18개 시·군",
+      "note": "경남도 발행 2022년·2022~2026 계획기간의 보고서 공개. 국회도서관 원문 다운로드가 가능하나 법정 공고일은 미확인.",
+      "tags": [
+        "관광개발계획",
+        "경남권"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "제7차 경남권 관광개발계획 전자원문 · 국회도서관",
+          "url": "https://dl.nanet.go.kr/detail/MONO12024000015077",
+          "kind": "document",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    },
+    {
+      "id": "yeongnam-ulsan-management-2030-2024",
+      "region": "31",
+      "category": "urban",
+      "plan_type": "sector",
+      "title": "2030년 울산 도시관리계획(재정비) 결정(2024)",
+      "target_year": 2030,
+      "status": "amended",
+      "milestone_date": "2024-12-27",
+      "milestone_label": "울산광역시 도시계획 연혁상 결정일",
+      "scope_label": "울산광역시 도시관리계획 재정비 대상지역",
+      "note": "2024-12-27 도시관리계획 재정비 결정이 울산시 공식 연혁에 확인됨. 지형도면 고시 원문 미확보 상태에서는 개별 필지 법정판정에 사용하지 않음.",
+      "tags": [
+        "도시관리계획",
+        "재정비"
+      ],
+      "coverage_regions": [],
+      "verification": "source",
+      "checked_at": "2026-11-14",
+      "created_at": "2026-11-14T00:00:00+00:00",
+      "links": [
+        {
+          "label": "울산 도시관리계획 재정비 확정 연혁 · 울산시청",
+          "url": "https://www.ulsan.go.kr/u/traffic/contents.do?mId=001007001000000000",
+          "kind": "reference",
+          "note": "",
+          "verification": "source",
+          "checked_at": "2026-11-14"
+        }
+      ]
+    }
+  ]
+}
