@@ -24,7 +24,7 @@ def test_countrywide_plans_inherit_to_seoul_gyeonggi_and_chungcheong():
               "national-architecture-assets-2-2021","national-architecture-assets-3-2026-draft",
               "national-tourism-development-4-2022"}
     seeds=seed_plans()
-    assert len(seeds)== 238
+    assert len(seeds)== 267
     assert {p["id"] for p in seeds if p["id"] in national}==national
     for region in REGIONS:
         assert national<=get_ids(client,region)
@@ -51,7 +51,7 @@ def test_sector_categories_and_regional_tourism_available_with_existing_categori
     catalogue=client.get(API+"/catalog").json()
     assert catalogue["categories"]["industry"]=="산업·산업입지"
     assert catalogue["categories"]["tourism"]=="관광"
-    assert catalogue["total"]== 238
+    assert catalogue["total"]== 267
     regional={"11":"seoul","41":"gyeonggi","43":"chungbuk","44":"chungnam","30":"daejeon","36":"sejong"}
     for region,slug in regional.items():
         assert "tourism-development-7-"+slug in get_ids(client,region,category="tourism")
