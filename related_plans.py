@@ -28,7 +28,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 ASSETS = Path(__file__).with_name("plan_catalog_assets")
-SEED_FILES = ("seoul-plans.json", "gyeonggi-plans.json", "metro-plans-additions.json", "chungbuk-plans.json", "heritage-metropolitan-plans.json", "national-sector-plans.json", "gangwon-plans.json", "gangwon-sector-additions.json", "chungcheong-expansion.json", "related-plans-catchup.json", "honam-plans.json")
+SEED_FILES = ("seoul-plans.json", "gyeonggi-plans.json", "metro-plans-additions.json", "chungbuk-plans.json", "heritage-metropolitan-plans.json", "national-sector-plans.json", "gangwon-plans.json", "gangwon-sector-additions.json", "chungcheong-expansion.json", "related-plans-catchup.json", "honam-plans.json", "jeju-plans.json")
 CATEGORIES = {"urban":"도시계획", "architecture":"건축", "landscape":"경관", "parks":"공원·녹지", "renewal":"정비", "transport":"교통", "regeneration":"재생", "heritage":"역사·문화유산", "industry":"산업·산업입지", "tourism":"관광", "environment":"환경·기후", "other":"기타"}
 PLAN_TYPES = {"unspecified":"미분류", "metropolitan":"광역도시계획", "basic":"기본·종합계획", "sector":"부문별계획", "living":"생활권계획", "area":"도심·중심지 특화계획", "policy":"정책·사업구상"}
 STATUSES = {"unknown":"상태 미확인", "tender":"발주 확인", "drafting":"수립 중", "hearing":"공람·공청회", "approved":"수립완료", "amended":"변경완료", "announced":"계획·정책 발표", "historical":"이전 계획"}
