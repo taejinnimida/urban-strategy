@@ -54,7 +54,7 @@ def test_province_and_city_query_do_not_include_sibling_city_plans(tmp_path):
         assert "chungbuk-basic-43770-2030" not in cheongju
         assert "chungbuk-comprehensive-2021-2040" in cheongju & eumseong
         assert {x["id"] for x in items(client, "KR")} >= ids
-        assert client.get(API + "/catalog").json()["total"] == 291
+        assert client.get(API + "/catalog").json()["total"] == 317
 
 
 def test_followup_drafts_not_mislabelled_as_approved():

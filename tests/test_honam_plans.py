@@ -29,7 +29,7 @@ def test_honam_seeds_present_and_metadata_valid():
 def test_integrated_regions_preserve_legacy_subregion_scopes(tmp_path):
     for path in ("",str(tmp_path/"honam.sqlite3")):
         c=TestClient(create_app(Store(db_path=path,database_url="")))
-        assert c.get(API+"/catalog").json()["total"]== 291
+        assert c.get(API+"/catalog").json()["total"]== 317
         gwangju=pages(c,"12210")
         suncheon=pages(c,"12150")
         jeonju=pages(c,"52110")

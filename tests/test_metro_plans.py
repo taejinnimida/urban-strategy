@@ -63,8 +63,8 @@ def test_renewal_regeneration_and_industrial_plan_queries():
 
 def test_metro_seed_validation_and_record_uniqueness():
     seeds = rp.seed_plans()
-    assert len(seeds) == 291
-    assert len({p["id"] for p in seeds}) == 291
+    assert len(seeds) == 317
+    assert len({p["id"] for p in seeds}) == 317
     for p in seeds:
         rp.PlanFields.model_validate({key: p[key] for key in rp.PlanFields.model_fields})
         for link in p["links"]:

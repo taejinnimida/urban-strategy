@@ -29,7 +29,7 @@ def test_jeju_plan_seed_schema_and_sources():
 def test_inheritance_and_local_activation_scope(tmp_path):
     for db in ("", str(tmp_path / "jeju.sqlite3")):
         client = TestClient(create_app(Store(db_path=db, database_url="")))
-        assert client.get(API + "/catalog").json()["total"] == 291
+        assert client.get(API + "/catalog").json()["total"] == 317
         province = ids(client, "50")
         jeju_city = ids(client, "50110")
         seogwipo = ids(client, "50130")
