@@ -26,7 +26,7 @@ def test_seed_files_cover_13_published_and_pending_cheongyang():
     assert len(basic)==13
     assert {p["region"] for p in basic}==KNOWN_CHUNGNAM
     assert "44770" in EXPECTED_ALL - {p["region"] for p in entries}
-    assert len(seed_plans())== 267
+    assert len(seed_plans())== 291
     for p in entries:
         PlanFields.model_validate({k:p[k] for k in PlanFields.model_fields})
         for l in p["links"]:
@@ -35,7 +35,7 @@ def test_seed_files_cover_13_published_and_pending_cheongyang():
 def test_province_scope_and_sibling_exclusion(tmp_path):
     for db in ("",str(tmp_path/"chungcheong.sqlite3")):
         c=TestClient(create_app(Store(db_path=db,database_url="")))
-        assert c.get(BASE+"/catalog").json()["total"]== 267
+        assert c.get(BASE+"/catalog").json()["total"]== 291
         chn=gather(c,"44")
         assert "chungnam-comprehensive-2021-2040" in chn
         assert "chungnam-basic-44130-2035" in chn
